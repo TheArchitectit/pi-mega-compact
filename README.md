@@ -143,10 +143,23 @@ sprint.
 - ✅ Sprint 1 — core engine (Layers 1–2, pure functions)
 - ✅ Sprint 2 — local vector store (Layer 3)
 - ✅ Sprint 3 — pi extension wiring (Layer 4 persist + trigger)
-- 🔜 Sprint 4 — unified recall layer (Layer 5: auto-inline + on-demand + sentinel)
+- ✅ Sprint 4 — unified recall layer (Layer 5: auto-inline + on-demand + sentinel)
+- ✅ Sprint 5 — commands / UX / config polish (status chip, store stats, debug log)
+- ✅ Sprint 6 — hardening, docs, release (`install.sh`, CHANGELOG, `v0.1.0`)
 
 See `SPRINT_PLAN.md` for the full breakdown and `PLAN.md` for architecture,
-`RESEARCH.md` for the pi-API constraints that shaped it.
+`RESEARCH.md` for the pi-API constraints that shaped it, `CHANGELOG.md` for
+release notes.
+
+## Install
+
+```bash
+./install.sh          # copy into ~/.pi/agent/extensions/pi-mega-compact
+./install.sh -s       # symlink (dev mode)
+```
+
+The script also registers `extensions/mega-compact.ts` in pi's
+`~/.pi/agent/config.json` `pi.extensions` array (needs `jq`).
 
 ---
 

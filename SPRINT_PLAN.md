@@ -108,17 +108,17 @@ Goal: the extension compacts a real session and persists checkpoints.
 
 Goal: one vector store → auto-inline + on-demand + sentinel, one dedup engine.
 
-- [ ] **4.1 (L)** `src/recall.ts` — `recallAndInline(ctx,{query?,limit,source})`:
+- [x] **4.1 (L)** `src/recall.ts` — `recallAndInline(ctx,{query?,limit,source})`:
       `search → dedupe → inject`. Injection via `before_agent_start`
       `{ systemPrompt }` prepend (model-visible), NOT a custom message.
-- [ ] **4.2 (M)** Auto-inline: `session_start`/`session_tree` →
+- [x] **4.2 (M)** Auto-inline: `session_start`/`session_tree` →
       `recallAndInline(source:"resume")` using newest user msg as query; gated by
       `MEGACOMPACT_AUTO_INLINE`.
-- [ ] **4.3 (M)** `/recall-context [query]` command → `recallAndInline(
+- [x] **4.3 (M)** `/recall-context [query]` command → `recallAndInline(
       source:"command")`; report inlined checkpoints.
-- [ ] **4.4 (S)** Shared dedup: skip by `regionHash` marker in branch, by
+- [x] **4.4 (S)** Shared dedup: skip by `regionHash` marker in branch, by
       injected-`checkpointId` in `state.json`, cosine near-dup collapse.
-- [ ] **4.5 (M)** Tests: auto-inline injects on resume, no re-inject of present
+- [x] **4.5 (M)** Tests: auto-inline injects on resume, no re-inject of present
       region, `/recall-context` ranks relevant checkpoint first.
 
 **Exit:** resume a compacted session → relevant context silently reappears in the
@@ -126,34 +126,34 @@ system prompt; `/recall-context` works; nothing double-injected.
 
 ---
 
-## Sprint 5 — Commands, UX, config polish
+## Sprint 5 — Commands, UX, config polish  ✅ DONE
 
-- [ ] **5.1 (M)** `/megacompact [summary...]` — manual compact; if no summary
+- [x] **5.1 (M)** `/megacompact [summary...]` — manual compact; if no summary
       arg, drive agent (`ctx.sendMessage` / `sendUserMessage`) to produce one;
       persist + report tokens saved via status chip.
-- [ ] **5.2 (S)** `/megacompact-status` — threshold, current %, last chkpt, store
+- [x] **5.2 (S)** `/megacompact-status` — threshold, current %, last chkpt, store
       size, dedup hit-rate.
-- [ ] **5.3 (S)** Config surface: all `MEGACOMPACT_*` env + settings.json;
+- [x] **5.3 (S)** Config surface: all `MEGACOMPACT_*` env + settings.json;
       document defaults.
-- [ ] **5.4 (S)** Status-bar chip parity with neuralwatt-mcr (compaction %,
+- [x] **5.4 (S)** Status-bar chip parity with neuralwatt-mcr (compaction %,
       "optimizing…", chkpt id).
-- [ ] **5.5 (S)** Structured logging to `~/.pi/agent/extensions/mega-compact.log`.
+- [x] **5.5 (S)** Structured logging to `~/.pi/agent/extensions/mega-compact.log`.
 
 **Exit:** all three commands usable in TUI; status chip live; config documented.
 
 ---
 
-## Sprint 6 — Hardening, docs, release
+## Sprint 6 — Hardening, docs, release  ✅ DONE
 
-- [ ] **6.1 (M)** End-to-end test script: scripted long session → auto-compact →
+- [x] **6.1 (M)** End-to-end test script: scripted long session → auto-compact →
       restart pi → auto-inline restores context (cross-session proof).
-- [ ] **6.2 (M)** Failure-mode tests: corrupt store, empty session, overflow
+- [x] **6.2 (M)** Failure-mode tests: corrupt store, empty session, overflow
       recovery (`reason:"overflow"`, `willRetry`), branch switch mid-compact.
-- [ ] **6.3 (S)** README (usage, layers, config, attribution to memory-mcp /
+- [x] **6.3 (S)** README (usage, layers, config, attribution to memory-mcp /
       claw-code / neuralwatt-mcr), CHANGELOG, RELEASE_NOTES.
-- [ ] **6.4 (S)** `install.sh` (mirror pi-setup): copy/symlink into
+- [x] **6.4 (S)** `install.sh` (mirror pi-setup): copy/symlink into
       `~/.pi/agent/extensions/`, register in extensions config.
-- [ ] **6.5 (S)** Full guardrails audit; tag `v0.1.0`; optional npm publish.
+- [x] **6.5 (S)** Full guardrails audit; tag `v0.1.0`; optional npm publish.
 
 **Exit:** cross-session recall demoed; guardrails audit clean; v0.1.0 tagged.
 

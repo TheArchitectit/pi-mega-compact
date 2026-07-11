@@ -127,6 +127,32 @@ test("corrupt checkpoint file falls back to empty (no throw)", () => {
   assert.equal(s.search("sess_corrupt", "q", 3).length, 0);
 });
 
+test("stats reports counts, last checkpoint, and dedup rate", () => {
+  const s = store();
+  s.add({ sessionId: "sess_stats", summary: "alpha", regionText: "region alpha text", tokenEstimate: 500, timestamp: 1 });
+  s.add({ sessionId: "sess_stats", summary: "beta", regionText: "region beta text", tokenEstimate: 700, timestamp: 2 });
+  const st1 = s.stats("sess_stats");
+  assert.equal(st1.checkpointCount, 2);
+  assert.equal(st1.lastCheckpointId, "chkpt_002");
+  assert.equal(st1.totalTokenEstimate, 1200);
+  assert.equal(st1.injectedCount, 0);
+  assert.equal(st1.dedupHitRate, 0);
+
+  s.markInjected("sess_stats", "chkpt_001");
+  const st2 = s.stats("sess_stats");
+  assert.equal(st2.injectedCount, 1);
+  assert.ok(Math.abs(st2.dedupHitRate - 0.5) < 1e-9);
+});
+
+test("stats on empty session returns zeros and nulls", () => {
+  const s = store();
+  const st = s.stats("sess_empty");
+  assert.equal(st.checkpointCount, 0);
+  assert.equal(st.lastCheckpointId, undefined);
+  assert.equal(st.totalTokenEstimate, 0);
+  assert.equal(st.dedupHitRate, 0);
+});
+
 test("cleanup", () => {
   rmSync(baseTmp, { recursive: true, force: true });
 });

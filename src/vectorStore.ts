@@ -158,4 +158,37 @@ export class VectorStore {
   similarity(a: Vector, b: Vector): number {
     return cosineSimilarity(a, b);
   }
+
+  /** All checkpoints for a session (sorted by checkpointId). */
+  list(sessionId: string): StoredCheckpoint[] {
+    return listCheckpoints(normalizeSessionId(sessionId), this.stateDir);
+  }
+
+  /**
+   * Store statistics for status reporting / logging. Returns counts + the last
+   * (highest-numbered) checkpoint, or nulls when the session is empty.
+   */
+  stats(sessionId: string): {
+    checkpointCount: number;
+    totalTokenEstimate: number;
+    lastCheckpointId: string | undefined;
+    lastSummary: string | undefined;
+    injectedCount: number;
+    dedupHitRate: number; // injected / checkpoints, 0..1
+  } {
+    const sid = normalizeSessionId(sessionId);
+    const cps = listCheckpoints(sid, this.stateDir);
+    const state = loadSessionState(sid, this.stateDir);
+    const ordered = [...cps].sort((a, b) => a.checkpointId.localeCompare(b.checkpointId));
+    const last = ordered[ordered.length - 1];
+    const injected = state.injectedCheckpointIds.length;
+    return {
+      checkpointCount: cps.length,
+      totalTokenEstimate: cps.reduce((s, c) => s + (c.tokenEstimate ?? 0), 0),
+      lastCheckpointId: last?.checkpointId,
+      lastSummary: last?.summary,
+      injectedCount: injected,
+      dedupHitRate: cps.length === 0 ? 0 : injected / cps.length,
+    };
+  }
 }

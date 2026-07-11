@@ -27,6 +27,7 @@
 import type { ExtensionAPI, ExtensionContext, ContextEvent, SessionBeforeCompactEvent } from "@earendil-works/pi-coding-agent";
 import { sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { join } from "node:path";
 import { STATE_DIR_DEFAULT } from "../src/config.js";
 import { VectorStore } from "../src/vectorStore.js";
 import { toEngineMessages, dropCompactedRange } from "../src/adapt.js";
@@ -35,6 +36,7 @@ import { recallAndInline } from "../src/recall.js";
 import { autoCompactCheck } from "../src/compact.js";
 import { estimateSessionTokens } from "../src/tokens.js";
 import { normalizeSessionId } from "../src/store.js";
+import { Logger } from "../src/log.js";
 import type { EngineMessage } from "../src/types.js";
 
 const STATUS_KEY = "mega-compact";
@@ -71,6 +73,7 @@ function loadConfig() {
     autoInline: envBool("MEGACOMPACT_AUTO_INLINE", true),
     autoInlineK: envFlag("MEGACOMPACT_AUTO_INLINE_K", 3),
     dedupSim: Number(process.env.MEGACOMPACT_DEDUP_SIM ?? "0.9"),
+    debug: envBool("MEGACOMPACT_DEBUG", false),
   };
 }
 
@@ -82,6 +85,7 @@ function engineView(messages: AgentMessage[]): EngineMessage[] {
 export default function (pi: ExtensionAPI) {
   const config = loadConfig();
   const store = new VectorStore({ dedupSim: config.dedupSim, stateDir: config.stateDir });
+  const logger = new Logger({ enabled: config.debug, path: join(config.stateDir, "mega-compact.log") });
 
   // The only mutable per-session state. Reset on session_start / session_tree.
   let rt: SessionRuntime = {
@@ -158,6 +162,13 @@ export default function (pi: ExtensionAPI) {
         ? `mega-compact: ${result.checkpointId} · ${saved} tok saved`
         : `mega-compact: ready`,
     );
+    logger.info("compact", {
+      sessionId: sid,
+      checkpointId: result.checkpointId ?? "(deduped)",
+      deduped: result.deduped,
+      tokenEstimate: saved,
+      compactedFrom: result.compactedFrom,
+    });
     return { skipped: false, result, keepFrom, saved };
   }
 
@@ -187,6 +198,7 @@ export default function (pi: ExtensionAPI) {
         if (!r.empty) {
           pendingRecallBlock = r.block;
           setStatus(ctx, `mega-compact: recalled ${r.toInject.length} chkpt`);
+          logger.info("auto-inline", { reason: event.reason, query, injected: r.toInject.map((h) => h.checkpoint.checkpointId) });
         }
       }
     }
@@ -201,7 +213,10 @@ export default function (pi: ExtensionAPI) {
       const query = recentUserQuery(ctx);
       if (query) {
         const r = doRecall(ctx, query, "resume");
-        if (!r.empty) pendingRecallBlock = r.block;
+        if (!r.empty) {
+          pendingRecallBlock = r.block;
+          logger.info("auto-inline", { reason: "session_tree", query, injected: r.toInject.map((h) => h.checkpoint.checkpointId) });
+        }
       }
     }
   });
@@ -296,6 +311,7 @@ export default function (pi: ExtensionAPI) {
       }
       const r = doRecall(ctx, query, "command");
       if (r.empty) {
+        logger.info("recall-empty", { query });
         ctx.ui.notify(`[mega-compact] recall found nothing new for "${query}".`);
         return;
       }
@@ -303,6 +319,8 @@ export default function (pi: ExtensionAPI) {
       // injection). Report what was selected now for immediate feedback.
       pendingRecallBlock = r.block;
       const list = r.report.map((l) => l).join("\n");
+      logger.info("recall", { query, injected: r.toInject.map((h) => h.checkpoint.checkpointId) });
+      setStatus(ctx, `mega-compact: recalled ${r.toInject.length} chkpt`);
       ctx.ui.notify(
         `[mega-compact] recall staged ${r.toInject.length} checkpoint(s) for "${query}":\n${list}\n` +
           `(injected at the next turn via system prompt)`,
@@ -315,10 +333,17 @@ export default function (pi: ExtensionAPI) {
     handler: async (_args: string, ctx: ExtensionContext) => {
       const usage = ctx.getContextUsage();
       const pct = usage?.percent != null ? `${usage.percent}%` : "n/a";
+      const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
+      const st = store.stats(sid);
       ctx.ui.notify(
         `[mega-compact] pct=${pct} fastGate=${config.fastGatePct}% ` +
-          `threshold=${config.thresholdTokens} auto=${config.auto} autoInline=${config.autoInline} ` +
-          `anchor=${config.anchorUserMessages} dedupSim=${config.dedupSim} stateDir=${config.stateDir}`,
+          `threshold=${config.thresholdTokens} auto=${config.auto} autoInline=${config.autoInline}\n` +
+          `[mega-compact] store: ${st.checkpointCount} chkpt · ` +
+          `${st.totalTokenEstimate} tok · last=${st.lastCheckpointId ?? "—"} · ` +
+          `injected=${st.injectedCount} · dedup=${(st.dedupHitRate * 100).toFixed(0)}%\n` +
+          `[mega-compact] anchor=${config.anchorUserMessages} preserveRecent=${config.preserveRecent} ` +
+          `autoInlineK=${config.autoInlineK} dedupSim=${config.dedupSim} debug=${config.debug}\n` +
+          `[mega-compact] stateDir=${config.stateDir}`,
       );
     },
   });
