@@ -58,7 +58,7 @@ implemented + tested; no pi imports in `src/` yet (engine is standalone).
 
 ---
 
-## Sprint 2 — Local vector store (Layer 3)
+## Sprint 2 — Local vector store (Layer 3)  ✅ DONE (commit 62911f1)
 
 Goal: offline dedup + recall substrate.
 
@@ -79,7 +79,7 @@ twice → one vector); search returns the planted checkpoint top-1.
 
 ---
 
-## Sprint 3 — pi extension wiring (Layer 4 persist + trigger)
+## Sprint 3 — pi extension wiring (Layer 4 persist + trigger)  ✅ DONE (commit 3867d55)
 
 Goal: the extension compacts a real session and persists checkpoints.
 
@@ -104,7 +104,7 @@ Goal: the extension compacts a real session and persists checkpoints.
 
 ---
 
-## Sprint 4 — Unified recall layer (Layer 5, all 3 entry points)
+## Sprint 4 — Unified recall layer (Layer 5, all 3 entry points)  🔜 NEXT
 
 Goal: one vector store → auto-inline + on-demand + sentinel, one dedup engine.
 
