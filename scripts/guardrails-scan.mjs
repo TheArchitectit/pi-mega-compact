@@ -15,10 +15,29 @@ const rulesPath = join(root, ".guardrails", "prevention-rules", "pattern-rules.j
 function loadRules() {
   const data = JSON.parse(readFileSync(rulesPath, "utf-8"));
   return data.rules.filter(
-    (r) => r.enabled !== false && (r.rule_type === "pattern" || true) &&
+    (r) => r.enabled !== false &&
       ["critical", "error"].includes(r.severity) &&
       (r.rule_id || "").startsWith("PREVENT-PI-"),
   );
+}
+
+/** Minimal glob matcher (supports * and **). */
+function globMatch(glob, path) {
+  const re = new RegExp(
+    "^" + glob
+      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+      .replace(/\*\*\//g, "__(DS__)")        // temp marker for **/
+      .replace(/\*\*/g, ".*")
+      .replace(/__\(DS__\)/g, ".*")           // restore **/
+      .replace(/\*/g, "[^/]*") + "$",
+  );
+  return re.test(path);
+}
+
+function ruleAppliesTo(rule, file) {
+  const globs = rule.file_glob;
+  if (!Array.isArray(globs) || globs.length === 0) return true;
+  return globs.some((g) => globMatch(g, file));
 }
 
 function walk(dir, acc = []) {
@@ -41,6 +60,7 @@ function main() {
     const lines = readFileSync(file, "utf-8").split("\n");
     lines.forEach((line, i) => {
       for (const rule of rules) {
+        if (!ruleAppliesTo(rule, file)) continue;
         try {
           if (new RegExp(rule.pattern).test(line)) {
             console.error(`[GUARDRAILS][${rule.severity}] ${rule.rule_id} ${file}:${i + 1} — ${rule.message}`);

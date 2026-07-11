@@ -429,23 +429,23 @@
       "rule_id": "PREVENT-PI-001",
       "name": "Dropping messages without anchor-floor guard",
       "enabled": true,
-      "pattern": "messages\\.filter\\(",
-      "forbidden_context": "without.*(anchor|keepRecent|preserveRecent|safeDrop)",
-      "message": "Message-drop/filter must preserve the last N user messages (anchor-floor) to avoid dropping recent prompts.",
-      "severity": "error",
+      "pattern": "messages\\.slice\\(\\s*0\\s*,",
+      "forbidden_context": "without.*(anchor|keepRecent|preserveRecent|safeDrop|computeDropRange|dropBefore)",
+      "message": "Dropping a prefix of messages (messages.slice(0, N)) must preserve the last N user messages (anchor-floor) — use boundary.dropBefore() which applies the guard. Fires only when no anchor logic is present.",
+      "severity": "warning",
       "file_glob": ["*.ts"],
-      "suggestion": "Keep >= MEGACOMPACT_ANCHOR_USER_MESSAGES user messages when returning a filtered message array from the context hook."
+      "suggestion": "Use src/boundary.ts dropBefore(messages, keepFrom, anchorUserMessages) so the anchor floor + tool-pair invariants are enforced."
     },
     {
       "rule_id": "PREVENT-PI-002",
       "name": "Splitting a toolCall/toolResult pair at a boundary",
       "enabled": true,
-      "pattern": "(keep_from|dropEnd|dropStart|safeDrop)",
-      "forbidden_context": "without.*(ToolUse|ToolResult|tool_call|pair)",
-      "message": "Compaction boundary must not split an assistant toolCall from its following toolResult (OpenAI-compat 400).",
+      "pattern": "(keep_from|dropEnd|dropStart|safeDrop|messages\\.slice\\()",
+      "forbidden_context": "without.*(ToolUse|ToolResult|tool_call|pair|computeDropRange|dropBefore)",
+      "message": "Compaction boundary must not split an assistant toolCall from its following toolResult (OpenAI-compat 400). The engine guard lives in src/boundary.ts; runtime drops in extensions/ must use it.",
       "severity": "critical",
-      "file_glob": ["*.ts"],
-      "suggestion": "Walk the boundary back if the first preserved message is a ToolResult without a preceding ToolUse."
+      "file_glob": ["extensions/**/*.ts"],
+      "suggestion": "Use src/boundary.ts computeDropRange/dropBefore which walks the boundary back if the first preserved message is a ToolResult without a preceding ToolUse."
     },
     {
       "rule_id": "PREVENT-PI-003",

@@ -11,6 +11,9 @@ export interface EngineMessage {
   role: "user" | "assistant" | "tool" | "custom";
   text: string;
   toolName?: string;
+  /** Tool input/output payload (for tool-use / tool-result roles). */
+  input?: string;
+  output?: string;
 }
 
 /** A persisted compaction checkpoint (Layer 4 → vector store). */
@@ -31,4 +34,16 @@ export interface TridentResult {
   superseded: string[];
   collapsed: string;
   checkpoints: Checkpoint[];
+}
+
+/** Compaction config (mirrors claw-code CompactionConfig + memory-mcp knobs). */
+export interface CompactionConfig {
+  /** Preserve the most recent N messages verbatim. */
+  preserveRecent: number;
+  /** Token budget that triggers compaction. */
+  maxEstimatedTokens: number;
+  /** Number of recent user messages to never drop (anchor floor). */
+  anchorUserMessages: number;
+  /** Min chatty messages before COLLAPSE summarizes them. */
+  collapseThreshold: number;
 }
