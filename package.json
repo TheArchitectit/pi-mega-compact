@@ -1,0 +1,49 @@
+{
+  "name": "pi-mega-compact",
+  "version": "0.1.0",
+  "description": "Layered, local, vector-backed context compressor for pi — supersede/collapse/cluster compaction with deduped inline recall.",
+  "type": "module",
+  "license": "MIT",
+  "author": "TheArchitectit",
+  "homepage": "https://github.com/TheArchitectit/pi-mega-compact",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TheArchitectit/pi-mega-compact.git"
+  },
+  "keywords": [
+    "pi-extension",
+    "pi-coding-agent",
+    "context-compaction",
+    "auto-compact",
+    "vector-store",
+    "trident"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "extensions",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions/mega-compact.ts"
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc --noEmit && node scripts/guardrails-scan.mjs",
+    "test": "npm run build && node --test \"dist/src/**/*.test.js\" \"dist/extensions/**/*.test.js\"",
+    "guardrails": "python3 scripts/regression_check.py --all || node scripts/guardrails-scan.mjs",
+    "precommit": "bash .claude/hooks/pre-commit.sh"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  }
+}
