@@ -1,0 +1,50 @@
+name: CI
+
+# Full gate for pi-mega-compact. Mirrors the per-sprint exit criteria:
+#   npm run build  (tsc)
+#   npm test         (build + node --test on dist/**/*.test.js)
+#   guardrails-scan (pi pattern scan)
+#   regression_check (Four-Laws / scope / secrets audit)
+# Runs on every push (incl. tags) and PR so the repo can never go red silently.
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build + Test + Guardrails
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (tsc)
+        run: npm run build
+
+      - name: Lint (tsc --noEmit + guardrails-scan)
+        run: npm run lint
+
+      - name: Test (node --test)
+        run: npm test
+
+      - name: Guardrails regression audit
+        run: python3 scripts/regression_check.py --all
