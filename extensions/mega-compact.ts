@@ -15,7 +15,13 @@
  * Sprint 3 wires: config, session state reset, the auto-trigger pipeline
  * (fast-gate → auto_compact_check → Trident+persist → context drop),
  * session_before_compact cancellation, the compact-marker sentinel, and the
- * /megacompact + /megacompact-status commands. Auto-inline recall is Sprint 4.
+ * /megacompact + /megacompact-status commands.
+ *
+ * Sprint 4 wires the unified recall layer (Layer 5): recallAndInline() is the
+ * ONLY code path that injects compacted context. It serves three entry points —
+ * auto-inline on resume/branch (before_agent_start), on-demand /recall-context,
+ * and the dedup sentinel — all through one dedup engine, injected via the
+ * before_agent_start systemPrompt prepend (PREVENT-PI-003).
  */
 
 import type { ExtensionAPI, ExtensionContext, ContextEvent, SessionBeforeCompactEvent } from "@earendil-works/pi-coding-agent";
@@ -24,7 +30,8 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { STATE_DIR_DEFAULT } from "../src/config.js";
 import { VectorStore } from "../src/vectorStore.js";
 import { toEngineMessages, dropCompactedRange } from "../src/adapt.js";
-import { compactSession, recall } from "../src/engine.js";
+import { compactSession } from "../src/engine.js";
+import { recallAndInline } from "../src/recall.js";
 import { autoCompactCheck } from "../src/compact.js";
 import { estimateSessionTokens } from "../src/tokens.js";
 import { normalizeSessionId } from "../src/store.js";
@@ -84,6 +91,9 @@ export default function (pi: ExtensionAPI) {
     lastCompactedFrom: 0,
   };
   let debounceUntil = 0;
+  // Recall block produced by auto-inline (resume/branch) that the next
+  // before_agent_start should prepend to the system prompt. Unset after use.
+  let pendingRecallBlock: string | undefined;
 
   function setStatus(ctx: ExtensionContext, text: string | undefined) {
     ctx.ui.setStatus(STATUS_KEY, text);
@@ -151,10 +161,35 @@ export default function (pi: ExtensionAPI) {
     return { skipped: false, result, keepFrom, saved };
   }
 
+  /**
+   * Unified recall (Layer 5). The ONE path that injects. Returns the recall
+   * result; callers decide whether to stage it for before_agent_start (resume)
+   * or report it (command).
+   */
+  function doRecall(ctx: ExtensionContext, query: string, source: "resume" | "command") {
+    const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
+    return recallAndInline(
+      { sessionId: sid, query, limit: config.autoInlineK, source, skipInjected: true },
+      store,
+    );
+  }
+
   // ---- Session lifecycle (state reset points) -------------------------------
-  pi.on("session_start", async (_event, ctx) => {
+  pi.on("session_start", async (event, ctx) => {
     resetRuntime(ctx.sessionManager.getSessionId());
     setStatus(ctx, config.auto ? "mega-compact: ready" : "mega-compact: manual only");
+    // Auto-inline on resume/fork: stage the most relevant checkpoints so the
+    // next before_agent_start prepends them to the system prompt.
+    if (config.autoInline && (event.reason === "resume" || event.reason === "fork")) {
+      const query = recentUserQuery(ctx);
+      if (query) {
+        const r = doRecall(ctx, query, "resume");
+        if (!r.empty) {
+          pendingRecallBlock = r.block;
+          setStatus(ctx, `mega-compact: recalled ${r.toInject.length} chkpt`);
+        }
+      }
+    }
   });
 
   pi.on("session_tree", async (_event, ctx) => {
@@ -162,6 +197,21 @@ export default function (pi: ExtensionAPI) {
     // keep the on-disk store (markers replayed from entries below if needed).
     resetRuntime(ctx.sessionManager.getSessionId());
     setStatus(ctx, "mega-compact: ready (branch)");
+    if (config.autoInline) {
+      const query = recentUserQuery(ctx);
+      if (query) {
+        const r = doRecall(ctx, query, "resume");
+        if (!r.empty) pendingRecallBlock = r.block;
+      }
+    }
+  });
+
+  // ---- Auto-inline injection point: prepend staged recall to systemPrompt ----
+  pi.on("before_agent_start", async (event, _ctx) => {
+    if (!pendingRecallBlock) return;
+    const block = pendingRecallBlock;
+    pendingRecallBlock = undefined; // one-shot: consume so we never double-inject
+    return { systemPrompt: `${event.systemPrompt}\n\n${block}` };
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {
@@ -239,14 +289,24 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("recall-context", {
     description: "Recall relevant compacted context from the vector store and inline it.",
     handler: async (args: string, ctx: ExtensionContext) => {
-      const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
       const query = args.trim() || recentUserQuery(ctx);
       if (!query) {
         ctx.ui.notify("[mega-compact] /recall-context needs a query or a prior user message.");
         return;
       }
-      const { hits } = recall({ sessionId: sid, query, limit: config.autoInlineK, skipInjected: true }, store);
-      ctx.ui.notify(`[mega-compact] recall found ${hits.length} checkpoint(s) for "${query}". (inline in Sprint 4)`);
+      const r = doRecall(ctx, query, "command");
+      if (r.empty) {
+        ctx.ui.notify(`[mega-compact] recall found nothing new for "${query}".`);
+        return;
+      }
+      // Stage the block so the next before_agent_start prepends it (actual
+      // injection). Report what was selected now for immediate feedback.
+      pendingRecallBlock = r.block;
+      const list = r.report.map((l) => l).join("\n");
+      ctx.ui.notify(
+        `[mega-compact] recall staged ${r.toInject.length} checkpoint(s) for "${query}":\n${list}\n` +
+          `(injected at the next turn via system prompt)`,
+      );
     },
   });
 

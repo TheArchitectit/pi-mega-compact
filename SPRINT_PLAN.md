@@ -104,7 +104,7 @@ Goal: the extension compacts a real session and persists checkpoints.
 
 ---
 
-## Sprint 4 — Unified recall layer (Layer 5, all 3 entry points)  🔜 NEXT
+## Sprint 4 — Unified recall layer (Layer 5, all 3 entry points)  ✅ DONE
 
 Goal: one vector store → auto-inline + on-demand + sentinel, one dedup engine.
 
