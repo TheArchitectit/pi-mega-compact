@@ -201,9 +201,12 @@ Deferred from Sprints 1–6; none are bugs — v0.1.0 is shippable.
       self-contained (no foreign-library reference in shipped code).
 - [ ] **7.2 (S)** `npm publish` (package is structured for it: `files`,
       `pi.extensions`, peerDep). Optional.
-- [ ] **7.3 (M)** Live pi smoke test: run inside a real pi session,
+- [x] **7.3 (M)** Live pi smoke test: run inside a real pi session,
       confirm auto-trigger fires past threshold, chkpt written, context drops,
       resume re-inlines (proves 6.1 beyond the engine-level test).
+      DONE — persisted `chkpt_001` in a live `pi --print`, then `pi --continue`
+      auto-inlined it (`event:"auto-inline", injected:["chkpt_001"]`). Two
+      live-only bugs fixed (isIdle guard, resume==startup reason gating).
 - [ ] **7.4 (M)** Dedicated failure tests: `reason:"overflow"` +
       `willRetry` recovery; branch-switch mid-compact (6.2 partial).
 - [ ] **7.5 (S)** "mega" cross-session roll-up (aggregate N sessions' chunks)
@@ -268,7 +271,8 @@ Add project-specific prevention rules (extend `pattern-rules.json`):
    (honoring anchor-floor + tool-pair guards).
 3. Checkpoints persist to the local vector DB and survive a fresh store instance
    over the same state dir — cross-process recall proven in
-   `src/recall.integration.test.ts`. (Live pi-restart not yet exercised; backlog 7.3.)
+   `src/recall.integration.test.ts`, and live pi-restart exercised in 7.3
+   (persist in `pi --print`, auto-inline on `pi --continue`).
 4. Unified recall: auto-inline on resume + `/recall-context`, deduped by one
    engine; nothing double-injected (sentinel + injected-set).
 5. Marker sentinel (`pi.appendEntry("mega-compact-marker")`, NON-LLM

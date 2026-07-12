@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **Auto-trigger fired in a live pi session for the first time.** Two bugs
+  made the auto-pipeline dead code in real use despite green unit/engine tests:
+  - The `context` handler's `if (!ctx.isIdle()) return` guard blocked all
+    auto-compaction — `ContextEvent` fires *before each LLM call* (mid-turn),
+    so `isIdle()` is always false there. Removed; debounce + anchor-floor /
+    tool-pair guards already protect message integrity.
+  - Auto-inline recall only triggered on `session_start` reason
+    `resume`/`fork`, but `pi --continue` emits reason `startup` with a
+    populated window. Broadened to recall whenever the session has persisted
+    checkpoints and a usable query (brand-new empty sessions are excluded).
+- `STATE_DIR_DEFAULT` now points at the real install path
+  (`~/.pi/agent/extensions/pi-mega-compact`).
+
+### Added
+- `VectorStore.topSimilar(n)` — the n most cosine-similar checkpoints to the
+  current one (self-excluded), with unit tests.
+- Handler-level integration suite (`extensions/mega-compact.test.ts`) driving
+  the compiled extension through a faithful mock pi — the regression guard for
+  the auto-trigger fixes above.
+
+### Verified (live)
+- A real `pi --print` session persisted `chkpt_001` to
+  `sess_*.checkpoints.json.gz`; a subsequent `pi --continue` auto-inlined it
+  via `before_agent_start` (`event:"auto-inline", injected:["chkpt_001"]`).
+
 ## v0.1.0 (2026-07-11)
 
 First tagged release. The full local, vector-backed compaction pipeline is wired
