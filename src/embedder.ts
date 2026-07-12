@@ -1,11 +1,12 @@
 /**
  * embedder.ts — pluggable text embedding for the local vector store.
  *
- * Default is a zero-dependency, deterministic hashed n-gram bag encoder — no
- * native build, no network, works offline. It is heuristic-strength (good
- * enough to rank "which checkpoint is relevant to this query?"), not
- * RAG-grade. A real embedder (transformers.js local ONNX) can be dropped in
- * behind the same `Embedder` interface (see `transformersEmbedder` stub).
+ * Default (and only) embedder is a zero-dependency, deterministic hashed
+ * n-gram bag encoder — no native build, no network, no external library,
+ * works offline. It is heuristic-strength (good enough to rank "which
+ * checkpoint is relevant to this query?"), not RAG-grade. The `Embedder`
+ * interface is the seam if a stronger local model is ever added, but the
+ * extension ships self-contained with no third-party dependency.
  */
 
 export type Vector = number[];
@@ -84,18 +85,6 @@ export class TrigramEmbedder implements Embedder {
     if (norm.length < 3) vec[fnv1a(norm) % this.dim] += 1;
     return l2Normalize(vec);
   }
-}
-
-/**
- * Optional real embedder slot (not wired by default). To enable, install
- * @xenova/transformers and implement `embed` returning the model's pooled
- * vectors. Kept behind the same interface so the store is agnostic.
- */
-export function transformersEmbedder(_model = "Xenova/all-MiniLM-L6-v2"): Embedder {
-  throw new Error(
-    "transformersEmbedder is a stub. Install @xenova/transformers and implement embed() " +
-      "to use a real local ONNX embedder. The default TrigramEmbedder needs no deps.",
-  );
 }
 
 export function defaultEmbedder(): Embedder {

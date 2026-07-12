@@ -194,9 +194,11 @@ S5/S6 need S4. S1–S6 are DONE (v0.1.0). S7 = optional backlog.
 
 Deferred from Sprints 1–6; none are bugs — v0.1.0 is shippable.
 
-- [ ] **7.1 (M)** transformers.js embedder behind the `Embedder` interface
-      (all-MiniLM-L6-v2, local ONNX) — upgrade recall quality, still
-      offline. Not wired by default.
+- [ ] **7.1 (M)** Optional local embedder upgrade behind the `Embedder`
+      interface (e.g. @xenova/transformers all-MiniLM-L6-v2, local
+      ONNX) — would raise recall quality, still offline. The `Embedder`
+      interface is the seam; the stub was removed to keep the repo
+      self-contained (no foreign-library reference in shipped code).
 - [ ] **7.2 (S)** `npm publish` (package is structured for it: `files`,
       `pi.extensions`, peerDep). Optional.
 - [ ] **7.3 (M)** Live pi smoke test: run inside a real pi session,
