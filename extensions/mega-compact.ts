@@ -189,11 +189,17 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (event, ctx) => {
     resetRuntime(ctx.sessionManager.getSessionId());
     setStatus(ctx, config.auto ? "mega-compact: ready" : "mega-compact: manual only");
-    // Auto-inline on resume/fork: stage the most relevant checkpoints so the
-    // next before_agent_start prepends them to the system prompt.
-    if (config.autoInline && (event.reason === "resume" || event.reason === "fork")) {
+    // Auto-inline on resume/fork/continue: stage the most relevant checkpoints
+    // so the next before_agent_start prepends them to the system prompt.
+    // Triggered whenever this session already has persisted checkpoints AND a
+    // usable query — that covers reason "resume"/"fork" (explicit) and
+    // reason "startup" (e.g. `pi --continue`s an existing session, which still
+    // emits "startup" but with a populated message window). A brand-new empty
+    // session has no checkpoints, so it's naturally excluded.
+    if (config.autoInline) {
+      const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
       const query = recentUserQuery(ctx);
-      if (query) {
+      if (query && store.stats(sid).checkpointCount > 0) {
         const r = doRecall(ctx, query, "resume");
         if (!r.empty) {
           pendingRecallBlock = r.block;
@@ -251,8 +257,6 @@ export default function (pi: ExtensionAPI) {
     const now = Date.now();
     if (now < debounceUntil) return;
     debounceUntil = now + 2000;
-
-    if (!ctx.isIdle()) return; // never compact mid-stream
 
     const ran = runCompact(ctx, messages);
     if (ran.skipped) return;

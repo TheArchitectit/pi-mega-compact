@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 
 /** Default on-disk location for checkpoints + session state. */
-export const STATE_DIR_DEFAULT = join(homedir(), ".pi", "agent", "extensions", "mega-compact");
+export const STATE_DIR_DEFAULT = join(homedir(), ".pi", "agent", "extensions", "pi-mega-compact");
 
 /** Pi custom message / entry type used as the dedup sentinel. */
 export const MARKER_TYPE = "mega-compact-marker";
