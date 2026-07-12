@@ -62,11 +62,39 @@ function envBool(name: string, fallback: boolean): boolean {
   return v === "true" || v === "1";
 }
 
+/**
+ * Named compaction tiers. A tier sets the token threshold at which the
+ * auto-trigger persists a checkpoint; pick by how aggressively you want the
+ * session trimmed. Explicit MEGACOMPACT_THRESHOLD_TOKENS always wins.
+ */
+const COMPACT_TIERS = {
+  low: 50_000,
+  medium: 100_000,
+  high: 200_000,
+  ultra: 1_000_000,
+  mega: 10_000_000,
+} as const;
+export type CompactTier = keyof typeof COMPACT_TIERS;
+
+/** Resolve the effective token threshold from TIER (or explicit) env vars. */
+function resolveThreshold(): { tier: CompactTier | "custom"; thresholdTokens: number } {
+  const explicit = process.env.MEGACOMPACT_THRESHOLD_TOKENS;
+  if (explicit != null && explicit !== "") {
+    const n = Number(explicit);
+    if (Number.isFinite(n)) return { tier: "custom", thresholdTokens: n };
+  }
+  const raw = (process.env.MEGACOMPACT_TIER ?? "low").toLowerCase();
+  const tier = (raw in COMPACT_TIERS ? raw : "low") as CompactTier;
+  return { tier, thresholdTokens: COMPACT_TIERS[tier] };
+}
+
 function loadConfig() {
+  const { tier, thresholdTokens } = resolveThreshold();
   return {
+    tier,
     stateDir: process.env.MEGACOMPACT_STATE_DIR ?? STATE_DIR_DEFAULT,
     fastGatePct: envFlag("MEGACOMPACT_FAST_GATE_PCT", 70),
-    thresholdTokens: envFlag("MEGACOMPACT_THRESHOLD_TOKENS", 50000),
+    thresholdTokens,
     anchorUserMessages: envFlag("MEGACOMPACT_ANCHOR_USER_MESSAGES", 3),
     preserveRecent: envFlag("MEGACOMPACT_PRESERVE_RECENT", 4),
     auto: envBool("MEGACOMPACT_AUTO", true),
@@ -249,7 +277,11 @@ export default function (pi: ExtensionAPI) {
 
     const messages = event.messages;
     const view = engineView(messages);
-    const currentTokens = estimateSessionTokens(view);
+    // Prefer the runtime's real token estimate; fall back to our heuristic
+    // (and to a percent-of-window proxy when tokens is unknown).
+    const currentTokens =
+      usage?.tokens ?? estimateSessionTokens(view) ??
+      Math.round((pct / 100) * (usage?.contextWindow ?? 0));
     const check = autoCompactCheck(currentTokens, config.thresholdTokens); // SERVER-STYLE CONFIRM (local)
     if (!check.shouldCompact) return;
 
@@ -337,10 +369,11 @@ export default function (pi: ExtensionAPI) {
     handler: async (_args: string, ctx: ExtensionContext) => {
       const usage = ctx.getContextUsage();
       const pct = usage?.percent != null ? `${usage.percent}%` : "n/a";
+      const tokens = usage?.tokens != null ? `${usage.tokens} tok` : "n/a";
       const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
       const st = store.stats(sid);
       ctx.ui.notify(
-        `[mega-compact] pct=${pct} fastGate=${config.fastGatePct}% ` +
+        `[mega-compact] pct=${pct} tokens=${tokens} tier=${config.tier} fastGate=${config.fastGatePct}% ` +
           `threshold=${config.thresholdTokens} auto=${config.auto} autoInline=${config.autoInline}\n` +
           `[mega-compact] store: ${st.checkpointCount} chkpt · ` +
           `${st.totalTokenEstimate} tok · last=${st.lastCheckpointId ?? "—"} · ` +

@@ -25,12 +25,15 @@ const baseTmp = mkdtempSync(join(tmpdir(), "mc-ext-"));
 let counter = 0;
 
 /** Build a mock pi + ctx and load the extension into them. */
-function harness() {
+function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
   const stateDir = join(baseTmp, `run-${counter++}`);
   process.env.MEGACOMPACT_STATE_DIR = stateDir;
   process.env.MEGACOMPACT_DEBUG = "true";
   // Low threshold so the auto-trigger gate trips on our small mock context.
-  process.env.MEGACOMPACT_THRESHOLD_TOKENS = "50";
+  // Tier tests opt out (keepTier/keepThreshold) so they can drive the real
+  // tier resolution instead of the forced 50-token threshold.
+  if (!opts.keepThreshold) process.env.MEGACOMPACT_THRESHOLD_TOKENS = "50";
+  if (!opts.keepTier) delete process.env.MEGACOMPACT_TIER;
   process.env.MEGACOMPACT_FAST_GATE_PCT = "1";
 
   const handlers: Record<string, Function> = {};
@@ -202,6 +205,46 @@ test("/megacompact-status reports live store stats", async () => {
   const ctx = h.ctx({ getContextUsage: () => ({ tokens: 50000, contextWindow: 200000, percent: 25 }) });
   await h.commands["megacompact-status"].handler("", ctx);
   assert.ok(h.notifies.some((n) => n.includes("store:") && n.includes("chkpt")), "status shows checkpoint count");
+});
+
+// ---- Named compaction tiers -------------------------------------------------
+// low=50k, medium=100k, high=200k, ultra=1M, mega=10M. Driven through the REAL
+// loadConfig()/status path by setting MEGACOMPACT_TIER before loading the ext.
+const TIER_CASES: Array<[string, number]> = [
+  ["low", 50_000],
+  ["medium", 100_000],
+  ["high", 200_000],
+  ["ultra", 1_000_000],
+  ["mega", 10_000_000],
+];
+for (const [tier, threshold] of TIER_CASES) {
+  test(`tier "${tier}" resolves to a ${threshold}-token threshold`, async () => {
+    // Keep tier + keep threshold UNSET so the tier (not an explicit number)
+    // drives the threshold. harness() would otherwise reset the threshold.
+    delete process.env.MEGACOMPACT_THRESHOLD_TOKENS;
+    process.env.MEGACOMPACT_TIER = tier;
+    const h = harness({ keepTier: true, keepThreshold: true });
+    const ctx = h.ctx({ getContextUsage: () => ({ tokens: 1, contextWindow: 2_000_000, percent: 0.01 }) });
+    await h.commands["megacompact-status"].handler("", ctx);
+    delete process.env.MEGACOMPACT_TIER;
+    assert.ok(
+      h.notifies.some((n) => n.includes(`tier=${tier}`) && n.includes(`threshold=${threshold}`)),
+      `status should report tier=${tier} threshold=${threshold}`,
+    );
+  });
+}
+
+test("explicit MEGACOMPACT_THRESHOLD_TOKENS overrides the tier", async () => {
+  process.env.MEGACOMPACT_TIER = "mega";
+  process.env.MEGACOMPACT_THRESHOLD_TOKENS = "777";
+  const h = harness({ keepTier: true, keepThreshold: true });
+  const ctx = h.ctx({ getContextUsage: () => ({ tokens: 1, contextWindow: 2_000_000, percent: 0.01 }) });
+  await h.commands["megacompact-status"].handler("", ctx);
+  delete process.env.MEGACOMPACT_TIER;
+  assert.ok(
+    h.notifies.some((n) => n.includes("tier=custom") && n.includes("threshold=777")),
+    "explicit threshold wins over tier (tier=custom)",
+  );
 });
 
 test("cleanup", () => {

@@ -84,14 +84,15 @@ Requires **node >= 18**. No native build, no network, no API key.
 | Variable | Default | Meaning |
 |---|---|---|
 | `MEGACOMPACT_FAST_GATE_PCT` | `70` | Context-usage % that arms the auto-trigger. |
-| `MEGACOMPACT_THRESHOLD_TOKENS` | `50000` | Token budget that confirms compaction. |
+| `MEGACOMPACT_TIER` | `low` | Named trigger preset — sets the token threshold. One of `low` (50k), `medium` (100k), `high` (200k), `ultra` (1M), `mega` (10M). |
+| `MEGACOMPACT_THRESHOLD_TOKENS` | _(tier default)_ | Explicit token budget that confirms compaction. Overrides `MEGACOMPACT_TIER` when set. |
 | `MEGACOMPACT_ANCHOR_USER_MESSAGES` | `3` | Never drop the most recent N user messages (anchor floor). |
 | `MEGACOMPACT_PRESERVE_RECENT` | `4` | Preserve the most recent N messages verbatim. |
 | `MEGACOMPACT_AUTO` | `true` | Enable the auto-trigger. |
 | `MEGACOMPACT_AUTO_INLINE` | `true` | Auto-inline on resume / branch. |
 | `MEGACOMPACT_AUTO_INLINE_K` | `3` | Top-K checkpoints to auto-inline. |
 | `MEGACOMPACT_DEDUP_SIM` | `0.90` | Cosine threshold to collapse near-dupes. |
-| `MEGACOMPACT_STATE_DIR` | `~/.pi/agent/extensions/mega-compact` | Override the store location. |
+| `MEGACOMPACT_STATE_DIR` | `~/.pi/agent/extensions/pi-mega-compact` | Override the store location. |
 
 ---
 
