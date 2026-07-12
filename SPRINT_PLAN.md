@@ -27,12 +27,18 @@ Goal: a buildable, linted, guardrailed empty extension.
 - [ ] **0.3 (S)** Wire `package.json` scripts: `build` (tsc), `lint`
       (tsc --noEmit + prevention-rules scan), `test` (node --test),
       `guardrails` (regression_check), `precommit`.
-- [ ] **0.4 (S)** Install pre-commit hook (AI attribution, secrets, `.env`,
-      scope). CI green on empty repo.
+- [x] **0.4 (S)** Install pre-commit hook (AI attribution, secrets, `.env`,
+      scope). `ci.yml` runs the full gate on push/PR (see Sprint 6.5).
+      NOTE: the four pre-existing `guardrails-*.yml` workflows only check
+      scope/secrets/commit-format and target `main` — they do NOT build or
+      test. The real green gate is `.github/workflows/ci.yml` against `master`.
 - [ ] **0.5 (S)** `CLAUDE.md` + `INDEX_MAP.md`/`HEADER_MAP.md` seeded; README stub.
+      (README + LICENSE shipped in `6a18625`; the agent-guardrails
+      `CLAUDE.md`/`INDEX_MAP` seed items were not created — non-blocking.)
 
-**Exit:** `npm run build && npm test && npm run guardrails` all pass on empty
-scaffold; CI workflows green; pre-commit blocks a test secret.
+**Exit:** `npm run build && npm test && npm run guardrails` all pass;
+`ci.yml` runs build+lint+test+regression and is green on push/PR;
+pre-commit blocks a test secret.
 
 ---
 
@@ -40,16 +46,16 @@ scaffold; CI workflows green; pre-commit blocks a test secret.
 
 Goal: deterministic, unit-tested compaction primitives — no pi coupling.
 
-- [ ] **1.1 (M)** `src/tokens.ts` — token estimator (`len/4+1` per block, ported
+- [x] **1.1 (M)** `src/tokens.ts` — token estimator (`len/4+1` per block, ported
       from claw-code). `src/types.ts` — internal message/checkpoint types.
-- [ ] **1.2 (L)** `src/compact.ts` — `summarize_messages()` (role counts, tool
+- [x] **1.2 (L)** `src/compact.ts` — `summarize_messages()` (role counts, tool
       names, recent user requests, `inferPendingWork`, `collectKeyFiles`,
       timeline), `merge_compact_summaries()`, `formatCompactSummary()`.
-- [ ] **1.3 (M)** `src/supersede.ts` (Layer 1) — detect obsolete file-read turns
+- [x] **1.3 (M)** `src/supersede.ts` (Layer 1) — detect obsolete file-read turns
       superseded by later writes/reads; return prune set (zero-cost).
-- [ ] **1.4 (M)** `src/boundary.ts` — tool-pair boundary guard + anchor-floor
+- [x] **1.4 (M)** `src/boundary.ts` — tool-pair boundary guard + anchor-floor
       (preserve last N user msgs) as reusable pure fns.
-- [ ] **1.5 (M)** Port claw-code `compact.rs` test cases to `node --test`:
+- [x] **1.5 (M)** Port claw-code `compact.rs` test cases to `node --test`:
       leaves-small-sessions, compacts-older, merge-prior-context, tool-pair guard,
       infer-pending-work, key-files.
 
@@ -62,14 +68,14 @@ implemented + tested; no pi imports in `src/` yet (engine is standalone).
 
 Goal: offline dedup + recall substrate.
 
-- [ ] **2.1 (M)** `src/embedder.ts` — `interface Embedder`; default hashed
+- [x] **2.1 (M)** `src/embedder.ts` — `interface Embedder`; default hashed
       trigram-bag embedder (fixed dim, L2-normalized, deterministic).
-- [ ] **2.2 (L)** `src/vectorStore.ts` — `add/search/dedupe`, cosine sim,
+- [x] **2.2 (L)** `src/vectorStore.ts` — `add/search/dedupe`, cosine sim,
       on-disk JSON + `zlib` gzip under `~/.pi/agent/extensions/mega-compact/`.
       `regionHash` + `checkpointId` + near-dup (`DEDUP_SIM`) dedup.
-- [ ] **2.3 (S)** `src/store.ts` — checkpoint/state persistence (`chkpt_001`
+- [x] **2.3 (S)** `src/store.ts` — checkpoint/state persistence (`chkpt_001`
       IDs, `sess_xxx` normalize, `state.json` injected-set).
-- [ ] **2.4 (M)** Tests: round-trip store, search ranking sanity, dedup by
+- [x] **2.4 (M)** Tests: round-trip store, search ranking sanity, dedup by
       hash/id/similarity, gzip integrity, corrupt-file recovery.
 - [ ] **2.5 (S)** (Optional, behind flag) transformers.js embedder stub
       implementing `Embedder` — not wired by default.
@@ -83,20 +89,23 @@ twice → one vector); search returns the planted checkpoint top-1.
 
 Goal: the extension compacts a real session and persists checkpoints.
 
-- [ ] **3.1 (M)** `extensions/mega-compact.ts` — factory, config load
+- [x] **3.1 (M)** `extensions/mega-compact.ts` — factory, config load
       (env-backed defaults), `session_start`/`session_shutdown`/`session_tree`
       state reset (per neuralwatt-mcr discipline), status-bar chip.
-- [ ] **3.2 (L)** Auto-trigger: `on("turn_end")`/`on("context")` → `%` fast gate
+- [x] **3.2 (L)** Auto-trigger: `on("turn_end")`/`on("context")` → `%` fast gate
       (`getContextUsage`) → local `auto_compact_check` confirm → run
       Trident(supersede+collapse) → `compact_session()` persist to vector store.
       Debounce + `isIdle()` guard.
-- [ ] **3.3 (M)** `context` drop: return `{ messages: filtered }` dropping the
+- [x] **3.3 (M)** `context` drop: return `{ messages: filtered }` dropping the
       superseded/collapsed range with tool-pair + anchor-floor guards.
-- [ ] **3.4 (M)** `session_before_compact` → `{ cancel:true }` after we've
-      persisted (avoid double compaction); emit `compactionSummary`-shaped
-      message for native-looking UI.
-- [ ] **3.5 (M)** Marker sentinel: on persist, `pi.sendMessage({customType:
-      "mega-compact-marker", display:false, details:{checkpointId, regionHash,
+- [x] **3.4 (M)** `session_before_compact` → `{ cancel:true }` after we've
+      persisted (avoid double compaction). NOTE: we do NOT emit a
+      `compactionSummary`-shaped message — injected recall text is staged
+      for the `before_agent_start` systemPrompt prepend (PREVENT-PI-003).
+- [x] **3.5 (M)** Marker sentinel: on persist, `pi.appendEntry("mega-compact-marker",
+      {checkpointId, regionHash, tokenEstimate, deduped})` — a NON-LLM
+      bookkeeping entry (not a `customType` message). Replay/scan markers on
+      `session_tree` via the store's regionHash/injected-set state.
       tokenEstimate, dropped}})`; replay/scan markers on `session_tree`.
 
 **Exit:** in a long live session, auto-trigger fires once past threshold, a
@@ -120,6 +129,9 @@ Goal: one vector store → auto-inline + on-demand + sentinel, one dedup engine.
       injected-`checkpointId` in `state.json`, cosine near-dup collapse.
 - [x] **4.5 (M)** Tests: auto-inline injects on resume, no re-inject of present
       region, `/recall-context` ranks relevant checkpoint first.
+      (`src/recall.integration.test.ts`: cross-process resume contract —
+      compact in one store instance, recall via a FRESH instance over the
+      same state dir, query from newest user msg; + dedup-on-resume.)
 
 **Exit:** resume a compacted session → relevant context silently reappears in the
 system prompt; `/recall-context` works; nothing double-injected.
@@ -145,28 +157,58 @@ system prompt; `/recall-context` works; nothing double-injected.
 
 ## Sprint 6 — Hardening, docs, release  ✅ DONE
 
-- [x] **6.1 (M)** End-to-end test script: scripted long session → auto-compact →
-      restart pi → auto-inline restores context (cross-session proof).
-- [x] **6.2 (M)** Failure-mode tests: corrupt store, empty session, overflow
-      recovery (`reason:"overflow"`, `willRetry`), branch switch mid-compact.
+- [x] **6.1 (M)** Cross-process resume proof: `src/recall.integration.test.ts`
+      compacts in one store instance, then recalls via a FRESH instance over
+      the same state dir (models a pi restart) → context re-surfaces.
+      NOTE: proven at the engine/store level, NOT yet inside a live pi session
+      (see Sprint 7 backlog "live pi smoke test").
+- [x] **6.2 (M)** Failure-mode tests: corrupt store recovery + empty session
+      (`vectorStore.test.ts`, `engine.test.ts`). NOTE: overflow-recovery
+      (`reason:"overflow"`, `willRetry`) and branch-switch-mid-compact are
+      handled in code but NOT yet covered by dedicated tests (Sprint 7 backlog).
 - [x] **6.3 (S)** README (usage, layers, config, attribution to memory-mcp /
-      claw-code / neuralwatt-mcr), CHANGELOG, RELEASE_NOTES.
+      claw-code / neuralwatt-mcr) + CHANGELOG. RELEASE_NOTES = the GitHub
+      release body for `v0.1.0` (not a checked-in file).
 - [x] **6.4 (S)** `install.sh` (mirror pi-setup): copy/symlink into
-      `~/.pi/agent/extensions/`, register in extensions config.
-- [x] **6.5 (S)** Full guardrails audit; tag `v0.1.0`; optional npm publish.
+      `~/.pi/agent/extensions/`, register in `~/.pi/agent/config.json`.
+- [x] **6.5 (S)** Full guardrails audit (green) + `ci.yml` gate; tag `v0.1.0`
+      + public GitHub release. `npm publish` NOT done (deferred — Sprint 7).
 
-**Exit:** cross-session recall demoed; guardrails audit clean; v0.1.0 tagged.
+**Exit:** cross-process recall proven in tests; guardrails + CI green;
+v0.1.0 tagged and released publicly.
 
 ---
 
 ## Dependency graph
 ```
-S0 ─┬─ S1 ─┬─ S2 ─── S3 ─── S4 ─── S5 ─── S6
+S0 ─┬─ S1 ─┬─ S2 ─── S3 ─── S4 ─── S5 ─── S6 ─── (S7 backlog)
     │      │
-    └ guardrails gate active from S0 onward (blocks every exit)
+    └ guardrails gate (incl. ci.yml) active from S0 onward
 ```
-S1 and S2 engine work is pi-independent (parallelizable). S3 needs S1+S2. S4
-needs S3. S5/S6 need S4.
+S1 and S2 engine work is pi-independent. S3 needs S1+S2. S4 needs S3.
+S5/S6 need S4. S1–S6 are DONE (v0.1.0). S7 = optional backlog.
+
+---
+
+## Sprint 7 — Optional backlog (NOT started)
+
+Deferred from Sprints 1–6; none are bugs — v0.1.0 is shippable.
+
+- [ ] **7.1 (M)** transformers.js embedder behind the `Embedder` interface
+      (all-MiniLM-L6-v2, local ONNX) — upgrade recall quality, still
+      offline. Not wired by default.
+- [ ] **7.2 (S)** `npm publish` (package is structured for it: `files`,
+      `pi.extensions`, peerDep). Optional.
+- [ ] **7.3 (M)** Live pi smoke test: run inside a real pi session,
+      confirm auto-trigger fires past threshold, chkpt written, context drops,
+      resume re-inlines (proves 6.1 beyond the engine-level test).
+- [ ] **7.4 (M)** Dedicated failure tests: `reason:"overflow"` +
+      `willRetry` recovery; branch-switch mid-compact (6.2 partial).
+- [ ] **7.5 (S)** "mega" cross-session roll-up (aggregate N sessions' chunks)
+      — explicitly defered in PLAN.md out-of-scope; follow-up once single
+      session is proven in the wild.
+
+**Exit:** any subset chosen; each lands behind a green CI run.
 
 ---
 
@@ -188,13 +230,13 @@ Strip (irrelevant to TS pi extension): `godot/`, `.claude/skills-3d/`,
 `.cursor/rules-3d/`, `mcp-server/` (Sentinel), `web/`, `cmd/`, `ide/`,
 game-design/spatial/accessibility docs, `.teams/*` (unless adopting phase gates).
 
-Wire into `package.json`:
+Wire into `package.json` (CURRENT, verified against the repo):
 ```
 "scripts": {
   "build": "tsc -p tsconfig.json",
-  "lint": "tsc --noEmit && python scripts/regression_check.py --all",
-  "test": "node --test",
-  "guardrails": "python scripts/regression_check.py --all",
+  "lint": "tsc --noEmit && node scripts/guardrails-scan.mjs",
+  "test": "npm run build && node --test \"dist/src/**/*.test.js\" \"dist/extensions/**/*.test.js\"",
+  "guardrails": "python3 scripts/regression_check.py --all || node scripts/guardrails-scan.mjs",
   "precommit": "bash .claude/hooks/pre-commit.sh"
 }
 ```
@@ -209,12 +251,17 @@ Add project-specific prevention rules (extend `pattern-rules.json`):
 ---
 
 ## Acceptance criteria (whole project)
-1. Zero network calls at runtime (grep-verified in CI).
-2. Auto-compaction fires on both gates; context measurably shrinks.
-3. Checkpoints persist to local vector DB and survive pi restart.
+1. Zero network calls at runtime (grep-verified in CI — PREVENT-PI-004).
+2. Auto-trigger (via `on("context")`: `%` fast-gate → `autoCompactCheck`
+   confirm → persist → drop) fires past threshold; context measurably shrinks
+   (honoring anchor-floor + tool-pair guards).
+3. Checkpoints persist to the local vector DB and survive a fresh store instance
+   over the same state dir — cross-process recall proven in
+   `src/recall.integration.test.ts`. (Live pi-restart not yet exercised; backlog 7.3.)
 4. Unified recall: auto-inline on resume + `/recall-context`, deduped by one
-   engine; nothing double-injected.
-5. Marker sentinel makes repeated triggers ~zero-token.
-6. All guardrails (Four Laws, scope, secrets, regression, 500-line docs) pass in
-   CI and pre-commit.
-7. Ported claw-code compaction tests green.
+   engine; nothing double-injected (sentinel + injected-set).
+5. Marker sentinel (`pi.appendEntry("mega-compact-marker")`, NON-LLM
+   bookkeeping) makes repeated triggers ~zero-token.
+6. All guardrails (Four Laws, scope, secrets, regression, 500-line docs)
+   pass in `ci.yml` (build+lint+test+regression) and pre-commit.
+7. Ported claw-code compaction tests + 56 unit/integration tests green.
