@@ -54,7 +54,9 @@ export class VectorStore {
   private readonly dedupSim: number;
   private readonly stateDir: string;
 
-  constructor(opts: { embedder?: Embedder; dedupSim?: number; stateDir?: string } = {}) {
+  constructor(
+    opts: { embedder?: Embedder; dedupSim?: number; stateDir?: string } = {},
+  ) {
     this.embedder = opts.embedder ?? defaultEmbedder();
     // 0.90 ≈ "near-identical" for the default trigram embedder (its cosine
     // ceiling for one-word-different text is ~0.94). Higher values would
@@ -72,7 +74,9 @@ export class VectorStore {
     const regionHash = computeRegionHash(input.regionText);
 
     // Sentinel dedup: identical region already stored → no-op.
-    const existing = listCheckpoints(sessionId, this.stateDir).find((c) => c.regionHash === regionHash);
+    const existing = listCheckpoints(sessionId, this.stateDir).find(
+      (c) => c.regionHash === regionHash,
+    );
     if (existing) return { checkpoint: existing, deduped: true };
 
     const embedding = this.embedder.embed(input.regionText);
@@ -111,14 +115,19 @@ export class VectorStore {
     const qv = this.embedder.embed(query);
 
     const scored: SearchHit[] = checkpoints
-      .map((cp) => ({ checkpoint: cp, score: cosineSimilarity(qv, cp.embedding) }))
+      .map((cp) => ({
+        checkpoint: cp,
+        score: cosineSimilarity(qv, cp.embedding),
+      }))
       .sort((a, b) => b.score - a.score);
 
     // Near-duplicate collapse against already-selected hits.
     const selected: SearchHit[] = [];
     for (const hit of scored) {
       const dup = selected.some(
-        (s) => cosineSimilarity(s.checkpoint.embedding, hit.checkpoint.embedding) >= this.dedupSim,
+        (s) =>
+          cosineSimilarity(s.checkpoint.embedding, hit.checkpoint.embedding) >=
+          this.dedupSim,
       );
       if (!dup) selected.push(hit);
       if (selected.length >= k) break;
@@ -132,10 +141,14 @@ export class VectorStore {
    */
   dedupe(sessionId: string, regionHashOrText: string, isText = false): boolean {
     const sid = normalizeSessionId(sessionId);
-    const hash = isText ? computeRegionHash(regionHashOrText) : regionHashOrText;
+    const hash = isText
+      ? computeRegionHash(regionHashOrText)
+      : regionHashOrText;
     const state = loadSessionState(sid, this.stateDir);
     if (state.storedRegionHashes.includes(hash)) return true;
-    return listCheckpoints(sid, this.stateDir).some((c) => c.regionHash === hash);
+    return listCheckpoints(sid, this.stateDir).some(
+      (c) => c.regionHash === hash,
+    );
   }
 
   /** Mark a checkpoint as injected into the window (recall dedup). */
@@ -150,7 +163,10 @@ export class VectorStore {
 
   /** True if this checkpoint was already injected this session. */
   wasInjected(sessionId: string, checkpointId: string): boolean {
-    const state: SessionState = loadSessionState(normalizeSessionId(sessionId), this.stateDir);
+    const state: SessionState = loadSessionState(
+      normalizeSessionId(sessionId),
+      this.stateDir,
+    );
     return state.injectedCheckpointIds.includes(checkpointId);
   }
 
@@ -162,6 +178,34 @@ export class VectorStore {
   /** All checkpoints for a session (sorted by checkpointId). */
   list(sessionId: string): StoredCheckpoint[] {
     return listCheckpoints(normalizeSessionId(sessionId), this.stateDir);
+  }
+
+  /**
+   * Return the n most similar checkpoints to the current (most recent) checkpoint
+   * by cosine similarity. Returns fewer than n if the session has fewer checkpoints.
+   * The current checkpoint itself is excluded from results.
+   */
+  topSimilar(sessionId: string, n: number): SearchHit[] {
+    const sid = normalizeSessionId(sessionId);
+    const checkpoints = listCheckpoints(sid, this.stateDir);
+    if (checkpoints.length <= 1) return [];
+
+    // Find the most recent checkpoint (by checkpointId, which is sequential)
+    const ordered = [...checkpoints].sort((a, b) =>
+      a.checkpointId.localeCompare(b.checkpointId),
+    );
+    const current = ordered[ordered.length - 1];
+
+    // Score all other checkpoints by similarity to current
+    const scored: SearchHit[] = ordered
+      .filter((cp) => cp.checkpointId !== current.checkpointId)
+      .map((cp) => ({
+        checkpoint: cp,
+        score: cosineSimilarity(current.embedding, cp.embedding),
+      }))
+      .sort((a, b) => b.score - a.score);
+
+    return scored.slice(0, n);
   }
 
   /**
@@ -179,7 +223,9 @@ export class VectorStore {
     const sid = normalizeSessionId(sessionId);
     const cps = listCheckpoints(sid, this.stateDir);
     const state = loadSessionState(sid, this.stateDir);
-    const ordered = [...cps].sort((a, b) => a.checkpointId.localeCompare(b.checkpointId));
+    const ordered = [...cps].sort((a, b) =>
+      a.checkpointId.localeCompare(b.checkpointId),
+    );
     const last = ordered[ordered.length - 1];
     const injected = state.injectedCheckpointIds.length;
     return {
