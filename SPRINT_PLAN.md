@@ -215,16 +215,25 @@ Deferred from Sprints 1–6; none are bugs — v0.1.0 is shippable.
 ## Guardrails adaptation (Sprint 0.2 detail)
 
 Vendor from `guardrails-template/` → project root:
-- `.claude/hooks/{pre,post}-execution.sh`, `pre-commit.sh` (as-is).
-- `.claude/skills/{guardrails-enforcer,commit-validator,scope-validator,
-  clean-architecture,production-first,error-recovery,three-strikes,
-  env-separator}.json` (as-is).
+- `.claude/hooks/pre-commit.sh` (as-is) — the only hook this repo
+  wires (referenced by `package.json` `precommit`).
 - `.guardrails/{pre-work-check.md,failure-registry.jsonl,
   prevention-rules/*}` — retarget `file_glob` to ts/js only (already mostly).
 - `.github/workflows/{guardrails-lint,regression-guard,secret-validation,
   documentation-check}.yml` (drop `team-validation` unless we use `.teams`).
 - `scripts/{regression_check.py,log_failure.py}` (standalone Python).
 - `docs/AGENT_GUARDRAILS.md` + `skills/shared-prompts/four-laws.md` (trimmed).
+
+REMOVED (MCP-server contamination): the 8 `.claude/skills/*.json`
+(clean-architecture, guardrails-enforcer, commit-validator, env-separator,
+error-recovery, production-first, scope-validator, three-strikes) and the
+`.claude/hooks/{pre,post}-execution.sh` were vendored from the Go
+**MCP-server** template. They describe a *different* project (their prompts
+say "when working on the MCP server… `internal/mcp/`"). They are NOT
+referenced by any code/hook/CI in pi-mega-compact, so they were
+`git rm`'d. This repo's guardrails gate is `.guardrails/` + `pre-commit.sh`
++ `ci.yml` only. (This removal was the S7 fix for "work done assuming the
+MCP server" — the code itself never used them.)
 
 Strip (irrelevant to TS pi extension): `godot/`, `.claude/skills-3d/`,
 `.cursor/rules-3d/`, `mcp-server/` (Sentinel), `web/`, `cmd/`, `ide/`,
