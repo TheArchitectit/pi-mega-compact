@@ -629,6 +629,11 @@ S8 is the foundation (storage + compression). S9–S13 build the dedup tiers
 sequentially (each builds on the prior tier's `add()` cascade). S14 wires flags
 + monitoring. S15 ships. QA-critical fixes are distributed across S8–S14 as noted.
 
+Full per-sprint specs (Header / Safety / Problem / Scope / Execution /
+Acceptance / Rollback) live in `docs/specs/sprint-08.md` … `sprint-15.md`,
+following the agent-guardrails `SPRINT_GUIDE` structure. Each sprint exits only
+when the Guardrails gate (above) passes.
+
 ## Files to create (new sprints)
 | File | Sprint |
 |------|--------|
