@@ -14,6 +14,7 @@
 
 import { findSuperseded, supersede } from "./supersede.js";
 import { summarizeMessages, mergeCompactSummaries, formatCompactSummary } from "./compact.js";
+import { extractiveSummarize } from "./extractive.js";
 import { estimateSessionTokens } from "./tokens.js";
 import { computeRegionHash, VectorStore, type SearchHit } from "./vectorStore.js";
 import type { EngineMessage } from "./types.js";
@@ -35,6 +36,8 @@ export interface CompactInput {
   filesModified?: string[];
   tokenEstimate?: number;
   timestamp?: number;
+  /** When true (default), use extractive summary instead of raw concatenation. */
+  useExtractiveSummary?: boolean;
 }
 
 export interface CompactResult {
@@ -42,6 +45,8 @@ export interface CompactResult {
   skipped: boolean;
   /** True when the region was a duplicate of an already-stored checkpoint. */
   deduped: boolean;
+  /** Which dedup tier matched: regionHash | summaryHash | contentSimilarity. */
+  dedupReason?: string;
   checkpointId?: string;
   summary: string;
   regionHash: string;
@@ -91,22 +96,46 @@ export function compactSession(input: CompactInput, store: VectorStore = getDefa
   const keep = compactable.filter((_m, i) => !supersededIdx.has(i));
 
   // LAYER 2 — COLLAPSE: build (or accept) the summary.
-  const collapsed = input.summary ?? summarizeMessages(keep);
-  const summary = formatCompactSummary(collapsed);
+  // When useExtractiveSummary is enabled (default), use the deterministic
+  // extractive engine that compresses ~70K tokens → ~2K tokens with structured
+  // fields populated. Falls back to legacy concatenation when disabled.
+  const useExtractive = input.useExtractiveSummary !== false;
+  let summary: string;
+  let topicSummary: string | undefined;
+  let keyDecisions: string[];
+  let nextSteps: string[];
+  let filesModified: string[];
+  let tokenEstimate: number;
+
+  if (useExtractive && !input.summary) {
+    const ext = extractiveSummarize(keep);
+    summary = ext.topicSummary;
+    topicSummary = ext.topicSummary;
+    keyDecisions = input.keyDecisions ?? ext.keyDecisions;
+    nextSteps = input.nextSteps ?? ext.nextSteps;
+    filesModified = input.filesModified ?? ext.filesModified;
+    tokenEstimate = input.tokenEstimate ?? ext.tokenEstimate;
+  } else {
+    const collapsed = input.summary ?? summarizeMessages(keep);
+    summary = formatCompactSummary(collapsed);
+    topicSummary = undefined;
+    keyDecisions = input.keyDecisions ?? [];
+    nextSteps = input.nextSteps ?? [];
+    filesModified = input.filesModified ?? [];
+    tokenEstimate = input.tokenEstimate ?? estimateSessionTokens(compactable);
+  }
 
   // Region text = the compacted slice, used for dedup + embedding.
   const regionText = input.regionText ?? keep.map((m) => m.text).join("\n");
   const regionHash = computeRegionHash(regionText);
 
-  const tokenEstimate =
-    input.tokenEstimate ?? estimateSessionTokens(compactable);
-
   const add = store.add({
     sessionId: input.sessionId,
     summary,
-    keyDecisions: input.keyDecisions ?? [],
-    nextSteps: input.nextSteps ?? [],
-    filesModified: input.filesModified ?? [],
+    topicSummary,
+    keyDecisions,
+    nextSteps,
+    filesModified,
     regionText,
     tokenEstimate,
     timestamp: input.timestamp ?? 0,
@@ -115,6 +144,7 @@ export function compactSession(input: CompactInput, store: VectorStore = getDefa
   return {
     skipped: false,
     deduped: add.deduped,
+    dedupReason: add.reason,
     checkpointId: add.checkpoint.checkpointId,
     summary,
     regionHash,

@@ -84,6 +84,40 @@ test("dedup by regionHash: identical region is not double-stored", () => {
   assert.equal(s.search("sess_dup", "anything", 10).length, 1);
 });
 
+test("dedup cascade: summaryHash catches same-topic incremental compactions", () => {
+  const s = store();
+  const r1 = s.add({
+    sessionId: "sess_sh",
+    summary: "step 1",
+    topicSummary: "User working on auth module refactor in src/auth.ts.",
+    regionText: "first region text for step 1",
+    timestamp: 100,
+  });
+  // Different regionText (incremental compaction adds messages), same topicSummary
+  const r2 = s.add({
+    sessionId: "sess_sh",
+    summary: "step 2",
+    topicSummary: "User working on auth module refactor in src/auth.ts.",
+    regionText: "second region text for step 2 with additional messages",
+    timestamp: 200,
+  });
+  assert.equal(r1.deduped, false);
+  assert.equal(r2.deduped, true);
+  assert.equal(r2.reason, "summaryHash");
+  assert.equal(r1.checkpoint.checkpointId, r2.checkpoint.checkpointId);
+  // Timestamp should be updated to the newer one
+  assert.equal(r2.checkpoint.timestamp, 200);
+});
+
+test("dedup cascade: summaryHash dedup still stores only one checkpoint", () => {
+  const s = store();
+  const summary = "same summary for both adds";
+  const ts = "some topic summary that is identical";
+  s.add({ sessionId: "sess_sh2", summary, topicSummary: ts, regionText: "region a", timestamp: 1 });
+  s.add({ sessionId: "sess_sh2", summary, topicSummary: ts, regionText: "region b", timestamp: 2 });
+  assert.equal(s.stats("sess_sh2").checkpointCount, 1);
+});
+
 test("dedupe() sentinel returns true for a stored region", () => {
   const s = store();
   const region = "region for sentinel test";

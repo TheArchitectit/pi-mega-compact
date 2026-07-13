@@ -53,6 +53,9 @@ interface SessionRuntime {
   persistedThisSession: boolean;
   lastCheckpointId: string | undefined;
   lastCompactedFrom: number;
+  lastCompactedTokens: number;
+  dedupSkips: number;       // compactions skipped because regionHash already stored
+  dedupAttempts: number;    // total compaction attempts (for hit-rate denominator)
 }
 
 function envFlag(name: string, fallback: number): number {
@@ -137,6 +140,9 @@ interface DashboardSnapshot {
     persistedThisSession: boolean;
     lastCheckpointId: string | null;
     lastCompactedFrom: number;
+    lastCompactedTokens: number;
+    dedupSkips: number;
+    dedupAttempts: number;
   };
   context: {
     tokens: number | null;
@@ -218,6 +224,9 @@ export default function (pi: ExtensionAPI) {
         persistedThisSession: rt.persistedThisSession,
         lastCheckpointId: rt.lastCheckpointId ?? null,
         lastCompactedFrom: rt.lastCompactedFrom,
+        lastCompactedTokens: rt.lastCompactedTokens,
+        dedupSkips: rt.dedupSkips,
+        dedupAttempts: rt.dedupAttempts,
       },
       context: { tokens: lastCtxTokens, percent: lastCtxPercent, contextWindow: lastCtxWindow },
       trigger: { armed, ready, currentTokens: lastCtxTokens, thresholdTokens: config.thresholdTokens, fastGatePct: config.fastGatePct },
@@ -230,8 +239,9 @@ export default function (pi: ExtensionAPI) {
       const maxStr = lastCtxWindow > 0 ? `${Math.round(lastCtxWindow / 1000)}k` : "?";
       const pctStr = lastCtxPercent != null ? `${Math.round(lastCtxPercent * 10) / 10}%` : "?%";
       const triggerLabel = ready ? "● ready" : armed ? "◐ armed" : "○ idle";
-      const dedupStr = st.dedupHitRate != null ? `${Math.round(st.dedupHitRate * 100)}%` : "—";
-      const savedStr = rt.lastCompactedFrom > 0 ? `${Math.round(rt.lastCompactedFrom / 1000)}k` : "0";
+      const dedupRate = rt.dedupAttempts > 0 ? rt.dedupSkips / rt.dedupAttempts : 0;
+      const dedupStr = rt.dedupAttempts > 0 ? `${Math.round(dedupRate * 100)}%` : "—";
+      const savedStr = st.totalTokenEstimate > 0 ? `${Math.round(st.totalTokenEstimate / 1000)}k` : "0";
       const agentStr = activeAgents > 0 ? ` │ 🤖 ${activeAgents} agent${activeAgents === 1 ? "" : "s"}` : "";
       const turnStr = currentTurn > 0 ? ` │ turn ${currentTurn}` : "";
       ctx.ui.setWidget(
@@ -251,6 +261,9 @@ export default function (pi: ExtensionAPI) {
     persistedThisSession: false,
     lastCheckpointId: undefined,
     lastCompactedFrom: 0,
+    lastCompactedTokens: 0,
+    dedupSkips: 0,
+    dedupAttempts: 0,
   };
   let debounceUntil = 0;
   // Agent tracking for real-time widget updates
@@ -274,6 +287,9 @@ export default function (pi: ExtensionAPI) {
       persistedThisSession: false,
       lastCheckpointId: undefined,
       lastCompactedFrom: 0,
+      lastCompactedTokens: 0,
+      dedupSkips: 0,
+      dedupAttempts: 0,
     };
     statusKey = undefined;
     activeAgents = 0;
@@ -311,6 +327,9 @@ export default function (pi: ExtensionAPI) {
       rt.lastCheckpointId = result.checkpointId;
     }
     rt.lastCompactedFrom = result.compactedFrom;
+    rt.lastCompactedTokens = result.tokenEstimate;
+    rt.dedupAttempts++;
+    if (result.deduped) rt.dedupSkips++;
 
     // Sentinel marker: a non-LLM bookkeeping entry so subsequent triggers can
     // skip re-vectorizing an already-compacted region (zero token cost).
@@ -457,7 +476,6 @@ export default function (pi: ExtensionAPI) {
     lastCtxWindow = usage?.contextWindow ?? 0;
     snapshot(ctx);
     if (pct == null) return;
-    if (pct < config.fastGatePct) return; // FAST GATE (local %)
 
     const messages = event.messages;
     const view = engineView(messages);
@@ -466,6 +484,12 @@ export default function (pi: ExtensionAPI) {
     const currentTokens =
       usage?.tokens ?? estimateSessionTokens(view) ??
       Math.round((pct / 100) * (usage?.contextWindow ?? 0));
+
+    // FAST GATE: token-based (tier threshold), not percentage-based.
+    // A 20% gate on a 2M window = 400k, which is way above the 50k low-tier
+    // threshold. Gate on the actual token count instead.
+    if (currentTokens < config.thresholdTokens) return;
+
     const check = autoCompactCheck(currentTokens, config.thresholdTokens); // SERVER-STYLE CONFIRM (local)
     if (!check.shouldCompact) return;
 
@@ -501,7 +525,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ---- Commands ----------------------------------------------------------
-  pi.registerCommand("megacompact", {
+  pi.registerCommand("mega-compact", {
     description: "Compress current session context into the local vector store.",
     handler: async (args: string, ctx: ExtensionContext) => {
       const sessionEntries = ctx.sessionManager.getEntries();
@@ -521,12 +545,12 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerCommand("recall-context", {
+  pi.registerCommand("mega-recall", {
     description: "Recall relevant compacted context from the vector store and inline it.",
     handler: async (args: string, ctx: ExtensionContext) => {
       const query = args.trim() || recentUserQuery(ctx);
       if (!query) {
-        ctx.ui.notify("[mega-compact] /recall-context needs a query or a prior user message.");
+        ctx.ui.notify("[mega-compact] /mega-recall needs a query or a prior user message.");
         return;
       }
       const r = doRecall(ctx, query, "command");
@@ -548,7 +572,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerCommand("megacompact-status", {
+  pi.registerCommand("mega-status", {
     description: "Show mega-compact config and current context usage.",
     handler: async (_args: string, ctx: ExtensionContext) => {
       const usage = ctx.getContextUsage();
@@ -566,6 +590,31 @@ export default function (pi: ExtensionAPI) {
           `autoInlineK=${config.autoInlineK} dedupSim=${config.dedupSim} debug=${config.debug}\n` +
           `[mega-compact] stateDir=${config.stateDir}`,
       );
+    },
+  });
+
+  pi.registerCommand("mega-tier", {
+    description: "Show or change the compaction tier at runtime. Usage: /mega-tier [low|medium|high|ultra|mega]",
+    handler: async (args: string, ctx: ExtensionContext) => {
+      const arg = args.trim().toLowerCase();
+      if (!arg) {
+        // Show current tier and available options.
+        ctx.ui.notify(
+          `[mega-compact] current tier: ${config.tier} (${config.thresholdTokens} tok)\n` +
+          `[mega-compact] available tiers: ${Object.entries(COMPACT_TIERS).map(([k, v]) => `${k}=${v}`).join(", ")}`,
+        );
+        return;
+      }
+      if (!(arg in COMPACT_TIERS)) {
+        ctx.ui.notify(`[mega-compact] unknown tier "${arg}". Available: ${Object.keys(COMPACT_TIERS).join(", ")}`);
+        return;
+      }
+      const newTier = arg as CompactTier;
+      config.tier = newTier;
+      config.thresholdTokens = COMPACT_TIERS[newTier];
+      setStatus(ctx, `mega-compact: tier → ${newTier} (${config.thresholdTokens} tok)`);
+      ctx.ui.notify(`[mega-compact] tier changed to ${newTier} (threshold: ${config.thresholdTokens} tokens)`);
+      snapshot(ctx);
     },
   });
 
@@ -617,7 +666,7 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  pi.registerCommand("dashboard", {
+  pi.registerCommand("mega-dashboard", {
     description: "Start the local web dashboard and optionally open it in the default browser.",
     handler: async (_args: string, ctx: ExtensionContext) => {
       let info = await isServerRunning();
@@ -664,7 +713,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerCommand("dashboard-stop", {
+  pi.registerCommand("mega-dashboard-stop", {
     description: "Stop the local dashboard server.",
     handler: async (_args: string, ctx: ExtensionContext) => {
       if (!existsSync(portFile)) {
@@ -689,7 +738,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerCommand("dashboard-status", {
+  pi.registerCommand("mega-dashboard-status", {
     description: "Check if the dashboard server is running.",
     handler: async (_args: string, ctx: ExtensionContext) => {
       const info = await isServerRunning();

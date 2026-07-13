@@ -20,6 +20,7 @@ import {
   normalizeSessionId,
   loadSessionState,
   saveSessionState,
+  rewriteCheckpoints,
 } from "./store.js";
 
 export interface SearchHit {
@@ -30,6 +31,8 @@ export interface SearchHit {
 export interface AddInput {
   sessionId: string;
   summary: string;
+  /** Compressed topic summary (extractive). When present, embedded instead of regionText. */
+  topicSummary?: string;
   keyDecisions?: string[];
   nextSteps?: string[];
   filesModified?: string[];
@@ -42,6 +45,8 @@ export interface AddInput {
 export interface AddResult {
   checkpoint: StoredCheckpoint;
   deduped: boolean; // true when an equivalent region already existed (skipped embed)
+  /** Which dedup tier matched: regionHash | summaryHash | contentSimilarity | undefined (new). */
+  reason?: string;
 }
 
 /** Stable hash of a compacted region, the dedup sentinel key. */
@@ -68,24 +73,64 @@ export class VectorStore {
   }
 
   /**
-   * Add a checkpoint. If an equivalent region already exists (same regionHash),
-   * skip the embed + store and return the existing checkpoint (deduped=true).
+   * Add a checkpoint. Dedup cascade:
+   *   1. regionHash exact match (legacy, backward-compat)
+   *   2. summaryHash exact match (new: catches same-topic incremental compactions)
+   *   3. content similarity ≥ dedupSim (catches near-identical summaries)
+   *   4. If none match → create new checkpoint
    */
   add(input: AddInput): AddResult {
     const sessionId = normalizeSessionId(input.sessionId);
     const regionHash = computeRegionHash(input.regionText);
+    const all = listCheckpoints(sessionId, this.stateDir);
 
-    // Sentinel dedup: identical region already stored → no-op.
-    const existing = listCheckpoints(sessionId, this.stateDir).find(
-      (c) => c.regionHash === regionHash,
-    );
-    if (existing) return { checkpoint: existing, deduped: true };
+    // 1. Legacy regionHash dedup (backward-compat)
+    const regionMatch = all.find((cp) => cp.regionHash === regionHash);
+    if (regionMatch) return { checkpoint: regionMatch, deduped: true, reason: "regionHash" };
 
+    // 2. SummaryHash dedup — catches same-topic incremental compactions
+    const summaryHash = input.topicSummary
+      ? createHash("sha256").update(input.topicSummary).digest("hex").slice(0, 16)
+      : undefined;
+    if (summaryHash) {
+      const summaryMatch = all.find((cp) => cp.summaryHash === summaryHash);
+      if (summaryMatch) {
+        // Topic didn't change — update timestamp on existing checkpoint
+        summaryMatch.timestamp = input.timestamp;
+        rewriteCheckpoints(sessionId, all, this.stateDir);
+        return { checkpoint: summaryMatch, deduped: true, reason: "summaryHash" };
+      }
+    }
+
+    // 3. Content similarity dedup — catches near-identical regions
+    //    Always embed on regionText (the search key). topicSummary is used for
+    //    summaryHash dedup (tier 2) and stored for recall; the vector index
+    //    is keyed on the original region for backward-compat search semantics.
     const embedding = this.embedder.embed(input.regionText);
+    if (all.length > 0) {
+      const nearest = all.reduce(
+        (best, cp) => {
+          const sim = cosineSimilarity(embedding, cp.embedding);
+          return sim > best.sim ? { checkpoint: cp, sim } : best;
+        },
+        { checkpoint: all[0], sim: -1 },
+      );
+      if (nearest.sim >= this.dedupSim) {
+        // Near-identical — update timestamp on existing checkpoint
+        nearest.checkpoint.timestamp = input.timestamp;
+        rewriteCheckpoints(sessionId, all, this.stateDir);
+        return { checkpoint: nearest.checkpoint, deduped: true, reason: "contentSimilarity" };
+      }
+    }
+
+    // 4. Genuinely new — create checkpoint
+    const checkpointId = nextCheckpointId(sessionId, this.stateDir);
     const checkpoint: StoredCheckpoint = {
-      checkpointId: nextCheckpointId(sessionId, this.stateDir),
+      checkpointId,
       sessionId,
       summary: input.summary,
+      topicSummary: input.topicSummary,
+      summaryHash,
       keyDecisions: input.keyDecisions ?? [],
       nextSteps: input.nextSteps ?? [],
       filesModified: input.filesModified ?? [],

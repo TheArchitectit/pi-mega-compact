@@ -21,7 +21,7 @@ points** through **one dedup engine**:
 | Entry point | Trigger | Behavior |
 |---|---|---|
 | **Auto-inline** (Layer 5) | `session_start` / `session_tree` | Resume → `recallAndInline(source:"resume")` prepends the most relevant checkpoints, deduped against current context. |
-| **On-demand recall** | `/recall-context [query]` | Semantic search the store, dedupe, and inline the top-K. |
+| **On-demand recall** | `/mega-recall [query]` | Semantic search the store, dedupe, and inline the top-K. |
 | **Dedup sentinel** | every compact | A lightweight `mega-compact-marker` entry lets auto-inline and recall skip re-injecting / re-vectorizing already-present regions. |
 
 The compaction pipeline (mirrors the reviewed stack):
@@ -104,7 +104,7 @@ The widget shows:
 1. Install the extension (see above)
 2. Start a pi session and observe the toolbar widget
 3. Use sub-agents (pi's Agent tool) and watch the 🤖 counter
-4. Run `/megacompact-status` for detailed stats
+4. Run `/mega-status` for detailed stats
 5. Monitor events: `tail -f ~/.pi/agent/extensions/pi-mega-compact/events.log | jq .`
 6. Test edge cases: multiple agents, branch navigation, session resume
 
@@ -166,7 +166,7 @@ Look above the editor area in your pi terminal. You should see:
 ```
 
 If the widget doesn't appear, check:
-- Is the extension loaded? Run `/megacompact-status` — should report store stats
+- Is the extension loaded? Run `/mega-status` — should report store stats
 - Is context usage above the gate? Widget shows "○ idle" below `fastGatePct`
 
 ### 4. Test the dashboard
@@ -184,7 +184,7 @@ After compacting, restart pi. Ask a question about something you worked on previ
 ### 6. Report issues
 
 When reporting, include:
-- Output of `/megacompact-status`
+- Output of `/mega-status`
 - Output of `/dashboard-status`
 - Your pi version and OS
 - The `state.json` file from `~/.pi/mega-compact/` (redact if needed)
@@ -197,15 +197,15 @@ Open issues at: https://github.com/TheArchitectit/pi-mega-compact/issues
 
 | Command | Description |
 |---|---|
-| `/megacompact` | Manual compaction of the current session |
-| `/megacompact off` | Disable auto-compaction for this session |
-| `/megacompact-status` | Display live store stats (count, dedup rate, supersedes) |
-| `/megacompact-context` | Report per-agent context utilisation and context window |
-| `/recall-context` | Inject the top recalled checkpoint for the current session |
-| `/recall-context <query>` | Inject a recalled checkpoint for a specific topic |
-| `/dashboard` | Start the live dashboard server and open in browser |
-| `/dashboard-status` | Report dashboard server status |
-| `/dashboard-stop` | Stop the dashboard server |
+| `/mega-compact` | Manual compaction of the current session |
+| `/mega-compact off` | Disable auto-compaction for this session |
+| `/mega-status` | Display live store stats (count, dedup rate, supersedes) |
+| `/mega-tier [tier]` | Show or change compaction tier (low/medium/high/ultra/mega) |
+| `/mega-recall` | Inject the top recalled checkpoint for the current session |
+| `/mega-recall <query>` | Inject a recalled checkpoint for a specific topic |
+| `/mega-dashboard` | Start the live dashboard server and open in browser |
+| `/mega-dashboard-status` | Report dashboard server status |
+| `/mega-dashboard-stop` | Stop the dashboard server |
 
 ---
 
@@ -214,10 +214,10 @@ Open issues at: https://github.com/TheArchitectit/pi-mega-compact/issues
 - `/megacompact [summary...]` — summarize the current session and persist a
   `chkpt_xxx` checkpoint to the local vector store. If a summary is supplied it
   is used verbatim; otherwise the COLLAPSE heuristics build one.
-- `/recall-context [query]` — semantic-search the local store, dedupe against the
+- `/mega-recall [query]` — semantic-search the local store, dedupe against the
   current window, and inline the top-K relevant checkpoints. With no query it uses
   the latest user message.
-- `/megacompact-status` — show the config and current context usage.
+- `/mega-status` — show the config and current context usage.
 
 ---
 

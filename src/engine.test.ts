@@ -97,6 +97,27 @@ test("supersededCount reports obsolete reads", () => {
   assert.equal(supersededCount(messages), 1);
 });
 
+test("compactSession with useExtractive produces topicSummary on checkpoint", () => {
+  const s = store();
+  const messages: EngineMessage[] = [
+    msg("user", "let's refactor the auth module in src/auth.ts"),
+    msg("assistant", "I'll start by reading the current implementation", "Read"),
+    msg("user", "extract the login logic into a separate function"),
+    msg("assistant", "Extracted login() into src/auth.ts:45", "Edit"),
+    msg("user", "now add the session token generation"),
+    msg("assistant", "Added generateSessionToken in src/auth.ts:78", "Edit"),
+  ];
+  const r = compactSession({ sessionId: "sess_extr", messages, keepFrom: 4, timestamp: 1, useExtractive: true }, s);
+  assert.equal(r.skipped, false);
+  assert.ok(r.checkpointId, "checkpoint created");
+  // The checkpoint should have topicSummary populated
+  const hits = s.search("sess_extr", "auth refactor", 5);
+  assert.ok(hits.length > 0);
+  // topicSummary should be present on the stored checkpoint (via extractive path)
+  assert.ok(hits[0].checkpoint.topicSummary, "topicSummary should be populated when useExtractive is true");
+  assert.ok(hits[0].checkpoint.topicSummary!.length > 0);
+});
+
 test("cleanup", () => {
   rmSync(baseTmp, { recursive: true, force: true });
 });

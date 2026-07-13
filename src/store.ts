@@ -35,6 +35,10 @@ export interface StoredCheckpoint {
   checkpointId: string;
   sessionId: string;
   summary: string;
+  /** Compressed topic summary (extractive, ~2K tokens vs ~70K raw). */
+  topicSummary?: string;
+  /** SHA-256 of topicSummary — summary-content dedup key. */
+  summaryHash?: string;
   keyDecisions: string[];
   nextSteps: string[];
   filesModified: string[];
@@ -75,6 +79,21 @@ export function appendCheckpoint(cp: StoredCheckpoint, stateDir: string = getSta
 export function listCheckpoints(sessionId: string, stateDir: string = getStateDir()): StoredCheckpoint[] {
   const file = join(stateDir, `${normalizeSessionId(sessionId)}.checkpoints.json.gz`);
   return readGzJson<StoredCheckpoint[]>(file, []);
+}
+
+/**
+ * Rewrite ALL checkpoints for a session (in-place update).
+ *
+ * Used by VectorStore when summaryHash or contentSimilarity dedup updates an
+ * existing checkpoint's timestamp/metadata instead of creating a new one.
+ */
+export function rewriteCheckpoints(
+  sessionId: string,
+  checkpoints: StoredCheckpoint[],
+  stateDir: string = getStateDir(),
+): void {
+  const file = join(stateDir, `${normalizeSessionId(sessionId)}.checkpoints.json.gz`);
+  writeGzJson(file, checkpoints);
 }
 
 /**
