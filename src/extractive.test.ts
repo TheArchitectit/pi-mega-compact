@@ -59,13 +59,13 @@ test("empty messages returns minimal summary", () => {
 test("extracts decisions from assistant messages", () => {
   const messages: EngineMessage[] = [
     msg("user", "which database should we use?"),
-    msg("assistant", "I recommend using PostgreSQL with pgvector for the vector store."),
+    msg("assistant", "I recommend using better-sqlite3 for the local vector store."),
     msg("assistant", "Let's go with the Trident pipeline architecture."),
   ];
   const summary = extractiveSummarize(messages);
   assert.ok(summary.keyDecisions.length >= 1, "should extract at least 1 decision");
   assert.ok(
-    summary.keyDecisions.some((d) => d.includes("PostgreSQL")),
+    summary.keyDecisions.some((d) => d.includes("better-sqlite3")),
     `decisions: ${JSON.stringify(summary.keyDecisions)}`,
   );
 });

@@ -2,11 +2,11 @@
 
 **Date:** 2026-07-13
 **Archive date:** (set on completion)
-**Focus:** Near-dup detection via MinHash/LSH + pg_trgm
+**Focus:** Near-dup detection via MinHash/LSH + FTS5 trigram
 **Priority:** P1
 **Effort:** L (≈2 days)
 **Status:** READY
-**Depends on:** Sprint 10 (pglite store, backfill orchestrator, normalized L0)
+**Depends on:** Sprint 10 (sqlite store, backfill orchestrator, normalized L0)
 
 ---
 
@@ -14,7 +14,7 @@
 
 - Gate as Sprint 8.
 - PREVENT-002: parameterized queries for LSH bucket lookup.
-- PREVENT-PI-004: in-process; MinHash/LSH are pure compute + local pglite.
+- PREVENT-PI-004: in-process; MinHash/LSH are pure compute + local SQLite.
 - HALT if LSH determinism test fails (non-determinism = broken dedup).
 
 ---
@@ -23,7 +23,7 @@
 
 Exact (L0) dedup misses *near*-duplicates: one-word edits, typos, rewordings.
 `PLAN.md` Phase 4 + QA fixes (#3 universal hashing, #7/#15 complexity caps)
-specify MinHash signatures + LSH banding + `pg_trgm` verification. The dedup
+specify MinHash signatures + LSH banding + `pg_trgm`-style verification. The dedup
 plan's generic MinHash used a *broken permutation scheme* — we use universal
 hashing instead (QA #3).
 
@@ -36,8 +36,8 @@ hashing instead (QA #3).
 **IN SCOPE:**
 - `src/dedup/l1-minhash.ts` — char 5-gram shingles (cap 50K), universal hashing `h_i=(a_i·x+b_i) mod p` with seed `0xDEADBEEF`, 256 signatures, versioning.
 - `src/dedup/l1-lsh.ts` — 64 bands × 4 rows; bucket key includes `session_id`; deterministic.
-- `src/dedup/l1-verify.ts` — `pg_trgm` similarity verification (threshold 0.85) using pglite `pg_trgm` GIN index on `normalized_text`.
-- PGlite `minhash_signatures(id, chunk_id, signature_version, signatures real[], UNIQUE(chunk_id, signature_version))` + `dedup_lsh_buckets(bucket_key, chunk_id, signature_version)`.
+- `src/dedup/l1-verify.ts` — trigram-similarity verification (threshold 0.85) using the FTS5 `trigram` tokenizer on `context_chunks_trgm` (pg_trgm-equivalent).
+- SQLite `minhash_signatures(id, chunk_id, signature_version, signatures TEXT, UNIQUE(chunk_id, signature_version))` + `dedup_lsh_buckets(bucket_key, chunk_id, signature_version)`.
 - `vectorStore.add()` cascade: L0 → **L1** → content-similarity.
 - Candidate caps: max 100 candidates/insert, max 20ms verify budget.
 
@@ -54,8 +54,8 @@ hashing instead (QA #3).
 2. lsh        bands = 64, rowsPerBand = 4; for each band: key = hash(bandSlice + session_id)
              INSERT INTO dedup_lsh_buckets(bucket_key, chunk_id, signature_version)
 3. verify     on insert: compute buckets; SELECT DISTINCT chunk_id FROM dedup_lsh_buckets
-             WHERE bucket_key = ANY($1) AND session_id=$2 LIMIT 100   (single query, no N loops)
-             for each candidate: pg_trgm similarity(normalized_text, cand.normalized_text)
+             WHERE bucket_key = ? AND session_id=? LIMIT 100   (single query, no N loops)
+             for each candidate: trigram similarity(normalized_text, cand.normalized_text)
              if >= 0.85 -> dedup (reason:"l1MinHash")
 4. caps       if candidates > 100 -> truncate; if verify loop > 20ms -> abort -> "not duplicate"
 5. cascade    add(): L0 (content_hash) -> L1 (minhash/lsh) -> content similarity (existing)
@@ -63,7 +63,7 @@ hashing instead (QA #3).
 
 **Key details:**
 - **Universal hashing** (QA #3): not the broken permutation scheme. Deterministic given seed `0xDEADBEEF` + `signature_version`.
-- **pg_trgm** (QA #1-era): `CREATE EXTENSION IF NOT EXISTS pg_trgm;` GIN index on `normalized_text`; trigram verify is the final gate after LSH cheap candidate retrieval.
+- **Trigram verify** (pg_trgm-equivalent): FTS5 `trigram` tokenizer on `context_chunks_trgm`; compute trigram Jaccard/`similarity` in TS as the final gate after LSH cheap candidate retrieval.
 - **Determinism** (QA non-determinism fix): seed pinned; bucket keys include `session_id`; `signature_version` allows future re-hash without breaking old buckets.
 - **Caps** (QA #7/#15): 100 candidates/insert, 20ms budget — bounds CPU + DB amplification.
 
@@ -75,7 +75,7 @@ hashing instead (QA #3).
 - [ ] L1 catches a one-word-diff near-duplicate that L0 misses.
 - [ ] LSH bucket key stable across process restarts (determinism test).
 - [ ] Candidate cap enforced: >100 candidates truncated; >20ms verify → "not duplicate" (no hang).
-- [ ] `pg_trgm` GIN index created; verification uses parameterized query.
+- [ ] FTS5 `trigram` table (`context_chunks_trgm`) created; trigram verification uses parameterized query.
 - [ ] L1 p95 < 200ms on a 1K-checkpoint session (local benchmark).
 - [ ] Threshold tuned: Jaccard/FPR collected on positive (same content_hash) / negative (diff) pairs; FPR < 0.1% at chosen threshold.
 - [ ] `guardrails-scan` clean.

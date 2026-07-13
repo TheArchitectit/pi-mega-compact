@@ -20,10 +20,10 @@ service we call.
 | Phase | Status | Details |
 |-------|--------|---------|
 | Phase 1 — Dynamic Compression | ✅ **Shipped** | 4-tier adaptive (raw/gzip1/gzip6/brotli4), 89/89 tests, commit `fa5d4dd` |
-| Phase 2 — Enhanced Compression | 🔲 Next | zstd tiers + content-addressable dedup + audit originals |
-| Phase 3 — Tier 0 Exact Match | 🔲 Planned | SHA-256 + Bloom + Redis accelerator (never sole arbiter) |
-| Phase 4 — Tier 1 Near-Duplicate | 🔲 Planned | MinHash + LSH + pg_trgm verification |
-| Phase 5 — Tier 2 Semantic Dedup | 🔲 Planned | pgvector HNSW + SemDeDup clustering + MMR retrieval |
+| Phase 2 — Enhanced Compression | 🔲 Next | versioned compression + content-addressable dedup + audit originals |
+| Phase 3 — Tier 0 Exact Match | 🔲 Planned | SHA-256 + in-process Bloom accelerator (never sole arbiter) |
+| Phase 4 — Tier 1 Near-Duplicate | 🔲 Planned | MinHash + LSH + FTS5 trigram verification |
+| Phase 5 — Tier 2 Semantic Dedup | 🔲 Planned | embedding_blob BLOB + TS cosine scan + SemDeDup clustering + MMR retrieval |
 | Phase 6 — RAPTOR Pre-Compression | 🔲 Planned | GMM clustering + Ollama summarization + collapsed-tree search |
 | Phase 7 — Full Pipeline | 🔲 Planned | Feature flags, backfill, monitoring, canary rollout |
 
@@ -32,6 +32,12 @@ service we call.
 ## Confirmed design decisions
 - **Transport:** local only — no MCP server, no network calls to a remote
   compact service. Everything in-process / on local disk.
+- **Storage backend:** `better-sqlite3` (in-process native SQLite, synchronous).
+  The Postgres-era features in this doc are re-mapped for SQLite — see
+  `SPRINT_PLAN.md` §"Resolved architecture decisions": `pg_trgm` → FTS5
+  `trigram` tokenizer, `pgvector` HNSW → `embedding_blob` BLOB + linear cosine
+  scan, `bloom` index → in-memory `bloom-filters` Map. Redis (in the QA audit
+  below) is re-mapped to the in-process bloom accelerator / query-timeout guard.
 - **Auto-trigger gate:** *both* — local `%` fast gate (`ctx.getContextUsage().percent`)
   then server-style confirm (`auto_compact_check` reimplemented locally).
 - **Summary source:** *we insert a marker* which we **dedupe** to save tokens,
@@ -248,21 +254,20 @@ NOT the broken permutation scheme from the original plan.
 - 20 bands × 12 rows = 240 permutations
 - Jaccard threshold: 0.7 (configurable)
 
-### pg_trgm Verification
-Secondary check after LSH candidate retrieval — confirms near-duplicate at word level.
+### Trigram Verification (FTS5 trigram — pg_trgm-equivalent)
+Secondary check after LSH candidate retrieval — confirms near-duplicate at word level. Uses the SQLite FTS5 `trigram` tokenizer (`context_chunks_trgm`) instead of Postgres `pg_trgm`.
 
 ### Candidate Caps (QA fix #7)
 - Max 50 candidates per LSH bucket retrieval
 - Max 200 DB roundtrips per dedup batch
 - Upper bound on shingle count per document
 
-**Storage:**
+**Storage (SQLite):**
 ```sql
 CREATE TABLE minhash_signatures (
-  chunk_id   UUID PRIMARY KEY,
-  signature  BYTEA NOT NULL,      -- 240 × 8 = 1,920 bytes
-  num_perm   INT DEFAULT 240,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  chunk_id       TEXT PRIMARY KEY,
+  signature      BLOB NOT NULL,           -- 240 × 8 = 1,920 bytes
+  num_perm       INT DEFAULT 240
 );
 ```
 
@@ -273,27 +278,24 @@ CREATE TABLE minhash_signatures (
 
 ---
 
-## Phase 5 — Tier 2: Semantic Dedup (Embedding Cosine + pgvector)
+## Phase 5 — Tier 2: Semantic Dedup (Embedding Cosine + linear scan)
 
 ### Embedding Model
 - Start with `all-MiniLM-L6-v2` (384 dims) for local speed
 - Configurable to swap in larger models later
 
-### pgvector HNSW Index
+### Embedding storage (SQLite, no pgvector)
+Embeddings are stored as a `BLOB` of little-endian Float32 bytes (`embedding_blob`).
+Similarity is a linear cosine scan in TypeScript over the in-process store — the
+repo's stated scale (≤10K checkpoints, "small N, no ANN index needed") makes an
+indexed ANN unnecessary. This is the pgvector/HNSW equivalent for our scale.
+
 ```sql
-CREATE EXTENSION IF NOT EXISTS vector;
-
 CREATE TABLE chunk_embeddings (
-  chunk_id    UUID PRIMARY KEY,
-  embedding   vector(384) NOT NULL,  -- correct pgvector syntax (QA fix #9)
-  model_name  TEXT NOT NULL,
-  created_at  TIMESTAMPTZ DEFAULT NOW()
+  chunk_id    TEXT PRIMARY KEY,
+  embedding_blob BLOB NOT NULL,     -- Float32 bytes, dim-agnostic
+  model_name  TEXT NOT NULL
 );
-
-CREATE INDEX idx_chunk_embeddings_hnsw
-ON chunk_embeddings
-USING hnsw (embedding vector_cosine_ops)
-WITH (m = 16, ef_construction = 200);
 ```
 
 ### Cosine Threshold
@@ -359,7 +361,7 @@ CREATE TABLE raptor_nodes (
   level        INT NOT NULL,        -- 0 = leaf, 1+ = summary
   parent_id    UUID REFERENCES raptor_nodes(node_id),
   content      TEXT NOT NULL,
-  embedding    vector(384),
+  embedding_blob BLOB,             -- Float32 bytes (pgvector vector(384) equivalent)
   chunk_count  INT,                 -- how many leaf chunks this summarizes
   created_at   TIMESTAMPTZ DEFAULT NOW()
 );
@@ -403,15 +405,15 @@ CREATE TABLE raptor_nodes (
 ### Phase 4 — Tier 1 Near-Duplicate (MinHash + LSH)
 - [ ] MinHash with universal hashing (proper a_i, b_i, p parameters)
 - [ ] LSH banding (20 bands × 12 rows)
-- [ ] pg_trgm verification layer
+- [ ] FTS5 trigram verification layer (pg_trgm-equivalent)
 - [ ] Candidate cap (50 per bucket, 200 DB roundtrips per batch)
 - [ ] `minhash_signatures` table + migration
 - [ ] Benchmark: latency per chunk at 1K, 10K, 100K chunks
 
-### Phase 5 — Tier 2 Semantic Dedup (pgvector + HNSW)
+### Phase 5 — Tier 2 Semantic Dedup (embedding_blob + linear cosine)
 - [ ] Embedding model integration (all-MiniLM-L6-v2, 384 dims)
-- [ ] pgvector extension + HNSW index
-- [ ] `vector(384)` syntax (not `VECTOR(384)`)
+- [ ] `embedding_blob` BLOB storage + linear cosine scan in TS (pgvector/HNSW equivalent)
+- [ ] Unit-normalize on write; cosine reuses `cosineSimilarity`
 - [ ] Cosine threshold configuration per collection type
 - [ ] SemDeDup clustering for large datasets
 - [ ] MMR retrieval-time dedup (λ = 0.7)

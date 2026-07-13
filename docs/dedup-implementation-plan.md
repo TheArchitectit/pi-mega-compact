@@ -3,6 +3,20 @@
 > **Version**: v2.0 — all 75+ QA fixes applied, 2025-07-16
 > **Status**: Revised after adversarial review. All critical blockers resolved.
 
+> **Backend note (pi-mega-compact):** this plan was written for a Postgres +
+> Redis backend. This repo implements it on **SQLite** (`better-sqlite3`, in-
+> process, synchronous) with **zero network** (PREVENT-PI-004). The Postgres/
+> Redis primitives are re-mapped, not dropped:
+> - `pg_trgm` GIN index → **FTS5 `trigram`** tokenizer (`context_chunks_trgm`).
+> - `pgvector` `VECTOR(384)` + HNSW → **`embedding_blob` BLOB + linear cosine
+>   scan** in TS (correct for our ≤10K-checkpoint scale; no ANN index needed).
+> - Redis bloom cache → **in-memory `bloom-filters` Map** (`STATE_DIR/bloom.json.gz`);
+>   Redis "sole arbiter" → local bloom accelerator (cache hit always confirmed via
+>   SQLite query). Redis circuit breaker → SQLite query-timeout guard.
+> - `SERIAL` → `INTEGER PRIMARY KEY`; `INTEGER[]`/`TEXT[]` → `TEXT` (JSON);
+>   `TIMESTAMPTZ` → `INTEGER` (unix ms); `CREATE EXTENSION` → N/A.
+> See `SPRINT_PLAN.md` §"Resolved architecture decisions" for the authoritative mapping.
+
 ---
 
 ## Table of Contents
@@ -1223,20 +1237,22 @@ Detect near-duplicate text that differs slightly (typos, rephrasing, reordering)
 
 ```sql
 -- Phase 3 schema (no ALTER TABLE on context_chunks -- normalized_text already exists)
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+-- NOTE: this repo uses SQLite, not Postgres. pg_trgm -> FTS5 trigram tokenizer
+-- (context_chunks_trgm); SERIAL -> INTEGER PRIMARY KEY; INTEGER[] -> TEXT (JSON);
+-- TIMESTAMPTZ -> INTEGER (unix ms). See SPRINT_PLAN.md "Resolved architecture decisions".
 
 CREATE TABLE minhash_signatures (
-  id                SERIAL PRIMARY KEY,
+  id                INTEGER PRIMARY KEY,
   chunk_id          TEXT NOT NULL REFERENCES context_chunks(id),
   collection_scope  TEXT NOT NULL DEFAULT 'default',
   signature_version INTEGER NOT NULL DEFAULT 1,
-  signatures        INTEGER[] NOT NULL,
-  created_at        TIMESTAMPTZ DEFAULT now(),
+  signatures        TEXT NOT NULL,          -- JSON array of ints
+  created_at        INTEGER DEFAULT 0,
   UNIQUE (chunk_id, signature_version)
 );
 
 CREATE TABLE dedup_lsh_buckets (
-  id                SERIAL PRIMARY KEY,
+  id                INTEGER PRIMARY KEY,
   bucket_key        TEXT NOT NULL,
   chunk_id          TEXT NOT NULL REFERENCES context_chunks(id),
   signature_version INTEGER NOT NULL DEFAULT 1,
@@ -2296,11 +2312,13 @@ ALTER TABLE context_chunks DROP COLUMN IF EXISTS embedding;
 
 ### 18.3 Issue #10: No Redis timeout or circuit breaker
 
-**Fix**: Redis operations wrapped in opossum with 100ms timeout. Fallback: PostgreSQL-only.
+**Fix (original/Postgres)**: Redis operations wrapped in opossum with 100ms timeout. Fallback: PostgreSQL-only.
+**Fix (this repo / SQLite)**: no Redis — the in-memory bloom accelerator has a query-timeout guard; on slow/corrupt DB, degrade to "store, skip dedup this pass" (QA #13 local re-map).
 
 ### 18.4 Issue #11: No pgvector pre-flight check in Phase 2
 
-**Fix**: Phase 2 migration begins with explicit `CREATE EXTENSION IF NOT EXISTS vector` check. If not installed, migration fails fast.
+**Fix (original/Postgres)**: Phase 2 migration begins with explicit `CREATE EXTENSION IF NOT EXISTS vector` check. If not installed, migration fails fast.
+**Fix (this repo / SQLite)**: N/A — embeddings stored as `embedding_blob` BLOB, cosine computed in TS; no native extension to pre-flight.
 
 ### 18.5 Issue #12: No alert conditions/routing/escalation
 
@@ -2325,19 +2343,24 @@ ALTER TABLE context_chunks DROP COLUMN IF EXISTS embedding;
 10. Drop temporary non-unique indexes
 
 **Phase 2**
-1. pgvector pre-flight: verify `vector` extension exists (`CREATE EXTENSION IF NOT EXISTS vector`)
+1. (Postgres) pgvector pre-flight: verify `vector` extension exists (`CREATE EXTENSION IF NOT EXISTS vector`).
+   (this repo) N/A — embeddings stored as `embedding_blob` BLOB.
 2. Create `raptor_nodes` table and indexes
 
 **Phase 3**
-1. `CREATE EXTENSION IF NOT EXISTS pg_trgm`
+1. (Postgres) `CREATE EXTENSION IF NOT EXISTS pg_trgm`.
+   (this repo) FTS5 `trigram` tokenizer on `context_chunks_trgm` (already created in S8).
 2. Create `minhash_signatures` and `dedup_lsh_buckets` tables
-3. Create GIN index on existing `context_chunks.normalized_text` (no column ALTER)
+3. (Postgres) Create GIN index on existing `context_chunks.normalized_text` (no column ALTER).
+   (this repo) FTS5 trigram index is the equivalent.
 4. Backfill minhash signatures + LSH buckets
 
 **Phase 4**
-1. Add `embedding VECTOR(384)` column
+1. (Postgres) Add `embedding VECTOR(384)` column.
+   (this repo) embeddings already in `embedding_blob`.
 2. Backfill embeddings
-3. Create HNSW index CONCURRENTLY
+3. (Postgres) Create HNSW index CONCURRENTLY.
+   (this repo) N/A — linear cosine scan over `embedding_blob`.
 
 ---
 

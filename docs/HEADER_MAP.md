@@ -70,7 +70,7 @@
 | Sprint 7 Optional backlog | 193 | 0 |
 | Phases 2–7 plan (v0.2.0) | 297 | 0 |
 | Resolved architecture decisions | 318 | 0 |
-| Sprint 8 PGlite backbone | 352 | 0 |
+| Sprint 8 SQLite backbone | 352 | 0 |
 | Sprint 9 Content dedup | 397 | 0 |
 | Sprint 10 L0 upgrade | 426 | 0 |
 | Sprint 11 MinHash/LSH | 460 | 0 |

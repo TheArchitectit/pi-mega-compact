@@ -41,7 +41,7 @@ this, a bad threshold in one tier can silently corrupt dedup for all sessions.
 - Canary: enable L0 → L1 → L2 → RAPTOR sequentially; auto-disable on degradation.
 - `extensions/mega-compact.ts` — load flags from config; report metrics.
 
-**OUT OF SCOPE:** benchmarks/DR/docs (Sprint 15); PGlite internals (Sprint 8).
+**OUT OF SCOPE:** benchmarks/DR/docs (Sprint 15); SQLite internals (Sprint 8).
 
 ---
 

@@ -578,10 +578,10 @@ test("slightly different messages produce same topicSummary when topic unchanged
 test("keyDecisions extracted from assistant messages", () => {
   const messages = [
     { role: "user", text: "What approach should we use?" },
-    { role: "assistant", text: "I recommend using PostgreSQL with pgvector for the vector store." },
+    { role: "assistant", text: "I recommend using better-sqlite3 for the local vector store." },
   ];
   const summary = extractiveSummarize(messages as EngineMessage[]);
-  expect(summary.keyDecisions).toContainEqual(expect.stringContaining("PostgreSQL with pgvector"));
+  expect(summary.keyDecisions).toContainEqual(expect.stringContaining("better-sqlite3 for the local vector store"));
 });
 
 test("filesModified extracted from write/edit tool calls", () => {

@@ -6,14 +6,14 @@
 **Priority:** P0
 **Effort:** M (≈1 day)
 **Status:** READY
-**Depends on:** Sprint 8 (pglite store with `content_hash` columns + migration populated)
+**Depends on:** Sprint 8 (sqlite store with `content_hash` columns + migration populated)
 
 ---
 
 ## SAFETY PROTOCOLS
 
 - Gate: `npm run build && npm test && npm run lint && python3 scripts/regression_check.py --all`
-- PREVENT-002: parameterized PGlite queries only.
+- PREVENT-002: parameterized SQLite queries only (`?` placeholders).
 - PREVENT-PI-004: no network. Normalize/digest are pure functions.
 - Stay in scope: only `src/dedup/*`, `src/vectorStore.ts` add() L0 tier.
 
@@ -23,7 +23,7 @@
 
 `PLAN.md` Phase 2B wants content-addressable dedup: identical checkpoint content
 should never be stored twice, and the raw input must be reconstructible for
-audit/replay (rad-gateway `CompressedOriginal` pattern). The pglite `content_hash`
+audit/replay (rad-gateway `CompressedOriginal` pattern). The sqlite `content_hash`
 columns were added + populated in Sprint 8's migration but are not yet used for
 dedup decisions. `summaryHash` in `vectorStore.ts` uses only 16 hex chars —
 collision-prone as a dedup key.
@@ -57,17 +57,17 @@ collision-prone as a dedup key.
 3. vectorStore.add():
    a. normalizedText = normalize(regionText)
    b. digest = computeContentDigest(normalizedText)
-   c. SELECT id FROM context_chunks WHERE content_hash=$1 AND content_hash2=$2 AND session_id=$3
+   c. SELECT id FROM context_chunks WHERE content_hash=? AND content_hash2=? AND session_id=?
    d. if hit -> update timestamp, return { deduped:true, reason:"contentHash" }
    e. else proceed to regionHash / summaryHash / similarity tiers (existing)
 4. on insert: write content_hash, content_hash2, content_hash_version, normalized_text,
-   compressed_original = zstdCompress(rawRegion)
+   compressed_original = await zstdCompress(rawRegion)   -- async helper (see src/store/compression.ts)
 5. summaryHash: sha256(topicSummary) full 64 hex (was .slice(0,16))
 ```
 
 **Key details:**
 - **Dual hash** (QA #2 spirit, local): primary + secondary before declaring duplicate — guards against a single-hash collision silently merging distinct content.
-- **compressed_original** stored as `BYTEA` (pglite). Reconstruct via `zstdDecompress` for audit/replay/re-summarize. Not loaded on the hot read path (lazy).
+- **compressed_original** stored as `BLOB` (sqlite). Reconstruct via `await zstdDecompress` for audit/replay/re-summarize. Not loaded on the hot read path (lazy).
 
 ---
 

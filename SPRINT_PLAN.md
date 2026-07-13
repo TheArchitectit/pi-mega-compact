@@ -269,11 +269,13 @@ Add project-specific prevention rules (extend `pattern-rules.json`):
 ## Phases 2–7 Sprint Plan (targets v0.2.0) — appended 2026-07-13
 
 Sprints 0–7 above shipped v0.1.0. The eight sprints below cover `PLAN.md`
-Phases 2–7, using a **local in-process Postgres** backend (`@electric-sql/pglite`)
-verified to support `pgvector`, `pg_trgm`, and `bloom` with Node.js FS persistence
-and **zero network calls** (honors `PREVENT-PI-004`). See the resolved architecture
-decisions, doc phase mapping, and QA critical-fix re-mapping in the appended
-section below before reading Sprints 8–15.
+Phases 2–7, using a **local in-process SQLite** backend (`better-sqlite3`) with
+Node.js FS persistence and **zero network calls** (honors `PREVENT-PI-004`). The
+pglite-native features the dedup plan assumes are emulated locally: `pg_trgm`
+→ **FTS5 `trigram` tokenizer**, `pgvector` HNSW → **`embedding_blob` BLOB + linear
+cosine scan**, `bloom` index → **in-memory `bloom-filters` Map → `bloom.json.gz`**.
+See the resolved architecture decisions, doc phase mapping, and QA critical-fix
+re-mapping in the appended section below before reading Sprints 8–15.
 
 ## Acceptance criteria (whole project)
 1. Zero network calls at runtime (grep-verified in CI — PREVENT-PI-004).
@@ -297,51 +299,57 @@ section below before reading Sprints 8–15.
 # Phases 2–7 Sprint Plan — pi-mega-compact (targets v0.2.0)
 
 > Sprints 0–7 (v0.1.0) are above. This section covers `PLAN.md` Phases 2–7
-> using a **local, in-process Postgres** backend (`@electric-sql/pglite`) —
-> verified to support `pgvector`, `pg_trgm`, and `bloom` with Node.js FS
-> persistence and **zero network calls** (honors `PREVENT-PI-004`). No Docker
+> using a **local, in-process SQLite** backend (`better-sqlite3`) — FTS5
+> `trigram` (pg_trgm-equivalent), `embedding_blob` BLOB + linear cosine scan
+> (pgvector-equivalent), in-memory bloom (bloom-index-equivalent) — with Node.js
+> FS persistence and **zero network calls** (honors `PREVENT-PI-004`). No Docker
 > sidecar, no remote MCP server, no network listener.
 
 ---
 
 ## Resolved architecture decisions (from QA review)
 
-1. **Storage backend = PGlite** (in-process WASM Postgres). No Docker, no
-   network. Chosen over SQLite because it natively provides `pgvector`,
-   `pg_trgm`, and `bloom` — letting us adopt `docs/dedup-implementation-plan.md`
-   almost verbatim. PGlite persists to disk (`STATE_DIR/pglite`) and survives
-   restart (cross-process recall re-proven in Sprint 8.5).
+1. **Storage backend = better-sqlite3** (in-process native SQLite). No Docker,
+   no network, and — critically — **synchronous**, which keeps `VectorStore` /
+   `engine.ts` / `recall.ts` / the extension signatures unchanged (PGlite was
+   evaluated but is async-only in every version, which would have forced the
+   whole call chain async). The pglite-native features are emulated: `pg_trgm`
+   → FTS5 `trigram` tokenizer, `pgvector` → `embedding_blob` BLOB + linear cosine
+   scan, `bloom` → in-memory `bloom-filters` Map. SQLite persists to disk
+   (`STATE_DIR/sqlite.db`, WAL) and survives restart (cross-process recall
+   proven in Sprint 8.5).
 2. **Embedder = TrigramEmbedder default + flag-gated MiniLM.** Default stays
    self-contained (honors Sprint 7.1 deferral). `MEGACOMPACT_EMBEDDER=minilm`
    (all-MiniLM-L6-v2 via ONNX, 384-dim, local model file) opts into real
    semantic embeddings — off by default. Tier-2 cosine threshold is 0.85 for
    trigram (can actually fire) and 0.95 for MiniLM.
-3. **Compression = format-version header.** `store.ts` prepends a 1-byte
-   format version (`0x01` legacy / `0x02` new tiers) before the tag byte,
-   resolving the shipped `0x03`=Brotli vs `PLAN.md` `0x03`=zstd collision.
-4. **No Redis / no Prometheus port.** Local accelerator = PGlite `bloom`
-   index (or in-memory Map), but **PGlite is always the source of truth**
-   (cache hit still confirmed via query). Metrics go to `dashboard.json` +
-   `events.log` (no network listener). "Circuit breaker" = query-timeout
-   guard that degrades to skip-tier.
-5. **Single store = PGlite** (source of truth). The existing gzipped JSON
+3. **Compression = format-version header.** `store.ts` (now
+   `src/store/compression.ts`) prepends a 2-byte version magic (`0xEC 0x01`
+   [ver] [tag]) before the tier tag, resolving the shipped `0x03`=Brotli vs
+   `PLAN.md` `0x03`=zstd collision. All three format eras roundtrip.
+4. **No Redis / no Prometheus port.** Local accelerator = in-memory
+   `bloom-filters` Map (persisted to `STATE_DIR/bloom.json.gz`), but **SQLite is
+   always the source of truth** (cache hit still confirmed via query). Metrics
+   go to `dashboard.json` + `events.log` (no network listener). "Circuit
+   breaker" = query-timeout guard that degrades to skip-tier.
+5. **Single store = SQLite** (source of truth). The existing gzipped JSON
    checkpoint files are retained as a DR snapshot (per dedup plan §6.3),
-   rebuilt into PGlite on load if the DB is missing.
+   rebuilt into SQLite on load if the DB is missing.
 
 ### Doc phase mapping (do not mis-track)
 `docs/dedup-implementation-plan.md` "Phase 1–4" ≡ `PLAN.md` "Phase 3–6."
 This plan's Sprints 8–15 map to `PLAN.md` Phase 2 → Phase 7.
 
-### QA critical-fix register — re-mapped for local PGlite
-All 19 fixes from `PLAN.md` still apply; Redis/network-specific ones are
+### QA critical-fix register — re-mapped for local SQLite
+All 19 fixes from `PLAN.md` still apply; Postgres/Redis/network-specific ones are
 re-mapped, not dropped:
-- #1 NULL handling → PGlite partial UNIQUE `WHERE content_hash IS NOT NULL`.
-- #2 Redis sole arbiter → local bloom/index is accelerator only; **always confirm via PGlite**.
-- #8 pgvector extension check → `CREATE EXTENSION IF NOT EXISTS vector` at migration start (only when MiniLM active).
-- #9 `vector(384)` → correct PG syntax (no change).
-- #10 `<=>` cosine operator → used for MiniLM path (brute-force in TS for trigram).
-- #12 transactional coupling → single PGlite transaction for insert + index update.
-- #13 Redis breaker → PGlite query-timeout guard → degrade skip-tier.
+- #1 NULL handling → SQLite partial UNIQUE `WHERE content_hash IS NOT NULL`.
+- #2 Redis sole arbiter → in-memory bloom is accelerator only; **always confirm via SQLite**.
+- #8 pgvector extension check → N/A; embeddings stored as `embedding_blob` BLOB, cosine in TS.
+- #9 `vector(384)` → `embedding_blob` BLOB (Float32); dim-agnostic.
+- #10 `<=>` cosine operator → cosine computed in TS (`cosineSimilarity`) for both trigram + MiniLM.
+- #12 transactional coupling → single SQLite `db.transaction()` for insert + index update.
+- #13 Redis breaker → SQLite query-timeout guard → degrade skip-tier.
 - #18/#19 alerting/metrics → `dashboard.json` + `events.log` thresholds (no Prometheus).
 - #3,#4,#5,#6,#7,#11,#14,#15,#16,#17 apply directly (universal hashing, heap top-k,
   single load, empty-vector guard, complexity caps, GMM, backfill ordering,
@@ -368,15 +376,16 @@ Per-sprint guardrail checklist:
 - [ ] **Four Laws**: read target file first; stay in scope (only S8–15 files);
       tests green before commit; halt on uncertainty.
 - [ ] **PREVENT-PI-004 (critical)**: grep-confirmed **zero network calls** in
-      any `src/` / `extensions/` code (pglite is in-process WASM + FS, not a
-      remote DB). `npm run lint` enforces this automatically.
+      any `src/` / `extensions/` code (better-sqlite3 is in-process native SQLite
+      + FS, not a remote DB). `npm run lint` enforces this automatically.
 - [ ] **PREVENT-PI-001/002/003**: any compaction code change preserves the
       anchor-floor guard, never splits a toolCall/toolResult pair, and injects
       recall via `before_agent_start` systemPrompt (never `role:"system"`).
-- [ ] **PREVENT-002**: all PGlite queries use parameterized `$1/$2` placeholders
+- [ ] **PREVENT-002**: all SQLite queries use parameterized `?` placeholders
       — never string-concatenated SQL.
 - [ ] **PREVENT-003 / secrets**: no hardcoded credentials; state dir contents
-      (`*.checkpoints.json.gz`, `*.state.json.gz`, `pglite/`) never committed.
+      (`*.checkpoints.json.gz`, `*.state.json.gz`, `sqlite.db`, `*.db-wal`,
+      `*.db-shm`) never committed.
 - [ ] **No feature creep**: do not touch files outside the sprint's scope table.
 - [ ] **500-line docs**: keep specs/maps under 500 lines (split if needed).
 - [ ] **AI attribution**: `Co-Authored-By: Claude ...` in every commit
@@ -388,38 +397,42 @@ Per-sprint guardrail checklist:
 
 ---
 
-## Sprint 8 — Storage Backbone: PGlite + Compression v2  (foundation)  [L]
+## Sprint 8 — Storage Backbone: SQLite + Compression v2  (foundation)  [L]
 
 Goal: a local SQL store powering every tier, plus the revised compression scheme.
 
-- [ ] **8.1 (M)** Add `@electric-sql/pglite` + `@electric-sql/pglite/contrib/pg_trgm`
-      + `@electric-sql/pglite/contrib/bloom`. Init PGlite at `STATE_DIR/pglite`
-      with Node-FS persistence; verify open + cross-process reopen in tests.
-- [ ] **8.2 (M)** Format-version header in `store.ts` `compressSmart`:
-      prepend `0x01` (legacy) / `0x02` (new tiers); `decompressSmart` dispatches
-      on version byte. Migration: existing `.json.gz` re-written with v0x02 header.
-- [ ] **8.3 (M)** New compression tiers (PLAN.md Phase 2A): `0x03` zstd-3,
-      `0x04` zstd-9, `0x05` brotli-4 (add `@aspect-build/zstd`); keep `0x00/0x01/0x02`
-      for legacy/compat. Backward-compat: v0x01 files still decompress.
-- [ ] **8.4 (L)** PGlite schema `context_chunks`:
+- [ ] **8.1 (M)** Add `better-sqlite3` (+ `@types/better-sqlite3`, `@mongodb-js/zstd`
+      for the async DR helper). Init at `STATE_DIR/sqlite.db` with Node-FS
+      persistence (WAL); verify open + cross-process reopen in tests.
+- [ ] **8.2 (M)** Format-version magic in `src/store/compression.ts` `compressSmart`:
+      prepend `0xEC 0x01` (version 1) before the tier tag; `decompressSmart`
+      detects the magic and dispatches. Legacy eras (untagged gzip, single-tag
+      incl. old `0x03`=brotli) still roundtrip.
+- [ ] **8.3 (M)** New compression tiers: raw `0x00` / gzip1 `0x01` / gzip6 `0x02` /
+      brotli4 `0x05` (sync, zlib); large tier uses brotli-4 (the sync alternative
+      to the spec's zstd `0x03/0x04`). zstd available as an async opt-in helper for
+      DR/large-blob paths. Backward-compat: legacy files still decompress.
+- [ ] **8.4 (L)** SQLite schema `context_chunks`:
       `id TEXT PK, session_id TEXT, region_hash TEXT, content_hash TEXT,
       content_hash2 TEXT, content_hash_version INT, normalized_text TEXT,
-      summary TEXT, topic_summary TEXT, key_decisions TEXT[], next_steps TEXT[],
-      files_modified TEXT[], embedding real[], token_estimate INT,
-      timestamp BIGINT, dedup_status TEXT DEFAULT 'active'`.
+      summary TEXT, topic_summary TEXT, summary_hash TEXT, key_decisions TEXT,
+      next_steps TEXT, files_modified TEXT, embedding_blob BLOB,
+      token_estimate INT, timestamp BIGINT, dedup_status TEXT DEFAULT 'active'`
+      (JSON arrays as TEXT, vectors as BLOB). Plus `session_state` table and an
+      FTS5 `trigram` virtual table `context_chunks_trgm` (pg_trgm-equivalent).
 - [ ] **8.5 (L)** Migrate existing `<sess>.checkpoints.json.gz` → `context_chunks`
-      (idempotent: skip if `content_hash` present; compute hash + normalized_text
-      on the fly). Keep `.json.gz` as DR snapshot. Update `recall.integration.test.ts`
-      to prove cross-process recall over PGlite (was over files).
-- [ ] **8.6 (S)** `VectorStore` reads/writes via PGlite (replaces file I/O);
-      `add/search/dedupe/markInjected` unchanged in signature.
+      (idempotent: `ON CONFLICT(id) DO NOTHING`; compute hash + normalized_text
+      on the fly). Keep `.json.gz` as DR snapshot. `recall.integration.test.ts`
+      proves cross-process recall over the same `STATE_DIR/sqlite.db`.
+- [ ] **8.6 (S)** `VectorStore` reads/writes via SQLite (replaces file I/O);
+      `add/search/dedupe/markInjected` unchanged in signature (kept synchronous).
 - [ ] **8.7 (S)** Storage metrics: `compressionRatio`, `storageBytes`, `checkpointCount`.
-- [ ] **8.8 (S)** Tests: all 6 tiers roundtrip; v0x01 legacy decompresses; migration
-      lossless (byte-compare checkpoint count + regionHash set); PGlite reopens
+- [ ] **8.8 (S)** Tests: all tiers roundtrip; legacy decompresses; migration
+      lossless (byte-compare checkpoint count + regionHash set); SQLite reopens
       cross-process with data intact.
 
-**Exit:** PGlite opens at `STATE_DIR/pglite`; compression v2 roundtrips; existing
-data migrates without loss; recall integrates against PGlite; `npm test` + `npm run guardrails` green.
+**Exit:** SQLite opens at `STATE_DIR/sqlite.db`; compression v2 roundtrips; existing
+data migrates without loss; recall integrates against SQLite; `npm test` + `npm run guardrails` green.
 
 ---
 
@@ -452,14 +465,14 @@ and safe migration.
 
 - [ ] **10.1 (M)** Integrate normalized content-hash as the L0 key: case/whitespace/
       ANSI variants of the same text dedup.
-- [ ] **10.2 (M)** PGlite partial UNIQUE index `idx_content_hash
+- [ ] **10.2 (M)** SQLite partial UNIQUE index `idx_content_hash
       (WHERE content_hash IS NOT NULL)` — QA #1. `ON CONFLICT DO NOTHING` on insert.
-- [ ] **10.3 (L)** Local bloom accelerator: PGlite `bloom` index OR in-memory
-      `bloom-filters` Map persisted to `STATE_DIR/bloom.json.gz`. Miss → skip full
-      scan; hit → **confirm via PGlite query** (never sole arbiter) — QA #2.
+- [ ] **10.3 (L)** Local bloom accelerator: in-memory `bloom-filters` Map persisted
+      to `STATE_DIR/bloom.json.gz`. Miss → skip full scan; hit → **confirm via
+      SQLite query** (never sole arbiter) — QA #2.
 - [ ] **10.4 (M)** Atomicity: wrap insert + index update + bloom update in one
-      PGlite transaction — QA #12. Query-timeout guard (e.g. >50ms) → degrade to
-      "store, skip dedup this pass" — QA #13.
+      SQLite `db.transaction()` — QA #12. Query-timeout guard (e.g. >50ms) → degrade
+      to "store, skip dedup this pass" — QA #13.
 - [ ] **10.5 (L)** Backfill orchestration: non-unique index → backfill
       `content_hash`/`normalized_text` → resolve dups (keep oldest) → UNIQUE
       CONCURRENTLY → drop temp index — QA #14. Resumable + idempotent.
@@ -484,16 +497,16 @@ verification.
       256 signatures, signature versioning — QA #3.
 - [ ] **11.2 (M)** `src/dedup/l1-lsh.ts`: 64 bands × 4 rows; bucket keys include
       `session_id`; deterministic (QA fix for non-determinism).
-- [ ] **11.3 (M)** `src/dedup/l1-verify.ts`: `pg_trgm` similarity verification after
-      LSH candidates (threshold 0.85). Use PGlite `pg_trgm` GIN index on
-      `normalized_text`.
+- [ ] **11.3 (M)** `src/dedup/l1-verify.ts`: trigram-similarity verification after
+      LSH candidates (threshold 0.85). Use the FTS5 `trigram` tokenizer on
+      `context_chunks_trgm` (pg_trgm-equivalent) for candidate scoring.
 - [ ] **11.4 (M)** Candidate caps — QA #7/#15: max 100 candidates/insert, max
       20ms verification budget, abort → "not duplicate".
-- [ ] **11.5 (M)** PGlite tables `minhash_signatures(id, chunk_id, signature_version,
-      signatures real[], UNIQUE(chunk_id, signature_version))` +
-      `dedup_lsh_buckets(bucket_key, chunk_id, signature_version)` with GIN/index.
+- [ ] **11.5 (M)** SQLite tables `minhash_signatures(id, chunk_id, signature_version,
+      signatures TEXT, UNIQUE(chunk_id, signature_version))` +
+      `dedup_lsh_buckets(bucket_key, chunk_id, signature_version)` with indexes.
 - [ ] **11.6 (M)** Wire L1 into `VectorStore.add()` cascade: after L0, before
-      content-similarity. Single PGlite query for candidates (no N sequential).
+      content-similarity. Single SQLite query for candidates (no N sequential).
 - [ ] **11.7 (S)** Benchmarks: L1 p95 < 200ms on 1K-checkpoint session (local scale).
 - [ ] **11.8 (S)** Threshold tuning: collect positive (same content_hash) /
       negative (diff) pair similarity distributions; pick Jaccard threshold for
@@ -514,13 +527,12 @@ diversity. Two embedder modes.
       (all-MiniLM-L6-v2 via `onnxruntime-node`, 384-dim, local model file)
       behind `MEGACOMPACT_EMBEDDER=minilm` (off by default). TrigramEmbedder
       (512-dim) stays default.
-- [ ] **12.2 (M)** Embedding storage: `real[]` column (dim-agnostic) for trigram;
-      dedicated `chunk_embeddings(chunk_id, embedding vector(384))` + PGlite
-      `pgvector` only when MiniLM active (QA #8/#9). `CREATE EXTENSION IF NOT
-      EXISTS vector` at MiniLM enable.
+- [ ] **12.2 (M)** Embedding storage: `embedding_blob` BLOB (Float32, dim-agnostic)
+      for both trigram (512-dim) and MiniLM (384-dim). No pgvector; cosine is a
+      linear scan in TS (QA #8/#9 re-mapped — no native extension needed).
 - [ ] **12.3 (M)** L2 cosine dedup in `VectorStore.add()`: threshold 0.85 (trigram)
-      / 0.95 (MiniLM); cosine computed in TS (reuse `cosineSimilarity`) for
-      trigram, `<->` for MiniLM. Single load per add — QA #5.
+      / 0.95 (MiniLM); cosine computed in TS (reuse `cosineSimilarity`) for both
+      embedders. Single load per add — QA #5.
 - [ ] **12.4 (L)** `src/dedup/mmr.ts`: `mmrRerank()` in `VectorStore.search()`
       (λ=0.5) for retrieval diversity — dedup plan §2.7.
 - [ ] **12.5 (M)** Heap-based top-k (min-heap, O(N log k)) replaces full sort —
@@ -556,8 +568,9 @@ shadow mode first.
       (`buildRaptorTreeWithBudget`); extractive fallback on timeout/low consistency.
 - [ ] **13.5 (M)** `src/dedup/raptor/retrieval.ts`: staged expansion (ANN → expand
       top-M → BFS to leaves → MMR) — dedup plan §3.9.
-- [ ] **13.6 (M)** PGlite `raptor_nodes(id, session_id, level, parent_id,
-      children TEXT[], summary, embedding real[], quality_marker, token_estimate)`.
+- [ ] **13.6 (M)** SQLite `raptor_nodes(id, session_id, level, parent_id,
+      children TEXT, summary TEXT, embedding_blob BLOB, quality_marker TEXT,
+      token_estimate INT)` (children as JSON TEXT, vector as BLOB).
 - [ ] **13.7 (M)** Shadow mode (`RAPTOR_SHADOW_MODE` default true): build + log,
       don't serve. Contradiction detection (adjacent-level noun overlap) downgrades
       quality marker.
@@ -606,12 +619,12 @@ Goal: prove the system, document it, ship.
 
 - [ ] **15.1 (M)** End-to-end benchmarks at 100 / 1K / 10K checkpoints: dedup hit
       rate, compression ratio (target ≥ 5:1), per-tier p95 latency, storage savings.
-- [ ] **15.2 (M)** DR drill (`scripts/dedup-restore-drill.sh`): validate PGlite
+- [ ] **15.2 (M)** DR drill (`scripts/dedup-restore-drill.sh`): validate SQLite
       integrity + rebuild from `.json.gz` snapshots; sentinel recompute — dedup plan §6.
 - [ ] **15.3 (S)** `docs/RETENTION_POLICY.md` (TTL, soft-delete cleanup) +
       `docs/DEDUP_RUNBOOK.md` (incident "first 15 min", SEV tiers).
 - [ ] **15.4 (S)** Update README (storage backend, embedder modes, config, flags)
-      + CHANGELOG; `install.sh` notes PGlite data dir.
+      + CHANGELOG; `install.sh` notes SQLite data dir.
 - [ ] **15.5 (S)** Guardrails audit green + `ci.yml`; tag `v0.2.0` + GitHub release.
 
 **Exit:** benchmarks hit targets; DR drill passes; docs complete; guardrails + CI
@@ -623,7 +636,7 @@ green; v0.2.0 tagged.
 ```
 S8 ─┬─ S9 ─ S10 ─ S11 ─ S12 ─ S13 ─ S14 ─ S15
     │                                          (release)
-    └ PGlite backbone active from S8 onward; every later sprint reads/writes via it
+    └ SQLite backbone active from S8 onward; every later sprint reads/writes via it
 ```
 S8 is the foundation (storage + compression). S9–S13 build the dedup tiers
 sequentially (each builds on the prior tier's `add()` cascade). S14 wires flags
@@ -657,16 +670,16 @@ when the Guardrails gate (above) passes.
 | File | Sprint | Change |
 |------|--------|--------|
 | `src/store.ts` | 8 | Format-version header; new zstd/brotli tiers; compressed-original helper |
-| `src/vectorStore.ts` | 8–14 | PGlite backend; L0/L1/L2 cascade; MMR search; heap top-k; flags |
+| `src/vectorStore.ts` | 8–14 | SQLite backend; L0/L1/L2 cascade; MMR search; heap top-k; flags |
 | `src/embedder.ts` | 12 | MiniLM embedder behind `Embedder` (flag-gated) |
-| `src/engine.ts` | 8–14 | Wire PGlite store; feature flags |
+| `src/engine.ts` | 8–14 | Wire SQLite store; feature flags |
 | `src/recall.ts` | 12–14 | MMR rerank; RAPTOR integration; flag gating |
 | `extensions/mega-compact.ts` | 14 | Flag loading; metrics reporting |
-| `package.json` | 8,12 | pglite, zstd, (optional onnxruntime-node) |
-| `recall.integration.test.ts` | 8 | Cross-process proof over PGlite |
+| `package.json` | 8,12 | better-sqlite3, @mongodb-js/zstd, (optional onnxruntime-node) |
+| `recall.integration.test.ts` | 8 | Cross-process proof over SQLite |
 
 ## Verification (per sprint, cumulative)
-- **S8:** PGlite opens; compression v2 roundtrips; migration lossless; cross-process recall proven.
+- **S8:** SQLite opens; compression v2 roundtrips; migration lossless; cross-process recall proven.
 - **S9:** dual-hash dedup; compressed originals roundtrip.
 - **S10:** bloom FP <1%; atomic recovery; backfill idempotent.
 - **S11:** L1 p95 <200ms; FPR <0.1%; LSH deterministic.

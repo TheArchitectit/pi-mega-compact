@@ -6,7 +6,7 @@
 **Priority:** P1
 **Effort:** L (≈2 days)
 **Status:** READY
-**Depends on:** Sprint 11 (cascade seam, pglite store)
+**Depends on:** Sprint 11 (cascade seam, sqlite store)
 
 ---
 
@@ -14,7 +14,7 @@
 
 - Gate as Sprint 8.
 - PREVENT-PI-004: MiniLM (if enabled) loads a LOCAL ONNX model file — no API call. TrigramEmbedder is default (zero network).
-- PREVENT-002: parameterized; pgvector `<->` operator for MiniLM path.
+- PREVENT-002: parameterized SQLite queries (`?`); cosine computed in TS for both embedders.
 - HALT if embedding dim mismatch or empty-vector guard regresses.
 
 ---
@@ -41,7 +41,7 @@ needed to prune redundant stored embeddings.
 - Heap-based top-k (min-heap, O(N log k)) replaces full sort (QA #4).
 - Unit-normalize on write; empty-vector guard → 0 (QA #6/#17).
 - `L2_ENABLED` flag; SemDeDup offline cleanup job (cosine > 0.95 → `dedup_status='removed'`).
-- `chunk_embeddings(chunk_id, embedding vector(384))` + pglite `pgvector` ONLY when MiniLM active (QA #8/#9).
+- `chunk_embeddings(chunk_id, embedding_blob BLOB)` stores Float32 embeddings for both trigram (512-dim) and MiniLM (384-dim) — no pgvector; cosine is a linear scan in TS (pgvector/HNSW-equivalent for our scale, QA #8/#9 re-mapped).
 
 **OUT OF SCOPE:** RAPTOR (Sprint 13); flag orchestration across all tiers (Sprint 14).
 
@@ -54,7 +54,7 @@ needed to prune redundant stored embeddings.
              default = TrigramEmbedder (dim 512). Selected via MEGACOMPACT_EMBEDDER.
 2. L2 tier   add(): after L1, if L2_ENABLED:
              embed regionText (single call); SELECT nearest by cosine
-             (trigram: TS cosineSimilarity; MiniLM: ORDER BY embedding <=> $1 LIMIT k)
+             (TS cosineSimilarity over embedding_blob for both trigram + MiniLM)
              if best >= threshold -> dedup (reason:"l2Semantic")
 3. normalize store unit-normalized embedding; cosineSimilarity guards empty -> 0
 4. search    replace .sort by heap top-k (min-heap size k); then mmrRerank(hits, qvec, 0.5)
@@ -88,5 +88,5 @@ needed to prune redundant stored embeddings.
 ```bash
 git revert <this-commit-sha>
 ```
-`chunk_embeddings` + pgvector extension are additive. Falls back to L0/L1 +
+`chunk_embeddings` + embedding_blob BLOB are additive. Falls back to L0/L1 +
 content-similarity. TrigramEmbedder default unchanged.

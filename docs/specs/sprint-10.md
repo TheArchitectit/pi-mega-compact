@@ -13,9 +13,9 @@
 ## SAFETY PROTOCOLS
 
 - Gate as Sprint 8.
-- PREVENT-002: parameterized queries; bloom is an index, never a query builder.
-- PREVENT-PI-004: bloom is in-process (pglite `bloom` index or in-memory `bloom-filters` Map persisted to `STATE_DIR/bloom.json.gz`). **PGlite is always the source of truth** — cache hit still confirmed via query (QA #2 local re-map).
-- HALT if any test fails; do not hand-roll SQL without reading pglite API.
+- PREVENT-002: parameterized queries (`?`); bloom is an index, never a query builder.
+- PREVENT-PI-004: bloom is in-process (in-memory `bloom-filters` Map persisted to `STATE_DIR/bloom.json.gz`). **SQLite is always the source of truth** — cache hit still confirmed via query (QA #2 local re-map).
+- HALT if any test fails; do not hand-roll SQL without reading the better-sqlite3 API.
 
 ---
 
@@ -36,9 +36,9 @@ orchestration (for the MinHash/LSH tables later) must be resumable + idempotent
 
 **IN SCOPE:**
 - `src/vectorStore.ts` — L0 key = `sha256(normalize(regionText))`; normalization handles case/whitespace/ANSI.
-- PGlite partial UNIQUE index `idx_content_hash (WHERE content_hash IS NOT NULL)` (QA #1).
-- Local bloom accelerator (pglite `bloom` index OR in-memory Map → `bloom.json.gz`); miss→skip scan; hit→confirm via query.
-- Atomic write: single PGlite transaction for insert + index + bloom update (QA #12); query-timeout guard → degrade to "store, skip dedup this pass" (QA #13).
+- SQLite partial UNIQUE index `idx_content_hash (WHERE content_hash IS NOT NULL)` (QA #1).
+- Local bloom accelerator (in-memory `bloom-filters` Map persisted to `STATE_DIR/bloom.json.gz`); miss→skip scan; hit→confirm via query.
+- Atomic write: single SQLite `db.transaction()` for insert + index + bloom update (QA #12); query-timeout guard → degrade to "store, skip dedup this pass" (QA #13).
 - Backfill orchestrator (`src/store/backfill.ts`): non-unique index → backfill hashes → resolve dups (keep oldest) → UNIQUE CONCURRENTLY → drop temp.
 - Integrity checks (`src/store/integrity.ts`): sentinel vs recomputed; orphan id detection.
 
@@ -53,15 +53,14 @@ orchestration (for the MinHash/LSH tables later) must be resumable + idempotent
 ```
 1. L0 upgrade   add(): normalizedText = normalize(regionText);
                 digest = computeContentDigest(normalizedText);
-                SELECT ... WHERE content_hash=$1 AND content_hash2=$2
+                SELECT ... WHERE content_hash=? AND content_hash2=?
                 (normalized -> catches case/whitespace/ANSI variants)
 2. UNIQUE       CREATE UNIQUE INDEX idx_content_hash ON context_chunks(session_id, content_hash)
                 WHERE content_hash IS NOT NULL;  -- partial (QA #1)
                 INSERT ... ON CONFLICT DO NOTHING
-3. BLOOM        option A: pglite `bloom` extension index on (session_id, content_hash)
-                option B: bloom-filters Map persisted to STATE_DIR/bloom.json.gz
+3. BLOOM        in-memory bloom-filters Map persisted to STATE_DIR/bloom.json.gz
                 miss -> skip full scan; hit -> ALWAYS confirm via SELECT (never sole arbiter)
-4. ATOMIC       BEGIN; INSERT chunk; UPDATE bloom; COMMIT;
+4. ATOMIC       db.transaction(() => { INSERT chunk; UPDATE bloom; }); COMMIT;
                 timeout guard: if query > 50ms, catch -> insert with dedup_status='active', skip bloom
 5. BACKFILL     src/store/backfill.ts: progress table; batches of 1000; throttle;
                 resumable (stores last_processed_id); idempotent (ON CONFLICT DO NOTHING)

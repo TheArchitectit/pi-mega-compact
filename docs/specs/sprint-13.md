@@ -38,7 +38,7 @@ k-means is fine locally but must handle near-zero-variance + have a fallback.
 - `src/dedup/raptor/guardrails.ts` — 4-layer hallucination defense (claim grounding, entity verify, consistency re-embed+cosine, quality markers) (QA #16).
 - `src/dedup/raptor/tree.ts` — RAPTOR builder; 5s budget cap; extractive fallback.
 - `src/dedup/raptor/retrieval.ts` — staged expansion (ANN → expand top-M → BFS to leaves → MMR).
-- PGlite `raptor_nodes(id, session_id, level, parent_id, children TEXT[], summary, embedding real[], quality_marker, token_estimate)`.
+- SQLite `raptor_nodes(id, session_id, level, parent_id, children TEXT, summary TEXT, embedding_blob BLOB, quality_marker TEXT, token_estimate INT)` (children as JSON TEXT, vector as BLOB).
 - Shadow mode (`RAPTOR_SHADOW_MODE` default true): build + log, don't serve.
 
 **OUT OF SCOPE:** full-pipeline flag orchestration (Sprint 14); canary (Sprint 14).
