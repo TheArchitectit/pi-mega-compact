@@ -81,6 +81,33 @@
 
 ---
 
+## docs/RETENTION_POLICY.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Storage backend (source of truth) | 9 | 0 |
+| TTL — 90 days | 28 | 0 |
+| Soft-delete via dedup_status | 44 | 0 |
+| Reclaiming space — VACUUM cadence | 70 | 0 |
+| Disaster-recovery snapshots | 96 | 0 |
+| Privacy / local-only guarantee | 118 | 0 |
+
+---
+
+## docs/DEDUP_RUNBOOK.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Severity tiers | 9 | 0 |
+| First 15 minutes — checklist | 28 | 0 |
+| Tier reference | 62 | 0 |
+| MARK_ONLY — safe partial degrade | 84 | 0 |
+| Monitoring & canary (local) | 108 | 0 |
+| DR restore drill | 140 | 0 |
+| Rollback cheat-sheet | 156 | 0 |
+
+---
+
 ## docs/dedup-implementation-plan.md
 
 | Section | Line | Offset |
