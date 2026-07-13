@@ -7,8 +7,7 @@ running **locally inside the extension**, with **no remote MCP server** involved
 
 > Design constraint from day one: *we are not going to expose an MCP server, so
 > it's all got to be local within the extension / SDK.* The reviewed memory-mcp /
-> claw-code / neuralwatt-mcr code is used as **algorithmic reference**, not as a
-> service we call.
+> clawcode is used as **algorithmic reference**
 
 ---
 
