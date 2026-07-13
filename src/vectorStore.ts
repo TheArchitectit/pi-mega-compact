@@ -12,7 +12,9 @@ import { createHash } from "node:crypto";
 import type { Embedder, Vector } from "./embedder.js";
 import { cosineSimilarity, defaultEmbedder } from "./embedder.js";
 import type { StoredCheckpoint, SessionState } from "./store.js";
-import { getStateDir, normalizeSessionId } from "./store.js";
+import { getStateDir, normalizeSessionId, compressSmart } from "./store.js";
+import { computeContentDigest } from "./dedup/digest.js";
+import { openBloom, saveBloom } from "./store/bloom.js";
 import {
   listCheckpoints,
   nextCheckpointId,
@@ -71,6 +73,9 @@ export class VectorStore {
     this.stateDir = opts.stateDir ?? getStateDir();
     // Sprint 8: bring any v0.1.0 JSON checkpoint files into SQLite (idempotent).
     migrateJsonToSqlite(this.stateDir);
+    // Sprint 10: warm the bloom accelerator (accelerator only — SQLite stays
+    // source of truth; a bloom hit is always confirmed by a query below).
+    openBloom(this.stateDir);
   }
 
   /**
@@ -85,13 +90,35 @@ export class VectorStore {
     const regionHash = computeRegionHash(input.regionText);
     const all = listCheckpoints(sessionId, this.stateDir);
 
+    // 0. L0 content-hash dedup (Sprint 9) — catches identical content arriving
+    //    under different regionText. Normalization handles case/whitespace/ANSI so
+    //    variants collapse to one row. Dual-hash guards a single-hash collision.
+    //    Sprint 10: bloom is the accelerator — a miss means "definitely new" and
+    //    skips the scan; a hit is only a candidate, confirmed against `all` below.
+    const digest = computeContentDigest(input.regionText);
+    const bloom = openBloom(this.stateDir);
+    if (bloom.maybeHas(digest.contentHash)) {
+      const contentMatch = all.find(
+        (cp) =>
+          cp.contentHash === digest.contentHash &&
+          cp.contentHash2 === digest.contentHash2,
+      );
+      if (contentMatch) {
+        // Region content already represented — bump timestamp and return.
+        contentMatch.timestamp = input.timestamp;
+        upsertCheckpoint(contentMatch, this.stateDir);
+        return { checkpoint: contentMatch, deduped: true, reason: "contentHash" };
+      }
+    }
+
     // 1. Legacy regionHash dedup (backward-compat)
     const regionMatch = all.find((cp) => cp.regionHash === regionHash);
     if (regionMatch) return { checkpoint: regionMatch, deduped: true, reason: "regionHash" };
 
-    // 2. SummaryHash dedup — catches same-topic incremental compactions
+    // 2. SummaryHash dedup — catches same-topic incremental compactions.
+    //    Full 64-hex SHA-256 (was 16-hex in Sprint 8 — collision-prone).
     const summaryHash = input.topicSummary
-      ? createHash("sha256").update(input.topicSummary).digest("hex").slice(0, 16)
+      ? createHash("sha256").update(input.topicSummary).digest("hex")
       : undefined;
     if (summaryHash) {
       const summaryMatch = all.find((cp) => cp.summaryHash === summaryHash);
@@ -107,16 +134,23 @@ export class VectorStore {
     //    Always embed on regionText (the search key). topicSummary is used for
     //    summaryHash dedup (tier 2) and stored for recall; the vector index
     //    is keyed on the original region for backward-compat search semantics.
+    //    QA #13 timeout guard: if the O(n) scan exceeds the budget, degrade to
+    //    "store without dedup this pass" so we never lose a checkpoint.
+    const SIMILARITY_BUDGET_MS = 50;
     const embedding = this.embedder.embed(input.regionText);
     if (all.length > 0) {
+      const start = Date.now();
+      let timedOut = false;
       const nearest = all.reduce(
         (best, cp) => {
+          if (!timedOut && Date.now() - start > SIMILARITY_BUDGET_MS) timedOut = true;
+          if (timedOut) return best;
           const sim = cosineSimilarity(embedding, cp.embedding);
           return sim > best.sim ? { checkpoint: cp, sim } : best;
         },
         { checkpoint: all[0], sim: -1 },
       );
-      if (nearest.sim >= this.dedupSim) {
+      if (!timedOut && nearest.sim >= this.dedupSim) {
         // Near-identical — update timestamp on existing checkpoint
         nearest.checkpoint.timestamp = input.timestamp;
         upsertCheckpoint(nearest.checkpoint, this.stateDir);
@@ -137,12 +171,21 @@ export class VectorStore {
       filesModified: input.filesModified ?? [],
       tokenEstimate: input.tokenEstimate ?? 0,
       regionHash,
+      contentHash: digest.contentHash,
+      contentHash2: digest.contentHash2,
+      contentHashVersion: digest.contentHashVersion,
+      normalizedText: digest.normalizedText,
+      compressedOriginal: compressSmart(Buffer.from(input.regionText, "utf-8")),
       embedding,
       timestamp: input.timestamp,
     };
     // Persistence is SQLite (store/sqlite.ts). upsertCheckpoint keeps the
     // idempotent-by-id semantics the old JSON append implied.
     upsertCheckpoint(checkpoint, this.stateDir);
+    // Bloom accelerator: record the new content_hash so a future add() can short-
+    // circuit the scan on a hit (still confirmed by the SELECT-based `all` above).
+    bloom.add(digest.contentHash);
+    saveBloom(this.stateDir);
 
     // Track the region hash in session state for fast sentinel checks.
     const state = loadSessionState(sessionId, this.stateDir);

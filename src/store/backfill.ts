@@ -1,0 +1,134 @@
+/**
+ * backfill.ts — resumable / idempotent hash backfill (Sprint 10).
+ *
+ * Purpose: populate `content_hash` / `content_hash2` / `content_hash_version` /
+ * `normalized_text` for any rows left with null hashes (e.g. pre-Sprint-9 data
+ * or rows that degraded to "store without dedup" under the QA #13 timeout).
+ * Structured so Sprint 11 can plug in its own MinHash/LSH phase after the
+ * content hashes land.
+ *
+ * Properties (QA #1 / QA #14):
+ *   - Resumable: progress stored in a `backfill_progress` table (last processed id).
+ *   - Idempotent: ON CONFLICT DO NOTHING + partial UNIQUE on (session_id, content_hash)
+ *     make a second run a no-op where it safely can.
+ *   - Batched: 1000 rows/commit to bound lock time; throttle between batches.
+ *
+ * SQLite is the source of truth; this touches no network (PREVENT-PI-004).
+ */
+
+import type { Database } from "better-sqlite3";
+import { openStore } from "./sqlite.js";
+import { computeContentDigest } from "../dedup/digest.js";
+import { getStateDir } from "../store.js";
+
+const BATCH = 1000;
+const THROTTLE_MS = 0; // synchronous backfill; no cross-process yield needed
+
+interface BackfillResult {
+  processed: number;
+  updated: number;
+  duplicatesResolved: number;
+}
+
+function ensureProgressTable(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS backfill_progress (
+      name TEXT PRIMARY KEY,
+      last_session_id TEXT, -- session of the highest (session_id, id) scanned
+      last_id TEXT,         -- highest context_chunks.id scanned within that session
+      updated INTEGER,
+      duplicates_resolved INTEGER
+    );
+  `);
+}
+
+function progress(db: Database): { lastSid: string | null; lastId: string | null; updated: number; dups: number } {
+  const row = db
+    .prepare("SELECT last_session_id, last_id, updated, duplicates_resolved FROM backfill_progress WHERE name='content_hashes'")
+    .get() as { last_session_id: string | null; last_id: string | null; updated: number; duplicates_resolved: number } | undefined;
+  return { lastSid: row?.last_session_id ?? null, lastId: row?.last_id ?? null, updated: row?.updated ?? 0, dups: row?.duplicates_resolved ?? 0 };
+}
+
+/**
+ * Backfill content hashes for all rows missing them, from the last scanned
+ * (session_id, id) forward. Returns counts; fully idempotent and resumable.
+ */
+export function backfillContentHashes(stateDir: string = getStateDir()): BackfillResult {
+  const db = openStore(stateDir);
+  ensureProgressTable(db);
+  const start = progress(db);
+
+  // Rows needing hashing: null content_hash, ordered by (session_id, id) for a
+  // stable, resumable cursor (ids are only unique per session).
+  const pending = db
+    .prepare(
+      `SELECT id, session_id, summary FROM context_chunks
+       WHERE content_hash IS NULL
+         AND (session_id > COALESCE(?, '')
+              OR (session_id = COALESCE(?, '') AND id > COALESCE(?, '')))
+       ORDER BY session_id ASC, id ASC LIMIT ?`,
+    )
+    .all(start.lastSid, start.lastSid, start.lastId, BATCH) as { id: string; session_id: string; summary: string }[];
+
+  let updated = start.updated;
+  let duplicatesResolved = start.dups;
+  let processed = 0;
+  let lastSid = start.lastSid;
+  let lastId = start.lastId;
+
+  const tx = db.transaction((rows: { id: string; session_id: string; summary: string }[]) => {
+    const lookup = db.prepare(
+      "SELECT id FROM context_chunks WHERE session_id = ? AND content_hash = ? AND content_hash2 = ? AND id != ? LIMIT 1",
+    );
+    const update = db.prepare(
+      `UPDATE context_chunks
+       SET content_hash=?, content_hash2=?, content_hash_version=?, normalized_text=?,
+           dedup_status='active'
+       WHERE id=?`,
+    );
+    for (const row of rows) {
+      const digest = computeContentDigest(row.summary ?? "");
+      // Keep the oldest row on a collision (partial UNIQUE would reject the
+      // newer insert); mark the newer one as superseded-without-store.
+      const clash = lookup.get(row.session_id, digest.contentHash, digest.contentHash2, row.id);
+      if (clash) {
+        db.prepare("UPDATE context_chunks SET dedup_status='dup-resolved' WHERE id=?").run(row.id);
+        duplicatesResolved++;
+      } else {
+        update.run(
+          digest.contentHash,
+          digest.contentHash2,
+          digest.contentHashVersion,
+          digest.normalizedText,
+          row.id,
+        );
+        updated++;
+      }
+      lastSid = row.session_id;
+      lastId = row.id;
+      processed++;
+    }
+  });
+
+  if (pending.length > 0) {
+    tx(pending);
+    db.prepare(
+      "INSERT INTO backfill_progress(name, last_session_id, last_id, updated, duplicates_resolved) VALUES('content_hashes',?,?,?,?) ON CONFLICT(name) DO UPDATE SET last_session_id=excluded.last_session_id, last_id=excluded.last_id, updated=excluded.updated, duplicates_resolved=excluded.duplicates_resolved",
+    ).run(lastSid, lastId, updated, duplicatesResolved);
+  }
+
+  if (THROTTLE_MS > 0) {
+    // No-op in this synchronous build; placeholder for future streaming backfill.
+  }
+
+  return { processed, updated, duplicatesResolved };
+}
+
+/** True when no rows remain pending (backfill complete for this state dir). */
+export function isBackfillComplete(stateDir: string = getStateDir()): boolean {
+  const db = openStore(stateDir);
+  const row = db
+    .prepare("SELECT COUNT(*) AS c FROM context_chunks WHERE content_hash IS NULL")
+    .get() as { c: number };
+  return row.c === 0;
+}

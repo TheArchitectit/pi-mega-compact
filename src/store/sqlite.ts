@@ -65,7 +65,7 @@ export function openStore(stateDir: string = getStateDir()): Database.Database {
 function initSchema(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS context_chunks (
-      id                  TEXT PRIMARY KEY,
+      id                  TEXT NOT NULL,
       session_id         TEXT NOT NULL,
       region_hash        TEXT,
       content_hash       TEXT,
@@ -84,9 +84,18 @@ function initSchema(db: Database.Database): void {
       dedup_status       TEXT DEFAULT 'active',
       compressed_original BLOB           -- optional DR copy
     );
+    -- Primary key is (session_id, id): checkpoint ids are unique per session
+    -- (chkpt_001 per session), not globally, so a bare id PK would collide
+    -- across sessions on the nextCheckpointId sequence.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_chunks_pk
+      ON context_chunks(session_id, id);
     CREATE INDEX IF NOT EXISTS idx_chunks_session ON context_chunks(session_id);
     CREATE INDEX IF NOT EXISTS idx_chunks_region ON context_chunks(region_hash);
     CREATE INDEX IF NOT EXISTS idx_chunks_content ON context_chunks(content_hash);
+    -- Partial UNIQUE (QA #1): null content_hash rows never violate the constraint;
+    -- ON CONFLICT DO NOTHING makes backfill + L0 inserts safe.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_content_hash
+      ON context_chunks(session_id, content_hash) WHERE content_hash IS NOT NULL;
 
     CREATE TABLE IF NOT EXISTS session_state (
       session_id               TEXT PRIMARY KEY,
@@ -129,6 +138,11 @@ function rowToCheckpoint(row: any): StoredCheckpoint {
     filesModified: row.files_modified ? JSON.parse(row.files_modified) : [],
     tokenEstimate: row.token_estimate ?? 0,
     regionHash: row.region_hash ?? "",
+    contentHash: row.content_hash ?? undefined,
+    contentHash2: row.content_hash2 ?? undefined,
+    contentHashVersion: row.content_hash_version ?? undefined,
+    normalizedText: row.normalized_text ?? undefined,
+    compressedOriginal: row.compressed_original ?? undefined,
     embedding: decodeEmbedding(row.embedding_blob),
     timestamp: Number(row.timestamp ?? 0),
   };
@@ -144,12 +158,12 @@ export function upsertCheckpoint(cp: StoredCheckpoint, stateDir: string = getSta
         (id, session_id, region_hash, content_hash, content_hash2, content_hash_version,
          normalized_text, summary, topic_summary, summary_hash,
          key_decisions, next_steps, files_modified, embedding_blob,
-         token_estimate, timestamp, dedup_status)
+         token_estimate, timestamp, dedup_status, compressed_original)
        VALUES (@id, @sid, @region_hash, @content_hash, @content_hash2, @content_hash_version,
                @normalized_text, @summary, @topic_summary, @summary_hash,
                @key_decisions, @next_steps, @files_modified, @embedding_blob,
-               @token_estimate, @timestamp, @dedup_status)
-       ON CONFLICT(id) DO UPDATE SET
+               @token_estimate, @timestamp, @dedup_status, @compressed_original)
+       ON CONFLICT(session_id, id) DO UPDATE SET
          summary=excluded.summary,
          topic_summary=excluded.topic_summary,
          summary_hash=excluded.summary_hash,
@@ -159,15 +173,16 @@ export function upsertCheckpoint(cp: StoredCheckpoint, stateDir: string = getSta
          embedding_blob=excluded.embedding_blob,
          token_estimate=excluded.token_estimate,
          timestamp=excluded.timestamp,
-         dedup_status=excluded.dedup_status`,
+         dedup_status=excluded.dedup_status,
+         compressed_original=excluded.compressed_original`,
     ).run({
       id: cp.checkpointId,
       sid,
       region_hash: cp.regionHash ?? null,
-      content_hash: null,
-      content_hash2: null,
-      content_hash_version: null,
-      normalized_text: null,
+      content_hash: cp.contentHash ?? null,
+      content_hash2: cp.contentHash2 ?? null,
+      content_hash_version: cp.contentHashVersion ?? null,
+      normalized_text: cp.normalizedText ?? null,
       summary: cp.summary ?? "",
       topic_summary: cp.topicSummary ?? null,
       summary_hash: cp.summaryHash ?? null,
@@ -178,6 +193,7 @@ export function upsertCheckpoint(cp: StoredCheckpoint, stateDir: string = getSta
       token_estimate: cp.tokenEstimate ?? 0,
       timestamp: cp.timestamp ?? 0,
       dedup_status: "active",
+      compressed_original: cp.compressedOriginal ?? null,
     });
 
     // FTS5 virtual tables don't support UPSERT — delete any prior row, reinsert.

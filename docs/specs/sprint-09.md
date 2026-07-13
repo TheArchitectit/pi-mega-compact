@@ -1,11 +1,11 @@
 # Sprint 9 — Phase 2: Content-Addressable Dedup + Compressed Originals
 
 **Date:** 2026-07-13
-**Archive date:** (set on completion)
+**Archive date:** 2026-07-13
 **Focus:** SHA-256 content dedup + reconstructible originals
 **Priority:** P0
 **Effort:** M (≈1 day)
-**Status:** READY
+**Status:** DONE
 **Depends on:** Sprint 8 (sqlite store with `content_hash` columns + migration populated)
 
 ---
@@ -73,12 +73,12 @@ collision-prone as a dedup key.
 
 ## ACCEPTANCE CRITERIA
 
-- [ ] `npm test` green.
-- [ ] `content_hash` dedup catches identical content arriving under different `regionText` (case/whitespace variants tested in Sprint 10).
-- [ ] Dual-hash: a collision on primary alone does NOT dedup (secondary disagrees).
-- [ ] `compressed_original` roundtrips: `zstdDecompress(stored) === rawRegion`.
-- [ ] `summaryHash` is now 64-hex; existing 16-hex summaries re-hashed on next write (backward-safe: old key still matches old rows).
-- [ ] `guardrails-scan` clean.
+- [x] `npm test` green.
+- [x] `content_hash` dedup catches identical content arriving under different `regionText` (case/whitespace variants tested in Sprint 10).
+- [x] Dual-hash: a collision on primary alone does NOT dedup (secondary disagrees).
+- [x] `compressed_original` roundtrips through synchronous `compressSmart` (deviation: sync brotli, not async zstd — keeps `add()` sync).
+- [x] `summaryHash` is now 64-hex; existing 16-hex summaries re-hashed on next write (backward-safe: old key still matches old rows).
+- [x] `guardrails-scan` clean.
 
 ---
 

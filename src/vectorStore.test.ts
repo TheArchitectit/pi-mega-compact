@@ -10,7 +10,7 @@ import {
   l2Normalize,
   defaultEmbedder,
 } from "./embedder.js";
-import { normalizeSessionId } from "./store.js";
+import { normalizeSessionId, decompressSmart } from "./store.js";
 
 const baseTmp = mkdtempSync(join(tmpdir(), "mc-test-"));
 
@@ -360,6 +360,79 @@ test("stats on empty session returns zeros and nulls", () => {
   assert.equal(st.lastCheckpointId, undefined);
   assert.equal(st.totalTokenEstimate, 0);
   assert.equal(st.dedupHitRate, 0);
+});
+
+// --- Sprint 9: L0 content-addressable dedup -------------------------------
+
+test("L0 content-hash dedup: identical content under different regionText collapses to one row", () => {
+  const s = store();
+  const r1 = s.add({
+    sessionId: "sess_l0",
+    summary: "fix the parser",
+    regionText: "user asked to fix the parser assistant patched src/parse.ts",
+    timestamp: 1,
+  });
+  const r2 = s.add({
+    sessionId: "sess_l0",
+    summary: "fix the parser",
+    regionText: "  user   asked to fix the parser   assistant patched src/parse.ts  ",
+    timestamp: 2,
+  });
+  assert.equal(r1.deduped, false);
+  assert.equal(r2.deduped, true);
+  assert.equal(r2.reason, "contentHash");
+  assert.equal(s.list("sess_l0").length, 1);
+});
+
+test("L0 content-hash dedup stores both hash fields and bumps timestamp on hit", () => {
+  const s = store();
+  const region = "the quick brown fox jumps over the lazy dog";
+  s.add({ sessionId: "sess_l0ts", summary: "first", regionText: region, timestamp: 10 });
+  const r2 = s.add({
+    sessionId: "sess_l0ts",
+    summary: "second",
+    regionText: region,
+    timestamp: 99,
+  });
+  assert.equal(r2.deduped, true);
+  assert.equal(r2.reason, "contentHash");
+  const cp = s.list("sess_l0ts")[0];
+  assert.equal(cp.contentHash?.length, 64);
+  assert.equal(cp.contentHash2?.length, 64);
+  assert.equal(cp.contentHashVersion, 1);
+  assert.equal(cp.timestamp, 99);
+});
+
+test("compressed_original roundtrips through versioned compression", () => {
+  const s = store();
+  const raw = "raw region text preserved for audit and replay";
+  s.add({ sessionId: "sess_co", summary: "x", regionText: raw, timestamp: 1 });
+  const cp = s.list("sess_co")[0];
+  assert.ok(cp.compressedOriginal instanceof Buffer);
+  const restored = decompressSmart(cp.compressedOriginal as Buffer).toString("utf-8");
+  assert.equal(restored, raw);
+});
+
+test("summaryHash is now full 64-hex SHA-256", () => {
+  const s = store();
+  const ts = "topic summary for same-topic incremental compaction";
+  const r1 = s.add({
+    sessionId: "sess_sh64",
+    summary: "a",
+    topicSummary: ts,
+    regionText: "region alpha",
+    timestamp: 1,
+  });
+  assert.equal(r1.checkpoint.summaryHash?.length, 64);
+  const r2 = s.add({
+    sessionId: "sess_sh64",
+    summary: "b",
+    topicSummary: ts,
+    regionText: "region bravo",
+    timestamp: 2,
+  });
+  assert.equal(r2.deduped, true);
+  assert.equal(r2.reason, "summaryHash");
 });
 
 test("cleanup", () => {

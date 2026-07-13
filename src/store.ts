@@ -59,6 +59,15 @@ export interface StoredCheckpoint {
   filesModified: string[];
   tokenEstimate: number;
   regionHash: string;
+  /** Primary content-addressable hash (full 64-hex SHA-256 of normalized text). */
+  contentHash?: string;
+  /** Secondary independent hash (reversed-text view) — guards single-hash collisions. */
+  contentHash2?: string;
+  contentHashVersion?: number;
+  /** Whitespace/ANSI-normalized text the content hashes were computed over. */
+  normalizedText?: string;
+  /** Reconstructible raw region (sync-compressed) for audit/replay/re-summarize. */
+  compressedOriginal?: Buffer;
   embedding: number[];
   timestamp: number;
 }
