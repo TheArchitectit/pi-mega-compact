@@ -293,11 +293,12 @@ test("topSimilar returns n most similar checkpoints to the current (most recent)
     regionText: "fix bug in src/compact.ts truncation",
     timestamp: 2,
   });
-  // most recent (current) is chkpt_003, also about compact.ts
+  // most recent (current) is chkpt_003, also about compact.ts but clearly
+  // distinct content so L1 near-dup dedup does not collapse it.
   s.add({
     sessionId: "sess_top",
     summary: "current",
-    regionText: "fix bug in src/compact.ts truncation logic",
+    regionText: "fix the buffer overflow in src/compact.ts by adding a bounds check before truncate",
     timestamp: 3,
   });
   const hits = s.topSimilar("sess_top", 10);
@@ -341,12 +342,19 @@ test("topSimilar returns empty for sessions with 0 or 1 checkpoints", () => {
 
 test("topSimilar respects the n limit", () => {
   const s = store();
-  for (let i = 1; i <= 5; i++) {
+  const regions = [
+    "the compiler optimized the hot loop with loop unrolling",
+    "the database added a covering index to speed up queries",
+    "the frontend introduced a virtualized list for large tables",
+    "the api added rate limiting using a token bucket algorithm",
+    "the worker pool now backpressures when the queue is overloaded",
+  ];
+  for (let i = 0; i < regions.length; i++) {
     s.add({
       sessionId: "sess_limit",
-      summary: `c${i}`,
-      regionText: `region text number ${i}`,
-      timestamp: i,
+      summary: `c${i + 1}`,
+      regionText: regions[i],
+      timestamp: i + 1,
     });
   }
   const hits = s.topSimilar("sess_limit", 2);
@@ -433,6 +441,38 @@ test("summaryHash is now full 64-hex SHA-256", () => {
   });
   assert.equal(r2.deduped, true);
   assert.equal(r2.reason, "summaryHash");
+});
+
+// --- Sprint 11: L1 MinHash/LSH near-duplicate dedup ------------------------
+
+test("L1 catches a one-word-diff near-duplicate that L0 misses", () => {
+  const s = store();
+  const r1 = s.add({
+    sessionId: "sess_l1",
+    summary: "user reviewed the auth module and merged the pull request",
+    regionText: "user reviewed the authentication module and merged the pull request",
+    timestamp: 1,
+  });
+  // One word inserted + different case/whitespace → L0 content-hash differs,
+  // but the text is a near-duplicate caught by the L1 trigram verify.
+  const r2 = s.add({
+    sessionId: "sess_l1",
+    summary: "user reviewed the auth module and merged the pull request",
+    regionText: "  USER   reviewed the authentication module and merged the pull request now ",
+    timestamp: 2,
+  });
+  assert.equal(r1.deduped, false);
+  assert.equal(r2.deduped, true);
+  assert.equal(r2.reason, "l1MinHash");
+  assert.equal(s.list("sess_l1").length, 1);
+});
+
+test("L1 does NOT falsely dedup genuinely different content", () => {
+  const s = store();
+  s.add({ sessionId: "sess_l1b", summary: "a", regionText: "the database migration added three indexes", timestamp: 1 });
+  const r2 = s.add({ sessionId: "sess_l1b", summary: "b", regionText: "the frontend added a dark mode toggle", timestamp: 2 });
+  assert.equal(r2.deduped, false);
+  assert.equal(s.list("sess_l1b").length, 2);
 });
 
 test("cleanup", () => {

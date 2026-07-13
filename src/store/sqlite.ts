@@ -97,6 +97,25 @@ function initSchema(db: Database.Database): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_content_hash
       ON context_chunks(session_id, content_hash) WHERE content_hash IS NOT NULL;
 
+    -- Sprint 11: MinHash signature + LSH bucket tables for L1 near-dup dedup.
+    CREATE TABLE IF NOT EXISTS minhash_signatures (
+      chunk_id          TEXT NOT NULL,
+      session_id        TEXT NOT NULL,
+      signature_version INTEGER NOT NULL,
+      signatures        TEXT NOT NULL,   -- JSON array of 256 uint32
+      PRIMARY KEY (chunk_id, signature_version)
+    );
+    CREATE INDEX IF NOT EXISTS idx_minhash_session ON minhash_signatures(session_id);
+
+    CREATE TABLE IF NOT EXISTS dedup_lsh_buckets (
+      bucket_key        TEXT NOT NULL,
+      chunk_id          TEXT NOT NULL,
+      session_id        TEXT NOT NULL,
+      signature_version INTEGER NOT NULL,
+      PRIMARY KEY (bucket_key, chunk_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_lsh_bucket ON dedup_lsh_buckets(bucket_key, session_id);
+
     CREATE TABLE IF NOT EXISTS session_state (
       session_id               TEXT PRIMARY KEY,
       injected_checkpoint_ids TEXT,      -- JSON array
@@ -145,6 +164,7 @@ function rowToCheckpoint(row: any): StoredCheckpoint {
     compressedOriginal: row.compressed_original ?? undefined,
     embedding: decodeEmbedding(row.embedding_blob),
     timestamp: Number(row.timestamp ?? 0),
+    dedupStatus: row.dedup_status ?? undefined,
   };
 }
 
@@ -197,14 +217,81 @@ export function upsertCheckpoint(cp: StoredCheckpoint, stateDir: string = getSta
     });
 
     // FTS5 virtual tables don't support UPSERT — delete any prior row, reinsert.
-    if (cp.regionHash) {
-      db.prepare("DELETE FROM context_chunks_trgm WHERE id = ?").run(cp.checkpointId);
-      db.prepare(
-        "INSERT INTO context_chunks_trgm(id, normalized_text) VALUES(?, ?)",
-      ).run(cp.checkpointId, cp.summary ?? "");
-    }
+    // Store normalized_text (the L1 verify key); fall back to summary for rows
+    // that predate normalized_text population.
+    db.prepare("DELETE FROM context_chunks_trgm WHERE id = ?").run(cp.checkpointId);
+    db.prepare(
+      "INSERT INTO context_chunks_trgm(id, normalized_text) VALUES(?, ?)",
+    ).run(cp.checkpointId, cp.normalizedText ?? cp.summary ?? "");
   });
   tx();
+}
+
+// --- Sprint 11: MinHash signatures + LSH buckets --------------------------
+
+/** Persist a checkpoint's MinHash signature (idempotent by chunk_id + version). */
+export function upsertMinhashSignature(
+  chunkId: string,
+  sessionId: string,
+  signatureVersion: number,
+  signatures: number[],
+  stateDir: string = getStateDir(),
+): void {
+  const db = openStore(stateDir);
+  const sid = normalizeSessionId(sessionId);
+  db.prepare(
+    `INSERT INTO minhash_signatures(chunk_id, session_id, signature_version, signatures)
+     VALUES(?, ?, ?, ?)
+     ON CONFLICT(chunk_id, signature_version) DO UPDATE SET
+       session_id=excluded.session_id, signatures=excluded.signatures`,
+  ).run(chunkId, sid, signatureVersion, JSON.stringify(signatures));
+}
+
+/** Persist LSH bucket memberships for a chunk (one row per bucket key). */
+export function insertLshBuckets(
+  chunkId: string,
+  sessionId: string,
+  signatureVersion: number,
+  bucketKeys: string[],
+  stateDir: string = getStateDir(),
+): void {
+  const db = openStore(stateDir);
+  const sid = normalizeSessionId(sessionId);
+  const del = db.prepare("DELETE FROM dedup_lsh_buckets WHERE chunk_id = ?");
+  const ins = db.prepare(
+    "INSERT OR IGNORE INTO dedup_lsh_buckets(bucket_key, chunk_id, session_id, signature_version) VALUES(?, ?, ?, ?)",
+  );
+  const tx = db.transaction(() => {
+    del.run(chunkId);
+    for (const key of bucketKeys) ins.run(key, chunkId, sid, signatureVersion);
+  });
+  tx();
+}
+
+/**
+ * Candidate chunk_ids sharing any LSH bucket with `bucketKeys`, scoped to the
+ * session, capped at `limit`. Single query (no N loops) — QA #15 amplification
+ * guard. Returns DISTINCT chunk_ids excluding `excludeChunkId` (the new row).
+ */
+export function lshCandidateChunks(
+  bucketKeys: string[],
+  sessionId: string,
+  excludeChunkId: string,
+  stateDir: string = getStateDir(),
+  limit = 100,
+): string[] {
+  if (bucketKeys.length === 0) return [];
+  const db = openStore(stateDir);
+  const sid = normalizeSessionId(sessionId);
+  const placeholders = bucketKeys.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT chunk_id FROM dedup_lsh_buckets
+       WHERE bucket_key IN (${placeholders}) AND session_id = ? AND chunk_id != ?
+       LIMIT ?`,
+    )
+    .all(...bucketKeys, sid, excludeChunkId, limit) as { chunk_id: string }[];
+  return rows.map((r) => r.chunk_id);
 }
 
 /** All checkpoints for a session, sorted by id. */
@@ -235,6 +322,19 @@ export function hasCheckpoint(sessionId: string, checkpointId: string, stateDir:
     .prepare("SELECT 1 FROM context_chunks WHERE session_id = ? AND id = ? LIMIT 1")
     .get(normalizeSessionId(sessionId), checkpointId);
   return row !== undefined;
+}
+
+/** Mark a checkpoint's dedup_status (e.g. 'removed' by SemDeDup). */
+export function setDedupStatus(
+  checkpointId: string,
+  sessionId: string,
+  status: string,
+  stateDir: string = getStateDir(),
+): void {
+  const db = openStore(stateDir);
+  db.prepare(
+    "UPDATE context_chunks SET dedup_status = ? WHERE id = ? AND session_id = ?",
+  ).run(status, checkpointId, normalizeSessionId(sessionId));
 }
 
 // --- Session state (injection tracking) ------------------------------------

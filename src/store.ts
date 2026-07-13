@@ -70,6 +70,8 @@ export interface StoredCheckpoint {
   compressedOriginal?: Buffer;
   embedding: number[];
   timestamp: number;
+  /** Dedup lifecycle: 'active' | 'removed' (SemDeDup) | 'dup-resolved' (backfill). */
+  dedupStatus?: string;
 }
 
 // ---------------------------------------------------------------------------
