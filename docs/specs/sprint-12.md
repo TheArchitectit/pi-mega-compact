@@ -79,10 +79,32 @@ needed to prune redundant stored embeddings.
 - [x] Empty-vector guard: `cosineSimilarity([], x) === 0` (no NaN).
 - [x] `L2_ENABLED=false` → semantic tier skipped; L0/L1 still dedup (unit test).
 - [x] SemDeDup marks redundant rows `dedup_status='removed'` (kept, not deleted); `search()` excludes them (unit test).
-- [x] `guardrails-scan` clean (trigram default, no fetch; MiniLM local-only when enabled).
+- [x] `guardrails-scan` clean (trigram default, zero network, zero model dependency).
 
 ### Implementation notes / deviations
-- **MiniLM deferred**: spec lists a MiniLM ONNX embedder behind `MEGACOMPACT_EMBEDDER=minilm`. It is OFF by default and `onnxruntime-node` is not a shipped dependency, so the L2 tier runs on the default `TrigramEmbedder` at threshold 0.85 (its honest firing point — its cosine ceiling is ~0.94, so the spec's 0.95 would never fire for trigram). The `Embedder` interface is unchanged; adding MiniLM later is a drop-in `embedder` opt. SemDeDup's 0.95 threshold is the MiniLM setting; tests use 0.85 for the trigram path.
+- **MiniLM evaluated and deliberately NOT shipped.** The spec lists a MiniLM
+  (all-MiniLM-L6-v2) ONNX embedder behind `MEGACOMPACT_EMBEDDER=minilm`. It was
+  prototyped (onnxruntime-node + a local WordPiece tokenizer + the quantized
+  model fetched from HuggingFace) and then reverted for three concrete reasons:
+  1. **No free semantic win without a second model.** pi's configured model is a
+     *completion* API (`@earendil-works/pi-ai` `Model` has no `embed()`), so
+     "reuse pi's model for embeddings" is not possible through the runtime — and
+     coercing it would be a *network call per region*, violating PREVENT-PI-004
+     (zero runtime network). The trigram L0/L1/L2 stack already catches lexical
+     and near-lexical redundancy comprehensively; the residual gap (reworded-but-
+     same-meaning text) is narrow and rare in compaction.
+  2. **Async-vs-sync conflict.** ONNX inference is async, but VectorStore is
+     deliberately synchronous (the reason SQLite was chosen over async-only
+     PGlite). Forcing MiniLM in required an `awaitSync` event-loop-block hack
+     (`Atomics.wait`) — an architectural wart that reintroduces the exact tension
+     the project designed away.
+  3. **Native-dep + Windows risk + 23 MB artifact.** It adds a second native
+     binary (onnxruntime-node) alongside better-sqlite3, a setup-time model
+     download, and more install failure surface (esp. Windows build tools).
+  The `Embedder` interface remains the seam: a user who wants local semantic
+  embeddings can inject their own LOCAL embedder via `new VectorStore({ embedder })`
+  (never a remote API). SemDeDup's 0.95 threshold is the semantic-grade setting;
+  the trigram path uses 0.85 (its honest firing point; cosine ceiling ~0.94).
 - `search()` now uses heap top-k (O(N log k), QA #4) over a 2k window, then MMR rerank (λ=0.5, QA #10).
 - `dedup_status` column surfaced into `StoredCheckpoint.dedupStatus`; `setDedupStatus` helper added. SemDeDup is idempotent.
 

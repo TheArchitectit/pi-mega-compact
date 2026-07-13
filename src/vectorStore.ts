@@ -94,8 +94,10 @@ export class VectorStore {
     this.dedupSim = opts.dedupSim ?? 0.9;
     this.stateDir = opts.stateDir ?? getStateDir();
     // Sprint 12 L2 semantic tier. Default on (trigram is local, zero-network).
-    // Threshold 0.85 is the trigram embedder's honest firing point (its cosine
-    // ceiling is ~0.94, so 0.95 could never fire); MiniLM callers pass 0.95.
+    // Threshold 0.85 is the default trigram embedder's honest firing point (its
+    // cosine ceiling is ~0.94, so 0.95 could never fire). A caller that injects
+    // a stronger local embedder via `opts.embedder` should pass a matching
+    // `l2Threshold` (e.g. 0.95 for a semantic-grade model).
     this.l2Enabled = opts.l2Enabled ?? true;
     this.l2Threshold = opts.l2Threshold ?? 0.85;
     this.mmrLambda = opts.mmrLambda ?? 0.5;

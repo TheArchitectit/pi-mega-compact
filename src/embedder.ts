@@ -87,6 +87,18 @@ export class TrigramEmbedder implements Embedder {
   }
 }
 
+/**
+ * Select the default embedder used by VectorStore. The TrigramEmbedder is the
+ * shipped default: zero-dependency, deterministic, GPU-free, cross-platform, and
+ * fully offline (PREVENT-PI-004). It captures lexical + near-lexical overlap
+ * well enough for checkpoint dedup/ranking.
+ *
+ * The `Embedder` interface is the seam for a stronger LOCAL embedder. To use
+ * one, pass it via `new VectorStore({ embedder })` (or your own defaultEmbedder
+ * variant) — it must be a local model (on-disk ONNX, local server, etc.), never
+ * a remote API call, or PREVENT-PI-004 is violated. No embedding model is
+ * shipped with this extension; the trigram stack is the dependency-free path.
+ */
 export function defaultEmbedder(): Embedder {
   return new TrigramEmbedder();
 }
