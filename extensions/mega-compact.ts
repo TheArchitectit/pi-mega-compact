@@ -27,7 +27,8 @@
 import type { ExtensionAPI, ExtensionContext, ContextEvent, SessionBeforeCompactEvent } from "@earendil-works/pi-coding-agent";
 import { sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { STATE_DIR_DEFAULT } from "../src/config.js";
 import { VectorStore } from "../src/vectorStore.js";
 import { toEngineMessages, dropCompactedRange } from "../src/adapt.js";
@@ -38,8 +39,9 @@ import { estimateSessionTokens } from "../src/tokens.js";
 import { normalizeSessionId } from "../src/store.js";
 import { Logger } from "../src/log.js";
 import type { EngineMessage } from "../src/types.js";
-import { writeFileSync, appendFileSync } from "node:fs";
+import { writeFileSync, appendFileSync, readFileSync } from "node:fs";
 import { existsSync, mkdirSync } from "node:fs";
+import { spawn, exec } from "node:child_process";
 
 const STATUS_KEY = "mega-compact";
 const MARKER_TYPE = "mega-compact-marker";
@@ -511,6 +513,129 @@ export default function (pi: ExtensionAPI) {
           `autoInlineK=${config.autoInlineK} dedupSim=${config.dedupSim} debug=${config.debug}\n` +
           `[mega-compact] stateDir=${config.stateDir}`,
       );
+    },
+  });
+
+  // ---- Dashboard server commands ----------------------------------------
+
+  const portFile = join(config.stateDir, "port.pid");
+  const runnerFile = join(config.stateDir, "_dashboard-runner.mjs");
+
+  /** Try to reach a running dashboard server. Returns { port, url } or null. */
+  async function isServerRunning(): Promise<{ port: number; url: string } | null> {
+    if (!existsSync(portFile)) return null;
+    try {
+      const info = JSON.parse(readFileSync(portFile, "utf-8"));
+      if (!info?.port) return null;
+      const url = `http://localhost:${info.port}`;
+      // Quick liveness probe
+      const res = await fetch(`${url}/api/snapshot`, { signal: AbortSignal.timeout(1500) });
+      if (res.ok) return { port: info.port, url };
+    } catch {
+      // stale or unreachable — clean up
+      try { writeFileSync(portFile, ""); } catch { /* ignore */ }
+    }
+    return null;
+  }
+
+  /** Write a small ESM runner script that imports and launches the dashboard server. */
+  function writeRunnerScript(): void {
+    const compiledServer = join(dirname(fileURLToPath(import.meta.url)), "dashboard-server.js");
+    const script = [
+      `import { launchDashboardServer } from ${JSON.stringify(compiledServer)};`,
+      `launchDashboardServer(${JSON.stringify(config.stateDir)}).catch(err => {`,
+      `  console.error("[mega-compact] dashboard failed:", err);`,
+      `  process.exit(1);`,
+      `});`,
+    ].join("\n");
+    writeFileSync(runnerFile, script);
+  }
+
+  /** Open a URL in the default browser. Platform-aware. */
+  function openBrowser(url: string): void {
+    const cmd =
+      process.platform === "darwin" ? "open" :
+        process.platform === "win32" ? "start" :
+          "xdg-open";
+    try {
+      exec(`${cmd} ${url}`);
+    } catch {
+      /* non-fatal — user can open manually */
+    }
+  }
+
+  pi.registerCommand("dashboard", {
+    description: "Start the local web dashboard and optionally open it in the default browser.",
+    handler: async (_args: string, ctx: ExtensionContext) => {
+      let info = await isServerRunning();
+
+      if (info) {
+        ctx.ui.notify(`[mega-compact] dashboard already running at ${info.url}`);
+        const open = await ctx.ui.confirm("mega-compact dashboard", `Open ${info.url} in browser?`);
+        if (open) openBrowser(info.url);
+        return;
+      }
+
+      // Start the server
+      ctx.ui.notify("[mega-compact] starting dashboard server…");
+      writeRunnerScript();
+
+      const child = spawn(process.execPath, [runnerFile], {
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+
+      // Poll for port.pid (up to 5 seconds)
+      const deadline = Date.now() + 5_000;
+      let port: number | undefined;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 300));
+        if (existsSync(portFile)) {
+          try {
+            const raw = JSON.parse(readFileSync(portFile, "utf-8"));
+            if (raw?.port) { port = raw.port; break; }
+          } catch { /* keep polling */ }
+        }
+      }
+
+      if (!port) {
+        ctx.ui.notify("[mega-compact] dashboard server failed to start — check logs.");
+        return;
+      }
+
+      const url = `http://localhost:${port}`;
+      ctx.ui.notify(`[mega-compact] dashboard running at ${url}`);
+      const open = await ctx.ui.confirm("mega-compact dashboard", `Open ${url} in browser?`);
+      if (open) openBrowser(url);
+    },
+  });
+
+  pi.registerCommand("dashboard-stop", {
+    description: "Stop the local dashboard server.",
+    handler: async (_args: string, ctx: ExtensionContext) => {
+      if (!existsSync(portFile)) {
+        ctx.ui.notify("[mega-compact] no dashboard server running.");
+        return;
+      }
+      try {
+        const info = JSON.parse(readFileSync(portFile, "utf-8"));
+        if (info?.pid) process.kill(info.pid, "SIGTERM");
+      } catch { /* already dead */ }
+      try { writeFileSync(portFile, ""); } catch { /* ok */ }
+      ctx.ui.notify("[mega-compact] dashboard stopped.");
+    },
+  });
+
+  pi.registerCommand("dashboard-status", {
+    description: "Check if the dashboard server is running.",
+    handler: async (_args: string, ctx: ExtensionContext) => {
+      const info = await isServerRunning();
+      if (info) {
+        ctx.ui.notify(`[mega-compact] dashboard running at ${info.url}`);
+      } else {
+        ctx.ui.notify("[mega-compact] dashboard is not running. Use /dashboard to start it.");
+      }
     },
   });
 }
