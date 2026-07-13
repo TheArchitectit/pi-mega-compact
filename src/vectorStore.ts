@@ -11,6 +11,8 @@
 import { createHash } from "node:crypto";
 import type { Embedder, Vector } from "./embedder.js";
 import { cosineSimilarity, defaultEmbedder } from "./embedder.js";
+import { loadDedupConfig, type DedupConfigShape, type DedupTier } from "./config/dedup.js";
+import { logDecision } from "./monitoring.js";
 import type { StoredCheckpoint, SessionState } from "./store.js";
 import { getStateDir, normalizeSessionId, compressSmart } from "./store.js";
 import { computeContentDigest } from "./dedup/digest.js";
@@ -71,11 +73,12 @@ export function computeRegionHash(regionText: string): string {
 
 export class VectorStore {
   private readonly embedder: Embedder;
-  private readonly dedupSim: number;
   private readonly stateDir: string;
-  private readonly l2Enabled: boolean;
   private readonly l2Threshold: number;
-  private readonly mmrLambda: number;
+  /** Single source of truth for tier flags + thresholds (Sprint 14). */
+  private readonly cfg: DedupConfigShape;
+  /** Optional monitoring target (Sprint 14). Undefined → no monitoring. */
+  private readonly eventsPath?: string;
 
   constructor(
     opts: {
@@ -84,28 +87,41 @@ export class VectorStore {
       stateDir?: string;
       l2Enabled?: boolean;
       l2Threshold?: number;
-      mmrLambda?: number;
+      /** Override the dedup config (defaults to env/file snapshot). */
+      config?: DedupConfigShape;
+      /** Optional events.log path for decision monitoring (Sprint 14). */
+      eventsPath?: string;
     } = {},
   ) {
     this.embedder = opts.embedder ?? defaultEmbedder();
-    // 0.90 ≈ "near-identical" for the default trigram embedder (its cosine
-    // ceiling for one-word-different text is ~0.94). Higher values would
-    // almost never collapse; lower would over-merge distinct checkpoints.
-    this.dedupSim = opts.dedupSim ?? 0.9;
     this.stateDir = opts.stateDir ?? getStateDir();
-    // Sprint 12 L2 semantic tier. Default on (trigram is local, zero-network).
-    // Threshold 0.85 is the default trigram embedder's honest firing point (its
-    // cosine ceiling is ~0.94, so 0.95 could never fire). A caller that injects
-    // a stronger local embedder via `opts.embedder` should pass a matching
-    // `l2Threshold` (e.g. 0.95 for a semantic-grade model).
-    this.l2Enabled = opts.l2Enabled ?? true;
-    this.l2Threshold = opts.l2Threshold ?? 0.85;
-    this.mmrLambda = opts.mmrLambda ?? 0.5;
+    // Sprint 14: all tier flags/thresholds flow from the single config source
+    // (DedupConfig). The legacy opts.dedupSim / opts.l2Enabled remain accepted
+    // for backward-compat callers but flags are authoritative via `cfg`.
+    void opts.dedupSim;
+    void opts.l2Enabled;
+    // Sprint 12 L2 semantic tier. Threshold 0.85 is the default trigram
+    // embedder's honest firing point; a direct override is allowed for tests.
+    this.cfg = opts.config ?? loadDedupConfig();
+    this.l2Threshold = opts.l2Threshold ?? this.cfg.L2_COSINE;
+    this.eventsPath = opts.eventsPath;
     // Sprint 8: bring any v0.1.0 JSON checkpoint files into SQLite (idempotent).
     migrateJsonToSqlite(this.stateDir);
     // Sprint 10: warm the bloom accelerator (accelerator only — SQLite stays
     // source of truth; a bloom hit is always confirmed by a query below).
     openBloom(this.stateDir);
+  }
+
+  /** Emit a structured dedup-decision event (best-effort, never throws). */
+  private record(tier: DedupTier, result: "deduped" | "new" | "mark_only", reason: string | undefined, latencyMs: number): void {
+    if (!this.eventsPath) return;
+    logDecision(this.eventsPath, {
+      ts: Date.now(),
+      tier,
+      result,
+      reason,
+      latencyMs: Math.round(latencyMs * 100) / 100,
+    });
   }
 
   /**
@@ -116,71 +132,104 @@ export class VectorStore {
    *   4. If none match → create new checkpoint
    */
   add(input: AddInput): AddResult {
+    const t0 = Date.now();
     const sessionId = normalizeSessionId(input.sessionId);
     const regionHash = computeRegionHash(input.regionText);
     const all = listCheckpoints(sessionId, this.stateDir);
+    const cfg = this.cfg;
+    // Tracks whether a tier matched while in MARK_ONLY (record-but-don't-collapse),
+    // and which tier.
+    let markOnly: DedupTier | null = null;
 
     // 0. L0 content-hash dedup (Sprint 9) — catches identical content arriving
     //    under different regionText. Normalization handles case/whitespace/ANSI so
     //    variants collapse to one row. Dual-hash guards a single-hash collision.
     //    Sprint 10: bloom is the accelerator — a miss means "definitely new" and
     //    skips the scan; a hit is only a candidate, confirmed against `all` below.
+    //    Gated by L0_ENABLED (Sprint 14). MARK_ONLY_L0 records the decision but
+    //    does not collapse — the new region is still stored.
     const digest = computeContentDigest(input.regionText);
     const bloom = openBloom(this.stateDir);
-    if (bloom.maybeHas(digest.contentHash)) {
+    if (cfg.L0_ENABLED && bloom.maybeHas(digest.contentHash)) {
       const contentMatch = all.find(
         (cp) =>
           cp.contentHash === digest.contentHash &&
           cp.contentHash2 === digest.contentHash2,
       );
       if (contentMatch) {
-        // Region content already represented — bump timestamp and return.
-        contentMatch.timestamp = input.timestamp;
-        upsertCheckpoint(contentMatch, this.stateDir);
-        return { checkpoint: contentMatch, deduped: true, reason: "contentHash" };
+        if (cfg.MARK_ONLY_L0) {
+          markOnly = "L0"; // Record-but-don't-collapse: fall through.
+        } else {
+          contentMatch.timestamp = input.timestamp;
+          upsertCheckpoint(contentMatch, this.stateDir);
+          const r = { checkpoint: contentMatch, deduped: true, reason: "contentHash" };
+          this.record("L0", "deduped", "contentHash", Date.now() - t0);
+          return r;
+        }
       }
     }
 
-    // 1. Legacy regionHash dedup (backward-compat)
-    const regionMatch = all.find((cp) => cp.regionHash === regionHash);
-    if (regionMatch) return { checkpoint: regionMatch, deduped: true, reason: "regionHash" };
+    // 1. Legacy regionHash dedup (backward-compat) — part of L0 tier gating.
+    if (cfg.L0_ENABLED) {
+      const regionMatch = all.find((cp) => cp.regionHash === regionHash);
+      if (regionMatch) {
+        if (cfg.MARK_ONLY_L0) {
+          markOnly = "L0"; // fall through
+        } else {
+          const r = { checkpoint: regionMatch, deduped: true, reason: "regionHash" };
+          this.record("L0", "deduped", "regionHash", Date.now() - t0);
+          return r;
+        }
+      }
+    }
 
     // 2. SummaryHash dedup — catches same-topic incremental compactions.
     //    Full 64-hex SHA-256 (was 16-hex in Sprint 8 — collision-prone).
     const summaryHash = input.topicSummary
       ? createHash("sha256").update(input.topicSummary).digest("hex")
       : undefined;
-    if (summaryHash) {
+    if (summaryHash && cfg.L0_ENABLED) {
       const summaryMatch = all.find((cp) => cp.summaryHash === summaryHash);
       if (summaryMatch) {
-        // Topic didn't change — update timestamp on existing checkpoint
-        summaryMatch.timestamp = input.timestamp;
-        upsertCheckpoint(summaryMatch, this.stateDir);
-        return { checkpoint: summaryMatch, deduped: true, reason: "summaryHash" };
+        if (cfg.MARK_ONLY_L0) {
+          markOnly = "L0"; // fall through
+        } else {
+          summaryMatch.timestamp = input.timestamp;
+          upsertCheckpoint(summaryMatch, this.stateDir);
+          const r = { checkpoint: summaryMatch, deduped: true, reason: "summaryHash" };
+          this.record("L0", "deduped", "summaryHash", Date.now() - t0);
+          return r;
+        }
       }
     }
 
     // 2b. L1 MinHash/LSH near-duplicate dedup (Sprint 11) — catches one-word
     //     edits / rewordings that L0's exact hash misses. Cheap LSH bucket
     //     retrieval → trigram verification (pg_trgm-equivalent) as the final gate.
-    const l1 = this.findL1Duplicate(sessionId, input.regionText, all);
-    if (l1) {
-      l1.timestamp = input.timestamp;
-      upsertCheckpoint(l1, this.stateDir);
-      return { checkpoint: l1, deduped: true, reason: "l1MinHash" };
+    //     Gated by L1_ENABLED (Sprint 14); MARK_ONLY_L1 records but doesn't collapse.
+    if (cfg.L1_ENABLED) {
+      const l1 = this.findL1Duplicate(sessionId, input.regionText, all);
+      if (l1 && !cfg.MARK_ONLY_L1) {
+        l1.timestamp = input.timestamp;
+        upsertCheckpoint(l1, this.stateDir);
+        const r = { checkpoint: l1, deduped: true, reason: "l1MinHash" };
+        this.record("L1", "deduped", "l1MinHash", Date.now() - t0);
+        return r;
+      }
+      if (l1 && cfg.MARK_ONLY_L1) markOnly = "L1";
     }
 
     // 3. L2 semantic dedup — catches near-identical / semantically-similar regions
     //    via cosine over the embedding. topicSummary is used for summaryHash dedup
     //    (tier 2); the vector index is keyed on the original region for backward-
-    //    compat search semantics. Threshold: L2_ENABLED → l2Threshold (0.85 trigram,
-    //    honest firing point); otherwise the legacy dedupSim (0.9). QA #13 timeout
-    //    guard: if the O(n) scan exceeds the budget, degrade to "store without dedup
-    //    this pass" so we never lose a checkpoint.
-    const SIMILARITY_BUDGET_MS = 50;
-    const simThreshold = this.l2Enabled ? this.l2Threshold : this.dedupSim;
+    //    compat search semantics. Threshold from cfg (L2_COSINE trigram honest
+    //    firing point). QA #13 timeout guard: if the O(n) scan exceeds the budget,
+    //    degrade to "store without dedup this pass" so we never lose a checkpoint.
+    //    Gated by L2_ENABLED (Sprint 14); MARK_ONLY_L2 records but doesn't collapse.
+    const SIMILARITY_BUDGET_MS = cfg.SIMILARITY_BUDGET_MS;
+    const simThreshold = this.l2Threshold; // from cfg.L2_COSINE (default 0.85 trigram)
     const embedding = this.embedder.embed(input.regionText);
-    if (all.length > 0) {
+    if (cfg.L2_ENABLED && all.length > 0) {
       const start = Date.now();
       let timedOut = false;
       const nearest = all.reduce(
@@ -193,10 +242,15 @@ export class VectorStore {
         { checkpoint: all[0], sim: -1 },
       );
       if (!timedOut && nearest.sim >= simThreshold) {
-        // Near-identical — update timestamp on existing checkpoint
-        nearest.checkpoint.timestamp = input.timestamp;
-        upsertCheckpoint(nearest.checkpoint, this.stateDir);
-        return { checkpoint: nearest.checkpoint, deduped: true, reason: "contentSimilarity" };
+        if (!cfg.MARK_ONLY_L2) {
+          // Near-identical — update timestamp on existing checkpoint
+          nearest.checkpoint.timestamp = input.timestamp;
+          upsertCheckpoint(nearest.checkpoint, this.stateDir);
+          const r = { checkpoint: nearest.checkpoint, deduped: true, reason: "contentSimilarity" };
+          this.record("L2", "deduped", "contentSimilarity", Date.now() - t0);
+          return r;
+        }
+        markOnly = "L2";
       }
     }
 
@@ -245,6 +299,13 @@ export class VectorStore {
     if (!state.storedRegionHashes.includes(regionHash)) {
       state.storedRegionHashes.push(regionHash);
       saveSessionState(sessionId, state, this.stateDir);
+    }
+    // A new checkpoint. If a tier matched while MARK_ONLY, record that (the
+    // decision fired but we intentionally did not collapse).
+    if (markOnly) {
+      this.record(markOnly, "mark_only", "mark_only", Date.now() - t0);
+    } else {
+      this.record("L0", "new", undefined, Date.now() - t0);
     }
     return { checkpoint, deduped: false };
   }
@@ -312,12 +373,15 @@ export class VectorStore {
       scored.map((h) => ({ item: h, score: h.score })),
       Math.max(k * 2, k),
     ).map((s) => s.item);
+    // MMR (QA #10) is part of the L2 semantic tier: skip it when L2 is disabled
+    // (Sprint 14 flag), returning the plain relevance-ranked window instead.
+    if (!this.cfg.L2_ENABLED) return window.slice(0, k);
     const mmrItems: MmrItem<SearchHit>[] = window.map((h) => ({
       item: h,
       vector: h.checkpoint.embedding,
       relevance: h.score,
     }));
-    const ranked = mmrRerank(mmrItems, k, this.mmrLambda);
+    const ranked = mmrRerank(mmrItems, k, this.cfg.MMR_LAMBDA);
     return ranked;
   }
 
@@ -330,7 +394,7 @@ export class VectorStore {
    *
    * Returns the number of rows marked removed.
    */
-  semDedup(sessionId: string, threshold = 0.95): number {
+  semDedup(sessionId: string, threshold = this.cfg.SEMDEDUP_COSINE): number {
     const sid = normalizeSessionId(sessionId);
     const cps = listCheckpoints(sid, this.stateDir).filter(
       (c) => c.dedupStatus !== "removed",

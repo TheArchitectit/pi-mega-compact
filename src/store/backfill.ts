@@ -19,15 +19,30 @@
 import type { Database } from "better-sqlite3";
 import { openStore } from "./sqlite.js";
 import { computeContentDigest } from "../dedup/digest.js";
+import { minhashSignature, SIGNATURE_VERSION, NUM_HASHES } from "../dedup/l1-minhash.js";
+import { lshBands } from "../dedup/l1-lsh.js";
+import { upsertMinhashSignature, insertLshBuckets, listCheckpoints, saveRaptorTree } from "./sqlite.js";
+import { buildRaptorTree, type Leaf } from "../dedup/raptor/tree.js";
+import type { Embedder } from "../embedder.js";
+import { defaultEmbedder } from "../embedder.js";
 import { getStateDir } from "../store.js";
 
 const BATCH = 1000;
 const THROTTLE_MS = 0; // synchronous backfill; no cross-process yield needed
 
+/** Backfill phases, in order (Sprint 14 full-pipeline wiring). */
+export type BackfillPhase = "L0" | "L1" | "L2" | "RAPTOR";
+
 interface BackfillResult {
   processed: number;
   updated: number;
   duplicatesResolved: number;
+}
+
+interface PhaseProgressRow {
+  last_session_id: string | null;
+  last_id: string | null;
+  processed: number;
 }
 
 function ensureProgressTable(db: Database): void {
@@ -131,4 +146,118 @@ export function isBackfillComplete(stateDir: string = getStateDir()): boolean {
     .prepare("SELECT COUNT(*) AS c FROM context_chunks WHERE content_hash IS NULL")
     .get() as { c: number };
   return row.c === 0;
+}
+
+// ---- Sprint 14: L1 / L2 / RAPTOR phase backfill (resumable) ---------------
+
+function phaseCursor(db: Database, phase: BackfillPhase): { lastId: string | null; processed: number } {
+  ensureProgressTable(db);
+  const row = db
+    .prepare("SELECT last_id, updated AS processed FROM backfill_progress WHERE name = ?")
+    .get(`phase_${phase}`) as PhaseProgressRow | undefined;
+  return { lastId: row?.last_id ?? null, processed: row?.processed ?? 0 };
+}
+
+function savePhaseCursor(db: Database, phase: BackfillPhase, lastId: string | null, processed: number): void {
+  db.prepare(
+    `INSERT INTO backfill_progress(name, last_session_id, last_id, updated, duplicates_resolved)
+     VALUES(?, NULL, ?, ?, 0)
+     ON CONFLICT(name) DO UPDATE SET last_id=excluded.last_id, updated=excluded.updated`,
+  ).run(`phase_${phase}`, lastId, processed);
+}
+
+export interface PhaseBackfillResult {
+  phase: BackfillPhase;
+  processed: number;
+  batches: number;
+  interrupted: boolean;
+  /** Last processed checkpoint id (the resume cursor). */
+  cursor: string | undefined;
+}
+
+/**
+ * Backfill L1 (MinHash sigs + LSH buckets) or L2 (MinHash sigs only) derived
+ * data for a session, in batches, resumable from the persisted cursor. Pass
+ * `interruptAfterBatches` to simulate a crash for resume testing.
+ */
+export function backfillPhase(
+  phase: "L1" | "L2",
+  sessionId: string,
+  stateDir: string,
+  opts: { batchSize?: number; interruptAfterBatches?: number } = {},
+): PhaseBackfillResult {
+  const db = openStore(stateDir);
+  const batchSize = opts.batchSize ?? BATCH;
+  const all = listCheckpoints(sessionId, stateDir).sort((a, b) =>
+    a.checkpointId.localeCompare(b.checkpointId),
+  );
+  const { lastId } = phaseCursor(db, phase);
+  let { processed } = phaseCursor(db, phase);
+  const startIndex = lastId ? all.findIndex((c) => c.checkpointId === lastId) + 1 : 0;
+
+  let batches = 0;
+  let interrupted = false;
+  let cursor: string | undefined = lastId ?? undefined;
+
+  for (let i = Math.max(0, startIndex); i < all.length; i += batchSize) {
+    const batch = all.slice(i, i + batchSize);
+    const tx = db.transaction(() => {
+      for (const cp of batch) {
+        const sig = minhashSignature(cp.normalizedText ?? cp.summary ?? "");
+        if (sig.length === NUM_HASHES) {
+          upsertMinhashSignature(cp.checkpointId, sessionId, SIGNATURE_VERSION, sig, stateDir);
+          if (phase === "L1") {
+            insertLshBuckets(
+              cp.checkpointId, sessionId, SIGNATURE_VERSION,
+              lshBands(sig, sessionId, SIGNATURE_VERSION), stateDir,
+            );
+          }
+        }
+        cursor = cp.checkpointId;
+        processed++;
+      }
+    });
+    tx();
+    savePhaseCursor(db, phase, cursor ?? null, processed);
+    batches++;
+    if (THROTTLE_MS > 0) { const end = Date.now() + THROTTLE_MS; while (Date.now() < end) { /* throttle */ } }
+    if (opts.interruptAfterBatches && batches >= opts.interruptAfterBatches) {
+      interrupted = true;
+      break;
+    }
+  }
+
+  return { phase, processed, batches, interrupted, cursor };
+}
+
+/**
+ * Backfill the RAPTOR tree for a session (single pass over all leaves). Builds
+ * + persists raptor_nodes. Not batched — the builder has its own budget cap.
+ */
+export function backfillRaptor(
+  sessionId: string,
+  stateDir: string,
+  embedder: Embedder = defaultEmbedder(),
+): PhaseBackfillResult {
+  const all = listCheckpoints(sessionId, stateDir).sort((a, b) =>
+    a.checkpointId.localeCompare(b.checkpointId),
+  );
+  const leaves: Leaf[] = all.map((cp) => {
+    const text = cp.normalizedText ?? cp.summary ?? "";
+    return {
+      id: cp.checkpointId,
+      messages: [{ role: "user", text }],
+      sourceText: text,
+      embedding: embedder.embed(text),
+    };
+  });
+  if (leaves.length === 0) {
+    return { phase: "RAPTOR", processed: 0, batches: 0, interrupted: false, cursor: undefined };
+  }
+  const tree = buildRaptorTree(leaves, { embedder });
+  saveRaptorTree(sessionId, tree, stateDir);
+  const db = openStore(stateDir);
+  ensureProgressTable(db);
+  savePhaseCursor(db, "RAPTOR", leaves[leaves.length - 1].id, leaves.length);
+  return { phase: "RAPTOR", processed: leaves.length, batches: 1, interrupted: false, cursor: leaves[leaves.length - 1].id };
 }
