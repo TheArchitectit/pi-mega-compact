@@ -25,7 +25,7 @@
 |---------|----------|----------|
 | architecture, phased status, design decisions | [PLAN.md](../PLAN.md) | repo root |
 | sprints 0–7 (v0.1.0 shipped) | [SPRINT_PLAN.md](../SPRINT_PLAN.md) | repo root |
-| sprints 8–15 (v0.2.0), dedup tiers, pglite | [SPRINT_PLAN.md](../SPRINT_PLAN.md) | repo root |
+| sprints 8–15 (v0.2.0), dedup tiers, sqlite store | [SPRINT_PLAN.md](../SPRINT_PLAN.md) | repo root |
 | dedup upgrade spec, QA review, MinHash/LSH/RAPTOR | [dedup-implementation-plan.md](dedup-implementation-plan.md) | docs/ |
 | compaction redesign notes | [compaction-redesign.md](compaction-redesign.md) | docs/ |
 
@@ -35,7 +35,7 @@
 
 | Keyword | Document | Location |
 |---------|----------|----------|
-| sprint 8 spec (pglite + compression v2) | [specs/sprint-08.md](specs/sprint-08.md) | docs/ |
+| sprint 8 spec (sqlite store + compression v2) | [specs/sprint-08.md](specs/sprint-08.md) | docs/ |
 | sprint 9 spec (content dedup + originals) | [specs/sprint-09.md](specs/sprint-09.md) | docs/ |
 | sprint 10 spec (L0 upgrade) | [specs/sprint-10.md](specs/sprint-10.md) | docs/ |
 | sprint 11 spec (MinHash/LSH) | [specs/sprint-11.md](specs/sprint-11.md) | docs/ |

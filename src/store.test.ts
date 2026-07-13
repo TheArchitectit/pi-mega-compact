@@ -27,10 +27,13 @@ test("compressSmart: tiny payload (<512B) uses RAW tier", () => {
   const data = Buffer.from(JSON.stringify({ hello: "world" }));
   assert.ok(data.length < 512);
   const compressed = compressSmart(data);
-  // Tag byte should be 0x00 (TAG_RAW)
-  assert.equal(compressed[0], 0x00);
-  // Payload after tag should be identical to original
-  assert.deepEqual(compressed.subarray(1), data);
+  // Versioned header: 0xEC 0x01 [version=1] [tier=0x00 RAW]; payload after byte 4.
+  assert.equal(compressed[0], 0xec, "magic hi");
+  assert.equal(compressed[1], 0x01, "magic lo / version marker");
+  assert.equal(compressed[2], 0x01, "format version 1");
+  assert.equal(compressed[3], 0x00, "tag RAW");
+  // Payload after the 4-byte header should be identical to original
+  assert.deepEqual(compressed.subarray(4), data);
 });
 
 test("compressSmart: medium payload (4KB–32KB) uses GZIP-6 tier", () => {
@@ -38,8 +41,9 @@ test("compressSmart: medium payload (4KB–32KB) uses GZIP-6 tier", () => {
   const data = Buffer.from("the quick brown fox jumps over the lazy dog. ".repeat(180));
   assert.ok(data.length >= 4096 && data.length < 32768);
   const compressed = compressSmart(data);
-  // Tag byte should be 0x02 (TAG_GZIP_6)
-  assert.equal(compressed[0], 0x02);
+  // Versioned header + tier tag 0x02 (GZIP-6) at byte 3.
+  assert.equal(compressed[0], 0xec);
+  assert.equal(compressed[3], 0x02, "tag GZIP-6");
   // Compressed should be smaller
   assert.ok(compressed.length < data.length, "compressed smaller than raw");
 });
@@ -49,8 +53,9 @@ test("compressSmart: large payload (>32KB) uses BROTLI tier", () => {
   const data = Buffer.from("this is a long summary of a coding session. ".repeat(900));
   assert.ok(data.length >= 32768);
   const compressed = compressSmart(data);
-  // Tag byte should be 0x03 (TAG_BROTLI)
-  assert.equal(compressed[0], 0x03);
+  // Versioned header + tier tag 0x05 (BROTLI_4) at byte 3.
+  assert.equal(compressed[0], 0xec);
+  assert.equal(compressed[3], 0x05, "tag BROTLI_4");
   // Compressed should be smaller
   assert.ok(compressed.length < data.length, "brotli compressed smaller than raw");
 });
@@ -60,7 +65,8 @@ test("compressSmart: small payload (512B–4KB) uses GZIP-1 tier", () => {
   const data = Buffer.from("a moderately sized summary with some repetition. ".repeat(30));
   assert.ok(data.length >= 512 && data.length < 4096);
   const compressed = compressSmart(data);
-  assert.equal(compressed[0], 0x01);
+  assert.equal(compressed[0], 0xec);
+  assert.equal(compressed[3], 0x01, "tag GZIP-1");
 });
 
 test("decompressSmart roundtrips all tiers", () => {
@@ -111,13 +117,15 @@ test("readGzJson reads legacy gzip files written by old code", () => {
 test("compression tier: GZIP-1 and GZIP-6 tiers produce valid, smaller output", () => {
   // GZIP-1 tier (~600B input, 512B–4KB band)
   const small = compressSmart(Buffer.from("compress me ".repeat(200)));
-  assert.equal(small[0], 0x01, "GZIP-1 tag for small input");
+  assert.equal(small[0], 0xec, "versioned magic");
+  assert.equal(small[3], 0x01, "GZIP-1 tag for small input");
   assert.ok(small.length < 600, "GZIP-1 output smaller than input");
   assert.deepEqual(decompressSmart(small), Buffer.from("compress me ".repeat(200)));
 
   // GZIP-6 tier (~8KB input, 4KB–32KB band)
   const big = compressSmart(Buffer.from("compress me ".repeat(1800)));
-  assert.equal(big[0], 0x02, "GZIP-6 tag for medium input");
+  assert.equal(big[0], 0xec, "versioned magic");
+  assert.equal(big[3], 0x02, "GZIP-6 tag for medium input");
   assert.ok(big.length < Buffer.from("compress me ".repeat(1800)).length, "GZIP-6 output smaller than input");
   assert.deepEqual(decompressSmart(big), Buffer.from("compress me ".repeat(1800)));
 });

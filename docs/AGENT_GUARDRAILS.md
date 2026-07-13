@@ -109,7 +109,7 @@ See [skills/shared-prompts/four-laws.md](../skills/shared-prompts/four-laws.md) 
 | **NO PROD CREDENTIALS IN TEST** | CRITICAL | Halt, rollback |
 | **ASK IF UNCERTAIN** | HIGH | Ask user before proceeding |
 
-**pi-mega-compact note:** this extension is **local-only** — it must make **zero network calls** at runtime (PREVENT-PI-004). The `pglite` store is an in-process WASM Postgres with FS persistence, not a remote database. There is no production/remote boundary to cross, but the spirit of test/prod separation still applies: never point a test at a real user state dir, and never commit the `MEGACOMPACT_STATE_DIR` contents.
+**pi-mega-compact note:** this extension is **local-only** — it must make **zero network calls** at runtime (PREVENT-PI-004). The store is `better-sqlite3` (in-process native SQLite, FS persistence), not a remote database. There is no production/remote boundary to cross, but the spirit of test/prod separation still applies: never point a test at a real user state dir, and never commit the `MEGACOMPACT_STATE_DIR` contents.
 
 ---
 
@@ -182,7 +182,7 @@ SYSTEM OPERATIONS:
 
 DATA OPERATIONS:
 - Access databases without explicit permission
-- Commit user checkpoint data (*.checkpoints.json.gz, *.state.json.gz, pglite/)
+- Commit user checkpoint data (*.checkpoints.json.gz, *.state.json.gz, sqlite.db, *.db-wal, *.db-shm)
 - Store credentials or secrets
 ```
 
@@ -207,7 +207,7 @@ OUT OF SCOPE (DO NOT TOUCH):
   - Dependencies/package files (unless task is dependency-related)
   - Environment configurations
   - Security-related files
-  - Real user state dir / pglite data
+  - Real user state dir / sqlite data
 ```
 
 ---

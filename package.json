@@ -43,7 +43,12 @@
     "@earendil-works/pi-coding-agent": "*"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.0.0",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "@mongodb-js/zstd": "^7.0.0",
+    "better-sqlite3": "^12.11.1"
   }
 }

@@ -12,16 +12,15 @@ import { createHash } from "node:crypto";
 import type { Embedder, Vector } from "./embedder.js";
 import { cosineSimilarity, defaultEmbedder } from "./embedder.js";
 import type { StoredCheckpoint, SessionState } from "./store.js";
+import { getStateDir, normalizeSessionId } from "./store.js";
 import {
-  appendCheckpoint,
-  getStateDir,
   listCheckpoints,
   nextCheckpointId,
-  normalizeSessionId,
+  upsertCheckpoint,
   loadSessionState,
   saveSessionState,
-  rewriteCheckpoints,
-} from "./store.js";
+} from "./store/sqlite.js";
+import { migrateJsonToSqlite } from "./store/migrate.js";
 
 export interface SearchHit {
   checkpoint: StoredCheckpoint;
@@ -70,6 +69,8 @@ export class VectorStore {
     // almost never collapse; lower would over-merge distinct checkpoints.
     this.dedupSim = opts.dedupSim ?? 0.9;
     this.stateDir = opts.stateDir ?? getStateDir();
+    // Sprint 8: bring any v0.1.0 JSON checkpoint files into SQLite (idempotent).
+    migrateJsonToSqlite(this.stateDir);
   }
 
   /**
@@ -97,7 +98,7 @@ export class VectorStore {
       if (summaryMatch) {
         // Topic didn't change — update timestamp on existing checkpoint
         summaryMatch.timestamp = input.timestamp;
-        rewriteCheckpoints(sessionId, all, this.stateDir);
+        upsertCheckpoint(summaryMatch, this.stateDir);
         return { checkpoint: summaryMatch, deduped: true, reason: "summaryHash" };
       }
     }
@@ -118,7 +119,7 @@ export class VectorStore {
       if (nearest.sim >= this.dedupSim) {
         // Near-identical — update timestamp on existing checkpoint
         nearest.checkpoint.timestamp = input.timestamp;
-        rewriteCheckpoints(sessionId, all, this.stateDir);
+        upsertCheckpoint(nearest.checkpoint, this.stateDir);
         return { checkpoint: nearest.checkpoint, deduped: true, reason: "contentSimilarity" };
       }
     }
@@ -139,7 +140,9 @@ export class VectorStore {
       embedding,
       timestamp: input.timestamp,
     };
-    appendCheckpoint(checkpoint, this.stateDir);
+    // Persistence is SQLite (store/sqlite.ts). upsertCheckpoint keeps the
+    // idempotent-by-id semantics the old JSON append implied.
+    upsertCheckpoint(checkpoint, this.stateDir);
 
     // Track the region hash in session state for fast sentinel checks.
     const state = loadSessionState(sessionId, this.stateDir);

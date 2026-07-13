@@ -14,7 +14,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
@@ -152,8 +152,9 @@ test("auto-trigger: past threshold persists a chkpt and drops context", async ()
   const messages = h.session;
   const ctx = h.ctx({ getContextUsage: () => ({ tokens: 200000, contextWindow: 200000, percent: 100 }) });
   const res = await h.fire("context", { type: "context", messages }, ctx);
-  // L1->L4 ran: a checkpoint file + a marker entry were written.
-  assert.ok(existsSync(join(h.stateDir, "sess_ext_001.checkpoints.json.gz")), "checkpoint persisted to local vector db");
+  // L1->L4 ran: a checkpoint was persisted to the SQLite store + a marker entry written.
+  const { listCheckpoints } = await import("../src/store/sqlite.js");
+  assert.ok(listCheckpoints("sess_ext_001", h.stateDir).length > 0, "checkpoint persisted to local vector db");
   assert.equal(h.appended.some((a) => a.t === "mega-compact-marker"), true, "marker sentinel appended");
   // Context dropped (the compacted range was trimmed).
   assert.ok(res && Array.isArray(res.messages), "context handler returns filtered messages");

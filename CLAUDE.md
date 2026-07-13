@@ -39,7 +39,7 @@ These are pi-extension invariants; `scripts/guardrails-scan.mjs` scans for viola
 | PREVENT-PI-001 | error | Never drop messages without the anchor-floor guard (preserve recent N). |
 | PREVENT-PI-002 | error | Never split a toolCall/toolResult pair at a compaction boundary. |
 | PREVENT-PI-003 | error | Never inject compacted context as `role:"system"` — use the `before_agent_start` systemPrompt prepend. |
-| PREVENT-PI-004 | critical | **Zero network calls at runtime.** Extension is fully local (pglite = in-process WASM, FS persistence). No `fetch`/HTTP to remote. EXCEPTION: the optional, user-triggered `/dashboard` localhost server — audited via `// guardrails-allow PREVENT-PI-004: <reason>` inline annotations (scanner enforces a reason). |
+| PREVENT-PI-004 | critical | **Zero network calls at runtime.** Extension is fully local (better-sqlite3 = in-process native SQLite, FS persistence). No `fetch`/HTTP to remote. EXCEPTION: the optional, user-triggered `/dashboard` localhost server — audited via `// guardrails-allow PREVENT-PI-004: <reason>` inline annotations (scanner enforces a reason). |
 
 Additional guardrails (from template): PREVENT-001 (JSON.parse without null check), PREVENT-002 (SQL string concat — use parameterized queries), PREVENT-011 (`any` type), PREVENT-024 (hallucinated package import), PREVENT-003 (hardcoded credentials).
 
@@ -47,9 +47,9 @@ Additional guardrails (from template): PREVENT-001 (JSON.parse without null chec
 
 ## 5. Architecture at a Glance
 * **Layers** (Trident stack): L1 supersede → L2 collapse → L3 cluster/vectorize → L4 persist → L5 recall/inline.
-* **One store**: `pglite` (`@electric-sql/pglite`) is the source of truth from v0.2.0 (Sprint 8). Legacy gzipped JSON checkpoint files are retained as DR snapshots.
+* **One store**: `better-sqlite3` (in-process native SQLite, FS-backed) is the source of truth from v0.2.0 (Sprint 8). FTS5 `trigram` tokenizer backs the Sprint 9+ pg_trgm-equivalent dedup tiers; cosine stays a linear scan over `embedding_blob` (small N). Legacy gzipped JSON checkpoint files are retained as DR snapshots. (PGlite was evaluated but is async-only in every version, which would have forced VectorStore/engine/recall to `async` — see docs/specs/sprint-08.md DEVIATIONS.)
 * **Embedder**: `TrigramEmbedder` default (self-contained, 512-dim). `MEGACOMPACT_EMBEDDER=minilm` (all-MiniLM-L6-v2 ONNX, 384-dim) is flag-gated, off by default.
-* **Key source files**: `src/store.ts` (compression + state), `src/vectorStore.ts` (VectorStore add/search/dedupe), `src/engine.ts` (compactSession), `src/recall.ts` (recallAndInline), `src/embedder.ts`, `src/compact.ts`, `src/extractive.ts`, `src/supersede.ts`, `src/boundary.ts`, `src/types.ts`, `src/config.ts`, `src/adapt.ts`, `src/log.ts`.
+* **Key source files**: `src/store.ts` (state dir + JSON DR helpers + compression re-exports), `src/store/compression.ts` (versioned compressSmart/decompressSmart + async zstd helper), `src/store/sqlite.ts` (SQLite context_chunks + session_state, FTS5 trigram), `src/store/migrate.ts` (JSON→SQLite migration), `src/vectorStore.ts` (VectorStore add/search/dedupe), `src/engine.ts` (compactSession), `src/recall.ts` (recallAndInline), `src/embedder.ts`, `src/compact.ts`, `src/extractive.ts`, `src/supersede.ts`, `src/boundary.ts`, `src/types.ts`, `src/config.ts`, `src/adapt.ts`, `src/log.ts`.
 * **Extension entry**: `extensions/mega-compact.ts` (pi runtime adapter).
 
 ---

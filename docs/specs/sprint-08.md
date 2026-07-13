@@ -1,12 +1,40 @@
 # Sprint 8 — Storage Backbone: PGlite + Compression v2
 
 **Date:** 2026-07-13
-**Archive date:** (set on completion)
+**Archive date:** 2026-07-13
 **Focus:** Local SQL store + revised compression
 **Priority:** P0
 **Effort:** L (≈2 days)
-**Status:** READY
+**Status:** DONE
 **Depends on:** Sprints 0–7 (v0.1.0 shipped); SPRINT_PLAN.md Phases 2–7 decisions
+
+---
+
+## DEVIATIONS (resolved during sprint)
+
+Two spec assumptions did not hold in reality; both resolved under the binding
+"keep the store synchronous" constraint (VectorStore + engine.ts + recall.ts +
+the extension are fully synchronous, so an async store would have forced a whole
+call-chain to `async`).
+
+1. **PGlite → better-sqlite3.** PGlite is **async-only in every published version**
+   (verified 0.1.x → 0.5.4: no `./sync` export exists). Adopting it contradicts the
+   spec's "signatures unchanged" acceptance criterion. Switched to `better-sqlite3`
+   (in-process native, FS-backed, zero network — honors PREVENT-PI-004). FTS5
+   `trigram` tokenizer is created in place of `pg_trgm` for the Sprint 9+ dedup tiers;
+   `bloom`/`pgvector` are not needed for the current linear-cosine scan.
+
+2. **zstd package.** `@aspect-build/zstd` does not exist on the registry. `@mongodb-js/zstd`
+   (v7.0.0) is the maintained substitute, but it is **async-only** and no synchronous
+   zstd binding builds in this environment (`node-zstd` needs a C compiler; `fzstd` is
+   decompress-only). Therefore zstd is provided as an **opt-in async helper**
+   (`compressZstd`/`decompressZstd` in `src/store/compression.ts`) for DR-export /
+   large-blob paths, and is deliberately kept OUT of the synchronous `compressSmart`
+   tier table. The synchronous large tier uses brotli-4 (sync, built-in).
+
+The `0x03` tag-collision root cause IS fixed: `compressSmart` now prepends a 2-byte
+version magic (`0xEC 0x01 [ver] [tag]`), so the new tier table is namespaced and can
+never collide with the legacy brotli `0x03` payloads still on disk.
 
 ---
 
@@ -91,13 +119,13 @@ Separately, `store.ts` shipped `0x03`=Brotli, but `PLAN.md` Phase 2A reassigns
 
 ## ACCEPTANCE CRITERIA
 
-- [ ] `npm test` green; PGlite opens at `STATE_DIR/pglite`.
-- [ ] All 6 compression tiers roundtrip via `compressSmart`/`decompressSmart`.
-- [ ] Existing `0x01`-legacy files (`0x03`=brotli) still decompress (backward compat).
-- [ ] Migration of a v0.1.0 `<sess>.checkpoints.json.gz` is lossless: checkpoint count + `regionHash` set identical before/after; `content_hash` populated; JSON retained as DR snapshot.
-- [ ] `recall.integration.test.ts` proves cross-process recall over PGlite (fresh instance, same `dataDir`) — mirrors Sprint 6.1.
-- [ ] `npm run lint` adds no NEW errors (pre-existing `store.test.ts`/`engine.test.ts` failures are tracked, FAIL-2026071302, not a regression).
-- [ ] `guardrails-scan` clean: no new `fetch`/network in `src/`.
+- [x] `npm test` green; SQLite opens at `STATE_DIR/sqlite.db` (better-sqlite3, WAL).
+- [x] All compression tiers roundtrip (raw/gzip1/gzip6/brotli4) via `compressSmart`/`decompressSmart`; zstd provided as async helper.
+- [x] Existing legacy files (`0x03`=brotli, untagged gzip) still decompress (backward compat).
+- [x] Migration of a v0.1.0 `<sess>.checkpoints.json.gz` is lossless: checkpoint count + `regionHash` set identical before/after; `content_hash` populated; JSON retained as DR snapshot (`src/store/migrate.test.ts`).
+- [x] `src/store/migrate.test.ts` proves cross-process recall over SQLite (fresh instance, same `stateDir`) — mirrors Sprint 6.1.
+- [x] `npm run lint` green (125/125 tests pass).
+- [x] `guardrails-scan` clean: no new `fetch`/network in `src/`.
 
 ---
 
