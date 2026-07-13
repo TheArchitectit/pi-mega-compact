@@ -146,6 +146,95 @@ test("semDedup is idempotent (re-run removes nothing new)", () => {
   assert.equal(second, 0);
 });
 
+// --- HttpEmbedder (BYO localhost backend) ----------------------------------
+// Hermetic: a self-test server returns a deterministic embedding. The server
+// runs in an INDEPENDENT child process (its own event loop) so that when
+// HttpEmbedder.embed() blocks the *parent* via spawnSync, the server can still
+// accept the connection — hosting it in-process would deadlock.
+
+import { spawn, type ChildProcess } from "node:child_process";
+
+const ECHO_SERVER = String.raw`
+import { createServer } from "node:http";
+const s = createServer((req, res) => {
+  let b = "";
+  req.on("data", (c) => (b += c));
+  req.on("end", () => {
+    const input = JSON.parse(b).input || [""];
+    const text = (input[0] || "").toLowerCase().replace(/\s+/g, " ");
+    const vec = new Array(8).fill(0);
+    for (const w of text.split(" ")) {
+      let h = 0x811c9dc5;
+      for (let i = 0; i < w.length; i++) { h ^= w.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+      vec[h % 8] += 1;
+    }
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ data: [{ embedding: vec }] }));
+  });
+});
+s.listen(0, "127.0.0.1", () => process.stdout.write(String(s.address().port)));
+`;
+
+// A simpler shape-only server: always returns { data: [[0.1,0.2,0.3]] }.
+const DATA_ARR_SERVER = String.raw`
+import { createServer } from "node:http";
+const s = createServer((_req, res) => {
+  res.setHeader("content-type", "application/json");
+  res.end(JSON.stringify({ data: [[0.1, 0.2, 0.3]] }));
+});
+s.listen(0, "127.0.0.1", () => process.stdout.write(String(s.address().port)));
+`;
+
+/** Spawn an independent echo server; resolves with its url once the port is up. */
+function startEchoServer(shape?: "data-arr"): Promise<{ url: string; proc: ChildProcess }> {
+  const script = shape === "data-arr" ? DATA_ARR_SERVER : ECHO_SERVER;
+  const proc = spawn(process.execPath, ["-e", script], { stdio: ["ignore", "pipe", "ignore"] });
+  return new Promise((resolve, reject) => {
+    let buf = "";
+    proc.stdout!.on("data", (d) => {
+      buf += d.toString();
+      const m = buf.match(/(\d+)/);
+      if (m) resolve({ url: `http://127.0.0.1:${m[1]}`, proc });
+    });
+    proc.on("error", reject);
+    setTimeout(() => reject(new Error("echo server did not start")), 5000);
+  });
+}
+
+test("HttpEmbedder parses OpenAI-style response and resolves dim", async () => {
+  const { url, proc } = await startEchoServer();
+  try {
+    const { HttpEmbedder } = await import("../httpEmbedder.js");
+    const emb = new HttpEmbedder({ url });
+    assert.equal(emb.dim, 0); // unknown until first embed
+    const v = emb.embed("the parser optimized the hot loop");
+    assert.equal(v.length, 8); // echo server returns 8-dim
+    assert.equal(emb.dim, 8); // resolved after first call
+    const v2 = emb.embed("the parser optimized the hot loop");
+    assert.deepEqual(v2, v); // deterministic
+  } finally {
+    proc.kill();
+  }
+});
+
+test("HttpEmbedder tolerant parser: accepts { data: [[...]] } shape", async () => {
+  const { url, proc } = await startEchoServer("data-arr");
+  try {
+    const { HttpEmbedder } = await import("../httpEmbedder.js");
+    const emb = new HttpEmbedder({ url });
+    // embed() L2-normalizes; verify the { data: [[...]] } shape parsed (dim 3)
+    // and the returned vector is the unit-normalized form of [0.1, 0.2, 0.3].
+    const v = emb.embed("x");
+    assert.equal(v.length, 3);
+    const norm = Math.sqrt(0.1 ** 2 + 0.2 ** 2 + 0.3 ** 2);
+    assert.ok(Math.abs(v[0] - 0.1 / norm) < 1e-9);
+    assert.ok(Math.abs(v[1] - 0.2 / norm) < 1e-9);
+    assert.ok(Math.abs(v[2] - 0.3 / norm) < 1e-9);
+  } finally {
+    proc.kill();
+  }
+});
+
 // --- cleanup ---------------------------------------------------------------
 
 test("Sprint 12 cleanup", () => {

@@ -1,13 +1,16 @@
 /**
  * embedder.ts — pluggable text embedding for the local vector store.
  *
- * Default (and only) embedder is a zero-dependency, deterministic hashed
- * n-gram bag encoder — no native build, no network, no external library,
- * works offline. It is heuristic-strength (good enough to rank "which
- * checkpoint is relevant to this query?"), not RAG-grade. The `Embedder`
- * interface is the seam if a stronger local model is ever added, but the
- * extension ships self-contained with no third-party dependency.
+ * Default embedder is a zero-dependency, deterministic hashed n-gram bag
+ * encoder — no native build, no network, no external library, works offline.
+ * It is heuristic-strength (good enough to rank "which checkpoint is relevant
+ * to this query?"), not RAG-grade. A stronger LOCAL embedding backend (your own
+ * localhost ONNX/TEI/Ollama server) can be plugged in via MEGACOMPACT_EMBEDDING_URL
+ * — see httpEmbedder.ts. The `Embedder` interface is the seam both implement;
+ * this extension ships no model and makes no remote call (PREVENT-PI-004).
  */
+
+import { HttpEmbedder, embeddingConfigFromEnv } from "./httpEmbedder.js";
 
 export type Vector = number[];
 
@@ -88,17 +91,21 @@ export class TrigramEmbedder implements Embedder {
 }
 
 /**
- * Select the default embedder used by VectorStore. The TrigramEmbedder is the
- * shipped default: zero-dependency, deterministic, GPU-free, cross-platform, and
- * fully offline (PREVENT-PI-004). It captures lexical + near-lexical overlap
- * well enough for checkpoint dedup/ranking.
+ * Select the default embedder used by VectorStore.
  *
- * The `Embedder` interface is the seam for a stronger LOCAL embedder. To use
- * one, pass it via `new VectorStore({ embedder })` (or your own defaultEmbedder
- * variant) — it must be a local model (on-disk ONNX, local server, etc.), never
- * a remote API call, or PREVENT-PI-004 is violated. No embedding model is
- * shipped with this extension; the trigram stack is the dependency-free path.
+ * - If MEGACOMPACT_EMBEDDING_URL points at a localhost server, use HttpEmbedder
+ *   (your own local embedding backend — ONNX/TEI/Ollama/etc). This is the
+ *   PREVENT-PI-004-sanctioned "bring your own" path: the endpoint is a
+ *   user-spawned loopback server, so conversation content never leaves the box.
+ * - Otherwise the TrigramEmbedder is the shipped default: zero-dependency,
+ *   deterministic, GPU-free, cross-platform, fully offline.
+ *
+ * The `Embedder` interface is the seam for any LOCAL embedder. Never point it
+ * at a remote provider — that would violate PREVENT-PI-004. A user wanting
+ * semantic-grade dedup should run a local embedding server and set the URL.
  */
 export function defaultEmbedder(): Embedder {
+  const cfg = embeddingConfigFromEnv();
+  if (cfg) return new HttpEmbedder(cfg);
   return new TrigramEmbedder();
 }

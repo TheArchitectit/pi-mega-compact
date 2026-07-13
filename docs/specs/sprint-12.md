@@ -108,6 +108,35 @@ needed to prune redundant stored embeddings.
 - `search()` now uses heap top-k (O(N log k), QA #4) over a 2k window, then MMR rerank (λ=0.5, QA #10).
 - `dedup_status` column surfaced into `StoredCheckpoint.dedupStatus`; `setDedupStatus` helper added. SemDeDup is idempotent.
 
+### Addendum — BYO localhost embedder (HttpEmbedder, post-sprint)
+- **What:** Added `src/httpEmbedder.ts` — a pluggable embedder that talks to a
+  user-spawned **localhost** embedding server (local ONNX/TEI/llamafile/Ollama)
+  via `MEGACOMPACT_EMBEDDING_URL`. It is the PREVENT-PI-004-sanctioned "bring
+  your own" seam: the endpoint is loopback-only (remote hosts are rejected at
+  config time), so compacted content never leaves the machine and no model ships
+  with the extension. `defaultEmbedder()` selects it when the env var is set,
+  else falls back to `TrigramEmbedder`.
+- **Sync bridge (critical fix):** VectorStore is synchronous, but a network call
+  is async. The first attempt used `Atomics.wait` (`awaitSync`) on the main
+  thread — this **deadlocks** `fetch`, because the blocked main thread cannot
+  pump the socket and the promise never settles (reproduced in a probe). The
+  fix is `spawnSync` of a tiny inline worker that runs the `fetch` in a child
+  process with its own event loop; the parent blocks natively (no deadlock).
+  Only the HTTP embedder path uses it; the trigram path stays pure-sync.
+- **Tolerant response parser:** accepts OpenAI-style `{data:[{embedding:[…]}]}`,
+  `{data:[[…]]}`, and `{embeddings:[[…]]}`.
+- **Dim is lazy:** unknown (0) until the first `embed()`, then cached; the
+  default `l2Threshold` (0.85 trigram-honest) is used for that first call.
+  Semantic-grade backends should set `MEGACOMPACT_L2_THRESHOLD` to match.
+- **Guardrails:** `fetch` + `spawnSync`/`child_process` carry inline
+  `// guardrails-allow PREVENT-PI-004: …` annotations on the same line (the
+  localhost exception, same class as the /dashboard server). `guardrails-scan`
+  is clean.
+- **Hermetic test:** `sprint12.test.ts` hosts the echo server in an *independent
+  child process* (own event loop) so the parent's `spawnSync` block can't
+  deadlock it; exercises OpenAI-shape parsing + dim resolution + the
+  `{data:[[…]]}` tolerant shape.
+
 ---
 
 ## ROLLBACK PROCEDURE
