@@ -59,7 +59,7 @@ Additional guardrails (from template): PREVENT-001 (JSON.parse without null chec
 ---
 
 ## 6. Documentation Standards
-* **500-Line Max**: no document over 500 lines. Split with `docs/` subfiles.
+* **Doc length guideline**: ~500 lines is a soft target for readability. Split with `docs/` subfiles when a doc gets unwieldy, but don't sacrifice completeness to fit.
 * **Update Maps**: update `docs/INDEX_MAP.md` + `docs/HEADER_MAP.md` when adding/changing docs.
 * **Sprints**: per-sprint full specs live in `docs/specs/` following the SPRINT_GUIDE structure (Header / Safety / Problem / Scope / Execution / Acceptance / Rollback).
 * **Tester guide**: see `TESTER_GUIDE.md` (repo root) for manual testing checklist + bug report template.
