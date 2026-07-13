@@ -78,7 +78,7 @@ npm run build
 
 ```bash
 cd ~/.pi/agent/extensions/pi-mega-compact
-npm test          # Should report 85/85 pass
+npm test          # Should report 87/87 pass
 npm run lint      # Should be clean
 ```
 
