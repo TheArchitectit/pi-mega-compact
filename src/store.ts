@@ -7,7 +7,11 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { gzipSync, gunzipSync } from "node:zlib";
+import {
+  gzipSync, gunzipSync,
+  brotliCompressSync, brotliDecompressSync,
+  constants as zlibConstants,
+} from "node:zlib";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -48,23 +52,106 @@ export interface StoredCheckpoint {
   timestamp: number;
 }
 
-/** Read gzipped JSON, returning `fallback` on missing/corrupt file. */
+// ---------------------------------------------------------------------------
+// Dynamic compression — picks algorithm/level based on payload size
+// ---------------------------------------------------------------------------
+
+/** Tag byte prefix for each compression tier. */
+const TAG_RAW     = 0x00; // no compression (< 512 bytes)
+const TAG_GZIP_1  = 0x01; // gzip level 1 (fast, 512B–4KB)
+const TAG_GZIP_6  = 0x02; // gzip level 6 (default, 4KB–32KB)
+const TAG_BROTLI  = 0x03; // brotli level 4 (> 32KB)
+
+/** Gzip magic bytes — used to detect legacy untagged files. */
+const GZIP_MAGIC = 0x1f;
+
+/**
+ * Compress a buffer using the best algorithm for its size.
+ *
+ * Tier strategy:
+ *   < 512 B  → raw (tag 0x00) — overhead of compression exceeds savings
+ *   512B–4KB → gzip level 1  — fast, acceptable ratio for small blobs
+ *   4KB–32KB → gzip level 6  — solid general-purpose default
+ *   > 32 KB  → brotli level 4 — best text compression ratio
+ *
+ * Always prepends a 1-byte tag so `decompressSmart` can dispatch.
+ */
+export function compressSmart(data: Buffer): Buffer {
+  const len = data.length;
+  if (len < 512) {
+    // No compression — prepend tag
+    return Buffer.concat([Buffer.from([TAG_RAW]), data]);
+  }
+  if (len < 4096) {
+    const compressed = gzipSync(data, { level: 1 });
+    return Buffer.concat([Buffer.from([TAG_GZIP_1]), compressed]);
+  }
+  if (len < 32768) {
+    const compressed = gzipSync(data, { level: 6 });
+    return Buffer.concat([Buffer.from([TAG_GZIP_6]), compressed]);
+  }
+  // Large payload — brotli for best text ratio
+  const compressed = brotliCompressSync(data, {
+    params: {
+      [zlibConstants.BROTLI_PARAM_QUALITY]: 4,
+    },
+  });
+  return Buffer.concat([Buffer.from([TAG_BROTLI]), compressed]);
+}
+
+/**
+ * Decompress a buffer written by `compressSmart`.
+ *
+ * Backward-compat: if the first byte is 0x1f (gzip magic), the file was
+ * written by the old `gzipSync` path — decompress as plain gzip.
+ */
+export function decompressSmart(buf: Buffer): Buffer {
+  if (buf.length === 0) return buf;
+  const tag = buf[0];
+  const payload = buf.subarray(1);
+
+  // Legacy untagged gzip file
+  if (tag === GZIP_MAGIC) {
+    return gunzipSync(buf);
+  }
+
+  switch (tag) {
+    case TAG_RAW:
+      return payload;
+    case TAG_GZIP_1:
+    case TAG_GZIP_6:
+      return gunzipSync(payload);
+    case TAG_BROTLI:
+      return brotliDecompressSync(payload);
+    default:
+      // Unknown tag — try legacy gzip as fallback
+      return gunzipSync(buf);
+  }
+}
+
+/**
+ * Read smart-compressed JSON, returning `fallback` on missing/corrupt file.
+ *
+ * Backward-compatible: detects legacy gzip files (magic byte 0x1f) and
+ * decompresses them correctly alongside new tagged files.
+ */
 export function readGzJson<T>(path: string, fallback: T): T {
   try {
     if (!existsSync(path)) return fallback;
     const buf = readFileSync(path);
-    const out = gunzipSync(buf);
+    const out = decompressSmart(buf);
     return JSON.parse(out.toString("utf-8")) as T;
   } catch {
     return fallback;
   }
 }
 
-/** Write gzipped JSON; creates parent dirs. */
+/** Write JSON with dynamic compression; creates parent dirs. */
 export function writeGzJson(path: string, data: unknown): void {
   mkdirSync(join(path, ".."), { recursive: true });
-  const buf = gzipSync(Buffer.from(JSON.stringify(data), "utf-8"));
-  writeFileSync(path, buf);
+  const jsonBuf = Buffer.from(JSON.stringify(data), "utf-8");
+  const compressed = compressSmart(jsonBuf);
+  writeFileSync(path, compressed);
 }
 
 /** Append a checkpoint to the per-session checkpoint file (gzipped). */
