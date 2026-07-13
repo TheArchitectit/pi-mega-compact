@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -11,9 +11,6 @@ import {
   writeGzJson,
   normalizeSessionId,
   nextCheckpointId,
-  listCheckpoints,
-  loadSessionState,
-  saveSessionState,
 } from "./store.js";
 
 const baseTmp = mkdtempSync(join(tmpdir(), "mc-store-"));
@@ -111,18 +108,18 @@ test("readGzJson reads legacy gzip files written by old code", () => {
   assert.deepEqual(loaded, { old: true });
 });
 
-test("compression tier: GZIP-1 is faster than GZIP-6 for same input", () => {
-  const data = Buffer.from("compress me " .repeat(200));
-  const t1Start = performance.now();
-  for (let i = 0; i < 100; i++) compressSmart(Buffer.from("x".repeat(600)));
-  const t1 = performance.now() - t1Start;
+test("compression tier: GZIP-1 and GZIP-6 tiers produce valid, smaller output", () => {
+  // GZIP-1 tier (~600B input, 512B–4KB band)
+  const small = compressSmart(Buffer.from("compress me ".repeat(200)));
+  assert.equal(small[0], 0x01, "GZIP-1 tag for small input");
+  assert.ok(small.length < 600, "GZIP-1 output smaller than input");
+  assert.deepEqual(decompressSmart(small), Buffer.from("compress me ".repeat(200)));
 
-  const t6Start = performance.now();
-  for (let i = 0; i < 100; i++) compressSmart(Buffer.from("x".repeat(8000)));
-  const t6 = performance.now() - t6Start;
-
-  // We don't assert timing (flaky), just verify the tiers produce valid output
-  assert.ok(true, "timing test ran without error");
+  // GZIP-6 tier (~8KB input, 4KB–32KB band)
+  const big = compressSmart(Buffer.from("compress me ".repeat(1800)));
+  assert.equal(big[0], 0x02, "GZIP-6 tag for medium input");
+  assert.ok(big.length < Buffer.from("compress me ".repeat(1800)).length, "GZIP-6 output smaller than input");
+  assert.deepEqual(decompressSmart(big), Buffer.from("compress me ".repeat(1800)));
 });
 
 // ---------------------------------------------------------------------------

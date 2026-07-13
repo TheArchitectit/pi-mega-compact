@@ -107,7 +107,7 @@ test("compactSession with useExtractive produces topicSummary on checkpoint", ()
     msg("user", "now add the session token generation"),
     msg("assistant", "Added generateSessionToken in src/auth.ts:78", "Edit"),
   ];
-  const r = compactSession({ sessionId: "sess_extr", messages, keepFrom: 4, timestamp: 1, useExtractive: true }, s);
+  const r = compactSession({ sessionId: "sess_extr", messages, keepFrom: 4, timestamp: 1, useExtractiveSummary: true }, s);
   assert.equal(r.skipped, false);
   assert.ok(r.checkpointId, "checkpoint created");
   // The checkpoint should have topicSummary populated

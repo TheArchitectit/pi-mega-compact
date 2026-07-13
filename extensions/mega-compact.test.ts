@@ -195,7 +195,7 @@ test("/recall-context reports and stages the top checkpoint", async () => {
   const h = harness();
   await h.fire("context", { type: "context", messages: h.session }, h.ctx({ getContextUsage: () => ({ tokens: 200000, contextWindow: 200000, percent: 100 }) }));
   const ctx = h.ctx();
-  await h.commands["recall-context"].handler("dedupe bug store.ts", ctx);
+  await h.commands["mega-recall"].handler("dedupe bug store.ts", ctx);
   assert.ok(h.notifies.some((n) => n.includes("recall staged")), "command reports staged checkpoints");
   assert.ok(h.notifies.some((n) => n.includes("chkpt_")), "command names the checkpoint");
 });
@@ -204,7 +204,7 @@ test("/megacompact-status reports live store stats", async () => {
   const h = harness();
   await h.fire("context", { type: "context", messages: h.session }, h.ctx({ getContextUsage: () => ({ tokens: 200000, contextWindow: 200000, percent: 100 }) }));
   const ctx = h.ctx({ getContextUsage: () => ({ tokens: 50000, contextWindow: 200000, percent: 25 }) });
-  await h.commands["megacompact-status"].handler("", ctx);
+  await h.commands["mega-status"].handler("", ctx);
   assert.ok(h.notifies.some((n) => n.includes("store:") && n.includes("chkpt")), "status shows checkpoint count");
 });
 
@@ -226,7 +226,7 @@ for (const [tier, threshold] of TIER_CASES) {
     process.env.MEGACOMPACT_TIER = tier;
     const h = harness({ keepTier: true, keepThreshold: true });
     const ctx = h.ctx({ getContextUsage: () => ({ tokens: 1, contextWindow: 2_000_000, percent: 0.01 }) });
-    await h.commands["megacompact-status"].handler("", ctx);
+    await h.commands["mega-status"].handler("", ctx);
     delete process.env.MEGACOMPACT_TIER;
     assert.ok(
       h.notifies.some((n) => n.includes(`tier=${tier}`) && n.includes(`threshold=${threshold}`)),
@@ -240,7 +240,7 @@ test("explicit MEGACOMPACT_THRESHOLD_TOKENS overrides the tier", async () => {
   process.env.MEGACOMPACT_THRESHOLD_TOKENS = "777";
   const h = harness({ keepTier: true, keepThreshold: true });
   const ctx = h.ctx({ getContextUsage: () => ({ tokens: 1, contextWindow: 2_000_000, percent: 0.01 }) });
-  await h.commands["megacompact-status"].handler("", ctx);
+  await h.commands["mega-status"].handler("", ctx);
   delete process.env.MEGACOMPACT_TIER;
   assert.ok(
     h.notifies.some((n) => n.includes("tier=custom") && n.includes("threshold=777")),
@@ -252,14 +252,14 @@ test("explicit MEGACOMPACT_THRESHOLD_TOKENS overrides the tier", async () => {
 test("/dashboard-status reports no server when pid file missing", async () => {
   const h = harness();
   const ctx = h.ctx();
-  await h.commands["dashboard-status"].handler("", ctx);
+  await h.commands["mega-dashboard-status"].handler("", ctx);
   assert.ok(h.notifies.some((n) => n.includes("not running")), "reports no server running");
 });
 
 test("/dashboard-stop reports no server when pid file missing", async () => {
   const h = harness();
   const ctx = h.ctx();
-  await h.commands["dashboard-stop"].handler("", ctx);
+  await h.commands["mega-dashboard-stop"].handler("", ctx);
   assert.ok(h.notifies.some((n) => n.includes("no dashboard server running")), "reports no server");
 });
 
@@ -288,7 +288,7 @@ test("/dashboard skips server spawn when already running", async () => {
     },
   });
 
-  await h.commands["dashboard"].handler("", ctx);
+  await h.commands["mega-dashboard"].handler("", ctx);
   assert.ok(h.notifies.some((n) => n.includes("already running")), "reports already running");
   assert.ok(confirms.length > 0, "confirm dialog was shown");
 
@@ -310,7 +310,7 @@ test("/dashboard-status reports running after dashboard start", async () => {
   wf(j(h.stateDir, "port.pid"), JSON.stringify({ port: addr.port, pid: process.pid }));
 
   const ctx = h.ctx();
-  await h.commands["dashboard-status"].handler("", ctx);
+  await h.commands["mega-dashboard-status"].handler("", ctx);
   assert.ok(h.notifies.some((n) => n.includes("running") && n.includes(String(addr.port))), "reports running with port");
 
   await new Promise<void>((r) => server.close(() => r()));
