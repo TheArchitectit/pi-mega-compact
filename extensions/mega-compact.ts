@@ -228,7 +228,7 @@ export default function (pi: ExtensionAPI) {
     if (ctx) {
       const tokStr = lastCtxTokens != null ? `${Math.round(lastCtxTokens / 1000)}k` : "?";
       const maxStr = lastCtxWindow > 0 ? `${Math.round(lastCtxWindow / 1000)}k` : "?";
-      const pctStr = lastCtxPercent != null ? `${lastCtxPercent}%` : "?%";
+      const pctStr = lastCtxPercent != null ? `${Math.round(lastCtxPercent * 10) / 10}%` : "?%";
       const triggerLabel = ready ? "● ready" : armed ? "◐ armed" : "○ idle";
       const dedupStr = st.dedupHitRate != null ? `${Math.round(st.dedupHitRate * 100)}%` : "—";
       const savedStr = rt.lastCompactedFrom > 0 ? `${Math.round(rt.lastCompactedFrom / 1000)}k` : "0";

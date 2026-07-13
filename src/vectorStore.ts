@@ -46,7 +46,9 @@ export interface AddResult {
 
 /** Stable hash of a compacted region, the dedup sentinel key. */
 export function computeRegionHash(regionText: string): string {
-  return createHash("sha256").update(regionText).digest("hex").slice(0, 16);
+  // Normalize whitespace before hashing so "foo  bar" and "foo bar" dedup.
+  const normalized = regionText.replace(/\s+/g, " ").trim();
+  return createHash("sha256").update(normalized).digest("hex").slice(0, 16);
 }
 
 export class VectorStore {

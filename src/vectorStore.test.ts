@@ -216,6 +216,35 @@ test("stats reports counts, last checkpoint, and dedup rate", () => {
   assert.ok(Math.abs(st2.dedupHitRate - 0.5) < 1e-9);
 });
 
+test("computeRegionHash normalizes whitespace before hashing", () => {
+  const h1 = computeRegionHash("foo  bar");
+  const h2 = computeRegionHash("foo bar");
+  const h3 = computeRegionHash("  foo   bar  ");
+  assert.equal(h1, h2, "double space and single space should hash the same");
+  assert.equal(h2, h3, "leading/trailing spaces should hash the same");
+  // Sanity: different content still hashes differently.
+  assert.notEqual(h1, computeRegionHash("foo baz"));
+});
+
+test("whitespace-variant region is deduplicated", () => {
+  const s = store();
+  const r1 = s.add({
+    sessionId: "sess_ws",
+    summary: "first",
+    regionText: "user  changed  config.ts",
+    timestamp: 1,
+  });
+  assert.equal(r1.deduped, false);
+  const r2 = s.add({
+    sessionId: "sess_ws",
+    summary: "second",
+    regionText: "user changed config.ts",
+    timestamp: 2,
+  });
+  assert.equal(r2.deduped, true, "whitespace-variant should be deduplicated");
+  assert.equal(s.stats("sess_ws").checkpointCount, 1, "only one checkpoint stored");
+});
+
 test("topSimilar returns n most similar checkpoints to the current (most recent)", () => {
   const s = store();
   s.add({
