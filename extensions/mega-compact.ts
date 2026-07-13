@@ -38,6 +38,8 @@ import { estimateSessionTokens } from "../src/tokens.js";
 import { normalizeSessionId } from "../src/store.js";
 import { Logger } from "../src/log.js";
 import type { EngineMessage } from "../src/types.js";
+import { writeFileSync, appendFileSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 
 const STATUS_KEY = "mega-compact";
 const MARKER_TYPE = "mega-compact-marker";
@@ -105,6 +107,76 @@ function loadConfig() {
   };
 }
 
+// ---- Live dashboard -------------------------------------------------------
+// Writes dashboard.json (full snapshot) and events.log (JSONL tail) to the
+// state dir so any process can inspect the extension's real-time state.
+//
+// Usage:
+//   cat ~/.pi/agent/extensions/pi-mega-compact/dashboard.json
+//   jq . ~/.pi/agent/extensions/pi-mega-compact/dashboard.json
+//   tail -f ~/.pi/agent/extensions/pi-mega-compact/events.log
+
+interface DashboardSnapshot {
+  version: 1;
+  updatedAt: string;
+  tier: string;
+  config: {
+    fastGatePct: number;
+    thresholdTokens: number;
+    anchorUserMessages: number;
+    preserveRecent: number;
+    auto: boolean;
+    autoInline: boolean;
+  };
+  session: {
+    id: string;
+    state: string;
+    persistedThisSession: boolean;
+    lastCheckpointId: string | null;
+    lastCompactedFrom: number;
+  };
+  context: {
+    tokens: number | null;
+    percent: number | null;
+    contextWindow: number;
+  };
+  trigger: {
+    armed: boolean;           // past fast-gate %
+    ready: boolean;           // past threshold (would compact next turn)
+    currentTokens: number | null;
+    thresholdTokens: number;
+    fastGatePct: number;
+  };
+  store: {
+    checkpointCount: number;
+    totalTokenEstimate: number;
+    injectedCount: number;
+    dedupHitRate: number;
+  };
+}
+
+class Dashboard {
+  private snapshotPath: string;
+  private eventsPath: string;
+
+  constructor(stateDir: string) {
+    if (!existsSync(stateDir)) mkdirSync(stateDir, { recursive: true });
+    this.snapshotPath = join(stateDir, "dashboard.json");
+    this.eventsPath = join(stateDir, "events.log");
+  }
+
+  /** Write a full state snapshot (atomically replaces previous). */
+  snapshot(data: DashboardSnapshot): void {
+    writeFileSync(this.snapshotPath, JSON.stringify(data, null, 2) + "\n");
+  }
+
+  /** Append a timestamped JSONL event line. */
+  event(type: string, data: Record<string, unknown>): void {
+    const line = JSON.stringify({ ts: new Date().toISOString(), type, ...data });
+    appendFileSync(this.eventsPath, line + "\n");
+  }
+}
+
 /** Convert the messages pi hands us in the `context` event into the engine view. */
 function engineView(messages: AgentMessage[]): EngineMessage[] {
   return toEngineMessages(messages);
@@ -114,6 +186,41 @@ export default function (pi: ExtensionAPI) {
   const config = loadConfig();
   const store = new VectorStore({ dedupSim: config.dedupSim, stateDir: config.stateDir });
   const logger = new Logger({ enabled: config.debug, path: join(config.stateDir, "mega-compact.log") });
+  const dashboard = new Dashboard(config.stateDir);
+
+  // --- snapshot() helper: collect live state and write it to disk ---
+  let lastCtxTokens: number | null = null;
+  let lastCtxPercent: number | null = null;
+  let lastCtxWindow: number = 0;
+
+  function snapshot(): void {
+    const st = store.stats(rt.sessionId);
+    const armed = lastCtxPercent != null && lastCtxPercent >= config.fastGatePct;
+    const ready = armed && (lastCtxTokens ?? 0) >= config.thresholdTokens;
+    dashboard.snapshot({
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      tier: config.tier,
+      config: {
+        fastGatePct: config.fastGatePct,
+        thresholdTokens: config.thresholdTokens,
+        anchorUserMessages: config.anchorUserMessages,
+        preserveRecent: config.preserveRecent,
+        auto: config.auto,
+        autoInline: config.autoInline,
+      },
+      session: {
+        id: rt.sessionId,
+        state: statusKey ?? "idle",
+        persistedThisSession: rt.persistedThisSession,
+        lastCheckpointId: rt.lastCheckpointId ?? null,
+        lastCompactedFrom: rt.lastCompactedFrom,
+      },
+      context: { tokens: lastCtxTokens, percent: lastCtxPercent, contextWindow: lastCtxWindow },
+      trigger: { armed, ready, currentTokens: lastCtxTokens, thresholdTokens: config.thresholdTokens, fastGatePct: config.fastGatePct },
+      store: { checkpointCount: st.checkpointCount, totalTokenEstimate: st.totalTokenEstimate, injectedCount: st.injectedCount, dedupHitRate: st.dedupHitRate },
+    });
+  }
 
   // The only mutable per-session state. Reset on session_start / session_tree.
   let rt: SessionRuntime = {
@@ -126,8 +233,10 @@ export default function (pi: ExtensionAPI) {
   // Recall block produced by auto-inline (resume/branch) that the next
   // before_agent_start should prepend to the system prompt. Unset after use.
   let pendingRecallBlock: string | undefined;
+  let statusKey: string | undefined; // current status text for dashboard
 
   function setStatus(ctx: ExtensionContext, text: string | undefined) {
+    statusKey = text;
     ctx.ui.setStatus(STATUS_KEY, text);
   }
 
@@ -140,6 +249,7 @@ export default function (pi: ExtensionAPI) {
       lastCheckpointId: undefined,
       lastCompactedFrom: 0,
     };
+    statusKey = undefined;
   }
 
   /** Run the full compaction pipeline and persist a checkpoint. Returns the result. */
@@ -197,6 +307,14 @@ export default function (pi: ExtensionAPI) {
       tokenEstimate: saved,
       compactedFrom: result.compactedFrom,
     });
+    dashboard.event("compact", {
+      sessionId: sid,
+      checkpointId: result.checkpointId ?? "(deduped)",
+      deduped: result.deduped,
+      tokenEstimate: saved,
+      compactedFrom: result.compactedFrom,
+    });
+    snapshot();
     return { skipped: false, result, keepFrom, saved };
   }
 
@@ -207,10 +325,12 @@ export default function (pi: ExtensionAPI) {
    */
   function doRecall(ctx: ExtensionContext, query: string, source: "resume" | "command") {
     const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
-    return recallAndInline(
+    const result = recallAndInline(
       { sessionId: sid, query, limit: config.autoInlineK, source, skipInjected: true },
       store,
     );
+    dashboard.event("recall", { source, query: query.slice(0, 120), injected: result.toInject.length, empty: result.empty });
+    return result;
   }
 
   // ---- Session lifecycle (state reset points) -------------------------------
@@ -236,6 +356,8 @@ export default function (pi: ExtensionAPI) {
         }
       }
     }
+    dashboard.event("session_start", { reason: event.reason, sessionId: rt.sessionId });
+    snapshot();
   });
 
   pi.on("session_tree", async (_event, ctx) => {
@@ -253,6 +375,8 @@ export default function (pi: ExtensionAPI) {
         }
       }
     }
+    dashboard.event("session_tree", { sessionId: rt.sessionId });
+    snapshot();
   });
 
   // ---- Auto-inline injection point: prepend staged recall to systemPrompt ----
@@ -272,6 +396,11 @@ export default function (pi: ExtensionAPI) {
     if (!config.auto) return;
     const usage = ctx.getContextUsage();
     const pct = usage?.percent;
+    // Always track context for the dashboard, even if we return early below.
+    lastCtxTokens = usage?.tokens ?? null;
+    lastCtxPercent = pct ?? null;
+    lastCtxWindow = usage?.contextWindow ?? 0;
+    snapshot();
     if (pct == null) return;
     if (pct < config.fastGatePct) return; // FAST GATE (local %)
 
