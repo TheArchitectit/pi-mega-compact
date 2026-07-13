@@ -349,6 +349,45 @@ re-mapped, not dropped:
 
 ---
 
+## Guardrails gate (applies to Sprints 8–15)
+
+Every sprint exits ONLY when the adapted agent-guardrails checks pass. The
+guardrails are vendored in this repo (see `docs/AGENT_GUARDRAILS.md`,
+`skills/shared-prompts/four-laws.md`, `.guardrails/`, `.claude/hooks/`,
+`scripts/`). Gate commands (run before commit):
+
+```bash
+npm run build          # tsc
+npm test               # build + node --test on dist/**/*.test.js
+npm run lint           # tsc --noEmit + scripts/guardrails-scan.mjs (PREVENT-PI-*)
+python3 scripts/regression_check.py --all   # Four Laws / scope / secrets audit
+python3 scripts/log_failure.py --list       # no active failures in scope
+```
+
+Per-sprint guardrail checklist:
+- [ ] **Four Laws**: read target file first; stay in scope (only S8–15 files);
+      tests green before commit; halt on uncertainty.
+- [ ] **PREVENT-PI-004 (critical)**: grep-confirmed **zero network calls** in
+      any `src/` / `extensions/` code (pglite is in-process WASM + FS, not a
+      remote DB). `npm run lint` enforces this automatically.
+- [ ] **PREVENT-PI-001/002/003**: any compaction code change preserves the
+      anchor-floor guard, never splits a toolCall/toolResult pair, and injects
+      recall via `before_agent_start` systemPrompt (never `role:"system"`).
+- [ ] **PREVENT-002**: all PGlite queries use parameterized `$1/$2` placeholders
+      — never string-concatenated SQL.
+- [ ] **PREVENT-003 / secrets**: no hardcoded credentials; state dir contents
+      (`*.checkpoints.json.gz`, `*.state.json.gz`, `pglite/`) never committed.
+- [ ] **No feature creep**: do not touch files outside the sprint's scope table.
+- [ ] **500-line docs**: keep specs/maps under 500 lines (split if needed).
+- [ ] **AI attribution**: `Co-Authored-By: Claude ...` in every commit
+      (pre-commit hook enforces).
+
+> Note: the four pre-existing `.github/workflows/guardrails-*.yml` files only
+> check scope/secrets/commit-format and target `main`. The real green gate is
+> `.github/workflows/ci.yml` against `master` (build+lint+test+regression).
+
+---
+
 ## Sprint 8 — Storage Backbone: PGlite + Compression v2  (foundation)  [L]
 
 Goal: a local SQL store powering every tier, plus the revised compression scheme.

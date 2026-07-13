@@ -1,0 +1,100 @@
+# Documentation Header Map — pi-mega-compact
+
+**Purpose:** Section-level lookup with file:line references for targeted reading.
+
+**Usage:** Identify section → read with offset → minimal token consumption.
+
+---
+
+## AGENT_GUARDRAILS.md (docs/AGENT_GUARDRAILS.md)
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Applicability | 9 | 0 |
+| Purpose | 27 | 18 |
+| Four Laws (quick ref) | 49 | 40 |
+| Pre-Execution Checklist | 58 | 49 |
+| Git Safety Rules | 74 | 65 |
+| Code Safety Rules | 87 | 78 |
+| Test/Production Separation | 100 | 91 |
+| HALT CONDITIONS | 134 | 125 |
+| FORBIDDEN ACTIONS | 160 | 151 |
+| SCOPE BOUNDARIES | 214 | 205 |
+| pi-mega-compact Project Rules (PREVENT-PI) | 251 | 242 |
+| Verification gate (every sprint) | 263 | 254 |
+
+---
+
+## CLAUDE.md (repo root)
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Navigation Maps | 3 | 0 |
+| Context & Setup | 11 | 8 |
+| Token-Saving Rules | 21 | 18 |
+| Workflow | 29 | 26 |
+| Hard Project Constraints (PREVENT-PI) | 39 | 36 |
+| Architecture at a Glance | 57 | 54 |
+| Documentation Standards | 73 | 70 |
+
+---
+
+## PLAN.md (repo root)
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Current Status (phases) | 18 | 0 |
+| Confirmed design decisions | 32 | 0 |
+| Architecture Overview | 56 | 0 |
+| Phase 1 Dynamic Compression (done) | 94 | 0 |
+| Phase 2 Enhanced Compression | 111 | 0 |
+| Phase 3 Tier 0 Exact Match | 207 | 0 |
+| Phase 4 Tier 1 MinHash/LSH | 239 | 0 |
+| Phase 5 Tier 2 Semantic | 276 | 0 |
+| Phase 6 RAPTOR | 336 | 0 |
+| QA Critical Fix Register | 442 | 0 |
+
+---
+
+## SPRINT_PLAN.md (repo root)
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Sprint 0 Bootstrap | 15 | 0 |
+| Sprint 1 Core engine | 45 | 0 |
+| Sprint 2 Vector store (done) | 67 | 0 |
+| Sprint 3 Extension wiring (done) | 88 | 0 |
+| Sprint 4 Recall layer (done) | 116 | 0 |
+| Sprint 5 Commands/UX (done) | 141 | 0 |
+| Sprint 6 Hardening/Release (done) | 158 | 0 |
+| Sprint 7 Optional backlog | 193 | 0 |
+| Phases 2–7 plan (v0.2.0) | 297 | 0 |
+| Resolved architecture decisions | 318 | 0 |
+| Sprint 8 PGlite backbone | 352 | 0 |
+| Sprint 9 Content dedup | 397 | 0 |
+| Sprint 10 L0 upgrade | 426 | 0 |
+| Sprint 11 MinHash/LSH | 460 | 0 |
+| Sprint 12 Semantic + MMR | 492 | 0 |
+| Sprint 13 RAPTOR | 529 | 0 |
+| Sprint 14 Full pipeline | 560 | 0 |
+| Sprint 15 Release | 587 | 0 |
+
+---
+
+## docs/dedup-implementation-plan.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Architecture Overview (4 tiers) | 35 | 0 |
+| Phase 1 L0 Exact + MMR | 89 | 0 |
+| Phase 2 RAPTOR | 289 | 0 |
+| Phase 3 L1 MinHash/LSH | 1217 | 0 |
+| Phase 4 L2 Semantic + HNSW | 1458 | 0 |
+| Disaster Recovery | 1568 | 0 |
+| Integration Points | 1640 | 0 |
+| Security Hardening | 1691 | 0 |
+| Baseline Collection | 1769 | 0 |
+| Observability / Metrics | 1889 | 0 |
+| Circuit Breakers | 1965 | 0 |
+| Backfill Orchestration | 2154 | 0 |
+| Testing & Validation | 2421 | 0 |

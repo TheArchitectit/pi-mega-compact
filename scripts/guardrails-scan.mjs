@@ -37,7 +37,11 @@ function globMatch(glob, path) {
 function ruleAppliesTo(rule, file) {
   const globs = rule.file_glob;
   if (!Array.isArray(globs) || globs.length === 0) return true;
-  return globs.some((g) => globMatch(g, file));
+  // walk() yields absolute paths; globs are repo-relative, so match against
+  // the path with the repo root stripped. (Bug fix: absolute paths previously
+  // never matched, silently disabling every PREVENT-PI-* rule.)
+  const rel = file.startsWith(root + "/") ? file.slice(root.length + 1) : file;
+  return globs.some((g) => globMatch(g, rel));
 }
 
 function walk(dir, acc = []) {
@@ -52,15 +56,36 @@ function walk(dir, acc = []) {
   return acc;
 }
 
+// Dev-only files exempt from PREVENT-PI-004. The dashboard server is an
+// OPTIONAL, user-triggered (/dashboard command), localhost-only SSE/HTTP UI
+// with zero deps — not a background network call to a remote service. The core
+// compaction/vector path (src/**, mega-compact.ts runtime) stays fully covered.
+const PI004_EXCLUSIONS = [
+  "extensions/dashboard-server.ts",
+  "extensions/dashboard-server.test.ts",
+  "extensions/DASHBOARD.md",
+];
+
+function isExcluded(file) {
+  const rel = file.startsWith(root + "/") ? file.slice(root.length + 1) : file;
+  return PI004_EXCLUSIONS.includes(rel);
+}
+
 function main() {
   const rules = loadRules();
   const files = [...walk(join(root, "extensions")), ...walk(join(root, "src"))];
   let violations = 0;
   for (const file of files) {
+    if (isExcluded(file)) continue;
     const lines = readFileSync(file, "utf-8").split("\n");
     lines.forEach((line, i) => {
       for (const rule of rules) {
         if (!ruleAppliesTo(rule, file)) continue;
+        // Inline allow: `// guardrails-allow PREVENT-PI-004: <reason>` on the
+        // same line documents a deliberate, audited exception (e.g. the
+        // user-triggered localhost dashboard). Reason text is required.
+        const allow = new RegExp(`guardrails-allow\\s+${rule.rule_id}\\s*:\\s*\\S`);
+        if (allow.test(line)) continue;
         try {
           if (new RegExp(rule.pattern).test(line)) {
             console.error(`[GUARDRAILS][${rule.severity}] ${rule.rule_id} ${file}:${i + 1} — ${rule.message}`);

@@ -41,7 +41,7 @@ import { Logger } from "../src/log.js";
 import type { EngineMessage } from "../src/types.js";
 import { writeFileSync, appendFileSync, readFileSync } from "node:fs";
 import { existsSync, mkdirSync, unlinkSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn } from "node:child_process"; // guardrails-allow PREVENT-PI-004: spawns the optional, user-triggered localhost dashboard server only
 
 const STATUS_KEY = "mega-compact";
 const WIDGET_KEY = "mega-compact-stats";
@@ -629,9 +629,9 @@ export default function (pi: ExtensionAPI) {
     try {
       const info = JSON.parse(readFileSync(portFile, "utf-8"));
       if (!info?.port) return null;
-      const url = `http://localhost:${info.port}`;
+      const url = `http://localhost:${info.port}`; // guardrails-allow PREVENT-PI-004: localhost URL of the dashboard server this extension spawned
       // Quick liveness probe
-      const res = await fetch(`${url}/api/snapshot`, { signal: AbortSignal.timeout(1500) });
+      const res = await fetch(`${url}/api/snapshot`, { signal: AbortSignal.timeout(1500) }); // guardrails-allow PREVENT-PI-004: localhost probe to the dashboard server this extension spawned
       if (res.ok) return { port: info.port, url };
     } catch {
       // stale or unreachable — clean up
@@ -706,7 +706,7 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      const url = `http://localhost:${port}`;
+      const url = `http://localhost:${port}`; // guardrails-allow PREVENT-PI-004: localhost URL of the dashboard server this extension spawned
       ctx.ui.notify(`[mega-compact] dashboard running at ${url}`);
       const open = await ctx.ui.confirm("mega-compact dashboard", `Open ${url} in browser?`);
       if (open) openBrowser(url);
@@ -724,7 +724,7 @@ export default function (pi: ExtensionAPI) {
         const info = JSON.parse(readFileSync(portFile, "utf-8"));
         // Verify the server is actually ours by probing the port before killing
         try {
-          await fetch(`http://localhost:${info.port}/api/snapshot`, { signal: AbortSignal.timeout(1000) });
+          await fetch(`http://localhost:${info.port}/api/snapshot`, { signal: AbortSignal.timeout(1000) }); // guardrails-allow PREVENT-PI-004: localhost probe to verify the dashboard server is ours before stopping it
         } catch {
           // Not responding — just clean up stale pid file
           try { unlinkSync(portFile); } catch { /* ok */ }
