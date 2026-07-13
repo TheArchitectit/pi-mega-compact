@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+- **Live agent tracking in toolbar widget.** The stats widget now shows active
+  sub-agent count and current turn index in real-time:
+  ```
+   ⚡ medium │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
+  ```
+  Tracks `agent_start`/`agent_end` and `turn_start`/`turn_end` events from pi.
+
 ### Fixed
 - **Auto-trigger fired in a live pi session for the first time.** Two bugs
   made the auto-pipeline dead code in real use despite green unit/engine tests:

@@ -80,15 +80,13 @@ function readSnapshot(snapshotPath: string) {
   }
 }
 
-function readFrom(path: string, offset: number): { data: string; offset: number } {
+function readFrom(path: string, charOffset: number): { data: string; offset: number } {
   try {
-    const stat = readFileSync(path); // throws if missing
-    const fd = stat.length;
-    if (fd <= offset) return { data: "", offset };
     const content = readFileSync(path, "utf-8");
-    return { data: content.slice(offset), offset: content.length };
+    if (content.length <= charOffset) return { data: "", offset: charOffset };
+    return { data: content.slice(charOffset), offset: content.length };
   } catch {
-    return { data: "", offset };
+    return { data: "", offset: charOffset };
   }
 }
 
@@ -238,6 +236,10 @@ function dashboardHtml(tierName: string): string {
     document.getElementById('updated').textContent = 'Updated ' + new Date(d.updatedAt).toLocaleTimeString();
   }
 
+  function sanitize(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
   function renderEvent(ev) {
     evBuffer.unshift(ev);
     if (evBuffer.length > MAX_EV) evBuffer.length = MAX_EV;
@@ -245,15 +247,15 @@ function dashboardHtml(tierName: string): string {
       var t = e.ts ? new Date(e.ts).toLocaleTimeString() : '';
       var detail = '';
       if (e.data) {
-        if (e.data.checkpointId) detail = e.data.checkpointId;
-        else if (e.data.query) detail = e.data.query.slice(0, 80);
+        if (e.data.checkpointId) detail = sanitize(e.data.checkpointId);
+        else if (e.data.query) detail = sanitize(e.data.query.slice(0, 80));
         if (e.data.tokenEstimate != null) detail += '  ' + e.data.tokenEstimate + ' tok';
         if (e.data.deduped) detail += '  (deduped)';
         if (e.data.injected != null) detail = 'injected: ' + e.data.injected + (e.data.empty ? ' (empty)' : '');
       }
       return '<div class="ev">' +
         '<span class="ev-time">' + t + '</span>' +
-        '<span class="ev-type ev-type-' + e.type + '">' + e.type + '</span>' +
+        '<span class="ev-type ev-type-' + sanitize(e.type) + '">' + sanitize(e.type) + '</span>' +
         '<span class="ev-detail">' + detail + '</span></div>';
     }).join('');
   }
@@ -365,16 +367,31 @@ export function launchDashboardServer(stateDir: string): Promise<{ port: number;
         }, 100);
       };
 
+      // Set up file watching: if file exists, watch it directly;
+      // otherwise poll for creation every 1s then switch to fs.watch.
       let watcher: ReturnType<typeof watch> | null = null;
-      try {
-        watcher = watch(eventsPath, onWatch);
-      } catch {
-        // File may not exist yet; watch the directory instead
-        try { watcher = watch(stateDir, onWatch); } catch { /* give up */ }
+      let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+      function startFileWatch(): void {
+        try {
+          watcher = watch(eventsPath, onWatch);
+        } catch { /* give up */ }
+      }
+
+      if (existsSync(eventsPath)) {
+        startFileWatch();
+      } else {
+        pollInterval = setInterval(() => {
+          if (existsSync(eventsPath)) {
+            if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+            startFileWatch();
+          }
+        }, 1000);
       }
 
       req.on("close", () => {
         if (watchTimer) clearTimeout(watchTimer);
+        if (pollInterval) clearInterval(pollInterval);
         watcher?.close();
       });
       return;

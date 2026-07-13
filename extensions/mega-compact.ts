@@ -232,10 +232,12 @@ export default function (pi: ExtensionAPI) {
       const triggerLabel = ready ? "● ready" : armed ? "◐ armed" : "○ idle";
       const dedupStr = st.dedupHitRate != null ? `${Math.round(st.dedupHitRate * 100)}%` : "—";
       const savedStr = rt.lastCompactedFrom > 0 ? `${Math.round(rt.lastCompactedFrom / 1000)}k` : "0";
+      const agentStr = activeAgents > 0 ? ` │ 🤖 ${activeAgents} agent${activeAgents === 1 ? "" : "s"}` : "";
+      const turnStr = currentTurn > 0 ? ` │ turn ${currentTurn}` : "";
       ctx.ui.setWidget(
         WIDGET_KEY,
         [
-          ` ⚡ ${config.tier} │ ${tokStr}/${maxStr} tokens (${pctStr}) │ ${st.checkpointCount} chkpt${st.checkpointCount === 1 ? "" : "s"}`,
+          ` ⚡ ${config.tier} │ ${tokStr}/${maxStr} tokens (${pctStr}) │ ${st.checkpointCount} chkpt${st.checkpointCount === 1 ? "" : "s"}${agentStr}${turnStr}`,
           `   ${triggerLabel} │ dedup: ${dedupStr} │ saved: ${savedStr} tok`,
         ],
         { placement: "aboveEditor" },
@@ -251,6 +253,9 @@ export default function (pi: ExtensionAPI) {
     lastCompactedFrom: 0,
   };
   let debounceUntil = 0;
+  // Agent tracking for real-time widget updates
+  let activeAgents = 0;
+  let currentTurn = 0;
   // Recall block produced by auto-inline (resume/branch) that the next
   // before_agent_start should prepend to the system prompt. Unset after use.
   let pendingRecallBlock: string | undefined;
@@ -271,6 +276,8 @@ export default function (pi: ExtensionAPI) {
       lastCompactedFrom: 0,
     };
     statusKey = undefined;
+    activeAgents = 0;
+    currentTurn = 0;
   }
 
   /** Run the full compaction pipeline and persist a checkpoint. Returns the result. */
@@ -410,7 +417,33 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async (_event, ctx) => {
     setStatus(ctx, undefined);
+    activeAgents = 0;
+    currentTurn = 0;
     ctx.ui.setWidget(WIDGET_KEY, [], { placement: "aboveEditor" });
+  });
+
+  // ---- Agent tracking for real-time widget updates -----------------------
+  pi.on("agent_start", async (_event, ctx) => {
+    activeAgents++;
+    dashboard.event("agent_start", { activeAgents });
+    snapshot(ctx);
+  });
+
+  pi.on("agent_end", async (_event, ctx) => {
+    activeAgents = Math.max(0, activeAgents - 1);
+    dashboard.event("agent_end", { activeAgents });
+    snapshot(ctx);
+  });
+
+  pi.on("turn_start", async (event, ctx) => {
+    currentTurn = event.turnIndex;
+    dashboard.event("turn_start", { turnIndex: event.turnIndex });
+    snapshot(ctx);
+  });
+
+  pi.on("turn_end", async (event, ctx) => {
+    dashboard.event("turn_end", { turnIndex: event.turnIndex });
+    snapshot(ctx);
   });
 
   // ---- Auto-trigger: fast-gate → confirm → Trident+persist → drop --------

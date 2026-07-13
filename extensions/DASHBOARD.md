@@ -113,7 +113,7 @@ tail -f ~/.pi/agent/extensions/pi-mega-compact/events.log | jq .
 The extension displays a compact stats widget above the pi editor at all times:
 
 ```
- ⚡ medium │ 142k/200k tokens (71%) │ 3 chkpts
+ ⚡ medium │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
    ◐ armed │ dedup: 92% │ saved: 45k tok
 ```
 
@@ -124,8 +124,23 @@ The widget shows:
 - **Trigger state**: ○ idle (< gate %), ◐ armed (≥ gate %, below threshold), ● ready (≥ threshold)
 - **Dedup hit rate**: percentage of compacted regions that were already stored
 - **Tokens saved**: cumulative token savings from compaction
+- **Active agents**: number of running sub-agents (shown when > 0)
+- **Turn index**: current conversation turn number (shown when > 0)
 
-The widget updates on every context event, session start, branch navigation, and compaction. It clears automatically on session shutdown.
+The widget updates on every context event, session start, branch navigation, agent start/end, turn start/end, and compaction. It clears automatically on session shutdown.
+
+### Agent Tracking
+
+The extension tracks active sub-agents in real-time:
+
+| Event | Behavior |
+|-------|----------|
+| `agent_start` | Increments active agent count, updates widget |
+| `agent_end` | Decrements active agent count, updates widget |
+| `turn_start` | Tracks current turn index, updates widget |
+| `turn_end` | Logs turn completion, updates widget |
+| `session_start` | Resets agent count and turn counter |
+| `session_shutdown` | Resets agent count and turn counter |
 
 ## Security
 

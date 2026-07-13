@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "updatedAt": "2026-07-13T02:51:30.482Z",
+  "tier": "low",
+  "config": {
+    "fastGatePct": 70,
+    "thresholdTokens": 50000,
+    "anchorUserMessages": 3,
+    "preserveRecent": 4,
+    "auto": true,
+    "autoInline": true
+  },
+  "session": {
+    "id": "sess_019f592295a97512",
+    "state": "mega-compact: ready",
+    "persistedThisSession": false,
+    "lastCheckpointId": null,
+    "lastCompactedFrom": 0
+  },
+  "context": {
+    "tokens": 54822,
+    "percent": 2.7411000000000003,
+    "contextWindow": 2000000
+  },
+  "trigger": {
+    "armed": false,
+    "ready": false,
+    "currentTokens": 54822,
+    "thresholdTokens": 50000,
+    "fastGatePct": 70
+  },
+  "store": {
+    "checkpointCount": 0,
+    "totalTokenEstimate": 0,
+    "injectedCount": 0,
+    "dedupHitRate": 0
+  }
+}
