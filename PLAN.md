@@ -1,5 +1,7 @@
 # Plan: `pi-mega-compact` — a layered, local, vector-backed context compressor
 
+> Updated 2026-07-13 — integrated QA review (75 issues, 19 critical) + rad-gateway compression/dedup patterns.
+
 ## Goal
 A new **pi extension** (`pi-mega-compact`) that compresses pi's conversation
 context using a layered Trident-style stack, persists checkpoints to a **local
@@ -10,6 +12,22 @@ Per the clarified decision: *"we are not going to expose a mcp server so it's
 all got to be local within the extension / sdk."* The memory-mcp / claw-code /
 neuralwatt-mcr code we reviewed is used **as algorithmic reference**, not as a
 service we call.
+
+---
+
+## Current Status
+
+| Phase | Status | Details |
+|-------|--------|---------|
+| Phase 1 — Dynamic Compression | ✅ **Shipped** | 4-tier adaptive (raw/gzip1/gzip6/brotli4), 89/89 tests, commit `fa5d4dd` |
+| Phase 2 — Enhanced Compression | 🔲 Next | zstd tiers + content-addressable dedup + audit originals |
+| Phase 3 — Tier 0 Exact Match | 🔲 Planned | SHA-256 + Bloom + Redis accelerator (never sole arbiter) |
+| Phase 4 — Tier 1 Near-Duplicate | 🔲 Planned | MinHash + LSH + pg_trgm verification |
+| Phase 5 — Tier 2 Semantic Dedup | 🔲 Planned | pgvector HNSW + SemDeDup clustering + MMR retrieval |
+| Phase 6 — RAPTOR Pre-Compression | 🔲 Planned | GMM clustering + Ollama summarization + collapsed-tree search |
+| Phase 7 — Full Pipeline | 🔲 Planned | Feature flags, backfill, monitoring, canary rollout |
+
+---
 
 ## Confirmed design decisions
 - **Transport:** local only — no MCP server, no network calls to a remote
@@ -33,159 +51,523 @@ service we call.
   All three call the same `vectorStore.search()` + `vectorStore.dedupe()`; the
   difference is only *what triggers them* (resume, command, compaction).
 
-## Layered architecture (the "amazing solution")
+---
+
+## Architecture Overview
 
 ```
- Layer 5  Recall / Inline      ONE vector store → 3 entry points, 1 dedup engine
-          • auto-inline  (session_start/resume) → search top-K → dedupe → prepend
-          • on-demand    /recall-context [q]    → sem search → dedupe → inject
-          • sentinel     compact-marker consulted by both so nothing re-injected
- Layer 4  Persist / Checkpoint  compact_session()   → gzip + embed + store (chkpt_xxx)
- Layer 3  Cluster (vectorize)  local FAISS index    → semantic dedup + recall
- Layer 2  Collapse (summarize)  summarize_messages() heuristic + agent summary on /megacompact
- Layer 1  Supersede (prune)     drop obsolete file-reads / superseded turns (zero cost)
- ─────────────────────────────────────────────────────────────────────────────────────
- Trigger   on("context")/on("turn_end") → % gate → auto_compact_check → fire
- Marker    insert compact-marker entry; dedupe markers so repeated triggers cost ~0 tokens
- Cancel    on("session_before_compact") → { cancel:true } once we've persisted (no double-compact)
+┌─────────────────────────────────────────────────────────────────────┐
+│                     pi-megacompact Architecture                     │
+│                                                                     │
+│  Layer 5  Recall / Inline    ONE vector store → 3 entry points      │
+│           • auto-inline  (session_start/resume) → search → dedupe   │
+│           • on-demand    /recall-context [q]    → sem search        │
+│           • sentinel     compact-marker consulted by both           │
+│                                                                     │
+│  Layer 4  Persist/Checkpoint compact_session() → compress → store   │
+│           ┌─────────────────────────────────────────────┐           │
+│           │  Dynamic Compression (Phase 1+2)            │           │
+│           │  raw → gzip1 → zstd3 → zstd9 → brotli4     │           │
+│           │  + content-hash dedup (SHA-256)              │           │
+│           │  + compressedOriginal for audit              │           │
+│           └─────────────────────────────────────────────┘           │
+│                                                                     │
+│  Layer 3  Cluster/Vectorize  local index → semantic dedup + recall  │
+│           ┌─────────────────────────────────────────────┐           │
+│           │  Multi-Tier Dedup Pipeline (Phase 3-5)       │           │
+│           │  T0: SHA-256 exact  (< 1ms)                  │           │
+│           │  T1: MinHash+LSH    (5-15ms)                 │           │
+│           │  T2: Cosine+HNSW    (10-50ms)                │           │
+│           └─────────────────────────────────────────────┘           │
+│                                                                     │
+│  Layer 2  Collapse (summarize) RAPTOR + Ollama (Phase 6)            │
+│  Layer 1  Supersede (prune)   drop obsolete file-reads              │
+│  ─────────────────────────────────────────────────────────────────  │
+│  Trigger  on("context")/on("turn_end") → % gate → auto_compact     │
+│  Marker   compact-marker = dedup sentinel (regionHash)              │
+│  Cancel   on("session_before_compact") → { cancel:true }            │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-This mirrors the reviewed stack:
-- **Supersede + Collapse + Cluster** ← memory-mcp `MemoryCompactor` (compact.py) +
-  claw-code `trident.rs`.
-- **`compact_session` / `auto_compact_check` / `should_compact`** ←
-  session_context.py (reimplemented locally, no server).
-- **`context` drop + `session_before_compact` cancel + anchor-floor guard** ←
-  neuralwatt-mcr.ts (the pi-extension mechanics).
-- **Merge prior summaries / tool-pair boundary guard** ← claw-code compact.rs.
+---
 
-## Files (new repo at `/home/user001/git/pi-megacompact/`)
+## Phase 1 — Dynamic Compression (✅ DONE)
 
-- `package.json` — `name: pi-mega-compact`, `"type":"module"`, `pi.extensions:
-  ["./extensions/mega-compact.ts"]`, peerDep `@earendil-works/pi-coding-agent`,
-  `engines.node >=18`. Dependencies: a tiny local vector index (no heavy FAISS
-  dep — use a lightweight cosine-sim over hashes/embeddings; see below).
-- `extensions/mega-compact.ts` — the extension (main entry, matches setup.ts
-  factory + `export default function (pi: ExtensionAPI)`).
-- `src/trident.ts` — Layer 1–3 engine: `supersede()`, `collapse()`,
-  `cluster()` + `MemoryCompactor`-style `TridentResult`/`to_tooltip()`.
-- `src/compact.ts` — `compact_session()`, `should_compact()`, `auto_compact_check()`,
-  `summarize_messages()` (role counts, tool names, key files, pending work —
-  ported from claw-code compact.rs), `merge_compact_summaries()`.
-- `src/vectorStore.ts` — Layer 3: a **local vector DB** (on-disk JSON + simple
-  embedding = hashed n-gram / char-trigram bag, cosine similarity). Stores
-  checkpoints, supports `search(query, k)` for recall, and `dedupe()` for inline.
-  (Rationale: avoids a native FAISS build; the dedup/recall quality bar is
-  "good enough" for context, not RAG-perfect. Can swap to a real embedder later.)
-- `src/marker.ts` — the **compact-marker = dedup sentinel for the vector store**:
-  a `CustomMessage` of `customType: "mega-compact-marker"` carrying
-  `{ checkpointId, regionHash, tokenEstimate, dropped }`. Its job is NOT to be
-  user-visible text but a **sentinel the vector store reads to know "this region
-  of the conversation has already been compacted + vectorized"** — so on the next
-  trigger the inline/cluster layer skips re-vectorizing that region (zero token
-  cost for repeated triggers). The marker's `regionHash` lets `vectorStore.dedupe()`
-  match a new region against an already-stored checkpoint and skip re-embedding.
-- `src/store.ts` — local persistence: `~/.pi/agent/extensions/mega-compact/
-  {checkpoints.json, faiss.json, state.json}` (gzip via node `zlib`).
-- `README.md` — usage, commands, config.
-- `.gitignore` — `node_modules/`, `*.log`.
+**Shipped in commit `fa5d4dd`. 89/89 tests passing.**
 
-## Commands
-- `/megacompact [summary...]` — summarize current session, persist a `chkpt_xxx`
-  checkpoint to the local vector store (gzip + embed + index), report tokens
-  saved via `ctx.ui.setStatus`. If no summary arg, drive the agent
-  (`ctx.sendMessage`) to produce one (per "we insert a marker… auto track").
-- `/recall-context [query]` — FAISS sim search the local store, dedupe against
-  current window, inject the top-K relevant checkpoints as a system-context
-  message; report what was inlined.
-- `/megacompact-status` — show threshold, current %, last checkpoint, store size.
+Current implementation in `src/store.ts`:
 
-## Unified recall layer (one vector store, three entry points)
-All three inline behaviors go through a single module `src/recall.ts` exposing
-`recallAndInline(ctx, { query?, limit, source })` — the *only* code path that
-injects checkpoints. It always: `search → dedupe(regionHash + already-in-window)
-→ inject as system-context message`. The three entry points differ only in the
-trigger:
-1. **Auto-inline (resume):** `pi.on("session_start", ...)` and
-   `pi.on("session_tree", ...)` call `recallAndInline(ctx, { source:"resume",
-   limit: AUTO_INLINE_K })` with a query built from the newest user message(s),
-   so a resumed/branched session silently regains its most relevant compacted
-   context. Gated by `MEGACOMPACT_AUTO_INLINE` (default on).
-2. **On-demand:** `/recall-context [query]` → `recallAndInline(ctx,
-   { query, source:"command" })`.
-3. **Sentinel dedup:** every injection consults the compact-marker set so a
-   checkpoint already represented in the window (by `regionHash`) is never
-   re-injected; likewise the Trident cluster stage consults it to skip
-   re-embedding. One `dedupe()` implementation, shared by inline + persist.
+| Payload Size | Tag | Algorithm | Level | Rationale |
+|---|---|---|---|---|
+| < 512 B | `0x00` | raw | — | Overhead exceeds savings |
+| 512 B – 4 KB | `0x01` | gzip | 1 | Fast for small blobs |
+| 4 KB – 32 KB | `0x02` | gzip | 6 | Good general-purpose |
+| > 32 KB | `0x03` | brotli | 4 | Best text compression |
 
-Dedupe rules (shared):
-- Skip any checkpoint whose `regionHash` matches a marker already in the branch.
-- Skip any checkpoint whose `checkpointId` was injected this session (tracked in
-  `state.json`).
-- Cosine-near-duplicate collapse: if two candidates score > `DEDUP_SIM` (0.95),
-  keep the higher-ranked one only.
+**Backward-compatible:** decompressSmart() auto-detects legacy gzip (magic byte `0x1f`).
 
-## Auto-trigger (both gates)
-- `pi.on("context" | "turn_end", ...)`:
-  1. `usage = ctx.getContextUsage()`; if `usage.percent >= FAST_GATE_PCT`
-     (default 70) continue, else return.
-  2. `auto_compact_check(sessionId, usage.tokens, THRESHOLD)` (local impl) →
-     if `should_compact`, run the Trident pipeline + `compact_session()` persist,
-     then return `{ messages: filtered }` from the `context` handler (drop the
-     superseded range, preserving the last `ANCHOR_USER_MESSAGES=3` user msgs —
-     the neuralwatt-mcr anchor-floor guard, fixed bug).
-- `pi.on("session_before_compact", ...)` → return `{ cancel: true }` if we have
-  already persisted a checkpoint this session (avoid double-compaction), as
-  neuralwatt-mcr does for MCR.
-- **Dedup sentinel flow:** when the Trident pipeline runs, before embedding a
-  region it computes `regionHash` and checks `vectorStore.dedupe(regionHash)`;
-  if a matching checkpoint exists, it inserts only the lightweight marker
-  (sentinel) and skips the full embed — repeated triggers are ~free. The marker
-  is what makes the vector store idempotent across triggers and sessions.
-- Debounce + idle check (`ctx.isIdle()`) so auto-compact doesn't fire mid-stream.
+---
 
-## Hooks summary (all entry points into the unified layers)
-| Hook / command | Layer touched | Behavior |
-|---|---|---|
-| `on("session_start")` / `on("session_tree")` | L5 recall (auto-inline) | resume → `recallAndInline(source:"resume")` |
-| `/recall-context [q]` | L5 recall (on-demand) | `recallAndInline(source:"command")` |
-| `on("context")` / `on("turn_end")` | L1–L4 trigger | % gate → `auto_compact_check` → Trident + persist + drop |
-| `on("session_before_compact")` | cancel | `{ cancel:true }` if checkpoint persisted this session |
-| `on("turn_end")` | L5 (optional) | could auto-inline if window is low after compact |
+## Phase 2 — Enhanced Compression (rad-gateway patterns)
 
-## Config (via extension settings, env-backed)
-- `MEGACOMPACT_FAST_GATE_PCT` (default 70)
-- `MEGACOMPACT_THRESHOLD_TOKENS` (default 50000, mirrors server)
-- `MEGACOMPACT_ANCHOR_USER_MESSAGES` (default 3)
-- `MEGACOMPACT_PRESERVE_RECENT` (default 4, mirrors claw-code)
-- `MEGACOMPACT_AUTO` (default true)
-- `MEGACOMPACT_AUTO_INLINE` (default true) — auto-inline on resume/branch
-- `MEGACOMPACT_AUTO_INLINE_K` (default 3) — top-K checkpoints to auto-inline
-- `MEGACOMPACT_DEDUP_SIM` (default 0.95) — cosine threshold to collapse near-dupes
+**Source:** `rad-gateway/internal/middleware/compression.go`, `internal/mcp/compactor/types.go`, `internal/prefill/digest.go`
 
-## Notes / trade-offs
-- **Local vector store, not FAISS binary:** keeps the extension dependency-free
-  and portable (node>=18 only). The dedup/recall is heuristic-strength, which is
-  the right bar for "inline the right context," not production RAG. A real
-  embedder can be dropped into `vectorStore.ts` later behind the same interface.
-- **No network:** satisfies the "all local" decision; also means no API key, no
-  server uptime dependency, works offline.
-- **Reuses reviewed algorithms, not their code:** TS reimplementation of the
-  Trident stages + claw-code heuristics. Attribution in README to
-  memory-mcp / claw-code / neuralwatt-mcr as design sources.
+### 2A. Add Zstd Tiers
+
+rad-gateway prefers **zstd > brotli > gzip** for good reason:
+- zstd gives brotli-class ratios at gzip-class speeds
+- Supports streaming decompression (important for large checkpoint arrays)
+- Better memory profile than brotli for medium-sized blobs
+
+**Revised tier table:**
+
+| Payload Size | Tag | Algorithm | Level | Rationale |
+|---|---|---|---|---|
+| < 512 B | `0x00` | raw | — | No overhead |
+| 512 B – 4 KB | `0x01` | gzip | 1 | Fast small-blob (legacy compat) |
+| 4 KB – 32 KB | `0x02` | gzip | 6 | Legacy compat for existing stored files |
+| 32 KB – 128 KB | `0x03` | zstd | 3 | Broader sweet spot, fast decompress |
+| 128 KB – 1 MB | `0x04` | zstd | 9 | High ratio for medium blobs |
+| > 1 MB | `0x05` | brotli | 4 | Max ratio for large dumps |
+
+**Changes:**
+- Add `@aspect-build/zstd` or `node-zstd-stream` dependency
+- Update `compressSmart()` with new tag bytes `0x03` (zstd-3), `0x04` (zstd-9), `0x05` (brotli)
+- Update `decompressSmart()` switch for new tags
+- **Keep backward compatibility:** tag `0x02` still means gzip-6, tag `0x03` still means brotli for EXISTING stored files (detect via magic bytes or version field)
+
+### 2B. Content-Addressable Dedup (from rad-gateway's SHA-256 + cache pattern)
+
+rad-gateway uses SHA-256 content hashing for prefill dedup — identical content returns the cached digest without reprocessing (`prefill.go:digestKey()` + `store.Get()`). We adopt the same pattern at the storage layer:
+
+```typescript
+// In compressSmart, before compressing:
+const contentHash = sha256(normalizedPayload).toString('hex');
+
+// Check if this exact content already exists in the session
+const existing = session.checkpoints.find(c => c.contentHash === contentHash);
+if (existing) {
+  return { action: 'dedup', existingId: existing.id }; // skip storage entirely
+}
+```
+
+**Benefits:**
+- Zero-duplicate storage — identical checkpoints deduped at write time
+- Instant "already stored" detection for checkpoint/resume loops
+- Content hash used as cache key in future Redis layer (Phase 3)
+
+**Schema addition to Checkpoint:**
+```typescript
+interface Checkpoint {
+  id: number;
+  regionHash: string;
+  contentHash: string;  // NEW: SHA-256 of uncompressed payload
+  compressed: Buffer;
+  compressionTag: number;
+  // ...
+}
+```
+
+### 2C. Compressed Original for Audit/Reconstruction (from rad-gateway's CompressedOriginal)
+
+rad-gateway stores `CompressedOriginal` alongside every digest (`contextstore/store.go:20`) so the raw input is reconstructible for audit/replay. We adopt this for compacted digests:
+
+```typescript
+interface StoredDigest {
+  summary: string;
+  keyDecisions: string[];
+  nextSteps: string[];
+  compressedOriginal: Buffer;  // zstd-compressed original checkpoints
+}
+```
+
+When a compaction/summarization runs, we store the zstd-compressed original payload alongside the summary. This lets us:
+- Reconstruct the pre-compaction state for debugging
+- Re-summarize with a better model later
+- Audit what was compacted away
+- Rad-gateway calls this the "reconstructible context" pattern
+
+### 2D. Streaming Decompression Support (from rad-gateway's io.Reader pattern)
+
+rad-gateway uses streaming `zstd.NewReader()` / `brotli.Reader` for large payloads (`compression.go:332-369`). We adopt this for large checkpoint arrays:
+
+```typescript
+// Instead of loading entire compressed blob into memory:
+// Use streaming decompression for /recall-context with many checkpoints
+async function* streamDecompress(compressed: Buffer, tag: number): AsyncGenerator<Checkpoint> {
+  const stream = createDecompressionStream(tag);
+  // yield checkpoints as they decompress
+}
+```
+
+**Priority:** Medium. Useful when session has 50+ checkpoints and recall loads them all.
+
+---
+
+## Phase 3 — Multi-Tier Dedup Pipeline: Tier 0 (Exact Match)
+
+**Source:** QA-reviewed plan (`wf_2594ecd7-760`) + critical fixes (`wf_df176d3e-2bf`)
+
+### Upgrades to existing regionHash
+
+1. **Normalize before hashing** — lowercase, collapse whitespace, strip ANSI codes
+2. **Use content-addressable hash** (from Phase 2B) — `sha256(normalizedText)`
+3. **Bloom filter pre-check** for high-throughput scenarios (optional, feature-flagged)
+4. **Redis hot-path cache** with TTL, but **never trusted as sole arbiter** (QA fix #2):
+   ```
+   Redis hit → still verify in SQLite/Postgres → confirmed duplicate
+   Redis miss → definitely not duplicate → skip DB lookup
+   ```
+   This is the rad-gateway "accelerator-only" pattern: cache speeds up the happy path but never replaces the source of truth.
+5. **SQLite UNIQUE index** with proper NULL handling (QA fix #1):
+   ```sql
+   CREATE UNIQUE INDEX idx_content_hash
+   ON checkpoints(content_hash)
+   WHERE content_hash IS NOT NULL;
+   ```
+   And enforce NOT NULL on `content_hash` when dedup is enabled.
+
+### QA Critical Fixes Addressed
+- ✅ **#1** NULL handling in unique index — NOT NULL constraint + NULL-safe WHERE clause
+- ✅ **#2** Redis cache as accelerator, not arbiter — always verify on hit
+- ✅ **#12** Transactional coupling — DB insert + cache update in same transaction
+- ✅ **#13** Redis circuit breaker — timeout + fallback to DB-only mode
+- ✅ **#14** Backfill race — create UNIQUE index BEFORE backfill, or use CONCURRENTLY
+
+---
+
+## Phase 4 — Tier 1: Near-Duplicate Text (MinHash + LSH)
+
+### MinHash with Universal Hashing (QA fix #3)
+```
+h_i(x) = (a_i * x + b_i) mod p   (a_i, b_i random; p large prime)
+```
+NOT the broken permutation scheme from the original plan.
+
+### LSH Banding
+- 20 bands × 12 rows = 240 permutations
+- Jaccard threshold: 0.7 (configurable)
+
+### pg_trgm Verification
+Secondary check after LSH candidate retrieval — confirms near-duplicate at word level.
+
+### Candidate Caps (QA fix #7)
+- Max 50 candidates per LSH bucket retrieval
+- Max 200 DB roundtrips per dedup batch
+- Upper bound on shingle count per document
+
+**Storage:**
+```sql
+CREATE TABLE minhash_signatures (
+  chunk_id   UUID PRIMARY KEY,
+  signature  BYTEA NOT NULL,      -- 240 × 8 = 1,920 bytes
+  num_perm   INT DEFAULT 240,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### QA Critical Fixes Addressed
+- ✅ **#3** Universal hashing with proper a_i, b_i, p parameters
+- ✅ **#7** Computational complexity caps on all dedup operations
+- ✅ **#15** Upper bounds on shingle count, LSH bucket count, DB roundtrips
+
+---
+
+## Phase 5 — Tier 2: Semantic Dedup (Embedding Cosine + pgvector)
+
+### Embedding Model
+- Start with `all-MiniLM-L6-v2` (384 dims) for local speed
+- Configurable to swap in larger models later
+
+### pgvector HNSW Index
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE chunk_embeddings (
+  chunk_id    UUID PRIMARY KEY,
+  embedding   vector(384) NOT NULL,  -- correct pgvector syntax (QA fix #9)
+  model_name  TEXT NOT NULL,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_chunk_embeddings_hnsw
+ON chunk_embeddings
+USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 200);
+```
+
+### Cosine Threshold
+- 0.95 for technical content (high precision)
+- 0.80 for agent memory (higher recall)
+- Configurable per collection type
+
+### SemDeDup Clustering
+- K-Means with K = sqrt(n), compare within clusters only
+- Reduces O(n²) to O(n) per cluster
+
+### Unit-Normalize on Write (QA fix #17)
+Store embeddings as unit vectors. cosineSimilarity for unit vectors = dot product (skip sqrt).
+
+### Empty Embedding Guard (QA fix #6)
+```typescript
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (!a.length || !b.length) return 0; // not NaN
+  // ... dot product for unit vectors
+}
+```
+
+### Retrieval-Time MMR
+```
+score(d) = λ · sim(d, query) - (1-λ) · max sim(d, selected)
+```
+λ = 0.7 (relevance vs diversity). Guard: skip MMR if no embedding → return by recency.
+
+### QA Critical Fixes Addressed
+- ✅ **#4** Heap-based top-k selection, not full sort
+- ✅ **#5** Single load per add/dedupe call — no redundant listCheckpoints()
+- ✅ **#6** cosineSimilarity handles empty vectors → returns 0
+- ✅ **#8** pgvector extension check in migration
+- ✅ **#9** `vector(384)` correct syntax, not `VECTOR(384)`
+- ✅ **#10** Use `<=>` cosine operator, not `-` (minus)
+- ✅ **#17** Unit-normalize on write, optimized dot-product cosine
+
+---
+
+## Phase 6 — RAPTOR Pre-Compression
+
+Hierarchical summarization that runs BEFORE the dedup pipeline to reduce chunk volume by 3-5×.
+
+### When It Runs
+- On compaction when checkpoint count > 20 (configurable)
+- Produces N compressed chunks where N << original count
+
+### Clustering: GMM (not K-Means)
+- **QA fix #11:** GMM gives probability distributions, not hard boundaries
+- K-Means in cosine space assumes unit norms → broken for non-normalized data
+- GMM with soft assignment: each chunk can belong to multiple clusters
+
+### Summarization
+- **Model:** Local Ollama (configurable, default `llama3.2:3b`)
+- **Prompt:** "Summarize these N chunks preserving key facts, decisions, file references"
+- **Token budget:** summary ≤ 30% of original token count
+- **QA fix #16:** Faithfulness validation — spot-check that summaries preserve discriminative facts
+
+### Storage
+```sql
+CREATE TABLE raptor_nodes (
+  node_id      UUID PRIMARY KEY,
+  level        INT NOT NULL,        -- 0 = leaf, 1+ = summary
+  parent_id    UUID REFERENCES raptor_nodes(node_id),
+  content      TEXT NOT NULL,
+  embedding    vector(384),
+  chunk_count  INT,                 -- how many leaf chunks this summarizes
+  created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### Collapsed-Tree Search
+- Search across ALL levels simultaneously using cosine similarity
+- Prefer higher-level (more compressed) results when similarity is close
+- This is the key RAPTOR advantage: you search summaries, not raw chunks
+
+---
+
+## Implementation Roadmap
+
+### Phase 1 ✅ — Dynamic Compression (shipped)
+- [x] compressSmart/decompressSmart with 4 tiers
+- [x] Tag-byte prefix for algorithm dispatch
+- [x] Backward-compatible legacy gzip detection
+- [x] 89/89 tests
+
+### Phase 2 — Enhanced Compression + Content Dedup
+- [ ] Add zstd tier (tags `0x03`, `0x04`)
+- [ ] Add brotli tag `0x05` for large blobs (currently `0x03`)
+- [ ] Content-addressable SHA-256 dedup on write
+- [ ] CompressedOriginal for digest audit trail
+- [ ] Streaming decompression for large checkpoint arrays
+- [ ] Migration: add `content_hash` column to checkpoints
+- [ ] Update decompressSmart for new tags + backward compat
+- [ ] Tests for new tiers + dedup logic
+
+### Phase 3 — Tier 0 Exact Match Upgrade
+- [ ] Normalized content hashing (lowercase, strip ANSI, collapse whitespace)
+- [ ] SQLite UNIQUE index with NOT NULL constraint
+- [ ] Optional Bloom filter pre-check (feature-flagged)
+- [ ] Optional Redis cache (accelerator-only, never sole arbiter)
+- [ ] Circuit breaker on Redis (timeout + fallback to DB-only)
+- [ ] Transactional coupling: DB + cache update in single transaction
+- [ ] Backfill strategy: UNIQUE index BEFORE backfill, or CONCURRENTLY
+- [ ] Tests for race conditions, NULL handling, cache staleness
+
+### Phase 4 — Tier 1 Near-Duplicate (MinHash + LSH)
+- [ ] MinHash with universal hashing (proper a_i, b_i, p parameters)
+- [ ] LSH banding (20 bands × 12 rows)
+- [ ] pg_trgm verification layer
+- [ ] Candidate cap (50 per bucket, 200 DB roundtrips per batch)
+- [ ] `minhash_signatures` table + migration
+- [ ] Benchmark: latency per chunk at 1K, 10K, 100K chunks
+
+### Phase 5 — Tier 2 Semantic Dedup (pgvector + HNSW)
+- [ ] Embedding model integration (all-MiniLM-L6-v2, 384 dims)
+- [ ] pgvector extension + HNSW index
+- [ ] `vector(384)` syntax (not `VECTOR(384)`)
+- [ ] Cosine threshold configuration per collection type
+- [ ] SemDeDup clustering for large datasets
+- [ ] MMR retrieval-time dedup (λ = 0.7)
+- [ ] Empty embedding guards (return 0, not NaN)
+- [ ] Heap-based top-k selection (not full sort)
+- [ ] Single-load per add/dedupe call
+- [ ] Unit-normalize on write, dot-product cosine
+- [ ] `chunk_embeddings` table + migration
+
+### Phase 6 — RAPTOR Pre-Compression
+- [ ] GMM clustering (not K-Means)
+- [ ] Ollama summarization with faithfulness checks
+- [ ] Collapsed-tree search across levels
+- [ ] `raptor_nodes` table + migration
+- [ ] Cost/benefit analysis at different scales
+
+### Phase 7 — Full Pipeline Integration
+- [ ] Feature flags for each tier (shadow → canary → full)
+- [ ] Backfill existing data through pipeline
+- [ ] Monitoring: per-tier hit rate, latency, compression ratio
+- [ ] Alerting on dedup anomalies (QA fix #18)
+- [ ] Metric export: Prometheus/OTel (QA fix #19)
+- [ ] Canary deployment strategy
+- [ ] Success metrics: dedup ratio, storage savings, recall quality
+
+---
+
+## QA Critical Fix Register
+
+All 19 critical issues from QA review (`wf_df176d3e-2bf`) tracked:
+
+| # | Reviewer | Problem | Phase |
+|---|----------|---------|-------|
+| 1 | correctness | NULL handling in unique index | 3 |
+| 2 | correctness | Redis cache used as sole arbiter | 3 |
+| 3 | correctness | MinHash permutation scheme undefined | 4 |
+| 4 | performance | VectorStore.search() full sort | 5 |
+| 5 | performance | Multiple redundant listCheckpoints() | 5 |
+| 6 | correctness | cosineSimilarity on empty vectors → NaN | 5 |
+| 7 | operations | No computational caps on dedup | 4 |
+| 8 | correctness | Missing pgvector extension check | 5 |
+| 9 | correctness | VECTOR(384) vs vector(384) syntax | 5 |
+| 10 | correctness | pgvector cosine operator mismatch | 5 |
+| 11 | raptor | K-Means in cosine space (unit norms) | 6 |
+| 12 | operations | No transactional coupling DB ↔ cache | 3 |
+| 13 | operations | No Redis timeout/circuit breaker | 3 |
+| 14 | operations | Backfill race with index creation | 3 |
+| 15 | security | No complexity caps (CPU/DB amplification) | 4 |
+| 16 | raptor | No summary faithfulness validation | 6 |
+| 17 | performance | cosineSimilarity recomputes norms | 5 |
+| 18 | operations | No alerting on dedup anomalies | 7 |
+| 19 | operations | No metric export (Prometheus/OTel) | 7 |
+
+---
+
+## Key Design Principles (from QA review + rad-gateway)
+
+1. **Never trust a cache as sole arbiter** — Redis/Bloom are accelerators, not oracles (rad-gateway pattern: cache hit still requires DB verification)
+2. **Normalize before hashing** — deterministic content hashes require normalized input (rad-gateway: `sha256(normalizedPrefix)`)
+3. **Cap everything** — candidate pools, bucket sizes, DB roundtrips, LLM calls
+4. **Transactional coupling** — state updates (DB + cache) happen atomically
+5. **Graceful degradation** — circuit breakers on Redis, fallback to DB-only
+6. **Unit-normalize embeddings** — store as unit vectors, use dot-product in cosine
+7. **Faithfulness checks** — LLM summaries validated for discriminative fact preservation
+8. **Feature flags** — every tier independently toggleable (shadow → canary → full)
+9. **Store compressed originals** — reconstructible context for audit/replay (rad-gateway's `CompressedOriginal` pattern)
+10. **Content-addressable storage** — SHA-256 hash as dedup key, not positional index (rad-gateway's prefill cache pattern)
+
+---
+
+## Files (existing + planned)
+
+### Existing (shipped)
+- `src/store.ts` — Phase 1: compressSmart/decompressSmart with 4-tier adaptive compression
+- `src/vectorStore.ts` — local vector DB (hashed n-gram cosine similarity)
+- `src/trident.ts` — Layer 1–3: supersede(), collapse(), cluster()
+- `src/compact.ts` — compact_session(), should_compact(), auto_compact_check()
+- `src/marker.ts` — compact-marker = dedup sentinel (regionHash)
+- `src/recall.ts` — recallAndInline() — unified recall layer
+
+### Planned
+- `src/compression/zstd.ts` — zstd compression support (Phase 2)
+- `src/compression/tiers.ts` — revised tier table with zstd levels (Phase 2)
+- `src/dedup/contentHash.ts` — SHA-256 content-addressable dedup (Phase 2-3)
+- `src/dedup/minhash.ts` — MinHash with universal hashing (Phase 4)
+- `src/dedup/lsh.ts` — LSH banding + candidate retrieval (Phase 4)
+- `src/dedup/semantic.ts` — cosine dedup + MMR retrieval (Phase 5)
+- `src/raptor/clustering.ts` — GMM clustering (Phase 6)
+- `src/raptor/summarize.ts` — Ollama summarization + faithfulness check (Phase 6)
+- `src/raptor/search.ts` — collapsed-tree search (Phase 6)
+
+---
+
+## Configuration Reference
+
+```json
+{
+  "compression": {
+    "zstdLevel": 3,
+    "zstdHighLevel": 9,
+    "brotliLevel": 4,
+    "gzipLevel": 6,
+    "minBytesForCompression": 512
+  },
+  "dedup": {
+    "enabled": true,
+    "l0": {
+      "normalizeHash": true,
+      "bloomFilter": false,
+      "redisCache": false,
+      "redisTimeoutMs": 100
+    },
+    "l1": {
+      "minhashPermutations": 240,
+      "lshBands": 20,
+      "lshRows": 12,
+      "jaccardThreshold": 0.7,
+      "maxCandidatesPerBucket": 50,
+      "maxDbRoundtrips": 200
+    },
+    "l2": {
+      "embeddingModel": "all-MiniLM-L6-v2",
+      "embeddingDims": 384,
+      "cosineThreshold": 0.95,
+      "mmrLambda": 0.7,
+      "maxCandidates": 100
+    }
+  },
+  "raptor": {
+    "enabled": false,
+    "minChunksForRaptor": 20,
+    "clusteringAlgorithm": "gmm",
+    "summaryModel": "llama3.2:3b",
+    "maxSummaryRatio": 0.3
+  }
+}
+```
+
+---
+
+## Commands (existing)
+- `/megacompact [summary...]` — summarize current session, persist checkpoint
+- `/recall-context [query]` — semantic search + inline relevant checkpoints
+- `/megacompact-status` — show threshold, current %, last checkpoint, store size
+
+---
 
 ## Out of scope (this pass)
 - Wiring into the remote memory-mcp server (explicitly excluded).
 - GPU/FAISS native backend (local heuristic index instead).
-- Multi-session roll-up ("mega" aggregation across N sessions) — can follow once
-  single-session pipeline is proven.
+- Multi-session roll-up ("mega" aggregation across N sessions) — can follow once single-session pipeline is proven.
+
+---
 
 ## Verification
-- `npm install` then load into pi via `pi.dev` install (copy to
-  `~/.pi/agent/extensions/` or symlink `pi.extensions`).
-- Manual: run a long session, watch `ctx.ui.setStatus` chip; trigger
-  `/megacompact`; confirm `chkpt_xxx` written to local store; `/recall-context
-  <topic>` injects it back; force a context overflow and confirm
-  `session_before_compact` cancel + local drop.
-- Unit-ish: reuse the claw-code compact.rs test cases as TS tests for
-  `summarize_messages`, `should_compact`, anchor-floor guard, tool-pair boundary.
+- `npm install` then load into pi via `pi.dev` install.
+- Manual: run a long session, trigger `/megacompact`; confirm checkpoint written; `/recall-context` injects it back.
+- Unit tests: reuse claw-code compact.rs test cases as TS tests.
+- Phase 2+: benchmark compression ratios and dedup hit rates at 100, 1K, 10K checkpoints.
