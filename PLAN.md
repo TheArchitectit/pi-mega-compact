@@ -20,12 +20,12 @@ service we call.
 | Phase | Status | Details |
 |-------|--------|---------|
 | Phase 1 — Dynamic Compression | ✅ **Shipped** | 4-tier adaptive (raw/gzip1/gzip6/brotli4), 89/89 tests, commit `fa5d4dd` |
-| Phase 2 — Enhanced Compression | 🔲 Next | versioned compression + content-addressable dedup + audit originals |
-| Phase 3 — Tier 0 Exact Match | 🔲 Planned | SHA-256 + in-process Bloom accelerator (never sole arbiter) |
-| Phase 4 — Tier 1 Near-Duplicate | 🔲 Planned | MinHash + LSH + FTS5 trigram verification |
-| Phase 5 — Tier 2 Semantic Dedup | 🔲 Planned | embedding_blob BLOB + TS cosine scan + SemDeDup clustering + MMR retrieval |
-| Phase 6 — RAPTOR Pre-Compression | 🔲 Planned | GMM clustering + Ollama summarization + collapsed-tree search |
-| Phase 7 — Full Pipeline | 🔲 Planned | Feature flags, backfill, monitoring, canary rollout |
+| Phase 2 — Enhanced Compression | ✅ **Shipped** | versioned compression + content-addressable dedup + audit originals (Sprints 8–9) |
+| Phase 3 — Tier 0 Exact Match | ✅ **Shipped** | SHA-256 + in-process Bloom accelerator (Sprint 10) |
+| Phase 4 — Tier 1 Near-Duplicate | ✅ **Shipped** | MinHash + LSH + FTS5 trigram verification (Sprint 11) |
+| Phase 5 — Tier 2 Semantic Dedup | ✅ **Shipped** | embedding_blob BLOB + TS cosine scan + SemDeDup clustering + MMR retrieval + BYO localhost embedder (Sprint 12) |
+| Phase 6 — RAPTOR Pre-Compression | 🔲 **Next** | GMM clustering + Ollama summarization + collapsed-tree search (Sprint 13, READY) |
+| Phase 7 — Full Pipeline | 🔲 Planned | Feature flags, backfill, monitoring, canary rollout (Sprint 14, READY) |
 
 ---
 

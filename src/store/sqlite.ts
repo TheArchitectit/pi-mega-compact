@@ -126,6 +126,25 @@ function initSchema(db: Database.Database): void {
       key   TEXT PRIMARY KEY,
       value TEXT
     );
+
+    -- Sprint 13 (RAPTOR): hierarchical summary tree nodes. children are a JSON
+    -- array of child node ids (or raw leaf ids at the bottom); embedding_blob
+    -- is the node centroid. Additive; retrieval ignores this table until
+    -- Sprint 14 promotes RAPTOR out of shadow mode.
+    CREATE TABLE IF NOT EXISTS raptor_nodes (
+      id            TEXT NOT NULL,
+      session_id   TEXT NOT NULL,
+      level        INTEGER NOT NULL,
+      parent_id    TEXT,
+      children     TEXT,           -- JSON array of child ids
+      summary      TEXT,
+      embedding_blob BLOB,         -- float32 centroid
+      quality_marker TEXT DEFAULT 'low',
+      token_estimate INTEGER,
+      PRIMARY KEY (session_id, id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_raptor_session ON raptor_nodes(session_id);
+    CREATE INDEX IF NOT EXISTS idx_raptor_parent ON raptor_nodes(parent_id);
   `);
   const v = db.prepare("SELECT value FROM meta WHERE key='schema_version'").get() as
     | { value: string }
@@ -411,4 +430,90 @@ export function closeStore(stateDir: string): void {
     db.close();
     cache.delete(stateDir);
   }
+}
+
+// ---- Sprint 13: RAPTOR node persistence ----------------------------------
+
+export interface StoredRaptorNode {
+  id: string;
+  sessionId: string;
+  level: number;
+  parentId: string | null;
+  children: string[];
+  summary: string;
+  embedding: number[];
+  qualityMarker: string;
+  tokenEstimate: number;
+}
+
+/** Persist a single RAPTOR node (upsert by (session_id, id)). */
+export function upsertRaptorNode(node: StoredRaptorNode, stateDir: string = getStateDir()): void {
+  const db = openStore(stateDir);
+  db.prepare(
+    `INSERT INTO raptor_nodes(id, session_id, level, parent_id, children, summary, embedding_blob, quality_marker, token_estimate)
+     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(session_id, id) DO UPDATE SET
+       level=excluded.level, parent_id=excluded.parent_id, children=excluded.children,
+       summary=excluded.summary, embedding_blob=excluded.embedding_blob,
+       quality_marker=excluded.quality_marker, token_estimate=excluded.token_estimate`,
+  ).run(
+    node.id,
+    node.sessionId,
+    node.level,
+    node.parentId,
+    jsonText(node.children),
+    node.summary,
+    encodeEmbedding(node.embedding),
+    node.qualityMarker,
+    node.tokenEstimate,
+  );
+}
+
+/** Persist an entire built RAPTOR tree for a session (shadow or live). */
+export function saveRaptorTree(
+  sessionId: string,
+  tree: { nodes: Map<string, { id: string; level: number; parentId: string | null; children: string[]; summary: string; embedding: number[]; qualityMarker: string; tokenEstimate: number }> },
+  stateDir: string = getStateDir(),
+): void {
+  for (const node of tree.nodes.values()) {
+    upsertRaptorNode(
+      {
+        id: node.id,
+        sessionId,
+        level: node.level,
+        parentId: node.parentId,
+        children: node.children,
+        summary: node.summary,
+        embedding: node.embedding,
+        qualityMarker: node.qualityMarker,
+        tokenEstimate: node.tokenEstimate,
+      },
+      stateDir,
+    );
+  }
+}
+
+/** Load all RAPTOR nodes for a session. */
+export function listRaptorNodes(sessionId: string, stateDir: string = getStateDir()): StoredRaptorNode[] {
+  const db = openStore(stateDir);
+  const rows = db
+    .prepare("SELECT * FROM raptor_nodes WHERE session_id = ? ORDER BY level ASC, id ASC")
+    .all(normalizeSessionId(sessionId)) as any[];
+  return rows.map((row) => ({
+    id: row.id,
+    sessionId: row.session_id,
+    level: row.level,
+    parentId: row.parent_id ?? null,
+    children: row.children ? JSON.parse(row.children) : [],
+    summary: row.summary ?? "",
+    embedding: decodeEmbedding(row.embedding_blob),
+    qualityMarker: row.quality_marker ?? "low",
+    tokenEstimate: row.token_estimate ?? 0,
+  }));
+}
+
+/** Delete all RAPTOR nodes for a session (rollback/cleanup). */
+export function clearRaptorNodes(sessionId: string, stateDir: string = getStateDir()): void {
+  const db = openStore(stateDir);
+  db.prepare("DELETE FROM raptor_nodes WHERE session_id = ?").run(normalizeSessionId(sessionId));
 }
