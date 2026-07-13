@@ -108,6 +108,57 @@
 
 ---
 
+## TESTER_GUIDE.md (repo root)
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Prerequisites | 10 | 0 |
+| Test Environment Setup | 53 | 0 |
+| Running the Test Suite | 91 | 0 |
+| Manual Testing Checklist | 152 | 0 |
+| 1. Auto-Compaction | 156 | 0 |
+| 2. Resume / Auto-Inline | 202 | 0 |
+| 3. On-Demand Recall | 238 | 0 |
+| 4. Dedup Verification | 270 | 0 |
+| 5. Dashboard | 318 | 0 |
+| 6. DR Drill | 359 | 0 |
+| 7. Benchmark | 400 | 0 |
+| What to Include in a Bug Report | 432 | 0 |
+| Known Issues & Limitations | 474 | 0 |
+| Severity Classification | 516 | 0 |
+
+---
+
+## RELEASE_NOTES.md (repo root)
+
+| Section | Line | Offset |
+|---------|------|--------|
+| v0.2.0 (2026-07-13) | 3 | 0 |
+| Highlights | 10 | 0 |
+| Breaking Change | 26 | 0 |
+| Migration Guide | 37 | 0 |
+| What's New (by sprint) | 112 | 0 |
+| Fixed in this release | 129 | 0 |
+| Verified (live) | 143 | 0 |
+| v0.1.0 (2026-07-11) | 151 | 0 |
+
+---
+
+## extensions/DASHBOARD.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Quick Start | 7 | 0 |
+| Commands | 20 | 0 |
+| Architecture | 28 | 0 |
+| Browser UI | 78 | 0 |
+| Development | 90 | 0 |
+| Live Stats Widget | 111 | 0 |
+| Security | 145 | 0 |
+| Troubleshooting | 152 | 0 |
+
+---
+
 ## docs/dedup-implementation-plan.md
 
 | Section | Line | Offset |

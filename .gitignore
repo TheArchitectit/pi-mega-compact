@@ -11,3 +11,4 @@ dist/
 # Vendored upstream template (config pieces extracted into .claude/.guardrails)
 guardrails-template/
 sess_*
+sqlite.db

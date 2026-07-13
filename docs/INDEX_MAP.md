@@ -48,6 +48,17 @@
 
 ---
 
+## TESTING & RELEASE
+
+| Keyword | Document | Location |
+|---------|----------|----------|
+| testing, QA, manual testing, bug reports, test suite, DR drill, benchmark | [TESTER_GUIDE.md](../TESTER_GUIDE.md) | repo root |
+| release notes, v0.2.0, migration guide, breaking change, what's new | [RELEASE_NOTES.md](../RELEASE_NOTES.md) | repo root |
+| changelog, per-release changes, sprint breakdown | [CHANGELOG.md](../CHANGELOG.md) | repo root |
+| dashboard, live monitoring, widget, SSE, token gauge | [DASHBOARD.md](../extensions/DASHBOARD.md) | extensions/ |
+
+---
+
 ## ARCHITECTURE / SOURCE
 
 | Keyword | Document | Location |
@@ -58,3 +69,12 @@
 | recall/inline layer | [src/recall.ts](../src/recall.ts) | src/ |
 | embedder interface | [src/embedder.ts](../src/embedder.ts) | src/ |
 | extractive summary | [src/extractive.ts](../src/extractive.ts) | src/ |
+| pi extension entry, slash commands | [extensions/mega-compact.ts](../extensions/mega-compact.ts) | extensions/ |
+
+---
+
+## RESEARCH
+
+| Keyword | Document | Location |
+|---------|----------|----------|
+| pi API constraints, extension mechanics, reference algorithms | [RESEARCH.md](../RESEARCH.md) | repo root |

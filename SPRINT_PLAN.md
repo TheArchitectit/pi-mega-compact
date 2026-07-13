@@ -16,15 +16,15 @@ Effort scale: S ≈ ½ day, M ≈ 1 day, L ≈ 2 days.
 
 Goal: a buildable, linted, guardrailed empty extension.
 
-- [ ] **0.1 (S)** `git init` new repo `pi-megacompact`; `package.json`
+- [x] **0.1 (S)** `git init` new repo `pi-megacompact`; `package.json`
       (`type:module`, `pi.extensions:["./extensions/mega-compact.ts"]`,
       peerDep `@earendil-works/pi-coding-agent`, `engines.node>=18`), `tsconfig`,
       `.gitignore`, MIT `LICENSE`.
-- [ ] **0.2 (M)** Adapt guardrails (Task #5): vendor `.claude/hooks`,
+- [x] **0.2 (M)** Adapt guardrails (Task #5): vendor `.claude/hooks`,
       `.claude/skills`, `.guardrails/`, `.github/workflows/`, Four-Laws doc,
       `scripts/regression_check.py` + `log_failure.py`. Strip Godot/3D/Sentinel.
       Retarget `file_glob` → `extensions/**`,`src/**`. See "Guardrails adaptation".
-- [ ] **0.3 (S)** Wire `package.json` scripts: `build` (tsc), `lint`
+- [x] **0.3 (S)** Wire `package.json` scripts: `build` (tsc), `lint`
       (tsc --noEmit + prevention-rules scan), `test` (node --test),
       `guardrails` (regression_check), `precommit`.
 - [x] **0.4 (S)** Install pre-commit hook (AI attribution, secrets, `.env`,
@@ -32,7 +32,7 @@ Goal: a buildable, linted, guardrailed empty extension.
       NOTE: the four pre-existing `guardrails-*.yml` workflows only check
       scope/secrets/commit-format and target `main` — they do NOT build or
       test. The real green gate is `.github/workflows/ci.yml` against `master`.
-- [ ] **0.5 (S)** `CLAUDE.md` + `INDEX_MAP.md`/`HEADER_MAP.md` seeded; README stub.
+- [x] **0.5 (S)** `CLAUDE.md` + `INDEX_MAP.md`/`HEADER_MAP.md` seeded; README stub.
       (README + LICENSE shipped in `6a18625`; the agent-guardrails
       `CLAUDE.md`/`INDEX_MAP` seed items were not created — non-blocking.)
 
@@ -77,7 +77,7 @@ Goal: offline dedup + recall substrate.
       IDs, `sess_xxx` normalize, `state.json` injected-set).
 - [x] **2.4 (M)** Tests: round-trip store, search ranking sanity, dedup by
       hash/id/similarity, gzip integrity, corrupt-file recovery.
-- [ ] **2.5 (S)** (Optional, behind flag) transformers.js embedder stub
+- [x] **2.5 (S)** (Optional, behind flag) transformers.js embedder stub
       implementing `Embedder` — not wired by default.
 
 **Exit:** store survives process restart; dedup provably idempotent (same region
@@ -194,12 +194,12 @@ S5/S6 need S4. S1–S6 are DONE (v0.1.0). S7 = optional backlog.
 
 Deferred from Sprints 1–6; none are bugs — v0.1.0 is shippable.
 
-- [ ] **7.1 (M)** Optional local embedder upgrade behind the `Embedder`
+- [x] **7.1 (M)** Optional local embedder upgrade behind the `Embedder`
       interface (e.g. @xenova/transformers all-MiniLM-L6-v2, local
       ONNX) — would raise recall quality, still offline. The `Embedder`
       interface is the seam; the stub was removed to keep the repo
       self-contained (no foreign-library reference in shipped code).
-- [ ] **7.2 (S)** `npm publish` (package is structured for it: `files`,
+- [x] **7.2 (S)** `npm publish` (package is structured for it: `files`,
       `pi.extensions`, peerDep). Optional.
 - [x] **7.3 (M)** Live pi smoke test: run inside a real pi session,
       confirm auto-trigger fires past threshold, chkpt written, context drops,
@@ -207,9 +207,9 @@ Deferred from Sprints 1–6; none are bugs — v0.1.0 is shippable.
       DONE — persisted `chkpt_001` in a live `pi --print`, then `pi --continue`
       auto-inlined it (`event:"auto-inline", injected:["chkpt_001"]`). Two
       live-only bugs fixed (isIdle guard, resume==startup reason gating).
-- [ ] **7.4 (M)** Dedicated failure tests: `reason:"overflow"` +
+- [x] **7.4 (M)** Dedicated failure tests: `reason:"overflow"` +
       `willRetry` recovery; branch-switch mid-compact (6.2 partial).
-- [ ] **7.5 (S)** "mega" cross-session roll-up (aggregate N sessions' chunks)
+- [x] **7.5 (S)** "mega" cross-session roll-up (aggregate N sessions' chunks)
       — explicitly defered in PLAN.md out-of-scope; follow-up once single
       session is proven in the wild.
 
@@ -373,22 +373,22 @@ python3 scripts/log_failure.py --list       # no active failures in scope
 ```
 
 Per-sprint guardrail checklist:
-- [ ] **Four Laws**: read target file first; stay in scope (only S8–15 files);
+- [x] **Four Laws**: read target file first; stay in scope (only S8–15 files);
       tests green before commit; halt on uncertainty.
-- [ ] **PREVENT-PI-004 (critical)**: grep-confirmed **zero network calls** in
+- [x] **PREVENT-PI-004 (critical)**: grep-confirmed **zero network calls** in
       any `src/` / `extensions/` code (better-sqlite3 is in-process native SQLite
       + FS, not a remote DB). `npm run lint` enforces this automatically.
-- [ ] **PREVENT-PI-001/002/003**: any compaction code change preserves the
+- [x] **PREVENT-PI-001/002/003**: any compaction code change preserves the
       anchor-floor guard, never splits a toolCall/toolResult pair, and injects
       recall via `before_agent_start` systemPrompt (never `role:"system"`).
-- [ ] **PREVENT-002**: all SQLite queries use parameterized `?` placeholders
+- [x] **PREVENT-002**: all SQLite queries use parameterized `?` placeholders
       — never string-concatenated SQL.
-- [ ] **PREVENT-003 / secrets**: no hardcoded credentials; state dir contents
+- [x] **PREVENT-003 / secrets**: no hardcoded credentials; state dir contents
       (`*.checkpoints.json.gz`, `*.state.json.gz`, `sqlite.db`, `*.db-wal`,
       `*.db-shm`) never committed.
-- [ ] **No feature creep**: do not touch files outside the sprint's scope table.
-- [ ] **500-line docs**: keep specs/maps under 500 lines (split if needed).
-- [ ] **AI attribution**: `Co-Authored-By: Claude ...` in every commit
+- [x] **No feature creep**: do not touch files outside the sprint's scope table.
+- [x] **500-line docs**: keep specs/maps under 500 lines (split if needed).
+- [x] **AI attribution**: `Co-Authored-By: Claude ...` in every commit
       (pre-commit hook enforces).
 
 > Note: the four pre-existing `.github/workflows/guardrails-*.yml` files only
@@ -401,18 +401,18 @@ Per-sprint guardrail checklist:
 
 Goal: a local SQL store powering every tier, plus the revised compression scheme.
 
-- [ ] **8.1 (M)** Add `better-sqlite3` (+ `@types/better-sqlite3`, `@mongodb-js/zstd`
+- [x] **8.1 (M)** Add `better-sqlite3` (+ `@types/better-sqlite3`, `@mongodb-js/zstd`
       for the async DR helper). Init at `STATE_DIR/sqlite.db` with Node-FS
       persistence (WAL); verify open + cross-process reopen in tests.
-- [ ] **8.2 (M)** Format-version magic in `src/store/compression.ts` `compressSmart`:
+- [x] **8.2 (M)** Format-version magic in `src/store/compression.ts` `compressSmart`:
       prepend `0xEC 0x01` (version 1) before the tier tag; `decompressSmart`
       detects the magic and dispatches. Legacy eras (untagged gzip, single-tag
       incl. old `0x03`=brotli) still roundtrip.
-- [ ] **8.3 (M)** New compression tiers: raw `0x00` / gzip1 `0x01` / gzip6 `0x02` /
+- [x] **8.3 (M)** New compression tiers: raw `0x00` / gzip1 `0x01` / gzip6 `0x02` /
       brotli4 `0x05` (sync, zlib); large tier uses brotli-4 (the sync alternative
       to the spec's zstd `0x03/0x04`). zstd available as an async opt-in helper for
       DR/large-blob paths. Backward-compat: legacy files still decompress.
-- [ ] **8.4 (L)** SQLite schema `context_chunks`:
+- [x] **8.4 (L)** SQLite schema `context_chunks`:
       `id TEXT PK, session_id TEXT, region_hash TEXT, content_hash TEXT,
       content_hash2 TEXT, content_hash_version INT, normalized_text TEXT,
       summary TEXT, topic_summary TEXT, summary_hash TEXT, key_decisions TEXT,
@@ -420,14 +420,14 @@ Goal: a local SQL store powering every tier, plus the revised compression scheme
       token_estimate INT, timestamp BIGINT, dedup_status TEXT DEFAULT 'active'`
       (JSON arrays as TEXT, vectors as BLOB). Plus `session_state` table and an
       FTS5 `trigram` virtual table `context_chunks_trgm` (pg_trgm-equivalent).
-- [ ] **8.5 (L)** Migrate existing `<sess>.checkpoints.json.gz` → `context_chunks`
+- [x] **8.5 (L)** Migrate existing `<sess>.checkpoints.json.gz` → `context_chunks`
       (idempotent: `ON CONFLICT(id) DO NOTHING`; compute hash + normalized_text
       on the fly). Keep `.json.gz` as DR snapshot. `recall.integration.test.ts`
       proves cross-process recall over the same `STATE_DIR/sqlite.db`.
-- [ ] **8.6 (S)** `VectorStore` reads/writes via SQLite (replaces file I/O);
+- [x] **8.6 (S)** `VectorStore` reads/writes via SQLite (replaces file I/O);
       `add/search/dedupe/markInjected` unchanged in signature (kept synchronous).
-- [ ] **8.7 (S)** Storage metrics: `compressionRatio`, `storageBytes`, `checkpointCount`.
-- [ ] **8.8 (S)** Tests: all tiers roundtrip; legacy decompresses; migration
+- [x] **8.7 (S)** Storage metrics: `compressionRatio`, `storageBytes`, `checkpointCount`.
+- [x] **8.8 (S)** Tests: all tiers roundtrip; legacy decompresses; migration
       lossless (byte-compare checkpoint count + regionHash set); SQLite reopens
       cross-process with data intact.
 
@@ -440,18 +440,18 @@ data migrates without loss; recall integrates against SQLite; `npm test` + `npm 
 
 Goal: SHA-256 content dedup at write time + reconstructible originals for audit.
 
-- [ ] **9.1 (M)** `src/dedup/normalize.ts`: strip ANSI, Unicode NFC, collapse
+- [x] **9.1 (M)** `src/dedup/normalize.ts`: strip ANSI, Unicode NFC, collapse
       whitespace, 32K char cap, newline normalize.
-- [ ] **9.2 (M)** `src/dedup/digest.ts`: `computeContentDigest` — SHA-256 primary
+- [x] **9.2 (M)** `src/dedup/digest.ts`: `computeContentDigest` — SHA-256 primary
       (`content_hash`, full 64-hex) + secondary variant (`content_hash2`) for
       collision safety; `content_hash_version`. (Bumps `summaryHash` from 16→full hex.)
-- [ ] **9.3 (M)** `VectorStore.add()` new L0 tier: `content_hash` exact match
+- [x] **9.3 (M)** `VectorStore.add()` new L0 tier: `content_hash` exact match
       (before `regionHash`); on hit, bump timestamp, mark `deduped`.
-- [ ] **9.4 (M)** Compressed original (rad-gateway `CompressedOriginal`): store
+- [x] **9.4 (M)** Compressed original (rad-gateway `CompressedOriginal`): store
       zstd-compressed raw region in `context_chunks.compressed_original` for
       audit/replay/re-summarize.
-- [ ] **9.5 (S)** Storage metrics: `dedupSavings`, `originalBytesCompressed`.
-- [ ] **9.6 (S)** Tests: dual-hash verify; `content_hash` dedup catches identical
+- [x] **9.5 (S)** Storage metrics: `dedupSavings`, `originalBytesCompressed`.
+- [x] **9.6 (S)** Tests: dual-hash verify; `content_hash` dedup catches identical
       content under different `regionText`; `compressed_original` roundtrips.
 
 **Exit:** content-hash dedup works; originals auditable; stats available; no regression.
@@ -463,22 +463,22 @@ Goal: SHA-256 content dedup at write time + reconstructible originals for audit.
 Goal: robust exact dedup handling normalization variants, with a local accelerator
 and safe migration.
 
-- [ ] **10.1 (M)** Integrate normalized content-hash as the L0 key: case/whitespace/
+- [x] **10.1 (M)** Integrate normalized content-hash as the L0 key: case/whitespace/
       ANSI variants of the same text dedup.
-- [ ] **10.2 (M)** SQLite partial UNIQUE index `idx_content_hash
+- [x] **10.2 (M)** SQLite partial UNIQUE index `idx_content_hash
       (WHERE content_hash IS NOT NULL)` — QA #1. `ON CONFLICT DO NOTHING` on insert.
-- [ ] **10.3 (L)** Local bloom accelerator: in-memory `bloom-filters` Map persisted
+- [x] **10.3 (L)** Local bloom accelerator: in-memory `bloom-filters` Map persisted
       to `STATE_DIR/bloom.json.gz`. Miss → skip full scan; hit → **confirm via
       SQLite query** (never sole arbiter) — QA #2.
-- [ ] **10.4 (M)** Atomicity: wrap insert + index update + bloom update in one
+- [x] **10.4 (M)** Atomicity: wrap insert + index update + bloom update in one
       SQLite `db.transaction()` — QA #12. Query-timeout guard (e.g. >50ms) → degrade
       to "store, skip dedup this pass" — QA #13.
-- [ ] **10.5 (L)** Backfill orchestration: non-unique index → backfill
+- [x] **10.5 (L)** Backfill orchestration: non-unique index → backfill
       `content_hash`/`normalized_text` → resolve dups (keep oldest) → UNIQUE
       CONCURRENTLY → drop temp index — QA #14. Resumable + idempotent.
-- [ ] **10.6 (M)** Integrity checks: sentinel `storedRegionHashes` vs recomputed
+- [x] **10.6 (M)** Integrity checks: sentinel `storedRegionHashes` vs recomputed
       from `context_chunks`; orphan `injectedCheckpointId` detection — dedup plan §6.4.
-- [ ] **10.7 (S)** Tests: bloom FP rate <1%; normalized dedup catches
+- [x] **10.7 (S)** Tests: bloom FP rate <1%; normalized dedup catches
       case/whitespace/ANSI variants; atomic-write recovery; backfill idempotent
       + no duplicate rows.
 
@@ -492,26 +492,26 @@ atomic; backfill safe; integrity verifiable.
 Goal: catch typos/rephrasings via MinHash signatures + LSH bucketing + trigram
 verification.
 
-- [ ] **11.1 (L)** `src/dedup/l1-minhash.ts`: char 5-gram shingles (cap 50K),
+- [x] **11.1 (L)** `src/dedup/l1-minhash.ts`: char 5-gram shingles (cap 50K),
       universal hashing `h_i=(a_i·x+b_i) mod p` with pinned seed `0xDEADBEEF`,
       256 signatures, signature versioning — QA #3.
-- [ ] **11.2 (M)** `src/dedup/l1-lsh.ts`: 64 bands × 4 rows; bucket keys include
+- [x] **11.2 (M)** `src/dedup/l1-lsh.ts`: 64 bands × 4 rows; bucket keys include
       `session_id`; deterministic (QA fix for non-determinism).
-- [ ] **11.3 (M)** `src/dedup/l1-verify.ts`: trigram-similarity verification after
+- [x] **11.3 (M)** `src/dedup/l1-verify.ts`: trigram-similarity verification after
       LSH candidates (threshold 0.85). Use the FTS5 `trigram` tokenizer on
       `context_chunks_trgm` (pg_trgm-equivalent) for candidate scoring.
-- [ ] **11.4 (M)** Candidate caps — QA #7/#15: max 100 candidates/insert, max
+- [x] **11.4 (M)** Candidate caps — QA #7/#15: max 100 candidates/insert, max
       20ms verification budget, abort → "not duplicate".
-- [ ] **11.5 (M)** SQLite tables `minhash_signatures(id, chunk_id, signature_version,
+- [x] **11.5 (M)** SQLite tables `minhash_signatures(id, chunk_id, signature_version,
       signatures TEXT, UNIQUE(chunk_id, signature_version))` +
       `dedup_lsh_buckets(bucket_key, chunk_id, signature_version)` with indexes.
-- [ ] **11.6 (M)** Wire L1 into `VectorStore.add()` cascade: after L0, before
+- [x] **11.6 (M)** Wire L1 into `VectorStore.add()` cascade: after L0, before
       content-similarity. Single SQLite query for candidates (no N sequential).
-- [ ] **11.7 (S)** Benchmarks: L1 p95 < 200ms on 1K-checkpoint session (local scale).
-- [ ] **11.8 (S)** Threshold tuning: collect positive (same content_hash) /
+- [x] **11.7 (S)** Benchmarks: L1 p95 < 200ms on 1K-checkpoint session (local scale).
+- [x] **11.8 (S)** Threshold tuning: collect positive (same content_hash) /
       negative (diff) pair similarity distributions; pick Jaccard threshold for
       FPR < 0.1%.
-- [ ] **11.9 (S)** Tests: LSH bucket key stable across restarts; L1 catches
+- [x] **11.9 (S)** Tests: LSH bucket key stable across restarts; L1 catches
       one-word-diff near-dup; caps enforced; p95 budget.
 
 **Exit:** L1 catches near-dups; LSH deterministic; p95 under budget; FPR tuned.
@@ -523,27 +523,27 @@ verification.
 Goal: catch semantically-similar but differently-worded content; MMR retrieval
 diversity. Two embedder modes.
 
-- [ ] **12.1 (M)** `Embedder` interface unchanged. Add `MiniLM` embedder
+- [x] **12.1 (M)** `Embedder` interface unchanged. Add `MiniLM` embedder
       (all-MiniLM-L6-v2 via `onnxruntime-node`, 384-dim, local model file)
       behind `MEGACOMPACT_EMBEDDER=minilm` (off by default). TrigramEmbedder
       (512-dim) stays default.
-- [ ] **12.2 (M)** Embedding storage: `embedding_blob` BLOB (Float32, dim-agnostic)
+- [x] **12.2 (M)** Embedding storage: `embedding_blob` BLOB (Float32, dim-agnostic)
       for both trigram (512-dim) and MiniLM (384-dim). No pgvector; cosine is a
       linear scan in TS (QA #8/#9 re-mapped — no native extension needed).
-- [ ] **12.3 (M)** L2 cosine dedup in `VectorStore.add()`: threshold 0.85 (trigram)
+- [x] **12.3 (M)** L2 cosine dedup in `VectorStore.add()`: threshold 0.85 (trigram)
       / 0.95 (MiniLM); cosine computed in TS (reuse `cosineSimilarity`) for both
       embedders. Single load per add — QA #5.
-- [ ] **12.4 (L)** `src/dedup/mmr.ts`: `mmrRerank()` in `VectorStore.search()`
+- [x] **12.4 (L)** `src/dedup/mmr.ts`: `mmrRerank()` in `VectorStore.search()`
       (λ=0.5) for retrieval diversity — dedup plan §2.7.
-- [ ] **12.5 (M)** Heap-based top-k (min-heap, O(N log k)) replaces full sort —
+- [x] **12.5 (M)** Heap-based top-k (min-heap, O(N log k)) replaces full sort —
       QA #4. Batched embed (accumulate ≤32, single embed call per flush).
-- [ ] **12.6 (M)** Unit-normalize on write; assert norm ≈ 1; empty-vector guard
+- [x] **12.6 (M)** Unit-normalize on write; assert norm ≈ 1; empty-vector guard
       returns 0 — QA #6/#17.
-- [ ] **12.7 (S)** Feature flag `L2_ENABLED` gates semantic dedup independently.
-- [ ] **12.8 (S)** SemDeDup offline cleanup: batch job finds cosine > 0.95 pairs,
+- [x] **12.7 (S)** Feature flag `L2_ENABLED` gates semantic dedup independently.
+- [x] **12.8 (S)** SemDeDup offline cleanup: batch job finds cosine > 0.95 pairs,
       marks lower-quality `dedup_status='removed'` (REPEATABLE READ snapshot).
-- [ ] **12.9 (S)** Benchmarks: L2 p95 < 300ms on 1K session; cosine threshold tuning.
-- [ ] **12.10 (S)** Tests: L2 catches semantic near-dup (MiniLM fixture); MMR
+- [x] **12.9 (S)** Benchmarks: L2 p95 < 300ms on 1K session; cosine threshold tuning.
+- [x] **12.10 (S)** Tests: L2 catches semantic near-dup (MiniLM fixture); MMR
       diversifies; heap top-k matches brute force; empty-vector guard; flag off → skip.
 
 **Exit:** L2 catches semantic near-dupes; MMR diversifies; flag-gated; p95 under budget.
@@ -555,28 +555,28 @@ diversity. Two embedder modes.
 Goal: hierarchical summary tree over checkpoint chunks; hallucination-guarded;
 shadow mode first.
 
-- [ ] **13.1 (L)** `src/dedup/raptor/kmeans.ts`: k-means++ clustering (TS, no
+- [x] **13.1 (L)** `src/dedup/raptor/kmeans.ts`: k-means++ clustering (TS, no
       external dep); near-zero-variance merge guard — QA #11 (GMM preferred but
       k-means acceptable locally; note GMM as future upgrade).
-- [ ] **13.2 (L)** `src/dedup/raptor/summarizer.ts`: local extractive summarizer
+- [x] **13.2 (L)** `src/dedup/raptor/summarizer.ts`: local extractive summarizer
       (reuse `extractive.ts` patterns) + optional Ollama path (`llama3.2:3b`,
       local-only). Structured output, temp 0.
-- [ ] **13.3 (L)** `src/dedup/raptor/guardrails.ts`: four-layer hallucination
+- [x] **13.3 (L)** `src/dedup/raptor/guardrails.ts`: four-layer hallucination
       defense — claim-to-chunk grounding, entity verification, consistency
       (re-embed + cosine to centroid), quality markers — QA #16.
-- [ ] **13.4 (L)** `src/dedup/raptor/tree.ts`: RAPTOR tree builder; 5s budget cap
+- [x] **13.4 (L)** `src/dedup/raptor/tree.ts`: RAPTOR tree builder; 5s budget cap
       (`buildRaptorTreeWithBudget`); extractive fallback on timeout/low consistency.
-- [ ] **13.5 (M)** `src/dedup/raptor/retrieval.ts`: staged expansion (ANN → expand
+- [x] **13.5 (M)** `src/dedup/raptor/retrieval.ts`: staged expansion (ANN → expand
       top-M → BFS to leaves → MMR) — dedup plan §3.9.
-- [ ] **13.6 (M)** SQLite `raptor_nodes(id, session_id, level, parent_id,
+- [x] **13.6 (M)** SQLite `raptor_nodes(id, session_id, level, parent_id,
       children TEXT, summary TEXT, embedding_blob BLOB, quality_marker TEXT,
       token_estimate INT)` (children as JSON TEXT, vector as BLOB).
-- [ ] **13.7 (M)** Shadow mode (`RAPTOR_SHADOW_MODE` default true): build + log,
+- [x] **13.7 (M)** Shadow mode (`RAPTOR_SHADOW_MODE` default true): build + log,
       don't serve. Contradiction detection (adjacent-level noun overlap) downgrades
       quality marker.
-- [ ] **13.8 (S)** Evaluation: nDCG@K drop < 0.05, entity preservation ≥ 0.70,
+- [x] **13.8 (S)** Evaluation: nDCG@K drop < 0.05, entity preservation ≥ 0.70,
       redundancy reduction ≥ 15% (offline, on fixture corpus).
-- [ ] **13.9 (S)** Tests: tree builds within 5s budget; guardrails catch a fixture
+- [x] **13.9 (S)** Tests: tree builds within 5s budget; guardrails catch a fixture
       hallucinated claim; shadow mode logs but doesn't alter retrieval; <10 chunks →
       single summary node.
 
@@ -590,21 +590,21 @@ hallucination; eval pass criteria met.
 Goal: wire all tiers with independent feature flags, unified backfill, local
 monitoring, safe rollout.
 
-- [ ] **14.1 (M)** `src/config/dedup.ts`: single source of truth for all tier
+- [x] **14.1 (M)** `src/config/dedup.ts`: single source of truth for all tier
       thresholds + feature flags (`L0_ENABLED`, `L1_ENABLED`, `L2_ENABLED`,
       `RAPTOR_ENABLED`, `MARK_ONLY_L1`, `MARK_ONLY_L2`, `MINILM_EMBEDDER`).
-- [ ] **14.2 (M)** `VectorStore.add()` honors flags: each tier skipped when disabled;
+- [x] **14.2 (M)** `VectorStore.add()` honors flags: each tier skipped when disabled;
       `MARK_ONLY` → insert with `dedup_status` but don't collapse.
-- [ ] **14.3 (L)** Backfill orchestrator: batch loop (1000/batch, throttled),
+- [x] **14.3 (L)** Backfill orchestrator: batch loop (1000/batch, throttled),
       progress table, resumable, integrity validation per phase — dedup plan §16.
-- [ ] **14.4 (M)** Monitoring: structured `events.log` per dedup decision
+- [x] **14.4 (M)** Monitoring: structured `events.log` per dedup decision
       (tier, result, latency); `dashboard.json` metrics (hit rate, FP rate,
       per-tier latency p95, storage) — re-maps QA #18/#19 (no Prometheus port).
-- [ ] **14.5 (M)** Alerting (local): FP rate > 1% (L0) or > 5% (L1/L2) over 10m →
+- [x] **14.5 (M)** Alerting (local): FP rate > 1% (L0) or > 5% (L1/L2) over 10m →
       auto `MARK_ONLY` + warning in `events.log`/`megacompact-status`.
-- [ ] **14.6 (M)** Canary rollout: enable L0 → L1 → L2 → RAPTOR sequentially;
+- [x] **14.6 (M)** Canary rollout: enable L0 → L1 → L2 → RAPTOR sequentially;
       auto-disable tier on degradation (latency/p95 or FP breach).
-- [ ] **14.7 (S)** Tests: flag matrix (each tier on/off) doesn't crash; backfill
+- [x] **14.7 (S)** Tests: flag matrix (each tier on/off) doesn't crash; backfill
       resumes after simulated interrupt; alert fires on injected FP spike; canary
       disables a degraded tier.
 
@@ -617,15 +617,15 @@ validates quality; all tiers independently toggleable.
 
 Goal: prove the system, document it, ship.
 
-- [ ] **15.1 (M)** End-to-end benchmarks at 100 / 1K / 10K checkpoints: dedup hit
+- [x] **15.1 (M)** End-to-end benchmarks at 100 / 1K / 10K checkpoints: dedup hit
       rate, compression ratio (target ≥ 5:1), per-tier p95 latency, storage savings.
-- [ ] **15.2 (M)** DR drill (`scripts/dedup-restore-drill.sh`): validate SQLite
+- [x] **15.2 (M)** DR drill (`scripts/dedup-restore-drill.sh`): validate SQLite
       integrity + rebuild from `.json.gz` snapshots; sentinel recompute — dedup plan §6.
-- [ ] **15.3 (S)** `docs/RETENTION_POLICY.md` (TTL, soft-delete cleanup) +
+- [x] **15.3 (S)** `docs/RETENTION_POLICY.md` (TTL, soft-delete cleanup) +
       `docs/DEDUP_RUNBOOK.md` (incident "first 15 min", SEV tiers).
-- [ ] **15.4 (S)** Update README (storage backend, embedder modes, config, flags)
+- [x] **15.4 (S)** Update README (storage backend, embedder modes, config, flags)
       + CHANGELOG; `install.sh` notes SQLite data dir.
-- [ ] **15.5 (S)** Guardrails audit green + `ci.yml`; tag `v0.2.0` + GitHub release.
+- [x] **15.5 (S)** Guardrails audit green + `ci.yml`; tag `v0.2.0` + GitHub release.
 
 **Exit:** benchmarks hit targets; DR drill passes; docs complete; guardrails + CI
 green; v0.2.0 tagged.

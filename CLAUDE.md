@@ -48,9 +48,13 @@ Additional guardrails (from template): PREVENT-001 (JSON.parse without null chec
 ## 5. Architecture at a Glance
 * **Layers** (Trident stack): L1 supersede → L2 collapse → L3 cluster/vectorize → L4 persist → L5 recall/inline.
 * **One store**: `better-sqlite3` (in-process native SQLite, FS-backed) is the source of truth from v0.2.0 (Sprint 8). FTS5 `trigram` tokenizer backs the Sprint 9+ pg_trgm-equivalent dedup tiers; cosine stays a linear scan over `embedding_blob` (small N). Legacy gzipped JSON checkpoint files are retained as DR snapshots. (PGlite was evaluated but is async-only in every version, which would have forced VectorStore/engine/recall to `async` — see docs/specs/sprint-08.md DEVIATIONS.)
-* **Embedder**: `TrigramEmbedder` default (self-contained, 512-dim). `MEGACOMPACT_EMBEDDER=minilm` (all-MiniLM-L6-v2 ONNX, 384-dim) is flag-gated, off by default.
+* **Embedder**: `TrigramEmbedder` default (self-contained, 512-dim, L2-normalized). BYO localhost embedder via `MEGACOMPACT_EMBEDDING_URL` (loopback-only, `src/httpEmbedder.ts`). MiniLM (`MEGACOMPACT_MINILM`) flag exists but is **off; not shipped** (async-vs-sync conflict).
 * **Key source files**: `src/store.ts` (state dir + JSON DR helpers + compression re-exports), `src/store/compression.ts` (versioned compressSmart/decompressSmart + async zstd helper), `src/store/sqlite.ts` (SQLite context_chunks + session_state, FTS5 trigram), `src/store/migrate.ts` (JSON→SQLite migration), `src/vectorStore.ts` (VectorStore add/search/dedupe), `src/engine.ts` (compactSession), `src/recall.ts` (recallAndInline), `src/embedder.ts`, `src/compact.ts`, `src/extractive.ts`, `src/supersede.ts`, `src/boundary.ts`, `src/types.ts`, `src/config.ts`, `src/adapt.ts`, `src/log.ts`.
-* **Extension entry**: `extensions/mega-compact.ts` (pi runtime adapter).
+* **Extension entry**: `extensions/mega-compact.ts` (pi runtime adapter). Dashboard server: `extensions/dashboard-server.ts`. Error patterns: `extensions/error-patterns.ts`.
+* **Dedup tiers**: L0 exact-hash (`src/dedup/digest.ts`, `src/store/bloom.ts`), L1 MinHash/LSH (`src/dedup/l1-minhash.ts`, `src/dedup/l1-lsh.ts`, `src/dedup/l1-verify.ts`), L2 semantic cosine + MMR (`src/dedup/mmr.ts`), RAPTOR tree (`src/dedup/raptor/`). Config: `src/config/dedup.ts` (single source of truth for all tier flags).
+* **Monitoring**: `src/monitoring.ts` (events.log + dashboard.json + FP alerts), `src/canary.ts` (sequential tier rollout + auto-disable on p95 breach).
+* **Scripts**: `scripts/dedup-benchmark.mjs` (benchmark), `scripts/dedup-restore-drill.sh` (DR drill), `scripts/guardrails-scan.mjs` (guardrails), `scripts/regression_check.py` (regression).
+* **Test count**: 192 tests (unit + integration + handler-level), all passing as of v0.2.0.
 
 ---
 
@@ -58,3 +62,5 @@ Additional guardrails (from template): PREVENT-001 (JSON.parse without null chec
 * **500-Line Max**: no document over 500 lines. Split with `docs/` subfiles.
 * **Update Maps**: update `docs/INDEX_MAP.md` + `docs/HEADER_MAP.md` when adding/changing docs.
 * **Sprints**: per-sprint full specs live in `docs/specs/` following the SPRINT_GUIDE structure (Header / Safety / Problem / Scope / Execution / Acceptance / Rollback).
+* **Tester guide**: see `TESTER_GUIDE.md` (repo root) for manual testing checklist + bug report template.
+* **Release notes**: see `RELEASE_NOTES.md` (repo root) for user-facing release notes + migration guide.

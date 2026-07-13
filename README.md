@@ -46,7 +46,7 @@ tokens.
 Layer 5  Recall / Inline      ONE local vector store → 3 entry points, 1 dedup engine
 Layer 4  Persist / Checkpoint  compactSession()  → embed + store in SQLite (chkpt_xxx)
 Layer 3  Cluster (vectorize)  local vector index → semantic dedup + recall
-Layer 2  Collapse (summarize)  summarizeMessages() heuristic + agent summary on /megacompact
+Layer 2  Collapse (summarize)  summarizeMessages() heuristic + agent summary on /mega-compact
 Layer 1  Supersede (prune)     drop obsolete file-reads / superseded turns (zero cost)
 ─────────────────────────────────────────────────────────────────────────
 Trigger   context/turn_end → % gate → auto_compact_check → fire
@@ -59,7 +59,7 @@ Cancel    session_before_compact → { cancel:true } once persisted (no double-c
 | Entry point | Trigger | Behavior |
 |---|---|---|
 | **Auto-inline** (Layer 5) | `session_start` / `session_tree` | Resume → `recallAndInline(source:"resume")` prepends the most relevant checkpoints, deduped against current context. |
-| **On-demand recall** | `/megacompact-recall [query]` | Semantic search the store, dedupe, and inline the top-K. |
+| **On-demand recall** | `/mega-recall [query]` | Semantic search the store, dedupe, and inline the top-K. |
 | **Dedup sentinel** | every compact | A lightweight `mega-compact-marker` entry lets auto-inline and recall skip re-injecting / re-vectorizing already-present regions. |
 
 **The dedup cascade** (shared across all entry points) collapses redundant work
@@ -170,10 +170,11 @@ The commands (slash commands inside pi):
 
 | Command | Description |
 |---|---|
-| `/megacompact [summary...]` | Manually compact the current session. A summary arg is used verbatim; otherwise the COLLAPSE heuristics build one. Persists a `chkpt_xxx`. |
-| `/megacompact off` | Disable auto-compaction for this session. |
-| `/megacompact-status` | Show config + current context usage + store stats (checkpoint count, dedup rate, tokens saved). |
-| `/megacompact-recall [query]` | Semantic-search the local store, dedupe against the current window, and inline the top-K relevant checkpoints. No query → uses your latest message. |
+| `/mega-compact [summary...]` | Manually compact the current session. A summary arg is used verbatim; otherwise the COLLAPSE heuristics build one. Persists a `chkpt_xxx`. |
+| `/mega-compact off` | Disable auto-compaction for this session. |
+| `/mega-status` | Show config + current context usage + store stats (checkpoint count, dedup rate, tokens saved). |
+| `/mega-recall [query]` | Semantic-search the local store, dedupe against the current window, and inline the top-K relevant checkpoints. No query → uses your latest message. |
+| `/mega-tier [name]` | Set the compaction tier (`low` / `medium` / `high` / `ultra` / `mega`). Shows current tier with no arg. |
 | `/mega-dashboard` | Start the **localhost-only** live dashboard and open it in a browser (token gauge, store stats, live event stream). |
 | `/mega-dashboard-status` | Report dashboard server status. |
 | `/mega-dashboard-stop` | Stop the dashboard server. |
@@ -257,7 +258,7 @@ guesswork. The store and logs are plain local files — never a network port.
    and context visibly drop.
 3. **Resume and confirm recall:** restart pi, ask about something you worked on
    earlier; relevant checkpoints should auto-inline (or use
-   `/megacompact-recall <topic>`).
+   `/mega-recall <topic>`).
 4. **Watch the live signal** while testing:
    ```bash
    tail -f ~/.pi/agent/extensions/pi-mega-compact/events.log | jq .
@@ -265,10 +266,11 @@ guesswork. The store and logs are plain local files — never a network port.
    Each line is `{ts, tier, result, latencyMs, falsePositive?}`.
 5. **Run the dashboard** (`/mega-dashboard`) and check the token gauge, store
    stats, and live event stream.
+6. **Try `/mega-tier`** to see and switch compaction tiers.
 
 ### What to include in a bug report
 
-- Output of `/megacompact-status` (config + store stats).
+- Output of `/mega-status` (config + store stats).
 - Output of `/mega-dashboard-status`.
 - Your pi version + OS + Node version (`node -v`).
 - A slice of `events.log` around the problem (the `result`/`tier` lines).

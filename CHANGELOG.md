@@ -67,6 +67,9 @@ canary rollout ship behind feature flags.
 - `docs/RETENTION_POLICY.md` (TTL 90d, soft-delete via `dedup_status='removed'`,
   VACUUM cadence) and `docs/DEDUP_RUNBOOK.md` (SEV tiers + first-15-min
   checklist + MARK_ONLY degrade).
+- **Test suite grew from 52 (v0.1.0) to 192 tests**, all passing (`node --test`).
+  New coverage: L0/L1/L2 dedup tiers, `topSimilar`, compression roundtrip,
+  handler-level integration, dashboard server, stats edge cases.
 
 ### Fixed
 - **Auto-trigger fired in a live pi session for the first time.** Two bugs
@@ -114,13 +117,13 @@ end-to-end as a pi extension — no remote MCP server, all processing local.
   - Auto-inline on `session_start` (resume/fork) and `session_tree`, gated by
     `MEGACOMPACT_AUTO_INLINE`, injected via the `before_agent_start`
     system-prompt prepend (PREVENT-PI-003).
-  - On-demand `/recall-context [query]`.
+  - On-demand `/mega-recall [query]`.
   - The dedup sentinel (`mega-compact-marker` entry) so no region is
     re-vectorized or re-injected.
 - **Adapter boundary** (`adapt.ts`): the one pi↔engine message conversion,
   index-aligned so drop-range indices map straight back onto real messages.
-- **Commands**: `/megacompact [summary...]`, `/recall-context [query]`,
-  `/megacompact-status` (now with live store stats: checkpoint count, tokens,
+- **Commands**: `/mega-compact [summary...]`, `/mega-recall [query]`,
+  `/mega-status` (now with live store stats: checkpoint count, tokens,
   last chkpt, injected count, dedup hit-rate).
 - **Status-bar chip** with parity to neuralwatt-mcr (compaction %, chkpt id,
   "recalled N chkpt").
