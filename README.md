@@ -82,6 +82,33 @@ npm test          # Should report 85/85 pass
 npm run lint      # Should be clean
 ```
 
+### Live Stats Widget
+
+The extension displays a compact stats widget above the pi editor:
+
+```
+ ⚡ medium │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
+   ◐ armed │ dedup: 92% │ saved: 45k tok
+```
+
+The widget shows:
+- **Tier**: active compaction tier (low/medium/high/ultra/mega)
+- **Token usage**: current / max context window and percentage
+- **Checkpoints**: number of persisted checkpoints
+- **Trigger state**: ○ idle, ◐ armed, ● ready
+- **Dedup hit rate**: percentage of deduplicated checkpoints
+- **Active agents**: number of running sub-agents (shown when > 0)
+- **Turn index**: current conversation turn (shown when > 0)
+
+### Beta Testing
+
+1. Install the extension (see above)
+2. Start a pi session and observe the toolbar widget
+3. Use sub-agents (pi's Agent tool) and watch the 🤖 counter
+4. Run `/megacompact-status` for detailed stats
+5. Monitor events: `tail -f ~/.pi/agent/extensions/pi-mega-compact/events.log | jq .`
+6. Test edge cases: multiple agents, branch navigation, session resume
+
 ### Configuration
 
 After installation, add the extension to your pi config:
