@@ -65,6 +65,122 @@ cp -r . ~/.pi/agent/extensions/pi-mega-compact
 
 Requires **node >= 18**. No native build, no network, no API key.
 
+### Quick install (git clone)
+
+```bash
+git clone https://github.com/TheArchitectit/pi-mega-compact.git ~/.pi/agent/extensions/pi-mega-compact
+cd ~/.pi/agent/extensions/pi-mega-compact
+npm install
+npm run build
+```
+
+### Verify installation
+
+```bash
+cd ~/.pi/agent/extensions/pi-mega-compact
+npm test          # Should report 85/85 pass
+npm run lint      # Should be clean
+```
+
+### Configuration
+
+After installation, add the extension to your pi config:
+
+```jsonc
+{
+  "pi": {
+    "extensions": ["~/.pi/agent/extensions/pi-mega-compact/extensions/mega-compact.ts"]
+  }
+}
+```
+
+Or set the compaction tier via environment variable:
+
+```bash
+export MEGACOMPACT_TIER=medium  # low | medium | high | ultra | mega
+```
+
+### Uninstall
+
+```bash
+rm -rf ~/.pi/agent/extensions/pi-mega-compact
+```
+
+Remove the extension path from your pi config.
+
+---
+
+## Beta testing
+
+This extension is in **beta**. To participate in beta testing:
+
+### 1. Install the latest release
+
+```bash
+git clone https://github.com/TheArchitectit/pi-mega-compact.git ~/.pi/agent/extensions/pi-mega-compact
+cd ~/.pi/agent/extensions/pi-mega-compact
+npm install && npm run build
+```
+
+### 2. Test the core flow
+
+Start a pi session and work normally. After ~30-60 minutes of heavy usage (when context fills to 80%+), you should see:
+- A compaction checkpoint persisted automatically
+- Context dropping after confirmation
+- The status bar showing the mega-compact status
+- The live stats widget above the editor showing real-time token usage
+
+### 3. Verify the widget
+
+Look above the editor area in your pi terminal. You should see:
+
+```
+ ⚡ medium │ 142k/200k tokens (71%) │ 3 chkpts
+   ◐ armed │ dedup: 92% │ saved: 45k tok
+```
+
+If the widget doesn't appear, check:
+- Is the extension loaded? Run `/megacompact-status` — should report store stats
+- Is context usage above the gate? Widget shows "○ idle" below `fastGatePct`
+
+### 4. Test the dashboard
+
+Run `/dashboard` to open the live dashboard in your browser. It shows:
+- Token usage gauge (threshold vs current vs max)
+- Session state and config
+- Store stats (checkpoints, dedup, injected)
+- Live event stream
+
+### 5. Test recall
+
+After compacting, restart pi. Ask a question about something you worked on previously. The extension should automatically recall relevant checkpoints and inject them into context.
+
+### 6. Report issues
+
+When reporting, include:
+- Output of `/megacompact-status`
+- Output of `/dashboard-status`
+- Your pi version and OS
+- The `state.json` file from `~/.pi/mega-compact/` (redact if needed)
+
+Open issues at: https://github.com/TheArchitectit/pi-mega-compact/issues
+
+---
+
+## Commands
+
+| Command | Description |
+|---|---|
+| `/megacompact` | Manual compaction of the current session |
+| `/megacompact off` | Disable auto-compaction for this session |
+| `/megacompact-status` | Display live store stats (count, dedup rate, supersedes) |
+| `/megacompact-context` | Report per-agent context utilisation and context window |
+| `/recall-context` | Inject the top recalled checkpoint for the current session |
+| `/recall-context <query>` | Inject a recalled checkpoint for a specific topic |
+| `/dashboard` | Start the live dashboard server and open in browser |
+| `/dashboard-status` | Report dashboard server status |
+| `/dashboard-stop` | Stop the dashboard server |
+
 ---
 
 ## Commands

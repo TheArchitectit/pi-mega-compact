@@ -40,10 +40,11 @@ import { normalizeSessionId } from "../src/store.js";
 import { Logger } from "../src/log.js";
 import type { EngineMessage } from "../src/types.js";
 import { writeFileSync, appendFileSync, readFileSync } from "node:fs";
-import { existsSync, mkdirSync } from "node:fs";
-import { spawn, exec } from "node:child_process";
+import { existsSync, mkdirSync, unlinkSync } from "node:fs";
+import { spawn } from "node:child_process";
 
 const STATUS_KEY = "mega-compact";
+const WIDGET_KEY = "mega-compact-stats";
 const MARKER_TYPE = "mega-compact-marker";
 
 /** Per-session runtime state kept in the closure (mirrors neuralwatt-mcr). */
@@ -195,7 +196,7 @@ export default function (pi: ExtensionAPI) {
   let lastCtxPercent: number | null = null;
   let lastCtxWindow: number = 0;
 
-  function snapshot(): void {
+  function snapshot(ctx?: ExtensionContext): void {
     const st = store.stats(rt.sessionId);
     const armed = lastCtxPercent != null && lastCtxPercent >= config.fastGatePct;
     const ready = armed && (lastCtxTokens ?? 0) >= config.thresholdTokens;
@@ -222,6 +223,24 @@ export default function (pi: ExtensionAPI) {
       trigger: { armed, ready, currentTokens: lastCtxTokens, thresholdTokens: config.thresholdTokens, fastGatePct: config.fastGatePct },
       store: { checkpointCount: st.checkpointCount, totalTokenEstimate: st.totalTokenEstimate, injectedCount: st.injectedCount, dedupHitRate: st.dedupHitRate },
     });
+
+    // Live stats widget above the editor
+    if (ctx) {
+      const tokStr = lastCtxTokens != null ? `${Math.round(lastCtxTokens / 1000)}k` : "?";
+      const maxStr = lastCtxWindow > 0 ? `${Math.round(lastCtxWindow / 1000)}k` : "?";
+      const pctStr = lastCtxPercent != null ? `${lastCtxPercent}%` : "?%";
+      const triggerLabel = ready ? "● ready" : armed ? "◐ armed" : "○ idle";
+      const dedupStr = st.dedupHitRate != null ? `${Math.round(st.dedupHitRate * 100)}%` : "—";
+      const savedStr = rt.lastCompactedFrom > 0 ? `${Math.round(rt.lastCompactedFrom / 1000)}k` : "0";
+      ctx.ui.setWidget(
+        WIDGET_KEY,
+        [
+          ` ⚡ ${config.tier} │ ${tokStr}/${maxStr} tokens (${pctStr}) │ ${st.checkpointCount} chkpt${st.checkpointCount === 1 ? "" : "s"}`,
+          `   ${triggerLabel} │ dedup: ${dedupStr} │ saved: ${savedStr} tok`,
+        ],
+        { placement: "aboveEditor" },
+      );
+    }
   }
 
   // The only mutable per-session state. Reset on session_start / session_tree.
@@ -316,7 +335,7 @@ export default function (pi: ExtensionAPI) {
       tokenEstimate: saved,
       compactedFrom: result.compactedFrom,
     });
-    snapshot();
+    snapshot(ctx);
     return { skipped: false, result, keepFrom, saved };
   }
 
@@ -359,7 +378,7 @@ export default function (pi: ExtensionAPI) {
       }
     }
     dashboard.event("session_start", { reason: event.reason, sessionId: rt.sessionId });
-    snapshot();
+    snapshot(ctx);
   });
 
   pi.on("session_tree", async (_event, ctx) => {
@@ -378,7 +397,7 @@ export default function (pi: ExtensionAPI) {
       }
     }
     dashboard.event("session_tree", { sessionId: rt.sessionId });
-    snapshot();
+    snapshot(ctx);
   });
 
   // ---- Auto-inline injection point: prepend staged recall to systemPrompt ----
@@ -391,6 +410,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async (_event, ctx) => {
     setStatus(ctx, undefined);
+    ctx.ui.setWidget(WIDGET_KEY, [], { placement: "aboveEditor" });
   });
 
   // ---- Auto-trigger: fast-gate → confirm → Trident+persist → drop --------
@@ -402,7 +422,7 @@ export default function (pi: ExtensionAPI) {
     lastCtxTokens = usage?.tokens ?? null;
     lastCtxPercent = pct ?? null;
     lastCtxWindow = usage?.contextWindow ?? 0;
-    snapshot();
+    snapshot(ctx);
     if (pct == null) return;
     if (pct < config.fastGatePct) return; // FAST GATE (local %)
 
@@ -533,7 +553,7 @@ export default function (pi: ExtensionAPI) {
       if (res.ok) return { port: info.port, url };
     } catch {
       // stale or unreachable — clean up
-      try { writeFileSync(portFile, ""); } catch { /* ignore */ }
+      try { unlinkSync(portFile); } catch { /* ignore */ }
     }
     return null;
   }
@@ -551,14 +571,14 @@ export default function (pi: ExtensionAPI) {
     writeFileSync(runnerFile, script);
   }
 
-  /** Open a URL in the default browser. Platform-aware. */
+  /** Open a URL in the default browser. Platform-aware. Uses spawn (not exec) to avoid shell injection. */
   function openBrowser(url: string): void {
     const cmd =
       process.platform === "darwin" ? "open" :
         process.platform === "win32" ? "start" :
           "xdg-open";
     try {
-      exec(`${cmd} ${url}`);
+      spawn(cmd, [url], { detached: true, stdio: "ignore" }).unref();
     } catch {
       /* non-fatal — user can open manually */
     }
@@ -620,9 +640,18 @@ export default function (pi: ExtensionAPI) {
       }
       try {
         const info = JSON.parse(readFileSync(portFile, "utf-8"));
+        // Verify the server is actually ours by probing the port before killing
+        try {
+          await fetch(`http://localhost:${info.port}/api/snapshot`, { signal: AbortSignal.timeout(1000) });
+        } catch {
+          // Not responding — just clean up stale pid file
+          try { unlinkSync(portFile); } catch { /* ok */ }
+          ctx.ui.notify("[mega-compact] dashboard was not running (stale pid file cleaned up).");
+          return;
+        }
         if (info?.pid) process.kill(info.pid, "SIGTERM");
       } catch { /* already dead */ }
-      try { writeFileSync(portFile, ""); } catch { /* ok */ }
+      try { unlinkSync(portFile); } catch { /* ok */ }
       ctx.ui.notify("[mega-compact] dashboard stopped.");
     },
   });
