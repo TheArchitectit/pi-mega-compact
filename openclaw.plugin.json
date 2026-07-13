@@ -1,0 +1,59 @@
+{
+  "id": "mega-compact",
+  "activation": {
+    "onStartup": true
+  },
+  "enabledByDefault": false,
+  "name": "Mega Compact",
+  "description": "Layered, local, vector-backed context compressor (Trident engine) for OpenClaw compaction.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "stateDir": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Directory for vector store persistence. Defaults to ~/.pi/agent/extensions/pi-mega-compact or MEGA_COMPACT_STATE_DIR env var."
+      },
+      "dedupSim": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.9,
+        "description": "Cosine similarity threshold for dedup detection (0-1). Higher = stricter matching."
+      },
+      "preserveRecent": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 4,
+        "description": "Number of recent messages to always keep verbatim (not compacted)."
+      },
+      "debug": {
+        "type": "boolean",
+        "default": false,
+        "description": "Enable debug logging."
+      }
+    }
+  },
+  "uiHints": {
+    "stateDir": {
+      "label": "State Directory",
+      "help": "Directory for vector store persistence. Leave empty to use the default (~/.pi/agent/extensions/pi-mega-compact)."
+    },
+    "dedupSim": {
+      "label": "Dedup Similarity Threshold",
+      "help": "Cosine similarity threshold for detecting duplicate compaction regions. 0.9 is a good default; lower for more aggressive dedup, higher for stricter matching.",
+      "advanced": true
+    },
+    "preserveRecent": {
+      "label": "Preserve Recent Messages",
+      "help": "Number of recent messages to always keep verbatim and never compact.",
+      "advanced": true
+    },
+    "debug": {
+      "label": "Debug Logging",
+      "help": "Enable verbose debug logging for the compaction engine.",
+      "advanced": true
+    }
+  }
+}

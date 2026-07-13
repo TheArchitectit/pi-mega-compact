@@ -13,6 +13,7 @@
   "keywords": [
     "pi-extension",
     "pi-coding-agent",
+    "openclaw-plugin",
     "context-compaction",
     "auto-compact",
     "vector-store",
@@ -32,6 +33,11 @@
       "./extensions/mega-compact.ts"
     ]
   },
+  "openclaw": {
+    "plugin": "./extensions/openclaw-mega-compact.ts",
+    "manifest": "./openclaw.plugin.json",
+    "compactionProvider": "mega-compact"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "tsc --noEmit && node scripts/guardrails-scan.mjs",
@@ -40,7 +46,8 @@
     "precommit": "bash .claude/hooks/pre-commit.sh"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": "*",
+    "openclaw": ">=0.1.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
