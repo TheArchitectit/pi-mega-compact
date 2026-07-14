@@ -1,5 +1,42 @@
 # Release Notes — pi-mega-compact
 
+## v0.4.18 (2026-07-14)
+
+Multi-repo dashboard reads its registry straight from SQLite (no JSON mirror).
+
+### Changed
+
+- **One store end-to-end.** The machine-wide multi-repo index (`repo_registry`
+  in `<indexDir>/index.sqlite`) is now the *sole* source of truth for the
+  dashboard's All-repos / Summary tabs. The prior `exportIndexJson()` JSON
+  mirror (`<indexDir>/index.json`) is removed. The dashboard server opens the
+  SQLite index **read-only** (`readonly: true`, WAL mode, per-request
+  connection) via `GET /api/index` — no cached write handle, so a concurrent
+  extension writer's WAL never blocks a dashboard request. All registry data
+  lives in SQLite, preserving the project's "one store" invariant.
+- **Dashboard server uses `better-sqlite3`.** The dashboard process now imports
+  the project's existing `better-sqlite3` runtime dependency (shipped compiled
+  from `dist/extensions/dashboard-server.js`), rather than relying on a
+  dependency-free JSON read path. The `.ts`-source spawn fallback (skipped
+  under `node_modules`) is the only path that still avoids the binding.
+- **Developed/finished the multi-repo UI.** The "All repos" and "Summary" tabs
+  were present in the HTML but un-wired; they now have panels, styling, and
+  client polling that render the per-repo table (repo, model, checkpoints,
+  tokens saved, compressed-original bytes, last compacted) and the machine-wide
+  aggregate cards (repositories, total checkpoints, total tokens saved, total
+  compressed-original).
+
+### Why
+
+The earlier Phase 5b build satisfied a "dependency-free spawn" preference by
+mirroring the registry to JSON. That split the registry across two formats and
+violated the project's "all data in SQLite" rule. Consolidating on the SQLite
+`repo_registry` table removes the duplicate write path and the stale-mirror
+window, and lets the All-repos table show the live model/provider that the
+extension already denormalizes into the row.
+
+---
+
 ## v0.4.17 (2026-07-14)
 
 Release-process sync: published from git `HEAD` so the npm package matches

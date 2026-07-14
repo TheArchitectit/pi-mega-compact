@@ -17,6 +17,7 @@
 
 import Database from "better-sqlite3";
 import { existsSync, mkdirSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { getStateDir } from "../store.js";
 import type { StoredCheckpoint, SessionState } from "../store.js";
@@ -60,6 +61,219 @@ export function openStore(stateDir: string = getStateDir()): Database.Database {
   initSchema(db);
   cache.set(stateDir, db);
   return db;
+}
+
+// ---------------------------------------------------------------------------
+// Global machine-wide index (Phase 5b): a single SQLite DB, separate from every
+// per-repo store, that aggregates one row per repo this machine has run on. The
+// multi-repo dashboard (Summary / All-repos tabs) reads it so ONE dashboard can
+// show every repo's checkpoints, tokens saved, and active model — instead of a
+// per-repo dashboard that only ever sees the repo it was launched from.
+//
+// Written by every pi process on repo-switch (bindRepo) + model capture; read by
+// the dashboard server. Concurrency across 10+ pi processes is handled by WAL +
+// infrequent idempotent upserts (ON CONFLICT). Fully local (PREVENT-PI-004).
+// ---------------------------------------------------------------------------
+
+/** Resolve the machine-wide index directory (env-overridable). */
+export function getIndexDir(): string {
+  const override = process.env.MEGACOMPACT_INDEX_DIR;
+  if (override && override.trim() !== "") return override;
+  // homedir() can throw in exotic sandboxes; fall back to tmpdir.
+  try {
+    return join(homedir(), ".mega-compact-index");
+  } catch {
+    return join(tmpdir(), ".mega-compact-index");
+  }
+}
+
+let indexCache: Database.Database | undefined;
+let indexCacheDir: string | undefined;
+
+/** Open (or reuse) the machine-wide index DB. WAL for concurrent writers. */
+export function openIndexStore(indexDir: string = getIndexDir()): Database.Database {
+  if (indexCache && indexCacheDir === indexDir) return indexCache;
+  if (!existsSync(indexDir)) mkdirSync(indexDir, { recursive: true });
+  const db = new Database(join(indexDir, "index.sqlite"));
+  db.pragma("journal_mode = WAL");
+  db.pragma("busy_timeout = 3000"); // tolerate brief cross-process write contention
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS repo_registry (
+      repo_root                 TEXT PRIMARY KEY,
+      display_name              TEXT,
+      state_dir                 TEXT NOT NULL,
+      first_seen                INTEGER,
+      last_seen                 INTEGER,
+      last_compacted_at         INTEGER,
+      checkpoint_count          INTEGER DEFAULT 0,
+      tokens_saved              INTEGER DEFAULT 0,
+      compressed_original_bytes INTEGER DEFAULT 0,
+      provider                  TEXT,
+      provider_name             TEXT,
+      model_name                TEXT,
+      input_rate                REAL,
+      output_rate               REAL,
+      model_captured_at         INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_registry_last_seen ON repo_registry(last_seen DESC);
+  `);
+  indexCache = db;
+  indexCacheDir = indexDir;
+  return db;
+}
+
+/** One row of the global repo registry (multi-repo dashboard source). */
+export interface RepoRegistryRow {
+  repoRoot: string;
+  displayName: string;
+  stateDir: string;
+  firstSeen: number;
+  lastSeen: number;
+  lastCompactedAt: number | null;
+  checkpointCount: number;
+  tokensSaved: number;
+  compressedOriginalBytes: number;
+  provider: string | null;
+  providerName: string | null;
+  modelName: string | null;
+  inputRate: number | null;
+  outputRate: number | null;
+  modelCapturedAt: number | null;
+}
+
+/**
+ * Upsert a repo's aggregate stats into the global index. Called on repo-switch
+ * (infrequent). Preserves first_seen + the model columns on update (model is
+ * written separately by recordRepoModel so we never clobber it here with nulls).
+ */
+export function upsertRepoRegistry(
+  row: {
+    repoRoot: string;
+    displayName: string;
+    stateDir: string;
+    checkpointCount: number;
+    tokensSaved: number;
+    compressedOriginalBytes: number;
+    lastCompactedAt?: number | null;
+  },
+  indexDir: string = getIndexDir(),
+): void {
+  const db = openIndexStore(indexDir);
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO repo_registry
+       (repo_root, display_name, state_dir, first_seen, last_seen, last_compacted_at,
+        checkpoint_count, tokens_saved, compressed_original_bytes)
+     VALUES (@repo_root, @display_name, @state_dir, @now, @now, @last_compacted_at,
+             @checkpoint_count, @tokens_saved, @compressed_original_bytes)
+     ON CONFLICT(repo_root) DO UPDATE SET
+       display_name = excluded.display_name,
+       state_dir = excluded.state_dir,
+       last_seen = excluded.last_seen,
+       last_compacted_at = COALESCE(excluded.last_compacted_at, repo_registry.last_compacted_at),
+       checkpoint_count = excluded.checkpoint_count,
+       tokens_saved = excluded.tokens_saved,
+       compressed_original_bytes = excluded.compressed_original_bytes`,
+  ).run({
+    repo_root: row.repoRoot,
+    display_name: row.displayName,
+    state_dir: row.stateDir,
+    now,
+    last_compacted_at: row.lastCompactedAt ?? null,
+    checkpoint_count: row.checkpointCount,
+    tokens_saved: row.tokensSaved,
+    compressed_original_bytes: row.compressedOriginalBytes,
+  });
+}
+
+/**
+ * Record the active model/provider for a repo in the global index (denormalized
+ * so the All-repos table shows model without opening each repo's DB). Upserts a
+ * bare registry row if the repo isn't registered yet.
+ */
+export function recordRepoModel(
+  repoRoot: string,
+  model: {
+    provider: string;
+    providerName: string | null;
+    modelName: string | null;
+    inputRate: number;
+    outputRate: number;
+    stateDir: string;
+    displayName: string;
+  },
+  indexDir: string = getIndexDir(),
+): void {
+  const db = openIndexStore(indexDir);
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO repo_registry
+       (repo_root, display_name, state_dir, first_seen, last_seen,
+        provider, provider_name, model_name, input_rate, output_rate, model_captured_at)
+     VALUES (@repo_root, @display_name, @state_dir, @now, @now,
+             @provider, @provider_name, @model_name, @input_rate, @output_rate, @now)
+     ON CONFLICT(repo_root) DO UPDATE SET
+       last_seen = excluded.last_seen,
+       provider = excluded.provider,
+       provider_name = excluded.provider_name,
+       model_name = excluded.model_name,
+       input_rate = excluded.input_rate,
+       output_rate = excluded.output_rate,
+       model_captured_at = excluded.model_captured_at`,
+  ).run({
+    repo_root: repoRoot,
+    display_name: model.displayName,
+    state_dir: model.stateDir,
+    now,
+    provider: model.provider,
+    provider_name: model.providerName,
+    model_name: model.modelName,
+    input_rate: model.inputRate,
+    output_rate: model.outputRate,
+  });
+}
+
+function mapRegistryRow(row: any): RepoRegistryRow {
+  return {
+    repoRoot: row.repo_root,
+    displayName: row.display_name ?? "",
+    stateDir: row.state_dir,
+    firstSeen: row.first_seen ?? 0,
+    lastSeen: row.last_seen ?? 0,
+    lastCompactedAt: row.last_compacted_at ?? null,
+    checkpointCount: row.checkpoint_count ?? 0,
+    tokensSaved: row.tokens_saved ?? 0,
+    compressedOriginalBytes: row.compressed_original_bytes ?? 0,
+    provider: row.provider ?? null,
+    providerName: row.provider_name ?? null,
+    modelName: row.model_name ?? null,
+    inputRate: row.input_rate ?? null,
+    outputRate: row.output_rate ?? null,
+    modelCapturedAt: row.model_captured_at ?? null,
+  };
+}
+
+/** All registered repos, most-recently-seen first. */
+export function listRepoRegistry(indexDir: string = getIndexDir()): RepoRegistryRow[] {
+  const db = openIndexStore(indexDir);
+  const rows = db.prepare("SELECT * FROM repo_registry ORDER BY last_seen DESC").all() as any[];
+  return rows.map(mapRegistryRow);
+}
+
+/** A single repo's registry row, or undefined. */
+export function getRepoRegistry(repoRoot: string, indexDir: string = getIndexDir()): RepoRegistryRow | undefined {
+  const db = openIndexStore(indexDir);
+  const row = db.prepare("SELECT * FROM repo_registry WHERE repo_root = ?").get(repoRoot) as any;
+  return row ? mapRegistryRow(row) : undefined;
+}
+
+/** Close the cached index connection (test teardown only). */
+export function closeIndexStore(): void {
+  if (indexCache) {
+    indexCache.close();
+    indexCache = undefined;
+    indexCacheDir = undefined;
+  }
 }
 
 function initSchema(db: Database.Database): void {

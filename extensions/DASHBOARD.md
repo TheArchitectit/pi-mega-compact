@@ -2,7 +2,8 @@
 
 A lightweight local web dashboard for monitoring mega-compact's live state — compactions, context usage, checkpoints, and recall hits.
 
-Zero npm dependencies. Uses only Node built-in modules (`http`, `fs`, `path`).
+Uses Node built-in modules (`http`, `fs`, `path`) plus `better-sqlite3` (the
+project's one-store DB backend) to read the machine-wide multi-repo index.
 
 ## Quick Start
 
@@ -72,8 +73,8 @@ All files are written to the extension's state directory
 The server runs as a detached child process, independent of the pi session. It:
 - Auto-discovers the state directory from the `port.pid` file
 - Cleans up stale `port.pid` files from dead processes
-- Supports `SIGHUP` for graceful shutdown
-- Serves static HTML with no external dependencies
+- Supports `SIGTERM`/`SIGINT` for graceful shutdown
+- Serves static HTML; reads the multi-repo index from SQLite (`better-sqlite3`)
 
 ## Browser UI
 
@@ -147,11 +148,23 @@ The extension tracks active sub-agents in real-time:
 - The server only listens on `127.0.0.1` (localhost)
 - No authentication (local-only, not exposed to network)
 - No write endpoints — all APIs are read-only
-- No npm dependencies — only Node.js built-ins
+
+## Multi-Repo Index (Phase 5b)
+
+The dashboard shows every repo that has run mega-compact on this machine, not
+just the one it was launched from. The extension writes a machine-wide
+`repo_registry` into a single SQLite DB (`<indexDir>/index.sqlite`, where
+`indexDir` is `$MEGACOMPACT_INDEX_DIR` or `~/.mega-compact-index`), one row per
+repo with checkpoint count, tokens saved, compressed-original bytes, and the
+active model/provider (denormalized from `model_snapshots`). The dashboard
+server opens that table read-only (`GET /api/index`) and renders the **All
+repos** (per-repo table) and **Summary** (machine-wide aggregate) tabs. All
+registry data lives in SQLite — there is no JSON mirror; the "one store"
+invariant is preserved end-to-end.
 
 ## Troubleshooting
 
-**Port already in use**: The server picks a random port in 3000–3999. If all are taken, it will retry. Check `/dashboard-status` for the current port.
+**Port already in use**: The server picks a port in 9320–9329. If all are taken, it will retry. Check `/dashboard-status` for the current port.
 
 **Server won't start**: Check for stale `port.pid` files. Run `/dashboard-stop` to clean up, then try `/dashboard` again.
 

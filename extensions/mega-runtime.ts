@@ -17,7 +17,7 @@ import { VectorStore } from "../src/vectorStore.js";
 import { toEngineMessages } from "../src/adapt.js";
 import { normalizeSessionId } from "../src/store.js";
 import { Logger } from "../src/log.js";
-import { recordModelSnapshot, type ModelSnapshot } from "../src/store/sqlite.js";
+import { recordModelSnapshot, latestModelSnapshot, upsertRepoRegistry, recordRepoModel, type ModelSnapshot } from "../src/store/sqlite.js";
 import { repoStateDir, resolveRepoRoot, type MegaConfig } from "./mega-config.js";
 import { Dashboard, type DashboardSnapshot } from "./mega-dashboard.js";
 
@@ -142,6 +142,26 @@ export class MegaRuntime {
     this.store = new VectorStore({ dedupSim: this.config.dedupSim, stateDir: dir });
     this.logger = new Logger({ enabled: this.config.debug, path: join(dir, "mega-compact.log") });
     this.dashboard = new Dashboard(dir);
+    // Aggregate this repo into the machine-wide index so the multi-repo
+    // dashboard (Summary / All-repos tabs) can show it alongside every other
+    // repo. Best-effort + non-fatal: a read-only index dir or contention must
+    // never break the per-repo compaction path. Runs only on repo-switch
+    // (this branch), so it's infrequent — not per-context-event.
+    try {
+      const repo = this.store.repoStats();
+      const di = this.store.dataInvariant();
+      const root = key !== dir ? key : resolveRepoRoot(cwd ?? dir) ?? dir;
+      upsertRepoRegistry({
+        repoRoot: root,
+        displayName: root.split(/[\\/]/).filter(Boolean).pop() ?? root,
+        stateDir: dir,
+        checkpointCount: repo.checkpointCount,
+        tokensSaved: repo.tokensSaved,
+        compressedOriginalBytes: di.compressedOriginalBytes,
+      });
+    } catch {
+      /* non-fatal: index aggregation must not block compaction */
+    }
     return dir;
   }
 
@@ -153,6 +173,17 @@ export class MegaRuntime {
     const st = this.store.stats(this.rt.sessionId);
     const repo = this.store.repoStats();
     const di = this.store.dataInvariant();
+    // Active model/provider for the current-repo card + the multi-repo table.
+    const modelSnap = latestModelSnapshot(this.currentStateDir);
+    const model = modelSnap
+      ? {
+          name: modelSnap.modelName ?? modelSnap.modelId,
+          provider: modelSnap.provider,
+          providerName: modelSnap.providerName ?? "",
+          inputRate: modelSnap.inputRate,
+          outputRate: modelSnap.outputRate,
+        }
+      : undefined;
     const armed = this.lastCtxPercent != null && this.lastCtxPercent >= this.config.fastGatePct;
     const ready = armed && (this.lastCtxTokens ?? 0) >= this.config.thresholdTokens;
     this.dashboard.snapshot({
@@ -197,6 +228,7 @@ export class MegaRuntime {
         duplicatesCollapsed: di.duplicatesCollapsed,
         bytesPermanentlyDeleted: di.bytesPermanentlyDeleted,
       },
+      model,
     } as DashboardSnapshot);
 
     // Live stats widget above the editor
@@ -321,6 +353,18 @@ export class MegaRuntime {
     try {
       const repo = resolveRepoRoot(ctx.cwd) ?? this.currentStateDir;
       recordModelSnapshot(repo, snap, this.currentStateDir);
+      // Denormalize the active model into the machine-wide index so the
+      // All-repos dashboard table can show provider/model per repo without
+      // opening every repo's DB. Best-effort + non-fatal.
+      recordRepoModel(repo, {
+        provider: snap.provider,
+        providerName: snap.providerName,
+        modelName: snap.modelName,
+        inputRate: snap.inputRate,
+        outputRate: snap.outputRate,
+        stateDir: this.currentStateDir,
+        displayName: repo.split(/[\\/]/).filter(Boolean).pop() ?? repo,
+      });
     } catch { /* non-fatal: cost estimation degrades to model-in-memory only */ }
   }
 

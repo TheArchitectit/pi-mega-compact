@@ -13,7 +13,81 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, watch, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
+import Database from "better-sqlite3";
+
+// --- Multi-repo index (Phase 5b) ------------------------------------------------
+// The extension writes a machine-wide repo registry into a single SQLite DB
+// (<indexDir>/index.sqlite) as the concurrency-safe write path; the dashboard
+// reads that table directly (one read-only connection, opened per request so a
+// concurrent writer's WAL never blocks the request). All registry data lives in
+// SQLite (the project's one-store invariant) — there is no JSON mirror. Same
+// index-dir resolution as src/store/sqlite.ts getIndexDir().
+function getIndexDir(): string {
+  const override = process.env.MEGACOMPACT_INDEX_DIR;
+  if (override && override.trim() !== "") return override;
+  try {
+    return join(homedir(), ".mega-compact-index");
+  } catch {
+    return join("/tmp", ".mega-compact-index");
+  }
+}
+
+interface IndexRepo {
+  repoRoot: string;
+  displayName: string;
+  checkpointCount: number;
+  tokensSaved: number;
+  compressedOriginalBytes: number;
+  lastCompactedAt: number | null;
+  provider: string | null;
+  providerName: string | null;
+  modelName: string | null;
+  inputRate: number | null;
+  outputRate: number | null;
+  lastSeen: number;
+}
+
+/** Read the machine-wide repo registry from SQLite (read-only, single shot). */
+function readIndex(): { updatedAt: string; summary: unknown; repos: unknown[] } | null {
+  const indexPath = join(getIndexDir(), "index.sqlite");
+  if (!existsSync(indexPath)) return null;
+  let db: Database.Database | undefined;
+  try {
+    // Read-only + immutable WAL so a concurrent writer's WAL never blocks us.
+    db = new Database(indexPath, { readonly: true, fileMustExist: true });
+    db.pragma("journal_mode = WAL");
+    const rows = db
+      .prepare("SELECT * FROM repo_registry ORDER BY last_seen DESC")
+      .all() as Record<string, unknown>[];
+    const repos: IndexRepo[] = rows.map((r) => ({
+      repoRoot: String(r.repo_root ?? ""),
+      displayName: String(r.display_name ?? ""),
+      checkpointCount: Number(r.checkpoint_count ?? 0),
+      tokensSaved: Number(r.tokens_saved ?? 0),
+      compressedOriginalBytes: Number(r.compressed_original_bytes ?? 0),
+      lastCompactedAt: (r.last_compacted_at as number | null) ?? null,
+      provider: (r.provider as string | null) ?? null,
+      providerName: (r.provider_name as string | null) ?? null,
+      modelName: (r.model_name as string | null) ?? null,
+      inputRate: (r.input_rate as number | null) ?? null,
+      outputRate: (r.output_rate as number | null) ?? null,
+      lastSeen: Number(r.last_seen ?? 0),
+    }));
+    const summary = {
+      totalRepos: repos.length,
+      totalCheckpoints: repos.reduce((a, r) => a + r.checkpointCount, 0),
+      totalTokensSaved: repos.reduce((a, r) => a + r.tokensSaved, 0),
+      totalCompressedOriginalBytes: repos.reduce((a, r) => a + r.compressedOriginalBytes, 0),
+    };
+    return { updatedAt: new Date().toISOString(), summary, repos };
+  } catch {
+    return null;
+  } finally {
+    try { db?.close(); } catch { /* ignore */ }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -175,6 +249,25 @@ function dashboardHtml(tierName: string): string {
   .updated { font-size: 11px; color: #484f58; margin-top: 16px; text-align: right; }
   .empty { color: #484f58; font-style: italic; font-size: 13px; padding: 8px 0; }
   .offline-banner { background: #f8514922; border: 1px solid #f85149; border-radius: 6px; padding: 10px 16px; margin-bottom: 16px; font-size: 13px; color: #f85149; display: none; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+  .tab { background: #161b22; color: #8b949e; border: 1px solid #30363d; border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s ease; }
+  .tab:hover { color: #c9d1d9; border-color: #484f58; }
+  .tab.active { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 20px; }
+  .summary-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+  .summary-card .num { font-size: 24px; font-weight: 700; color: #f0f6fc; }
+  .summary-card .lbl { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: .5px; margin-top: 4px; }
+  table.repos { width: 100%; border-collapse: collapse; background: #161b22; border: 1px solid #30363d; border-radius: 8px; overflow: hidden; }
+  table.repos th, table.repos td { text-align: left; padding: 10px 14px; font-size: 13px; border-bottom: 1px solid #21262d; }
+  table.repos th { color: #8b949e; text-transform: uppercase; letter-spacing: .5px; font-size: 11px; background: #0d1117; }
+  table.repos td.num { font-family: monospace; color: #f0f6fc; text-align: right; }
+  table.repos tr:last-child td { border-bottom: none; }
+  table.repos tr:hover td { background: #1c2128; }
+  .repo-model { color: #a371f7; }
+  .repo-none { color: #484f58; font-style: italic; }
+  .updated { font-size: 11px; color: #484f58; margin-top: 16px; text-align: right; }
 </style>
 </head>
 <body>
@@ -183,6 +276,14 @@ function dashboardHtml(tierName: string): string {
 
 <h1><span>mega-compact</span><span class="tier">${tierName}</span></h1>
 
+<nav class="tabs">
+  <button class="tab active" data-tab="current">Current repo</button>
+  <button class="tab" data-tab="all">All repos</button>
+  <button class="tab" data-tab="summary">Summary</button>
+</nav>
+
+<!-- Current repo (existing single-repo view) -->
+<div class="tab-panel" id="panel-current">
 <div class="grid">
   <div class="card">
     <h2>Context Window</h2>
@@ -270,6 +371,35 @@ function dashboardHtml(tierName: string): string {
 </div>
 
 <div class="updated" id="updated"></div>
+</div><!-- /panel-current -->
+
+<!-- All repos (machine-wide registry from index.sqlite) -->
+<div class="tab-panel" id="panel-all">
+  <table class="repos">
+    <thead>
+      <tr>
+        <th>Repo</th><th>Model</th>
+        <th style="text-align:right">Checkpoints</th>
+        <th style="text-align:right">Tokens Saved</th>
+        <th style="text-align:right">Retained</th>
+        <th style="text-align:right">Last Compacted</th>
+      </tr>
+    </thead>
+    <tbody id="all-rows"><tr><td colspan="6" class="repo-none">loading…</td></tr></tbody>
+  </table>
+  <div class="updated" id="all-updated"></div>
+</div>
+
+<!-- Summary (aggregate across all repos) -->
+<div class="tab-panel" id="panel-summary">
+  <div class="summary-grid">
+    <div class="summary-card"><div class="num" id="sm-repos">0</div><div class="lbl">Repositories</div></div>
+    <div class="summary-card"><div class="num" id="sm-checkpoints">0</div><div class="lbl">Total Checkpoints</div></div>
+    <div class="summary-card"><div class="num" id="sm-saved">0</div><div class="lbl">Total Tokens Saved</div></div>
+    <div class="summary-card"><div class="num" id="sm-bytes">0 B</div><div class="lbl">Compressed-Original</div></div>
+  </div>
+  <div class="updated" id="sm-updated"></div>
+</div>
 
 <script>
 (function() {
@@ -395,6 +525,69 @@ function dashboardHtml(tierName: string): string {
     };
   }
   connectSSE();
+
+  // --- Multi-repo (index.sqlite via /api/index) ---------------------------
+  function fmtBytesTop(b) {
+    b = b || 0;
+    if (b >= 1048576) return (b / 1048576).toFixed(1) + ' MiB';
+    if (b >= 1024) return (b / 1024).toFixed(1) + ' KiB';
+    return b + ' B';
+  }
+  function renderIndex(d) {
+    d = d || { updatedAt: null, summary: null, repos: [] };
+    var repos = d.repos || [];
+    var s = d.summary || { totalRepos: 0, totalCheckpoints: 0, totalTokensSaved: 0, totalCompressedOriginalBytes: 0 };
+    document.getElementById('sm-repos').textContent = (s.totalRepos || 0).toLocaleString();
+    document.getElementById('sm-checkpoints').textContent = (s.totalCheckpoints || 0).toLocaleString();
+    document.getElementById('sm-saved').textContent = (s.totalTokensSaved || 0).toLocaleString();
+    document.getElementById('sm-bytes').textContent = fmtBytesTop(s.totalCompressedOriginalBytes);
+
+    var body = document.getElementById('all-rows');
+    if (!repos.length) {
+      body.innerHTML = '<tr><td colspan="6" class="repo-none">No repositories registered yet.</td></tr>';
+    } else {
+      body.innerHTML = repos.map(function(r) {
+        var model = r.modelName
+          ? '<span class="repo-model">' + sanitize(r.modelName) + '</span>'
+          : '<span class="repo-none">—</span>';
+        var when = r.lastCompactedAt ? new Date(r.lastCompactedAt).toLocaleString() : '—';
+        return '<tr>' +
+          '<td title="' + sanitize(r.repoRoot) + '">' + sanitize(r.displayName || r.repoRoot) + '</td>' +
+          '<td>' + model + '</td>' +
+          '<td class="num">' + (r.checkpointCount || 0).toLocaleString() + '</td>' +
+          '<td class="num">' + (r.tokensSaved || 0).toLocaleString() + '</td>' +
+          '<td class="num">' + fmtBytesTop(r.compressedOriginalBytes) + '</td>' +
+          '<td class="num">' + sanitize(when) + '</td>' +
+        '</tr>';
+      }).join('');
+    }
+    var stamp = d.updatedAt ? 'Updated ' + new Date(d.updatedAt).toLocaleTimeString() : '';
+    document.getElementById('all-updated').textContent = stamp;
+    document.getElementById('sm-updated').textContent = stamp;
+  }
+  function pollIndex() {
+    fetch('/api/index').then(function(r) { return r.json(); }).then(renderIndex).catch(function() {});
+  }
+  pollIndex();
+  setInterval(pollIndex, 5000);
+
+  // --- Tab switching ------------------------------------------------------
+  var tabs = document.querySelectorAll('.tab');
+  var panels = { current: 'panel-current', all: 'panel-all', summary: 'panel-summary' };
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].addEventListener('click', function() {
+      var name = this.getAttribute('data-tab');
+      for (var j = 0; j < tabs.length; j++) tabs[j].classList.remove('active');
+      this.classList.add('active');
+      for (var k in panels) {
+        if (Object.prototype.hasOwnProperty.call(panels, k)) {
+          var el = document.getElementById(panels[k]);
+          if (el) el.classList.toggle('active', k === name);
+        }
+      }
+      if (name === 'all' || name === 'summary') pollIndex();
+    });
+  }
 })();
 </script>
 </body>
@@ -450,6 +643,15 @@ export function launchDashboardServer(stateDir: string): Promise<{ port: number;
       const snap = readSnapshot(snapshotPath);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(snap));
+      return;
+    }
+
+    // Multi-repo aggregate (Phase 5b): the machine-wide repo registry read
+    // directly from SQLite (index.sqlite). Lets one dashboard show every repo's
+    // checkpoints, tokens saved, and active model. Read-only.
+    if (req.url === "/api/index") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(readIndex() ?? { updatedAt: null, summary: null, repos: [] }));
       return;
     }
 

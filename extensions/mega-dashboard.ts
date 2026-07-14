@@ -82,6 +82,14 @@ export interface DashboardSnapshot {
     duplicatesCollapsed: number;     // dedup duplicates (original kept on survivor)
     bytesPermanentlyDeleted: number; // ALWAYS 0 — the invariant
   };
+  /** Active model/provider (captured live) — shown on the current-repo card. */
+  model?: {
+    name: string;          // Model.name or Model.id
+    provider: string;      // ProviderId (Model.provider)
+    providerName: string;  // human display name (e.g. "OpenAI")
+    inputRate: number;     // USD per input token (Model.cost)
+    outputRate: number;    // USD per output token (Model.cost)
+  };
 }
 
 export class Dashboard {
