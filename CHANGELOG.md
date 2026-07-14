@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.3.0 (2026-07-13)
+
+OpenClaw plugin support plus an expanded, graded test suite. Additive on top of
+v0.2.0 — no breaking changes to the SQLite store or dedup pipeline.
+
+### Added
+- **OpenClaw plugin adapter** (`extensions/openclaw-mega-compact.ts` +
+  `openclaw.plugin.json`). Exposes pi-mega-compact to OpenClaw as a
+  `CompactionProvider` via the new `openclaw` package field. The SQLite store,
+  dedup tiers, and recall engine are unchanged — this is a second runtime
+  adapter beside the pi extension entry.
+- **Graded test suites (278 tests total, up from 192):**
+  - `src/dedup-engine.test.ts` — dedicated compaction + dedupe engine suite.
+  - `src/e2e.test.ts` — comprehensive end-to-end compression + dedup suite (26 tests).
+  - `src/ratio.bench.test.ts` — compaction-ratio / storage benchmark tests.
+- `RELEASE_NOTES.md` (GitHub release body source) and `TESTER_GUIDE.md`
+  (QA manual-test checklist + bug-report template).
+- `.gitignore` now excludes the OpenClaw build/state artifacts.
+
+### Docs
+- `SPRINT_PLAN.md` and `TESTER_GUIDE.md` updated for the v0.3.0 plugin surface;
+  `docs/HEADER_MAP.md` / `docs/INDEX_MAP.md` re-mapped.
+
 ## v0.2.0 (2026-07-13)
 
 The **storage-backend release**: the per-session gzipped-JSON checkpoint files

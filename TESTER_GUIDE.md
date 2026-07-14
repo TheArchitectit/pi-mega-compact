@@ -1,4 +1,4 @@
-# Tester Guide — pi-mega-compact v0.2.0
+# Tester Guide — pi-mega-compact v0.3.0
 
 This guide is for QA testers and contributors validating pi-mega-compact before
 a release or after a change. It covers environment setup, the automated test
