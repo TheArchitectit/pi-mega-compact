@@ -1,5 +1,26 @@
 # Release Notes — pi-mega-compact
 
+## v0.4.6 (2026-07-14)
+
+Package now ships the compiled `dist/` so the OpenClaw adapter works from a
+clean npm install.
+
+### Changed
+
+- **`dist/` is now part of the published package** (added to `files`). pi still
+  loads the `.ts` source directly, so pi usage is unchanged, but the OpenClaw
+  adapter (`dist/extensions/openclaw-mega-compact.js`) is now available to
+  OpenClaw users without a manual `npm run build`. A `prepublishOnly` hook runs
+  `npm run build`, so `dist/` is always current at publish time.
+
+### Install / Upgrade
+
+```bash
+pi update --extensions
+```
+
+---
+
 ## v0.4.5 (2026-07-14)
 
 Hotfix: dashboard server failed to start from the npm install.

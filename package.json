@@ -1,6 +1,6 @@
 {
   "name": "pi-mega-compact",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "description": "Layered, local, vector-backed context compressor for pi — supersede/collapse/cluster compaction with deduped inline recall.",
   "type": "module",
   "license": "BSD-2-Clause",
@@ -23,6 +23,7 @@
     "node": ">=18"
   },
   "files": [
+    "dist",
     "extensions",
     "src",
     "README.md",
@@ -43,7 +44,8 @@
     "lint": "tsc --noEmit && node scripts/guardrails-scan.mjs",
     "test": "npm run build && node --test \"dist/src/**/*.test.js\" \"dist/extensions/**/*.test.js\"",
     "guardrails": "python3 scripts/regression_check.py --all || node scripts/guardrails-scan.mjs",
-    "precommit": "bash .claude/hooks/pre-commit.sh"
+    "precommit": "bash .claude/hooks/pre-commit.sh",
+    "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",

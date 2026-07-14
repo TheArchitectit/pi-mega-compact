@@ -1,4 +1,4 @@
-# Install & Usage — pi-mega-compact (v0.4.5)
+# Install & Usage — pi-mega-compact (v0.4.6)
 
 A complete, copy-paste guide to installing pi-mega-compact and using **every**
 feature: the pi extension (auto-compact + recall), the OpenClaw plugin adapter,
@@ -33,11 +33,12 @@ The package lives in `node_modules/pi-mega-compact`. From this point:
 - **OpenClaw** resolves the plugin via the package's `openclaw` field (see §3).
 - The `scripts/` DR drill + benchmark run from the package dir after a build.
 
-### Build (needed once, for either install method)
+### Build (only for development / hacking on the extension)
 
-The published package ships **source** (`src/` + `extensions/`); if you run the
-compiled entry directly or want to exercise the OpenClaw adapter / scripts,
-build it:
+The published package ships **both source and the compiled `dist/`** (`prepublishOnly`
+runs `npm run build` automatically). pi loads the `.ts` source directly, so no
+build is needed for normal pi use. If you hack on the extension from a checkout,
+or need the compiled OpenClaw adapter / scripts, build locally:
 
 ```bash
 cd node_modules/pi-mega-compact   # or your checkout
@@ -45,7 +46,7 @@ npm install
 npm run build          # tsc → dist/ (incl. dist/extensions/openclaw-mega-compact.js)
 ```
 
-Verify (all 278 tests, lint clean):
+Verify (all 281 tests, lint clean):
 
 ```bash
 npm test && npm run lint
@@ -202,7 +203,8 @@ Above the pi editor:
 The OpenClaw adapter (`extensions/openclaw-mega-compact.ts`) is a **second runtime
 boundary** — same SQLite store + dedup engine, exposed to OpenClaw as a
 `CompactionProvider`. Installed as a type:module package; OpenClaw loads the
-built `dist/extensions/openclaw-mega-compact.js` (produced by `npm run build`).
+built `dist/extensions/openclaw-mega-compact.js`, which ships in the npm package
+(no separate build step needed on install — `prepublishOnly` builds it).
 
 ### Install into OpenClaw
 
@@ -213,7 +215,7 @@ OpenClaw's plugin resolver can find it:
 
 ```bash
 # From npm (recommended):
-npm install pi-mega-compact          # then build if you run the compiled adapter
+npm install pi-mega-compact          # dist/ ships in the package — no build needed
 # — or, for development from a checkout —
 npm link                             # symlinks your checkout, makes it resolvable
 # — or, into an OpenClaw workspace —
