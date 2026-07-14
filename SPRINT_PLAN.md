@@ -199,8 +199,8 @@ Deferred from Sprints 1–6; none are bugs — v0.1.0 is shippable.
       ONNX) — would raise recall quality, still offline. The `Embedder`
       interface is the seam; the stub was removed to keep the repo
       self-contained (no foreign-library reference in shipped code).
-- [x] **7.2 (S)** `npm publish` (package is structured for it: `files`,
-      `pi.extensions`, peerDep). Optional.
+- [x] **7.2 (S)** `npm publish` — DONE. Published `pi-mega-compact@0.4.0` to
+      npm (public, under `architectit`). Install via `npm install pi-mega-compact`.
 - [x] **7.3 (M)** Live pi smoke test: run inside a real pi session,
       confirm auto-trigger fires past threshold, chkpt written, context drops,
       resume re-inlines (proves 6.1 beyond the engine-level test).

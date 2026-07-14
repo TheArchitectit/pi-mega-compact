@@ -20,6 +20,18 @@ live agent activity in the toolbar.
   `mega-compact: ▶ N agents` in the toolbar while active, reverting to
   `mega-compact: ready` when idle.
 
+### Install / Upgrade
+
+`pi-mega-compact` is published to npm. Install (or upgrade) with:
+
+```bash
+npm install pi-mega-compact
+```
+
+Then point pi at the installed entry (see `README.md` → Installation, or
+`docs/INSTALL_AND_USAGE.md`). Existing git-checkout installs can `git pull && npm
+run build`, or switch to the npm package.
+
 ### Changed
 
 - Runtime state dir default moved from `~/.pi/agent/extensions/pi-mega-compact`

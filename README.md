@@ -115,48 +115,64 @@ OpenAI-style contract and the `MEGACOMPACT_EMBEDDING_KEY` / `MEGACOMPACT_EMBEDDI
   compile). No network call and no API key are needed at runtime.
 - A pi coding agent install that loads extensions from `~/.pi/agent/extensions/`.
 
-### From a git checkout
+### Install from npm (recommended)
 
 ```bash
-git clone https://github.com/TheArchitectit/pi-mega-compact.git \
-  ~/.pi/agent/extensions/pi-mega-compact
-cd ~/.pi/agent/extensions/pi-mega-compact
-npm install
-npm run build
+npm install pi-mega-compact
 ```
+
+This places the package in `node_modules` and exposes the extension entry at
+`node_modules/pi-mega-compact/extensions/mega-compact.ts`. Then point pi at it
+(see "Register with pi" below).
 
 ### Register with pi
 
-Either copy/link the extension into pi's extensions dir (the clone above already
-does), **or** add it to your pi config's `pi.extensions` list:
+Add the extension to your pi config's `pi.extensions` list, pointing at the
+installed entry (npm path or a symlink into pi's extensions dir — either works):
 
 ```jsonc
 {
   "pi": {
-    "extensions": ["~/.pi/agent/extensions/pi-mega-compact/extensions/mega-compact.ts"]
+    "extensions": ["pi-mega-compact/extensions/mega-compact.ts"]
   }
 }
 ```
 
-Or use the bundled helper (needs `jq`):
+Or symlink the installed package into pi's extensions dir (the simplest path if
+you run pi from the same machine):
 
 ```bash
-./install.sh          # copy into ~/.pi/agent/extensions/pi-mega-compact
-./install.sh -s       # symlink instead of copy (dev mode)
+ln -s "$(npm root)/pi-mega-compact" ~/.pi/agent/extensions/pi-mega-compact
 ```
+
+> **From a git checkout (development).** To hack on the extension, clone instead
+> and build locally:
+> ```bash
+> git clone https://github.com/TheArchitectit/pi-mega-compact.git \
+>   ~/.pi/agent/extensions/pi-mega-compact
+> cd ~/.pi/agent/extensions/pi-mega-compact
+> npm install && npm run build
+> ```
+> The bundled `./install.sh` helper (`copy`) / `./install.sh -s` (`symlink`) does
+> the same and also registers the path in pi's config (needs `jq`).
 
 ### Verify
 
 ```bash
-cd ~/.pi/agent/extensions/pi-mega-compact
-npm test          # all unit/integration tests pass (192 as of v0.2.0)
+npm test          # all unit/integration tests pass (278 as of v0.4.0)
 npm run lint      # tsc --noEmit + guardrails scan clean
 ```
 
 ### Uninstall
 
 ```bash
-rm -rf ~/.pi/agent/extensions/pi-mega-compact
+npm uninstall pi-mega-compact
+```
+
+If you symlinked it into pi's extensions dir, also remove that link:
+
+```bash
+rm -f ~/.pi/agent/extensions/pi-mega-compact
 ```
 
 Then remove the path from pi's `pi.extensions` array.

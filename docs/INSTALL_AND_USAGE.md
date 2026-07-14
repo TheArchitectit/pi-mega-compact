@@ -1,4 +1,4 @@
-# Install & Usage — pi-mega-compact (v0.3.0)
+# Install & Usage — pi-mega-compact (v0.4.0)
 
 A complete, copy-paste guide to installing pi-mega-compact and using **every**
 feature: the pi extension (auto-compact + recall), the OpenClaw plugin adapter,
@@ -21,10 +21,26 @@ surface is the user-triggered localhost dashboard.
 
 ## 1. Install the code + build
 
+### Install from npm (recommended)
+
 ```bash
-git clone https://github.com/TheArchitectit/pi-mega-compact.git \
-  ~/.pi/agent/extensions/pi-mega-compact
-cd ~/.pi/agent/extensions/pi-mega-compact
+npm install pi-mega-compact
+```
+
+The package lives in `node_modules/pi-mega-compact`. From this point:
+
+- **pi** uses `node_modules/pi-mega-compact/extensions/mega-compact.ts` (see §2).
+- **OpenClaw** resolves the plugin via the package's `openclaw` field (see §3).
+- The `scripts/` DR drill + benchmark run from the package dir after a build.
+
+### Build (needed once, for either install method)
+
+The published package ships **source** (`src/` + `extensions/`); if you run the
+compiled entry directly or want to exercise the OpenClaw adapter / scripts,
+build it:
+
+```bash
+cd node_modules/pi-mega-compact   # or your checkout
 npm install
 npm run build          # tsc → dist/ (incl. dist/extensions/openclaw-mega-compact.js)
 ```
@@ -37,6 +53,20 @@ npm test && npm run lint
 
 > The native `better-sqlite3` binary is ABI-specific. If you ever see
 > `ERR_DLOPEN_FAILED … NODE_MODULE_VERSION`, run `npm rebuild better-sqlite3`.
+
+### From a git checkout (development only)
+
+To hack on the extension, clone instead of installing from npm:
+
+```bash
+git clone https://github.com/TheArchitectit/pi-mega-compact.git \
+  ~/.pi/agent/extensions/pi-mega-compact
+cd ~/.pi/agent/extensions/pi-mega-compact
+npm install && npm run build
+```
+
+Or use the bundled helper (needs `jq`): `./install.sh` (copy) / `./install.sh -s`
+(symlink, dev mode).
 
 ---
 
@@ -119,10 +149,12 @@ OpenClaw discovers plugins via the `openclaw` field in `package.json`
 OpenClaw's plugin resolver can find it:
 
 ```bash
-# From the checkout (symlink into OpenClaw's plugin resolution path):
-npm link                      # makes `pi-mega-compact` resolvable
-# — or, if you run OpenClaw from its own workspace —
-cd <openclaw-workspace> && npm install <path-to>/pi-mega-compact
+# From npm (recommended):
+npm install pi-mega-compact          # then build if you run the compiled adapter
+# — or, for development from a checkout —
+npm link                             # symlinks your checkout, makes it resolvable
+# — or, into an OpenClaw workspace —
+cd <openclaw-workspace> && npm install pi-mega-compact
 ```
 
 Then register + enable it in `~/.openclaw/openclaw.json`:
@@ -240,11 +272,19 @@ node scripts/dedup-benchmark.mjs 100 1000 10000
 ## 7. Uninstall
 
 ```bash
-rm -rf ~/.pi/agent/extensions/pi-mega-compact   # pi
+npm uninstall pi-mega-compact
+# If you symlinked it into pi's extensions dir, also drop the link:
+rm -f ~/.pi/agent/extensions/pi-mega-compact
+```
+
+If you installed from a git checkout instead, remove the clone:
+
+```bash
+rm -rf ~/.pi/agent/extensions/pi-mega-compact
 ```
 
 For OpenClaw: remove `mega-compact` from `plugins.allow` / `plugins.entries` in
-`~/.openclaw/openclaw.json` and uninstall the package (`npm unlink pi-mega-compact`
+`~/.openclaw/openclaw.json` and uninstall the package (`npm uninstall pi-mega-compact`
 or remove it from the workspace `package.json`).
 
 Then delete the state dir to purge all data:

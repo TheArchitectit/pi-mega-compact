@@ -28,6 +28,10 @@ global dir to one dir per git repo.
   now push `mega-compact: ▶ N agents` to the status text (not just the
   above-editor widget), so concurrent sub-agents are visible while they run.
   Restores to `mega-compact: ready` when idle.
+- **Published to npm.** `pi-mega-compact@0.4.0` is on the public registry
+  (under `architectit`); install with `npm install pi-mega-compact`. The package
+  ships source (`src/` + `extensions/`); build with `npm run build` if you run
+  the compiled entry or the OpenClaw adapter.
 
 ### Fixed
 - `bindRepo()` honors the explicit `MEGACOMPACT_STATE_DIR` override for non-git
@@ -37,6 +41,9 @@ global dir to one dir per git repo.
 ### Docs
 - `README.md` and `docs/INSTALL_AND_USAGE.md` note the per-repo state location
   and the `MEGACOMPACT_STATE_DIR` fallback semantics.
+- Install docs (`README.md`, `docs/INSTALL_AND_USAGE.md`, `TESTER_GUIDE.md`,
+  `RELEASE_NOTES.md`) now lead with `npm install pi-mega-compact`; git-clone is
+  the documented development path.
 
 ## v0.3.0 (2026-07-13)
 

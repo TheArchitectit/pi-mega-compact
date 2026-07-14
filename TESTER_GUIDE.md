@@ -1,4 +1,4 @@
-# Tester Guide — pi-mega-compact v0.3.0
+# Tester Guide — pi-mega-compact v0.4.0
 
 This guide is for QA testers and contributors validating pi-mega-compact before
 a release or after a change. It covers environment setup, the automated test
@@ -21,6 +21,15 @@ limitations.
 
 ### Install the extension
 
+**From npm (recommended):**
+
+```bash
+npm install pi-mega-compact
+ln -s "$(npm root)/pi-mega-compact" ~/.pi/agent/extensions/pi-mega-compact
+```
+
+**From a git checkout (development):**
+
 ```bash
 git clone https://github.com/TheArchitectit/pi-mega-compact.git \
   ~/.pi/agent/extensions/pi-mega-compact
@@ -38,12 +47,13 @@ Or use the bundled helper:
 
 ### Register with pi
 
-Add the extension path to your pi config's `pi.extensions` list:
+Add the extension path to your pi config's `pi.extensions` list (npm path or the
+symlink from above — either works):
 
 ```jsonc
 {
   "pi": {
-    "extensions": ["~/.pi/agent/extensions/pi-mega-compact/extensions/mega-compact.ts"]
+    "extensions": ["pi-mega-compact/extensions/mega-compact.ts"]
   }
 }
 ```
@@ -52,13 +62,17 @@ Add the extension path to your pi config's `pi.extensions` list:
 
 ## Test Environment Setup
 
-1. **Clone and build:**
+1. **Install and build** (npm or checkout):
 
    ```bash
+   # npm
+   npm install pi-mega-compact
+   cd "$(npm root)/pi-mega-compact" && npm run build
+
+   # — or clone for development —
    git clone https://github.com/TheArchitectit/pi-mega-compact.git
    cd pi-mega-compact
-   npm install
-   npm run build
+   npm install && npm run build
    ```
 
 2. **Verify the test suite passes:**
