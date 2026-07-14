@@ -37,7 +37,9 @@ import { recallAndInline } from "../src/recall.js";
 import { autoCompactCheck } from "../src/compact.js";
 import { estimateSessionTokens } from "../src/tokens.js";
 import { normalizeSessionId } from "../src/store.js";
-import { touchSession, logDaily } from "../src/store/sqlite.js";
+import { touchSession, logDaily, listCheckpoints } from "../src/store/sqlite.js";
+import { decompressSmart } from "../src/store/compression.js";
+import { loadMetrics, fpRate, p95 } from "../src/monitoring.js";
 import { Logger } from "../src/log.js";
 import type { EngineMessage } from "../src/types.js";
 import { writeFileSync, appendFileSync, readFileSync } from "node:fs";
@@ -869,10 +871,26 @@ export default function (pi: ExtensionAPI) {
       const tokens = usage?.tokens != null ? `${usage.tokens} tok` : "n/a";
       const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
       const st = store.stats(sid);
+      const repo = store.repoStats();
       const di = store.dataInvariant();
       const fmtB = (b: number) =>
         b >= 1_048_576 ? `${(b / 1_048_576).toFixed(1)} MiB` :
           b >= 1024 ? `${(b / 1024).toFixed(1)} KiB` : `${b} B`;
+      // Tangible cost: turn "tokens saved" into a dollar figure + context-days
+      // extended, so the counter is concrete rather than opaque. ~$3 / 1M tok
+      // (rough blended rate); contextWindow ÷ savedRate = days of context bought.
+      const usd = (repo.tokensSaved / 1_000_000 * 3).toFixed(2);
+      const ctxWindow = usage?.contextWindow ?? 0;
+      const daysExtended = ctxWindow > 0 && repo.tokensSaved > 0
+        ? (repo.tokensSaved / ctxWindow).toFixed(1)
+        : "0";
+      const costStr = `≈ $${usd} saved · ${daysExtended} context-windows extended`;
+      // Recall-quality badge (Phase 4): trust score from monitoring metrics.
+      const m = loadMetrics(currentStateDir);
+      const fp = fpRate(m, "L2");
+      const p95L2 = p95(m.latency.L2 ?? []);
+      const relPct = (st.dedupHitRate * 100).toFixed(0);
+      const qualityStr = `recall ${relPct}% relevant · FP ${(fp * 100).toFixed(1)}% · L2 p95 ${p95L2.toFixed(0)}ms`;
       ctx.ui.notify(
         `[mega-compact] pct=${pct} tokens=${tokens} tier=${config.tier} fastGate=${config.fastGatePct}% ` +
           `threshold=${config.thresholdTokens} auto=${config.auto} autoInline=${config.autoInline}\n` +
@@ -885,7 +903,93 @@ export default function (pi: ExtensionAPI) {
           `(${fmtB(di.compressedOriginalBytes)} compressed-original) · ` +
           `${di.duplicatesCollapsed} dedup-duplicates collapsed · ` +
           `${C.green}0 bytes permanently deleted${C.reset}\n` +
+          `[mega-compact] 💰 ${costStr}\n` +
+          `[mega-compact] 🎯 ${qualityStr}\n` +
           `[mega-compact] stateDir=${currentStateDir}`,
+      );
+    },
+  });
+
+  // ---- Phase 4: cheap standout commands (data is already persisted) -------
+
+  /** Resolve a checkpoint by id (or "recent"/"last") from this session's store. */
+  function findCheckpoint(sid: string, ref: string) {
+    const all = listCheckpoints(sid, currentStateDir);
+    if (all.length === 0) return undefined;
+    if (!ref || ref === "recent" || ref === "last") return all[all.length - 1];
+    return all.find((c) => c.checkpointId === ref) ?? all.find((c) => c.checkpointId.endsWith(ref));
+  }
+
+  pi.registerCommand("mega-restore", {
+    description: "Re-inject a checkpoint's verbatim original region into context. Usage: /mega-restore <chkpt|recent>",
+    handler: async (args: string, ctx: ExtensionContext) => {
+      bindRepo(ctx.cwd);
+      const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
+      const cp = findCheckpoint(sid, args.trim());
+      if (!cp) {
+        ctx.ui.notify(`[mega-compact] no checkpoint found${args.trim() ? ` for "${args.trim()}"` : ""} in this session. Try /mega-history.`);
+        return;
+      }
+      if (!cp.compressedOriginal) {
+        ctx.ui.notify(`[mega-compact] ${cp.checkpointId} has no recoverable original (pre-blob or direct add). Cannot restore verbatim.`);
+        return;
+      }
+      const original = decompressSmart(cp.compressedOriginal).toString("utf-8");
+      // Re-inject verbatim via before_agent_start (PREVENT-PI-003) — never
+      // touches live messages, only prepends the restored region to systemPrompt.
+      pendingRecallBlock = `The following compacted context was RESTORED from checkpoint ${cp.checkpointId} (verbatim original region):\n\n${original}`;
+      const files = cp.filesModified?.length ? cp.filesModified.join(", ") : "(no files captured)";
+      ctx.ui.notify(
+        `[mega-compact] ♻ restored ${cp.checkpointId} — ${original.length} chars re-injected on next turn.\n` +
+        `[mega-compact] files: ${files}`,
+      );
+      dashboard.event("restore", { checkpointId: cp.checkpointId, chars: original.length });
+    },
+  });
+
+  pi.registerCommand("mega-history", {
+    description: "List this session's checkpoints (id, date, files, tokens). Usage: /mega-history",
+    handler: async (_args: string, ctx: ExtensionContext) => {
+      bindRepo(ctx.cwd);
+      const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
+      const all = listCheckpoints(sid, currentStateDir);
+      if (all.length === 0) {
+        ctx.ui.notify("[mega-compact] no checkpoints in this session yet.");
+        return;
+      }
+      const rows = all.map((c) => {
+        const when = c.timestamp ? new Date(c.timestamp).toISOString().slice(0, 16).replace("T", " ") : "—";
+        const files = c.filesModified?.length ? c.filesModified.map((f) => f.split("/").pop()).join(", ") : "—";
+        const orig = c.originalTokenEstimate ?? 0;
+        const stored = c.tokenEstimate ?? 0;
+        const saved = Math.max(0, orig - stored);
+        return `  ${c.checkpointId}  ${when}  ${C.cyan}${saved}t saved${C.reset}  ${files}`;
+      });
+      ctx.ui.notify(
+        `[mega-compact] ${all.length} checkpoint(s) in this session:\n` + rows.join("\n") +
+        `\n[mega-compact] /mega-view <chkpt> to see the original region · /mega-restore <chkpt> to re-inject it`,
+      );
+    },
+  });
+
+  pi.registerCommand("mega-view", {
+    description: "Show a checkpoint's verbatim original region. Usage: /mega-view <chkpt|recent>",
+    handler: async (args: string, ctx: ExtensionContext) => {
+      bindRepo(ctx.cwd);
+      const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
+      const cp = findCheckpoint(sid, args.trim());
+      if (!cp) {
+        ctx.ui.notify(`[mega-compact] no checkpoint found${args.trim() ? ` for "${args.trim()}"` : ""}. Try /mega-history.`);
+        return;
+      }
+      if (!cp.compressedOriginal) {
+        ctx.ui.notify(`[mega-compact] ${cp.checkpointId} summary:\n${cp.summary.slice(0, 500)}${cp.summary.length > 500 ? "…" : ""}\n(no verbatim original stored)`);
+        return;
+      }
+      const original = decompressSmart(cp.compressedOriginal).toString("utf-8");
+      ctx.ui.notify(
+        `[mega-compact] ${cp.checkpointId} — original region (${original.length} chars):\n` +
+        `${original.slice(0, 1500)}${original.length > 1500 ? "\n…(truncated)" : ""}`,
       );
     },
   });
