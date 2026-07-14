@@ -1,5 +1,62 @@
 # Release Notes — pi-mega-compact
 
+## v0.4.16 (2026-07-14)
+
+Real model/provider exposure + an honest `$` cost figure in `/mega-status`.
+This is the first release where the cost number means something: it is driven
+by the *actual* model pi selected (captured from pi's own model registry),
+not the old `$3/1M` stub that made the previous build red.
+
+### Highlights
+
+- **Model/provider capture (persisted per repo).** A new `model_snapshots`
+  table in the per-repo SQLite store captures the active model whenever it
+  changes: `provider`, `providerName` (human display name from the model
+  registry, e.g. `OpenAI`), `modelId`, `modelName`, `inputRate` / `outputRate`
+  (USD per token, straight from `Model.cost`), `contextWindow`, `maxTokens`, and
+  `reasoning`. Written by `recordModelSnapshot()` and read by
+  `latestModelSnapshot()`. Keyed by `repo_root`, so each repo's cost figure is
+  computed against *its* model.
+- **Capture fires at the reliable point.** `captureModel(ctx)` runs on
+  `model_select`, `session_start`, and `before_agent_start` (the last is the
+  point `ctx.model` is actually populated). It is **idempotent** — it only
+  writes a new row when the model id/provider changes, so it is not re-written
+  every turn.
+- **`/mega-status` now shows the model driving the cost.** Two new lines:
+  - `💰 ≈ $X saved · Y context-windows extended` — real cost =
+    `repo.tokensSaved × captured model input rate` (USD/token). `Y` is how many
+    full context-windows the freed space buys (`tokensSaved ÷ contextWindow`).
+  - `🤖 model: <modelName> · <providerName>` — so you can see *which* model's
+    pricing is behind the number.
+
+### Fixed
+
+- **Red build from the `$3/1M` stub.** The cost line previously multiplied
+  tokens by a hardcoded `$3/1M` and never showed the model. Wiring the real
+  captured rate into `/mega-status` (this release) resolved the broken build.
+
+### Caveat (honest)
+
+- The `$` figure is only as good as pi's `Model.cost.input`. If pi does not
+  populate `cost.input`, the line reads `≈ $0.0000 saved` — there is **no
+  external fallback source**. It uses the real model rate, not the old stub, but
+  it is wholly dependent on pi supplying that field. `🤖 model:` falls back to
+  `unknown (no model captured)` until a model has been seen in the session.
+
+### Tests
+
+- Two new tests: `model_select` captures model + provider into the SQL row
+  (asserts the `model_snapshots` row), and `/mega-status` surfaces the captured
+  model + provider. Both pass.
+
+### Install / Upgrade
+
+```bash
+pi update --extensions
+```
+
+---
+
 ## v0.4.9 (2026-07-14)
 
 Hotfix: dashboard server failed to start from the npm install (regression of
@@ -128,9 +185,11 @@ Toolbar now shows tokens used + saved, each split this-session vs repo total.
 
 - **Live status widget** (above the editor) gained a `used:` figure and a
   repo/session split for both metrics:
+
   ```
    ◐ armed │ dedup: 92% │ used: 39k sess / 980k repo │ saved: 45k sess / 1.2M repo
   ```
+
   - `used` = stored checkpoint tokens; `saved` = tokens removed from context
     (`original − stored`). Each shows **`sess`** (this session) next to **`repo`**
     (cumulative across every session in the repo's store). Previously the toolbar
@@ -394,7 +453,7 @@ All v0.1.0 env vars still work. New v0.2.0 vars (defaults in
 | `MEGACOMPACT_MARK_ONLY_L1` | `false` | L1: record, don't collapse |
 | `MEGACOMPACT_MARK_ONLY_L2` | `false` | L2: record, don't collapse |
 | `MEGACOMPACT_MINILM` | `false` | MiniLM embedder (off; not shipped) |
-| `MEGACOMPACT_EMBEDDING_URL` | _(unset)_ | BYO localhost embedder |
+| `MEGACOMPACT_EMBEDDING_URL` | *(unset)* | BYO localhost embedder |
 | `MEGACOMPACT_L2_THRESHOLD` | `0.85` | L2 cosine firing point |
 | `MEGACOMPACT_L1_JACCARD` | `0.8` | L1 MinHash/LSH Jaccard threshold |
 | `MEGACOMPACT_MMR_LAMBDA` | `0.5` | MMR diversity weight |
@@ -409,7 +468,7 @@ See the [README](README.md#configuration-env-backed) for the full list.
 ### What's New (by sprint)
 
 - **Sprint 8** — SQLite storage backbone (`src/store/sqlite.ts`): `context_chunks`
-  + `session_state` in a single `better-sqlite3` database (WAL, FTS5 trigram,
+  - `session_state` in a single `better-sqlite3` database (WAL, FTS5 trigram,
   parameterized queries). `compressSmart`/`decompressSmart` + zstd helper.
 - **Sprints 9–12** — Dedup tiers: L0 exact-hash (9/10), L1 MinHash/LSH (11),
   L2 semantic cosine + MMR + SemDeDup (12). BYO localhost embedder via
