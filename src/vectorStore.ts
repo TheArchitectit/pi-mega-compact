@@ -36,6 +36,7 @@ import {
   getDedupStats,
   bumpDedupStats,
   repoStats as repoStatsFromStore,
+  dataInvariantStats,
 } from "./store/sqlite.js";
 import { migrateJsonToSqlite } from "./store/migrate.js";
 
@@ -61,6 +62,10 @@ export interface AddInput {
   /** Raw text of the compacted region — used to derive the regionHash + vector. */
   regionText: string;
   timestamp: number;
+  /** Sync progress callback fired as each dedup tier is evaluated (L0→L1→L2→new).
+   *  Lets the UI render live per-tier progress during compaction. Never awaited;
+   *  must be cheap. Optional for back-compat. */
+  onTier?: (ev: { tier: "L0" | "L1" | "L2" | "new"; status: "scanning" | "deduped" | "passed" | "stored"; detail?: string }) => void;
 }
 
 /** Default L2 semantic-dedup enable flag (trigram embedder is local, zero-network). */
@@ -150,6 +155,9 @@ export class VectorStore {
     // we persist (orig − stored). Falls back to stored when orig is unknown.
     const origTokens = input.originalTokenEstimate ?? input.tokenEstimate ?? 0;
     const cfg = this.cfg;
+    // Live per-tier progress hook (Phase 1). Sync + optional; fired at each tier
+    // so the UI can paint "L0 ✓ → L1 ✓ → L2 0.91 → stored" during a compaction.
+    const onTier = input.onTier;
     // Tracks whether a tier matched while in MARK_ONLY (record-but-don't-collapse),
     // and which tier.
     let markOnly: DedupTier | null = null;
@@ -161,6 +169,7 @@ export class VectorStore {
     //    skips the scan; a hit is only a candidate, confirmed against `all` below.
     //    Gated by L0_ENABLED (Sprint 14). MARK_ONLY_L0 records the decision but
     //    does not collapse — the new region is still stored.
+    onTier?.({ tier: "L0", status: "scanning" });
     const digest = computeContentDigest(input.regionText);
     const bloom = openBloom(this.stateDir);
     if (cfg.L0_ENABLED && bloom.maybeHas(digest.contentHash)) {
@@ -180,6 +189,7 @@ export class VectorStore {
           addTokensSaved(origTokens, this.stateDir);
           const r = { checkpoint: contentMatch, deduped: true, reason: "contentHash" };
           this.record("L0", "deduped", "contentHash", Date.now() - t0);
+          onTier?.({ tier: "L0", status: "deduped", detail: "contentHash" });
           return r;
         }
       }
@@ -197,6 +207,7 @@ export class VectorStore {
           addTokensSaved(origTokens, this.stateDir);
           const r = { checkpoint: regionMatch, deduped: true, reason: "regionHash" };
           this.record("L0", "deduped", "regionHash", Date.now() - t0);
+          onTier?.({ tier: "L0", status: "deduped", detail: "regionHash" });
           return r;
         }
       }
@@ -220,15 +231,19 @@ export class VectorStore {
           addTokensSaved(origTokens, this.stateDir);
           const r = { checkpoint: summaryMatch, deduped: true, reason: "summaryHash" };
           this.record("L0", "deduped", "summaryHash", Date.now() - t0);
+          onTier?.({ tier: "L0", status: "deduped", detail: "summaryHash" });
           return r;
         }
       }
     }
+    // L0 did not collapse this region.
+    onTier?.({ tier: "L0", status: "passed" });
 
     // 2b. L1 MinHash/LSH near-duplicate dedup (Sprint 11) — catches one-word
     //     edits / rewordings that L0's exact hash misses. Cheap LSH bucket
     //     retrieval → trigram verification (pg_trgm-equivalent) as the final gate.
     //     Gated by L1_ENABLED (Sprint 14); MARK_ONLY_L1 records but doesn't collapse.
+    onTier?.({ tier: "L1", status: "scanning" });
     if (cfg.L1_ENABLED) {
       const l1 = this.findL1Duplicate(sessionId, input.regionText, all);
       if (l1 && !cfg.MARK_ONLY_L1) {
@@ -237,10 +252,12 @@ export class VectorStore {
         bumpDedupStats(true, this.stateDir);
         const r = { checkpoint: l1, deduped: true, reason: "l1MinHash" };
         this.record("L1", "deduped", "l1MinHash", Date.now() - t0);
+        onTier?.({ tier: "L1", status: "deduped", detail: "l1MinHash" });
         return r;
       }
       if (l1 && cfg.MARK_ONLY_L1) markOnly = "L1";
     }
+    onTier?.({ tier: "L1", status: "passed" });
 
     // 3. L2 semantic dedup — catches near-identical / semantically-similar regions
     //    via cosine over the embedding. topicSummary is used for summaryHash dedup
@@ -252,6 +269,7 @@ export class VectorStore {
     const SIMILARITY_BUDGET_MS = cfg.SIMILARITY_BUDGET_MS;
     const simThreshold = this.l2Threshold; // from cfg.L2_COSINE (default 0.85 trigram)
     const embedding = this.embedder.embed(input.regionText);
+    onTier?.({ tier: "L2", status: "scanning" });
     if (cfg.L2_ENABLED && all.length > 0) {
       const start = Date.now();
       let timedOut = false;
@@ -274,10 +292,12 @@ export class VectorStore {
           addTokensSaved(origTokens, this.stateDir);
           const r = { checkpoint: nearest.checkpoint, deduped: true, reason: "contentSimilarity" };
           this.record("L2", "deduped", "contentSimilarity", Date.now() - t0);
+          onTier?.({ tier: "L2", status: "deduped", detail: nearest.sim.toFixed(2) });
           return r;
         }
         markOnly = "L2";
       }
+      onTier?.({ tier: "L2", status: "passed", detail: `best ${nearest.sim.toFixed(2)}` });
     }
 
     // 4. Genuinely new — create checkpoint
@@ -342,6 +362,7 @@ export class VectorStore {
     }
     // Cumulative store-wide dedup accounting (attempt, not collapsed).
     bumpDedupStats(false, this.stateDir);
+    onTier?.({ tier: "new", status: "stored" });
     return { checkpoint, deduped: false };
   }
 
@@ -584,5 +605,9 @@ export class VectorStore {
    */
   repoStats(): ReturnType<typeof repoStatsFromStore> {
     return repoStatsFromStore(this.stateDir);
+  }
+  /** Data-safety invariant (Phase 0): regions retained vs bytes permanently deleted. */
+  dataInvariant(): ReturnType<typeof dataInvariantStats> {
+    return dataInvariantStats(this.stateDir);
   }
 }

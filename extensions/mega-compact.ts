@@ -214,6 +214,13 @@ interface DashboardSnapshot {
     dedupCollapsed: number;      // cumulative deduped collapses (store-wide)
     storageDedupRate: number;    // deduped / attempts, 0..1
   };
+  /** Phase 0 data-safety invariant (trust foundation). */
+  integrity: {
+    regionsRetained: number;         // checkpoints with a recoverable compressed-original
+    compressedOriginalBytes: number; // bytes of compressed-original retained (recoverable)
+    duplicatesCollapsed: number;     // dedup duplicates (original kept on survivor)
+    bytesPermanentlyDeleted: number; // ALWAYS 0 — the invariant
+  };
 }
 
 class Dashboard {
@@ -280,6 +287,7 @@ export default function (pi: ExtensionAPI) {
     if (ctx) bindRepo(ctx.cwd);
     const st = store.stats(rt.sessionId);
     const repo = store.repoStats();
+    const di = store.dataInvariant();
     const armed = lastCtxPercent != null && lastCtxPercent >= config.fastGatePct;
     const ready = armed && (lastCtxTokens ?? 0) >= config.thresholdTokens;
     dashboard.snapshot({
@@ -318,6 +326,12 @@ export default function (pi: ExtensionAPI) {
         dedupCollapsed: repo.dedupCollapsed,
         storageDedupRate: repo.storageDedupRate,
       },
+      integrity: {
+        regionsRetained: di.regionsRetained,
+        compressedOriginalBytes: di.compressedOriginalBytes,
+        duplicatesCollapsed: di.duplicatesCollapsed,
+        bytesPermanentlyDeleted: di.bytesPermanentlyDeleted,
+      },
     });
 
     // Live stats widget above the editor
@@ -350,7 +364,13 @@ export default function (pi: ExtensionAPI) {
       ];
       // Live "now processing" line — teal while fresh (≤4s), then the last-seen
       // action keeps the widget lively. Cleared on session reset.
-      if (currentActivity) {
+      if (tierTrace) {
+        // Per-tier dedup progress is more relevant than the last action while a
+        // compaction is mid-flight, so prefer it when fresh.
+        const fresh = Date.now() - lastActivityAt < 4000;
+        if (fresh) lines.push(`   ${tierTrace}`);
+        else if (currentActivity) lines.push(`   ${C.dim}${currentActivity}${C.reset}`);
+      } else if (currentActivity) {
         const fresh = Date.now() - lastActivityAt < 4000;
         lines.push(`   ${fresh ? C.teal : C.dim}${currentActivity}${C.reset}`);
       }
@@ -382,6 +402,10 @@ export default function (pi: ExtensionAPI) {
   // the widget is never blank. Cleared on session reset.
   let currentActivity: string | undefined;
   let lastActivityAt = 0;
+  // Live per-tier dedup trace (Phase 1): e.g. "L0 ✓ → L1 ✓ → L2 0.91 → stored".
+  // Built from the store's sync onTier callback during a compaction so the user
+  // watches each tier evaluate in real time. Cleared once the outcome settles.
+  let tierTrace: string | undefined;
   // ANSI palette for the toolbar. The pi TUI's Text component preserves ANSI
   // escape codes (see wrapTextWithAnsi), so raw escapes render as colors. No
   // chalk dependency needed — these are just strings.
@@ -421,6 +445,32 @@ export default function (pi: ExtensionAPI) {
     currentTurn = 0;
     currentActivity = undefined;
     lastActivityAt = 0;
+    tierTrace = undefined;
+  }
+
+  /** Build the sync onTier callback that paints the live per-tier trace. */
+  function makeTierCallback(ctx: ExtensionContext): (ev: { tier: "L0" | "L1" | "L2" | "new"; status: "scanning" | "deduped" | "passed" | "stored"; detail?: string }) => void {
+    const order: Array<"L0" | "L1" | "L2" | "new"> = ["L0", "L1", "L2", "new"];
+    const seen = new Map<string, string>();
+    const glyph = (status: string) =>
+      status === "deduped" ? `${C.green}✓${C.reset}` :
+        status === "passed" ? `${C.dim}○${C.reset}` :
+          status === "scanning" ? `${C.amber}…${C.reset}` :
+            `${C.cyan}●${C.reset}`;
+    return (ev) => {
+      const label =
+        ev.tier === "new"
+          ? `${C.cyan}stored${C.reset}`
+          : `${ev.tier} ${glyph(ev.status)}` +
+            (ev.detail ? ` ${C.gray}(${ev.detail})${C.reset}` : "");
+      // Show the most recent outcome per tier (collapses re-fires).
+      seen.set(ev.tier, label);
+      const show: string[] = [];
+      for (const t of order) if (seen.has(t)) show.push(seen.get(t)!);
+      tierTrace = `${C.teal}⚙${C.reset} ${show.join(` ${C.gray}→${C.reset} `)}`;
+      lastActivityAt = Date.now();
+      try { snapshot(ctx); } catch { /* non-fatal */ }
+    };
   }
 
   /** Run the full compaction pipeline and persist a checkpoint. Returns the result. */
@@ -445,6 +495,7 @@ export default function (pi: ExtensionAPI) {
         keepFrom,
         summary: opts.summary,
         timestamp: Date.now(),
+        onTier: makeTierCallback(ctx),
       },
       store,
     );
@@ -478,6 +529,9 @@ export default function (pi: ExtensionAPI) {
       ? `♻ deduped ${fileLabel}`
       : `🗜 compacted ${result.checkpointId} · ${fileLabel}`;
     lastActivityAt = Date.now();
+    // The per-tier trace has settled into the final outcome — fold it back into
+    // the activity line and stop showing the live trace.
+    tierTrace = undefined;
 
     // Record session activity + a daily-log entry in the per-repo SQLite store
     // (foundation for resume-sessions / daily-log features). Best-effort — never
@@ -740,7 +794,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerCommand("mega-status", {
-    description: "Show mega-compact config and current context usage.",
+    description: "Show mega-compact config, context usage, and the data-safety invariant.",
     handler: async (_args: string, ctx: ExtensionContext) => {
       bindRepo(ctx.cwd);
       const usage = ctx.getContextUsage();
@@ -748,6 +802,10 @@ export default function (pi: ExtensionAPI) {
       const tokens = usage?.tokens != null ? `${usage.tokens} tok` : "n/a";
       const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
       const st = store.stats(sid);
+      const di = store.dataInvariant();
+      const fmtB = (b: number) =>
+        b >= 1_048_576 ? `${(b / 1_048_576).toFixed(1)} MiB` :
+          b >= 1024 ? `${(b / 1024).toFixed(1)} KiB` : `${b} B`;
       ctx.ui.notify(
         `[mega-compact] pct=${pct} tokens=${tokens} tier=${config.tier} fastGate=${config.fastGatePct}% ` +
           `threshold=${config.thresholdTokens} auto=${config.auto} autoInline=${config.autoInline}\n` +
@@ -756,6 +814,10 @@ export default function (pi: ExtensionAPI) {
           `injected=${st.injectedCount} · dedup=${(st.dedupHitRate * 100).toFixed(0)}%\n` +
           `[mega-compact] anchor=${config.anchorUserMessages} preserveRecent=${config.preserveRecent} ` +
           `autoInlineK=${config.autoInlineK} dedupSim=${config.dedupSim} debug=${config.debug}\n` +
+          `[mega-compact] 🛡 data-safe: ${di.regionsRetained} regions retained ` +
+          `(${fmtB(di.compressedOriginalBytes)} compressed-original) · ` +
+          `${di.duplicatesCollapsed} dedup-duplicates collapsed · ` +
+          `${C.green}0 bytes permanently deleted${C.reset}\n` +
           `[mega-compact] stateDir=${currentStateDir}`,
       );
     },

@@ -38,6 +38,22 @@ export interface CompactInput {
   timestamp?: number;
   /** When true (default), use extractive summary instead of raw concatenation. */
   useExtractiveSummary?: boolean;
+  /** Sync progress callback fired by the store as each dedup tier is evaluated
+   *  (L0→L1→L2→new). Lets the UI render a live "L0 ✓ → L1 ✓ → L2 0.91 → stored"
+   *  progress line during compaction. Never awaited; must be side-effect-free-ish
+   *  and cheap. Optional; back-compat with callers that don't pass it. */
+  onTier?: (ev: TierProgress) => void;
+}
+
+/** Progress event emitted by the store as each dedup tier is evaluated. */
+export interface TierProgress {
+  /** Tier being evaluated: "L0" | "L1" | "L2" | "new". */
+  tier: "L0" | "L1" | "L2" | "new";
+  /** "scanning" while the tier is being evaluated, "deduped" when it matched,
+   *  "passed" when no match, "stored" at the final outcome. */
+  status: "scanning" | "deduped" | "passed" | "stored";
+  /** Optional detail — e.g. the L2 cosine sim ("0.91") or the dedup reason. */
+  detail?: string;
 }
 
 export interface CompactResult {
@@ -157,6 +173,7 @@ export function compactSession(input: CompactInput, store: VectorStore = getDefa
     tokenEstimate: storedTokens,
     originalTokenEstimate,
     timestamp: input.timestamp ?? 0,
+    onTier: input.onTier,
   });
 
   return {

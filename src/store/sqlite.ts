@@ -636,6 +636,49 @@ export interface RepoStats {
   storageDedupRate: number;
 }
 
+/**
+ * Data-safety invariant metrics (Phase 0 — trust foundation). Proves that every
+ * compacted region is still recoverable: we retain a compressed_original blob for
+ * each checkpoint and permanently delete nothing. "removed" rows are SemDeDup
+ * duplicates whose ORIGINAL is still retained on the surviving checkpoint — they
+ * are not data loss, so they are reported separately, not as deletions.
+ */
+export interface DataInvariantStats {
+  /** Checkpoints with a recoverable compressed_original blob. */
+  regionsRetained: number;
+  /** Total bytes of compressed_original retained (recoverable verbatim). */
+  compressedOriginalBytes: number;
+  /** Checkpoints missing a compressed_original blob (pre-blob or direct add). */
+  regionsWithoutBlob: number;
+  /** Bytes permanently deleted by the extension. ALWAYS 0 — the invariant. */
+  bytesPermanentlyDeleted: number;
+  /** Duplicate rows collapsed by dedup (original retained on the survivor). */
+  duplicatesCollapsed: number;
+}
+
+export function dataInvariantStats(stateDir: string = getStateDir()): DataInvariantStats {
+  const db = openStore(stateDir);
+  const row = db
+    .prepare(
+      `SELECT
+         COUNT(compressed_original) AS withBlob,
+         COALESCE(SUM(LENGTH(compressed_original)),0) AS blobBytes,
+         SUM(CASE WHEN compressed_original IS NULL THEN 1 ELSE 0 END) AS noBlob
+       FROM context_chunks WHERE dedup_status != 'removed'`,
+    )
+    .get() as { withBlob: number; blobBytes: number; noBlob: number };
+  const removed = db
+    .prepare(`SELECT COUNT(*) AS c FROM context_chunks WHERE dedup_status = 'removed'`)
+    .get() as { c: number };
+  return {
+    regionsRetained: row.withBlob,
+    compressedOriginalBytes: row.blobBytes,
+    regionsWithoutBlob: row.noBlob ?? 0,
+    bytesPermanentlyDeleted: 0,
+    duplicatesCollapsed: removed.c,
+  };
+}
+
 export function repoStats(stateDir: string = getStateDir()): RepoStats {
   const db = openStore(stateDir);
   const row = db

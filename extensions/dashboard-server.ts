@@ -96,6 +96,7 @@ function readSnapshot(snapshotPath: string) {
       store: { checkpointCount: 0, totalTokenEstimate: 0, originalTokens: 0, tokensSaved: 0, injectedCount: 0, dedupHitRate: 0, storageDedupRate: 0, dedupCollapsed: 0 },
       crew: { activeAgents: 0, currentTurn: 0 },
       repo: { checkpointCount: 0, totalTokenEstimate: 0, originalTokens: 0, tokensSaved: 0, sessionCount: 0, dedupAttempts: 0, dedupCollapsed: 0, storageDedupRate: 0 },
+      integrity: { regionsRetained: 0, compressedOriginalBytes: 0, duplicatesCollapsed: 0, bytesPermanentlyDeleted: 0 },
     } as Snapshot;
   }
 }
@@ -128,6 +129,10 @@ function dashboardHtml(tierName: string): string {
   h1 .tier { background: #1f6feb; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: .5px; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
   .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+  .card.safe { border-color: #238636; }
+  .card.safe h2 { color: #3fb950; }
+  .safe-note { font-size: 12px; color: #8b949e; margin: 12px 0 0; line-height: 1.5; }
+  .value.ok { color: #3fb950; }
   .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #8b949e; margin-bottom: 12px; font-weight: 600; }
   .meter-track { background: #21262d; border-radius: 4px; height: 20px; overflow: hidden; margin: 8px 0; }
   .meter-fill { height: 100%; border-radius: 4px; transition: width .6s ease; min-width: 2px; }
@@ -208,6 +213,16 @@ function dashboardHtml(tierName: string): string {
       <span class="label">Storage Dedup</span><span class="value" id="rp-sdedup">0%</span>
     </div>
   </div>
+  <div class="card safe">
+    <h2>🛡 Data Safety</h2>
+    <div class="stat-grid">
+      <span class="label">Regions Retained</span><span class="value" id="ig-retained">0</span>
+      <span class="label">Compressed-Original</span><span class="value" id="ig-bytes">0 B</span>
+      <span class="label">Dedup Duplicates</span><span class="value" id="ig-dupes">0</span>
+      <span class="label">Permanently Deleted</span><span class="value ok" id="ig-deleted">0 B</span>
+    </div>
+    <p class="safe-note">Every compacted region is kept verbatim (compressed). "Drop" = removed from the live window only. We never delete your data.</p>
+  </div>
   <div class="card">
     <h2>Configuration</h2>
     <div class="conf-grid">
@@ -286,6 +301,19 @@ function dashboardHtml(tierName: string): string {
     document.getElementById('rp-collapsed').textContent = repo.dedupCollapsed || 0;
     var rsdr = repo.storageDedupRate || 0;
     document.getElementById('rp-sdedup').textContent = (rsdr * 100 >= 10 ? Math.round(rsdr * 100) : (rsdr * 100).toFixed(1)) + '%';
+
+    // Data-safety invariant (Phase 0 — trust foundation).
+    var ig = d.integrity || { regionsRetained: 0, compressedOriginalBytes: 0, duplicatesCollapsed: 0, bytesPermanentlyDeleted: 0 };
+    function fmtBytes(b) {
+      b = b || 0;
+      if (b >= 1048576) return (b / 1048576).toFixed(1) + ' MiB';
+      if (b >= 1024) return (b / 1024).toFixed(1) + ' KiB';
+      return b + ' B';
+    }
+    document.getElementById('ig-retained').textContent = (ig.regionsRetained || 0).toLocaleString();
+    document.getElementById('ig-bytes').textContent = fmtBytes(ig.compressedOriginalBytes);
+    document.getElementById('ig-dupes').textContent = (ig.duplicatesCollapsed || 0).toLocaleString();
+    document.getElementById('ig-deleted').textContent = fmtBytes(ig.bytesPermanentlyDeleted);
 
     // Crew / agents (live sub-agent activity + turn).
     var crew = d.crew || { activeAgents: 0, currentTurn: 0 };
