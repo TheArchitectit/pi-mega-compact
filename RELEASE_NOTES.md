@@ -1,5 +1,43 @@
 # Release Notes — pi-mega-compact
 
+## v0.4.1 (2026-07-14)
+
+Per-session + per-repo stats model, moved entirely into the per-repo SQLite
+store, plus the npm update workflow that ships changes to every device.
+
+### Highlights
+
+- **Per-session vs per-repo stats.** The live widget shows **per-session**
+  "tokens saved" (resets to 0 on each new session) while the dashboard's new
+  **Repo (all sessions)** card shows the **cumulative** "tokens saved" that
+  survives session restarts and travels with the repo. Deduped collapses are
+  counted separately (`dedupCollapsed`), not folded into tokens saved.
+- **All store stats now live in SQLite.** The last JSON stats file
+  (`dedup-stats.json`) was removed; dedup accounting and the tokens-saved
+  counter live in the SQLite `meta` table, so they persist per repo and resume
+  across sessions/devices. Added `repoStats()` (aggregates every session) and a
+  `repo` block on the dashboard snapshot.
+- **npm is the cross-device update path.** `pi update --extensions` refreshes
+  npm packages listed in `settings.packages`; the dev symlink install is a
+  separate, non-propagating mechanism. See `docs/INSTALL_AND_USAGE.md` §1b.
+
+### Install / Upgrade
+
+```bash
+pi install npm:pi-mega-compact     # first time (replaces any dev symlink)
+pi update --extensions             # after a publish
+```
+
+### Changed
+
+- Bumped to 280 passing tests (all green).
+- Removed `dedup-stats.json`; dedup counters are SQLite `meta` keys
+  (`dedup_attempts`, `deduped`, `tokens_saved`).
+- Fixed a latent bug where per-session `stats().tokensSaved` returned a
+  repo-wide value.
+
+---
+
 ## v0.4.0 (2026-07-14)
 
 Per-repo context isolation, a dedup rate that survives session restarts, and

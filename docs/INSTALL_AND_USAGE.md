@@ -1,4 +1,4 @@
-# Install & Usage — pi-mega-compact (v0.4.0)
+# Install & Usage — pi-mega-compact (v0.4.1)
 
 A complete, copy-paste guide to installing pi-mega-compact and using **every**
 feature: the pi extension (auto-compact + recall), the OpenClaw plugin adapter,
@@ -66,7 +66,55 @@ npm install && npm run build
 ```
 
 Or use the bundled helper (needs `jq`): `./install.sh` (copy) / `./install.sh -s`
-(symlink, dev mode).
+(symlink, dev mode). **This symlink method is for local development only** — it
+bypasses pi's package manager, so it is NOT updated by `pi update --extensions`
+and does not propagate to other devices. Convert to the npm package (§1b) before
+shipping.
+
+---
+
+## 1b. Update workflow (npm — the cross-device model)
+
+The npm package is the **only** update path that propagates to every device.
+`pi update --extensions` refreshes every entry in pi's `settings.packages`
+list — but it only touches **npm** sources, and only when a newer version exists
+on the registry. A symlinked `extensions/` dir entry is *not* part of that
+flow, so to get updates you must install the extension as a managed npm
+package (not a symlink).
+
+**Shipping a change:**
+
+1. Bump the version in `package.json` (SemVer). `pi update` checks `latest >
+   installed`, so a bump is required for the next update to fire.
+2. Run the full gate locally: `npm run build && npm run lint &&
+   python3 scripts/regression_check.py --all && npm test`.
+3. `npm publish` (writes the new version to the registry). This is outward-
+   facing — confirm before running.
+
+**Installing on a device (first time):**
+
+```bash
+pi install npm:pi-mega-compact   # adds to settings.packages + installs into pi's npm tree
+```
+
+This replaces any earlier symlinked `extensions/pi-mega-compact` entry. **Remove
+the old symlink first** so pi doesn't double-load the extension:
+
+```bash
+rm -f ~/.pi/agent/extensions/pi-mega-compact
+pi install npm:pi-mega-compact
+```
+
+**Updating on a device (after a publish):**
+
+```bash
+pi update --extensions          # refreshes all npm packages in settings.packages
+```
+
+> pi loads the **TypeScript source** (`extensions/mega-compact.ts`) directly from
+> the installed package — `dist/` is not shipped. No separate build step is
+> needed on the user's machine; only the dev `npm run build` for the repo's own
+> tests/OpenClaw adapter.
 
 ---
 
@@ -125,11 +173,13 @@ Above the pi editor:
 ```
 
 > **Per-repo state.** Runtime state (the SQLite db, `events.log`,
-> `dashboard.json`, `dedup-stats.json`) lives at `<repo>/.pi/mega-compact/`
-> for each git repo, so dedup stats and checkpoints are isolated per project
-> and travel with the clone (tracked in git, not ignored). The `dedup:` field
-> shows the cumulative storage dedup rate (e.g. `92%`, or `2.5%` / `0.0%` for
-> small/zero). For non-git working dirs, state falls back to
+> `dashboard.json`) lives at `<repo>/.pi/mega-compact/` for each git repo, so
+> all store stats — checkpoints, dedup rate, and cumulative "tokens saved" —
+> are isolated per project and travel with the clone (tracked in git, not
+> ignored). Dedup accounting and the tokens-saved counter now live in the
+> SQLite `meta` table (the legacy `dedup-stats.json` file was removed). The
+> `dedup:` field shows the cumulative storage dedup rate (e.g. `92%`, or `2.5%`
+> / `0.0%` for small/zero). For non-git working dirs, state falls back to
 > `MEGACOMPACT_STATE_DIR` (or the global default).
 
 ---
@@ -271,16 +321,17 @@ node scripts/dedup-benchmark.mjs 100 1000 10000
 
 ## 7. Uninstall
 
+If installed as a managed npm package (the cross-device model):
+
 ```bash
-npm uninstall pi-mega-compact
-# If you symlinked it into pi's extensions dir, also drop the link:
-rm -f ~/.pi/agent/extensions/pi-mega-compact
+pi uninstall pi-mega-compact     # removes from settings.packages + npm tree
 ```
 
-If you installed from a git checkout instead, remove the clone:
+If you symlinked/checked it out into pi's extensions dir (dev only), also drop
+the entry so pi doesn't double-load it:
 
 ```bash
-rm -rf ~/.pi/agent/extensions/pi-mega-compact
+rm -f ~/.pi/agent/extensions/pi-mega-compact
 ```
 
 For OpenClaw: remove `mega-compact` from `plugins.allow` / `plugins.entries` in
@@ -303,4 +354,4 @@ rm -rf ~/.pi/agent/extensions/pi-mega-compact
 | OpenClaw doesn't load the plugin | Confirm `npm run build` ran (needs `dist/extensions/openclaw-mega-compact.js`), `mega-compact` is in `plugins.allow`, and `entries.mega-compact.enabled=true`. |
 | No auto-inline on resume | Check `/megacompact-status` shows checkpoints; recall fires when persisted checkpoints + a usable query exist. |
 | Wrong collapse (FP) | Flip the suspect tier `MARK_ONLY_*=true`; see `docs/DEDUP_RUNBOOK.md`. |
-| Extension not loading | `/megacompact-status` should report store stats; confirm the path in `pi.extensions`. |
+| Extension not loading | `/megacompact-status` should report store stats. For npm installs, confirm `pi-mega-compact` is in `settings.packages` (`pi list`) and the symlinked `extensions/pi-mega-compact` dev entry was removed (it overrides/duplicates the package). |
