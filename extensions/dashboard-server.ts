@@ -14,7 +14,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, watch, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 
 // --- Multi-repo index (Phase 5b) ------------------------------------------------
@@ -61,7 +62,7 @@ function readIndex(): { updatedAt: string; summary: unknown; repos: unknown[] } 
     const rows = db
       .prepare("SELECT * FROM repo_registry ORDER BY last_seen DESC")
       .all() as Record<string, unknown>[];
-    const repos: IndexRepo[] = rows.map((r) => ({
+    const mapped: IndexRepo[] = rows.map((r) => ({
       repoRoot: String(r.repo_root ?? ""),
       displayName: String(r.display_name ?? ""),
       checkpointCount: Number(r.checkpoint_count ?? 0),
@@ -75,6 +76,22 @@ function readIndex(): { updatedAt: string; summary: unknown; repos: unknown[] } 
       outputRate: (r.output_rate as number | null) ?? null,
       lastSeen: Number(r.last_seen ?? 0),
     }));
+    // Defensive display hygiene (belt-and-suspenders — the real fix is that
+    // tests now isolate via MEGACOMPACT_INDEX_DIR): drop transient test/temp
+    // paths that should never have been real repos, and collapse duplicate
+    // display names to the most-recently-seen row (rows are last_seen DESC, so
+    // the first occurrence wins). Keeps the All-repos list readable.
+    const isTransient = (p: string) =>
+      /^\/tmp\//.test(p) || /^\/private\/tmp\//.test(p) || /^\/var\/folders\//.test(p) ||
+      /\/mc-(ext|e2e|resume|recall)-/.test(p);
+    const seenName = new Set<string>();
+    const repos: IndexRepo[] = [];
+    for (const r of mapped) {
+      if (isTransient(r.repoRoot)) continue;
+      if (seenName.has(r.displayName)) continue;
+      seenName.add(r.displayName);
+      repos.push(r);
+    }
     const summary = {
       totalRepos: repos.length,
       totalCheckpoints: repos.reduce((a, r) => a + r.checkpointCount, 0),
@@ -722,6 +739,21 @@ function dashboardHtml(tierName: string): string {
 // ---------------------------------------------------------------------------
 
 export function launchDashboardServer(stateDir: string): Promise<{ port: number; url: string }> {
+  // Our own package version — exposed at /api/version so the launcher can
+  // detect a stale server (started by an older build) and replace it on
+  // upgrade instead of reuse it.
+  let SERVER_VERSION = "0.0.0";
+  try {
+    // dashboard-server.js lives at <pkg>/dist/extensions/, so package.json is
+    // two levels up. Guard each candidate so a dev-checkout layout still works.
+    const here = dirname(fileURLToPath(import.meta.url));
+    const candidates = [join(here, "..", "..", "package.json"), join(here, "..", "package.json")];
+    for (const p of candidates) {
+      if (!existsSync(p)) continue;
+      const pkg = JSON.parse(readFileSync(p, "utf-8"));
+      if (pkg.version) { SERVER_VERSION = pkg.version; break; }
+    }
+  } catch { /* non-fatal */ }
   const portFile = join(stateDir, "port.pid");
   const snapshotPath = join(stateDir, "dashboard.json");
   const eventsPath = join(stateDir, "events.log");
@@ -766,6 +798,14 @@ export function launchDashboardServer(stateDir: string): Promise<{ port: number;
       const snap = readSnapshot(snapshotPath);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(snap));
+      return;
+    }
+
+    // Server version — lets the /dashboard launcher detect a stale server from
+    // an older build and replace it on upgrade rather than reuse it.
+    if (req.url === "/api/version") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ version: SERVER_VERSION }));
       return;
     }
 

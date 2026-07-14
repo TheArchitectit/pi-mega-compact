@@ -36,8 +36,11 @@ export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime
     return null;
   }
 
-  /** Try to reach a running dashboard server. Returns { port, url } or null. */
-  async function isServerRunning(): Promise<{ port: number; url: string } | null> {
+  /** Try to reach a running dashboard server. Returns details or null.
+   *  `hasPidFile` tells the caller whether this server was launched by us
+   *  (port.pid present) — a live server with NO pid file is an orphan from an
+   *  older/detached spawn that we should replace rather than reuse. */
+  async function isServerRunning(): Promise<{ port: number; url: string; hasPidFile: boolean } | null> {
     const port = await findLivePort();
     if (!port) {
       // Stale marker with no live server behind it — clean up.
@@ -46,7 +49,59 @@ export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime
       }
       return null;
     }
-    return { port, url: `http://localhost:${port}` }; // guardrails-allow PREVENT-PI-004: localhost URL of the dashboard server this extension spawned
+    return { port, url: `http://localhost:${port}`, hasPidFile: existsSync(portFile) }; // guardrails-allow PREVENT-PI-004: localhost URL of the dashboard server this extension spawned
+  }
+
+  /** Version the running server on `port` reports, or null. */
+  async function serverVersion(port: number): Promise<string | null> {
+    try {
+      const res = await fetch(`http://localhost:${port}/api/version`, { signal: AbortSignal.timeout(800) }); // guardrails-allow PREVENT-PI-004: localhost version probe of the dashboard server this extension spawned
+      if (!res.ok) return null;
+      const j = await res.json() as { version?: string };
+      return j.version ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Version of THIS extension (read from its own package.json). */
+  function ownVersion(): string | null {
+    try {
+      const here = dirname(fileURLToPath(import.meta.url)); // .../extensions
+      const pkg = JSON.parse(readFileSync(join(here, "..", "package.json"), "utf-8"));
+      return pkg.version ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** PID listening on 127.0.0.1:port (our own server), or null. Uses `ss`
+   *  (Linux/macOS) — best-effort, returns null if unavailable. */
+  function pidOnPort(port: number): number | null {
+    try {
+      const { execSync } = require("node:child_process"); // guardrails-allow PREVENT-PI-004: localhost-only, reads our own dashboard port owner
+      const out = execSync(`ss -ltnp 2>/dev/null | grep ':${port} '`, { encoding: "utf-8" });
+      const m = out.match(/pid=(\d+)/);
+      return m ? Number(m[1]) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Kill a running dashboard server (best-effort): read the pid from port.pid,
+   *  or — when there's no marker (an orphan) — from the port owner. Then remove
+   *  the marker so the next spawn starts fresh. */
+  function killServerOnPort(port: number): void {
+    let pid: number | null = null;
+    try {
+      const info = JSON.parse(readFileSync(portFile, "utf-8"));
+      if (info && info.pid) pid = info.pid;
+    } catch { /* no marker */ }
+    if (pid == null) pid = pidOnPort(port); // orphan with no pid.pid
+    if (pid != null) {
+      try { process.kill(pid, "SIGTERM"); } catch { /* already gone */ }
+    }
+    try { unlinkSync(portFile); } catch { /* ignore */ }
   }
 
   /**
@@ -122,10 +177,29 @@ export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime
       let info = await isServerRunning();
 
       if (info) {
-        ctx.ui.notify(`[mega-compact] dashboard already running at ${info.url}`);
-        const open = await ctx.ui.confirm("mega-compact dashboard", `Open ${info.url} in browser?`);
-        if (open) openBrowser(info.url);
-        return;
+        // Replace the server when it's stale: either (a) an orphan — a live
+        // server with no port.pid (e.g. left running from a detached spawn or a
+        // previous upgrade) that keeps serving old HTML from memory; or (b) a
+        // server that reports a different version than this extension (an older
+        // build). A live server WITH a matching pid file and version is reused.
+        const orphan = !info.hasPidFile;
+        const running = await serverVersion(info.port);
+        const want = ownVersion();
+        const stale = orphan || (want != null && running != null && running !== want);
+        if (stale) {
+          ctx.ui.notify(
+            orphan
+              ? "[mega-compact] replacing orphaned dashboard server…"
+              : `[mega-compact] replacing stale dashboard (${running} → ${want})…`,
+          );
+          killServerOnPort(info.port);
+          info = null;
+        } else {
+          ctx.ui.notify(`[mega-compact] dashboard already running at ${info.url}`);
+          const open = await ctx.ui.confirm("mega-compact dashboard", `Open ${info.url} in browser?`);
+          if (open) openBrowser(info.url);
+          return;
+        }
       }
 
       // Start the server

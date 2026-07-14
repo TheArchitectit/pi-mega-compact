@@ -1,5 +1,41 @@
 # Release Notes — pi-mega-compact
 
+## v0.4.20 (2026-07-14)
+
+Fix: stale dashboard server after upgrade + polluted multi-repo index.
+
+### Fixed
+
+- **Stale dashboard after upgrade.** `/dashboard` now replaces a running server
+  instead of reusing it when the server is (a) an **orphan** — live but with no
+  `port.pid` (e.g. left over from a detached spawn or a previous install), or
+  (b) a different **version** than this extension. The server reports its own
+  version at `GET /api/version`; the launcher compares it to the package version
+  and SIGTERMs a stale/orphan server before spawning a fresh one. Previously an
+  upgraded build kept serving old HTML from the still-running old process, so
+  the dashboard looked unchanged after `pi update --extensions`.
+- **Polluted multi-repo index.** The end-to-end extension test harness was
+  writing `bindRepo` registry rows into the real machine-wide index
+  (`~/.mega-compact-index`) for every `/tmp/mc-ext-*` temp dir it created, so
+  the All-repos list filled with dozens of empty duplicate `run-N` rows. Tests
+  now isolate their registry via `MEGACOMPACT_INDEX_DIR`, and the dashboard
+  defensively drops transient test/temp paths and collapses duplicate
+  `display_name`s to the most-recently-seen row. The index was cleaned to a
+  single real repo.
+- **Kill target bug.** `killServerOnPort` previously called `process.kill` with
+  the *port* number (wrong — that's not a pid). It now reads the pid from
+  `port.pid`, or (for orphans with no marker) resolves the listener's pid via
+  `ss`.
+
+### Notes
+
+- Two `/dashboard-status` / `/dashboard` unit tests were already failing on
+  `HEAD` (they pointed `port.pid` at a random port outside the 9320–9329 scan
+  range the launcher actually probes). They are corrected to listen in-range so
+  `npm test` is green and the tests genuinely exercise the reuse path.
+
+---
+
 ## v0.4.19 (2026-07-14)
 
 Dashboard: model + cost-savings now visible, and the multi-repo registry is

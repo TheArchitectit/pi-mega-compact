@@ -22,6 +22,9 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 
 const require = createRequire(import.meta.url);
 const baseTmp = mkdtempSync(join(tmpdir(), "mc-ext-"));
+// Isolate the machine-wide repo index so test runs (which call bindRepo ->
+// upsertRepoRegistry) never pollute the developer's real ~/.mega-compact-index.
+process.env.MEGACOMPACT_INDEX_DIR = join(baseTmp, "index");
 let counter = 0;
 
 /** Build a mock pi + ctx and load the extension into them. */
@@ -297,13 +300,14 @@ test("/dashboard-stop reports no server when pid file missing", async () => {
 test("/dashboard skips server spawn when already running", async () => {
   const h = harness();
   const confirms: boolean[] = [];
-  // Set up a fake HTTP server at a random port
+  // Set up a fake HTTP server on a port inside the dashboard's scan range
+  // (9320–9329) — isServerRunning() probes those ports, not the port.pid value.
   const { createServer } = await import("node:http");
   const server = createServer((_req, res) => {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ updatedAt: new Date().toISOString(), tier: "test", version: 1, config: {}, session: {}, context: {}, trigger: {}, store: {} }));
   });
-  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  await new Promise<void>((r) => server.listen(9320, "127.0.0.1", r));
   const addr = server.address() as any;
   const { join: j } = await import("node:path");
   const { writeFileSync: wf } = await import("node:fs");
@@ -328,7 +332,8 @@ test("/dashboard skips server spawn when already running", async () => {
 
 test("/dashboard-status reports running after dashboard start", async () => {
   const h = harness();
-  // Write a fake port.pid with a real port (use a server we control)
+  // Write a fake port.pid; the server must listen inside the scan range
+  // (9320–9329) or isServerRunning() won't detect it.
   const { createServer } = await import("node:http");
   const { join: j } = await import("node:path");
   const { writeFileSync: wf } = await import("node:fs");
@@ -336,7 +341,7 @@ test("/dashboard-status reports running after dashboard start", async () => {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ updatedAt: new Date().toISOString(), tier: "test" }));
   });
-  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  await new Promise<void>((r) => server.listen(9321, "127.0.0.1", r));
   const addr = server.address() as any;
   wf(j(h.stateDir, "port.pid"), JSON.stringify({ port: addr.port, pid: process.pid }));
 
