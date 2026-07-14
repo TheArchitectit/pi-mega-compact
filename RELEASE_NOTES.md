@@ -1,5 +1,37 @@
 # Release Notes — pi-mega-compact
 
+## v0.4.19 (2026-07-14)
+
+Dashboard: model + cost-savings now visible, and the multi-repo registry is
+drill-down.
+
+### Added
+
+- **Model & Cost Savings card (Current repo).** The dashboard now renders the
+  active model that was previously captured but silently dropped — a new
+  `💰 Model & Cost Savings` card shows model name, provider, input/output
+  rates, and the live cost figure (`tokensSaved × model.inputRate`, plus
+  context-windows extended) using the exact same calculation as `/mega-status`.
+- **Model pill in the header.** The active model name now sits beside the tier
+  badge in the `mega-compact` title bar, so you can see at a glance which model
+  is driving the cost.
+- **All repositories inside the Current repo view.** The per-repo registry
+  table (read from `index.sqlite`) now also appears under the Current repo tab,
+  so you don't have to switch to the All-repos tab to see every repo.
+- **Clickable per-repo detail.** Every row in either table (Current-repo or
+  All-repos) is now a clickable link that opens a modal with that repo's model,
+  checkpoints, tokens saved, compressed-original bytes, last-compacted time,
+  and provider.
+
+### Fixed
+
+- **Model/cost was captured but never rendered.** `mega-runtime` was sending
+  `d.model` in the snapshot, but `dashboard-server`'s `renderSnapshot` never
+  read it — the data arrived and was discarded. It is now wired into the header
+  pill and the new card.
+
+---
+
 ## v0.4.18 (2026-07-14)
 
 Multi-repo dashboard reads its registry straight from SQLite (no JSON mirror).

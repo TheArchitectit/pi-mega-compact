@@ -148,6 +148,19 @@ interface Snapshot {
     dedupCollapsed: number;
     storageDedupRate: number;
   };
+  integrity: {
+    regionsRetained: number;
+    compressedOriginalBytes: number;
+    duplicatesCollapsed: number;
+    bytesPermanentlyDeleted: number;
+  };
+  model?: {
+    name: string;
+    provider: string;
+    providerName: string;
+    inputRate: number;
+    outputRate: number;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -171,6 +184,7 @@ function readSnapshot(snapshotPath: string) {
       crew: { activeAgents: 0, currentTurn: 0 },
       repo: { checkpointCount: 0, totalTokenEstimate: 0, originalTokens: 0, tokensSaved: 0, sessionCount: 0, dedupAttempts: 0, dedupCollapsed: 0, storageDedupRate: 0 },
       integrity: { regionsRetained: 0, compressedOriginalBytes: 0, duplicatesCollapsed: 0, bytesPermanentlyDeleted: 0 },
+      model: undefined,
     } as Snapshot;
   }
 }
@@ -268,13 +282,26 @@ function dashboardHtml(tierName: string): string {
   .repo-model { color: #a371f7; }
   .repo-none { color: #484f58; font-style: italic; }
   .updated { font-size: 11px; color: #484f58; margin-top: 16px; text-align: right; }
+  .model-pill { background: #6e40c9; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: .5px; }
+  .card.cost h2 { color: #a371f7; }
+  .cost-usd { font-size: 22px; font-weight: 700; color: #3fb950; }
+  .cost-sub { font-size: 12px; color: #8b949e; margin-top: 4px; }
+  .repo-link { cursor: pointer; }
+  .repo-link:hover td { color: #58a6ff; }
+  .repo-detail { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 50; }
+  .repo-detail.open { display: flex; }
+  .repo-detail-box { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 24px; width: 560px; max-width: 92vw; max-height: 86vh; overflow-y: auto; }
+  .repo-detail-box h2 { font-size: 14px; color: #f0f6fc; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+  .repo-close { cursor: pointer; color: #8b949e; font-size: 20px; line-height: 1; border: none; background: none; padding: 0 4px; }
+  .repo-close:hover { color: #f0f6fc; }
+  .repo-path { font-size: 11px; color: #484f58; word-break: break-all; margin: -8px 0 12px; }
 </style>
 </head>
 <body>
 
 <div class="offline-banner" id="offline-banner">Dashboard data unavailable — waiting for a pi session to write snapshot...</div>
 
-<h1><span>mega-compact</span><span class="tier">${tierName}</span></h1>
+<h1><span>mega-compact</span><span class="tier">${tierName}</span><span class="model-pill" id="hdr-model">—</span></h1>
 
 <nav class="tabs">
   <button class="tab active" data-tab="current">Current repo</button>
@@ -343,6 +370,17 @@ function dashboardHtml(tierName: string): string {
       <span class="label">Anchor</span><span class="value" id="cf-anchor">—</span>
     </div>
   </div>
+  <div class="card cost">
+    <h2>💰 Model &amp; Cost Savings</h2>
+    <div class="cost-usd" id="cost-usd">≈ $0.00 saved</div>
+    <div class="cost-sub" id="cost-windows">0 context-windows extended</div>
+    <div class="stat-grid" style="margin-top:12px">
+      <span class="label" title="The model pi is currently using — its pricing drives the cost figure.">Model</span><span class="value" id="md-name">—</span>
+      <span class="label" title="The provider serving the model.">Provider</span><span class="value" id="md-provider">—</span>
+      <span class="label" title="USD per input token, from the model's pricing.">Input Rate</span><span class="value" id="md-input">—</span>
+      <span class="label" title="USD per output token, from the model's pricing.">Output Rate</span><span class="value" id="md-output">—</span>
+    </div>
+  </div>
   <div class="card">
     <h2>Crew / Agents</h2>
     <div class="stat-grid">
@@ -370,8 +408,39 @@ function dashboardHtml(tierName: string): string {
   <div class="events-wrap" id="events"><div class="empty">connecting…</div></div>
 </div>
 
+<h2 style="margin-top:24px;font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px">All Repositories</h2>
+<table class="repos">
+  <thead>
+    <tr>
+      <th>Repo</th><th>Model</th>
+      <th style="text-align:right">Checkpoints</th>
+      <th style="text-align:right">Tokens Saved</th>
+      <th style="text-align:right">Retained</th>
+      <th style="text-align:right">Last Compacted</th>
+    </tr>
+  </thead>
+  <tbody id="cur-rows"><tr><td colspan="6" class="repo-none">loading…</td></tr></tbody>
+</table>
+<div class="updated" id="cur-updated"></div>
+
 <div class="updated" id="updated"></div>
 </div><!-- /panel-current -->
+
+<!-- Per-repo detail modal -->
+<div class="repo-detail" id="repo-detail">
+  <div class="repo-detail-box">
+    <h2><span id="rd-name">Repo</span><button class="repo-close" id="rd-close" title="Close">×</button></h2>
+    <div class="repo-path" id="rd-path"></div>
+    <div class="stat-grid">
+      <span class="label">Model</span><span class="value" id="rd-model">—</span>
+      <span class="label">Checkpoints</span><span class="value" id="rd-cp">0</span>
+      <span class="label">Tokens Saved</span><span class="value" id="rd-saved">0</span>
+      <span class="label">Compressed-Original</span><span class="value" id="rd-bytes">0 B</span>
+      <span class="label">Last Compacted</span><span class="value" id="rd-when">—</span>
+      <span class="label">Provider</span><span class="value" id="rd-provider">—</span>
+    </div>
+  </div>
+</div>
 
 <!-- All repos (machine-wide registry from index.sqlite) -->
 <div class="tab-panel" id="panel-all">
@@ -479,6 +548,24 @@ function dashboardHtml(tierName: string): string {
     document.getElementById('cf-auto').textContent = d.config.auto ? 'enabled' : 'disabled';
     document.getElementById('cf-anchor').textContent = d.config.anchorUserMessages;
 
+    // --- Active model + cost savings (same calc as /mega-status) ---------------
+    var model = d.model;
+    document.getElementById('hdr-model').textContent = model && model.name ? model.name : '—';
+    document.getElementById('md-name').textContent = model && model.name ? model.name : '—';
+    document.getElementById('md-provider').textContent = model && model.providerName ? model.providerName : (model && model.provider ? model.provider : '—');
+    document.getElementById('md-input').textContent = model && model.inputRate ? '$' + (model.inputRate).toFixed(6) : '—';
+    document.getElementById('md-output').textContent = model && model.outputRate ? '$' + (model.outputRate).toFixed(6) : '—';
+    if (model && model.inputRate && repo.tokensSaved > 0) {
+      var usd = (repo.tokensSaved * model.inputRate);
+      var win = d.context.contextWindow || 0;
+      var windows = win > 0 ? (repo.tokensSaved / win).toFixed(1) : '0';
+      document.getElementById('cost-usd').textContent = '≈ $' + usd.toFixed(4) + ' saved';
+      document.getElementById('cost-windows').textContent = windows + ' context-windows extended';
+    } else {
+      document.getElementById('cost-usd').textContent = '≈ $0.00 saved';
+      document.getElementById('cost-windows').textContent = '0 context-windows extended';
+    }
+
     document.getElementById('updated').textContent = 'Updated ' + new Date(d.updatedAt).toLocaleTimeString();
   }
 
@@ -542,16 +629,16 @@ function dashboardHtml(tierName: string): string {
     document.getElementById('sm-saved').textContent = (s.totalTokensSaved || 0).toLocaleString();
     document.getElementById('sm-bytes').textContent = fmtBytesTop(s.totalCompressedOriginalBytes);
 
-    var body = document.getElementById('all-rows');
-    if (!repos.length) {
-      body.innerHTML = '<tr><td colspan="6" class="repo-none">No repositories registered yet.</td></tr>';
-    } else {
-      body.innerHTML = repos.map(function(r) {
+    // Shared clickable-row renderer for both the in-current table and the
+    // All-repos tab — each row opens the per-repo detail modal.
+    function rowsHtml() {
+      if (!repos.length) return '<tr><td colspan="6" class="repo-none">No repositories registered yet.</td></tr>';
+      return repos.map(function(r) {
         var model = r.modelName
           ? '<span class="repo-model">' + sanitize(r.modelName) + '</span>'
           : '<span class="repo-none">—</span>';
         var when = r.lastCompactedAt ? new Date(r.lastCompactedAt).toLocaleString() : '—';
-        return '<tr>' +
+        return '<tr class="repo-link" data-repo="' + sanitize(r.repoRoot) + '">' +
           '<td title="' + sanitize(r.repoRoot) + '">' + sanitize(r.displayName || r.repoRoot) + '</td>' +
           '<td>' + model + '</td>' +
           '<td class="num">' + (r.checkpointCount || 0).toLocaleString() + '</td>' +
@@ -561,12 +648,48 @@ function dashboardHtml(tierName: string): string {
         '</tr>';
       }).join('');
     }
+    document.getElementById('cur-rows').innerHTML = rowsHtml();
+    document.getElementById('all-rows').innerHTML = rowsHtml();
+    bindRepoRows();
+
     var stamp = d.updatedAt ? 'Updated ' + new Date(d.updatedAt).toLocaleTimeString() : '';
+    document.getElementById('cur-updated').textContent = stamp;
     document.getElementById('all-updated').textContent = stamp;
     document.getElementById('sm-updated').textContent = stamp;
   }
+
+  // Per-repo detail modal ---------------------------------------------------
+  var detailEl = document.getElementById('repo-detail');
+  var indexCache = { repos: [] };
+  function openRepoDetail(root) {
+    var r = null;
+    for (var i = 0; i < indexCache.repos.length; i++) {
+      if (indexCache.repos[i].repoRoot === root) { r = indexCache.repos[i]; break; }
+    }
+    if (!r) return;
+    document.getElementById('rd-name').textContent = r.displayName || r.repoRoot;
+    document.getElementById('rd-path').textContent = r.repoRoot;
+    document.getElementById('rd-model').textContent = r.modelName || '—';
+    document.getElementById('rd-provider').textContent = r.providerName || (r.provider || '—');
+    document.getElementById('rd-cp').textContent = (r.checkpointCount || 0).toLocaleString();
+    document.getElementById('rd-saved').textContent = (r.tokensSaved || 0).toLocaleString();
+    document.getElementById('rd-bytes').textContent = fmtBytesTop(r.compressedOriginalBytes);
+    document.getElementById('rd-when').textContent = r.lastCompactedAt ? new Date(r.lastCompactedAt).toLocaleString() : '—';
+    detailEl.classList.add('open');
+  }
+  document.getElementById('rd-close').addEventListener('click', function() { detailEl.classList.remove('open'); });
+  detailEl.addEventListener('click', function(e) { if (e.target === detailEl) detailEl.classList.remove('open'); });
+  function bindRepoRows() {
+    var rows = document.querySelectorAll('.repo-link');
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].addEventListener('click', function() { openRepoDetail(this.getAttribute('data-repo')); });
+    }
+  }
   function pollIndex() {
-    fetch('/api/index').then(function(r) { return r.json(); }).then(renderIndex).catch(function() {});
+    fetch('/api/index').then(function(r) { return r.json(); }).then(function(d) {
+      indexCache = d && d.repos ? d : indexCache;
+      renderIndex(d);
+    }).catch(function() {});
   }
   pollIndex();
   setInterval(pollIndex, 5000);
