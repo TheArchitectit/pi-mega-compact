@@ -1,5 +1,21 @@
 # Release Notes — pi-mega-compact
 
+## v0.4.17 (2026-07-14)
+
+Release-process sync: published from git `HEAD` so the npm package matches
+the last pushed commit. **No code change** — this version simply guarantees
+`npm` == `origin/master` (the model-exposure + real `$` cost feature already
+shipped in `0.4.16`'s `dist/extensions/mega-events.js`). Includes the v0.4.16
+release notes in the repo.
+
+### Install / Upgrade
+
+```bash
+pi update --extensions
+```
+
+---
+
 ## v0.4.16 (2026-07-14)
 
 Real model/provider exposure + an honest `$` cost figure in `/mega-status`.
