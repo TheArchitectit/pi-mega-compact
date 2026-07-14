@@ -51,6 +51,9 @@ export interface CompactResult {
   summary: string;
   regionHash: string;
   tokenEstimate: number;
+  /** Files touched by the compacted region (surfaced to the UI for a live
+   *  "compressing <file>" activity line). May be empty if not captured. */
+  filesModified: string[];
   /** Token count of the original dropped region (before compaction). The honest
    *  "tokens saved" base = originalTokenEstimate − tokenEstimate (stored), or the
    *  full originalTokenEstimate when the region deduped onto an existing
@@ -92,6 +95,7 @@ export function compactSession(input: CompactInput, store: VectorStore = getDefa
       summary: "",
       regionHash: "",
       tokenEstimate: 0,
+      filesModified: [],
       originalTokenEstimate: 0,
       compactedFrom,
     };
@@ -163,6 +167,7 @@ export function compactSession(input: CompactInput, store: VectorStore = getDefa
     summary,
     regionHash,
     tokenEstimate: storedTokens,
+    filesModified,
     originalTokenEstimate,
     compactedFrom,
   };

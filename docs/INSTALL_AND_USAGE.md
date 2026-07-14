@@ -1,4 +1,4 @@
-# Install & Usage — pi-mega-compact (v0.4.6)
+# Install & Usage — pi-mega-compact (v0.4.7)
 
 A complete, copy-paste guide to installing pi-mega-compact and using **every**
 feature: the pi extension (auto-compact + recall), the OpenClaw plugin adapter,
@@ -170,9 +170,15 @@ Above the pi editor:
 
 ```
  ⚡ medium │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
-   ◐ armed │ dedup: 92% │ used: 39k sess / 980k repo │ saved: 45k sess / 1.2M repo
+   ● ready │ dedup: 92% │ used: 39k sess / 980k repo │ saved: 45k sess / 1.2M repo
+   🗜 compacted chkpt_003 · engine.ts, vectorStore.ts
 ```
 
+> Colorized for readability (ANSI 256-color). A third **teal** line shows live
+> activity — what's being compressed/deduped right now (file names from the
+> compacted region), bright while fresh and dimmed to the last-seen action
+> afterward.
+>
 > **`used`** = stored checkpoint tokens; **`saved`** = tokens removed from context
 > (`original − stored`). Each shows **`sess`** (this session) vs **`repo`** (the
 > cumulative total across all sessions in this repo's store). The same split is

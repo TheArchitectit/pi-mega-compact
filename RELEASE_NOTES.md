@@ -1,5 +1,30 @@
 # Release Notes — pi-mega-compact
 
+## v0.4.7 (2026-07-14)
+
+Colorized toolbar + live "now processing" activity line.
+
+### Changed
+
+- **Toolbar is now colorized** (ANSI 256-color): amber tier, bold % usage,
+  green saved / cyan used / blue repo totals, magenta dedup rate, green/amber/idle
+  trigger state. The pi TUI's `Text` widget preserves ANSI codes, so the colors
+  render in the terminal above the editor.
+- **Live activity line (teal).** A third widget line shows what's happening right
+  now during a compaction — `🗜 compacted chkpt_003 · engine.ts, vectorStore.ts`
+  (file names from the compacted region) or `♻ deduped <file>`. It's bright teal
+  while fresh (≤4s) and dims to the last-seen action afterward, so the widget is
+  never blank. Cleared on session reset. `compactSession` now returns
+  `filesModified` to feed this.
+
+### Install / Upgrade
+
+```bash
+pi update --extensions
+```
+
+---
+
 ## v0.4.6 (2026-07-14)
 
 Package now ships the compiled `dist/` so the OpenClaw adapter works from a

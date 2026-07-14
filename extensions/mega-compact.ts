@@ -325,7 +325,7 @@ export default function (pi: ExtensionAPI) {
       const tokStr = lastCtxTokens != null ? `${Math.round(lastCtxTokens / 1000)}k` : "?";
       const maxStr = lastCtxWindow > 0 ? `${Math.round(lastCtxWindow / 1000)}k` : "?";
       const pctStr = lastCtxPercent != null ? `${Math.round(lastCtxPercent * 10) / 10}%` : "?%";
-      const triggerLabel = ready ? "● ready" : armed ? "◐ armed" : "○ idle";
+      const triggerLabel = ready ? `${C.green}● ready${C.reset}` : armed ? `${C.amber}◐ armed${C.reset}` : `${C.gray}○ idle${C.reset}`;
       // Storage dedup rate is cumulative (store-wide, per-repo) and survives
       // session resets. Always show a number: 0% before any compaction, a
       // decimal for sub-10% rates so small-but-real dedup isn't rounded away.
@@ -340,18 +340,21 @@ export default function (pi: ExtensionAPI) {
       // vs st.totalTokenEstimate). Use "k" only at/above 1000 so small-but-real
       // numbers stay visible (previously Math.round(x/1000) zeroed <1000).
       const fmt = (x: number) => (x >= 1000 ? `${(x / 1000).toFixed(1)}k` : `${x}`);
-      const savedStr = `${fmt(rt.tokensSaved)} sess / ${fmt(repo.tokensSaved)} repo`;
-      const usedStr = `${fmt(st.totalTokenEstimate)} sess / ${fmt(repo.totalTokenEstimate)} repo`;
+      const savedStr = `${C.green}${fmt(rt.tokensSaved)} sess${C.reset} / ${C.blue}${fmt(repo.tokensSaved)} repo${C.reset}`;
+      const usedStr = `${C.cyan}${fmt(st.totalTokenEstimate)} sess${C.reset} / ${C.blue}${fmt(repo.totalTokenEstimate)} repo${C.reset}`;
       const agentStr = activeAgents > 0 ? ` │ 🤖 ${activeAgents} agent${activeAgents === 1 ? "" : "s"}` : "";
       const turnStr = currentTurn > 0 ? ` │ turn ${currentTurn}` : "";
-      ctx.ui.setWidget(
-        WIDGET_KEY,
-        [
-          ` ⚡ ${config.tier} │ ${tokStr}/${maxStr} tokens (${pctStr}) │ ${st.checkpointCount} chkpt${st.checkpointCount === 1 ? "" : "s"}${agentStr}${turnStr}`,
-          `   ${triggerLabel} │ dedup: ${dedupStr} │ used: ${usedStr} │ saved: ${savedStr}`,
-        ],
-        { placement: "aboveEditor" },
-      );
+      const lines = [
+        ` ${C.amber}⚡ ${config.tier}${C.reset} │ ${tokStr}/${maxStr} tokens (${C.bold}${pctStr}${C.reset}) │ ${st.checkpointCount} chkpt${st.checkpointCount === 1 ? "" : "s"}${agentStr}${turnStr}`,
+        `   ${triggerLabel} │ ${C.magenta}dedup: ${dedupStr}${C.reset} │ ${C.gray}used:${C.reset} ${usedStr} │ ${C.gray}saved:${C.reset} ${savedStr}`,
+      ];
+      // Live "now processing" line — teal while fresh (≤4s), then the last-seen
+      // action keeps the widget lively. Cleared on session reset.
+      if (currentActivity) {
+        const fresh = Date.now() - lastActivityAt < 4000;
+        lines.push(`   ${fresh ? C.teal : C.dim}${currentActivity}${C.reset}`);
+      }
+      ctx.ui.setWidget(WIDGET_KEY, lines, { placement: "aboveEditor" });
     }
   }
 
@@ -374,6 +377,26 @@ export default function (pi: ExtensionAPI) {
   // before_agent_start should prepend to the system prompt. Unset after use.
   let pendingRecallBlock: string | undefined;
   let statusKey: string | undefined; // current status text for dashboard
+  // Live "what it's doing right now" line for the toolbar. Set on each
+  // compaction; shown in teal while recent, then kept as the last-seen action so
+  // the widget is never blank. Cleared on session reset.
+  let currentActivity: string | undefined;
+  let lastActivityAt = 0;
+  // ANSI palette for the toolbar. The pi TUI's Text component preserves ANSI
+  // escape codes (see wrapTextWithAnsi), so raw escapes render as colors. No
+  // chalk dependency needed — these are just strings.
+  const C = {
+    reset: "\x1b[0m",
+    dim: "\x1b[2m",
+    bold: "\x1b[1m",
+    amber: "\x1b[38;5;214m", // tier / ready
+    green: "\x1b[38;5;120m", // saved
+    cyan: "\x1b[38;5;51m", // used / live activity
+    teal: "\x1b[38;5;37m", // processing (compress/dedup)
+    magenta: "\x1b[38;5;201m", // dedup rate
+    blue: "\x1b[38;5;75m", // repo totals
+    gray: "\x1b[38;5;245m", // labels
+  };
 
   function setStatus(ctx: ExtensionContext, text: string | undefined) {
     statusKey = text;
@@ -396,6 +419,8 @@ export default function (pi: ExtensionAPI) {
     statusKey = undefined;
     activeAgents = 0;
     currentTurn = 0;
+    currentActivity = undefined;
+    lastActivityAt = 0;
   }
 
   /** Run the full compaction pipeline and persist a checkpoint. Returns the result. */
@@ -442,6 +467,17 @@ export default function (pi: ExtensionAPI) {
       : Math.max(0, result.originalTokenEstimate - result.tokenEstimate);
     rt.tokensSaved += saved;
     if (result.deduped) rt.dedupSkips++;
+
+    // Live toolbar "now processing" line: what file/region just got compacted or
+    // deduped. Reset to the last-seen action after a few seconds (see snapshot).
+    const files = result.filesModified ?? [];
+    const fileLabel = files.length
+      ? files.map((f) => f.split("/").pop() ?? f).slice(0, 2).join(", ")
+      : result.regionHash.slice(0, 8);
+    currentActivity = result.deduped
+      ? `♻ deduped ${fileLabel}`
+      : `🗜 compacted ${result.checkpointId} · ${fileLabel}`;
+    lastActivityAt = Date.now();
 
     // Record session activity + a daily-log entry in the per-repo SQLite store
     // (foundation for resume-sessions / daily-log features). Best-effort — never
