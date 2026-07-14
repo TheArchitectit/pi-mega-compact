@@ -31,6 +31,7 @@ import { MegaRuntime } from "./mega-runtime.js";
 import { registerEventHandlers } from "./mega-events.js";
 import { registerCommands } from "./mega-commands.js";
 import { registerDashboardCommands } from "./mega-dashboard-cmds.js";
+import { registerConflictCommands } from "./mega-conflict-cmds.js";
 
 export default function (pi: ExtensionAPI) {
   const config = loadConfig();
@@ -38,4 +39,5 @@ export default function (pi: ExtensionAPI) {
   registerEventHandlers(pi, runtime, config);
   registerCommands(pi, runtime, config);
   registerDashboardCommands(pi, runtime);
+  registerConflictCommands(pi, runtime);
 }

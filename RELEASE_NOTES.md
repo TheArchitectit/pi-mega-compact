@@ -1,5 +1,31 @@
 # Release Notes — pi-mega-compact
 
+## v0.4.21 (2026-07-14)
+
+feat: extension conflict detector + durable save-to-memory store; consolidate
+toolbar's deduped lines into a single rotating line.
+
+### Added
+
+- **Extension conflict scanner** (`conflict-scan.ts` + `/mega-compat-check`).
+  Detects other installed extensions overlapping pi-mega-compact's two owned
+  responsibilities — conversation auto-compaction and durable memory — and
+  WARNs. pi has no pre-load / veto hook, so this is detect-and-warn only.
+  A load-time check surfaces a one-line warning when a high-severity overlap
+  exists.
+- **Durable save-to-memory store** (`/mega-memory`). A `memories` table in the
+  SQLite store (scoped by repo so memory travels with the clone), with
+  `save`/`list`/`search <q>`/`recall <id>` subcommands and `#tag` parsing. This
+  takes over the memory role from standalone memory extensions.
+- **Toolbar deduped line consolidation.** The recent deduped/compacted events
+  that previously spanned up to 6 stacked lines now render as a single line
+  that rotates through recent files in real time (most-recent first, with a
+  `+N more` count and an inline `why:` reason).
+
+### Notes
+
+- New commands wired into the entry point (`registerConflictCommands`).
+
 ## v0.4.20 (2026-07-14)
 
 Fix: stale dashboard server after upgrade + polluted multi-repo index.

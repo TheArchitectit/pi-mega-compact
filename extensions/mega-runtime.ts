@@ -90,10 +90,7 @@ export class MegaRuntime {
   // on model_select + session_start; persisted to SQL so cost + the dashboard
   // can read it without a live ctx.
   currentModel: ModelSnapshot | undefined;
-  // Live "what it's doing right now" line for the toolbar. Set on each
-  // compaction; shown in teal while recent, then kept as the last-seen action so
-  // the widget is never blank. Cleared on session reset.
-  currentActivity: string | undefined;
+  // Live "what it's doing right now" timestamp, used for the fresh-window.
   lastActivityAt = 0;
   // Live per-tier dedup trace (Phase 1): e.g. "L0 ✓ → L1 ✓ → L2 0.91 → stored".
   // Built from the store's sync onTier callback during a compaction so the user
@@ -269,24 +266,24 @@ export class MegaRuntime {
         const bar = "▓".repeat(filled) + "░".repeat(10 - filled);
         lines.push(`   ${C.green}saved ${fmt(this.rt.tokensSaved)} ${bar}${C.reset} ${pct}% of ${fmt(goal)}`);
       }
-      // Live "now processing" line — teal while fresh (≤4s), then the last-seen
-      // action keeps the widget lively. Cleared on session reset.
+      // Live "now processing" line + why + recent deduped/compacted events,
+      // collapsed to ONE rotating line (fresh only). The ticker ring buffer
+      // (≤5 most-recent events) is cycled one-per-repaint so the line scrolls
+      // through recent files in real time while activity fires. We rotate on a
+      // 250ms step (same cadence as the pulse), using an event counter as the
+      // deterministic phase so consecutive repaints advance the visible entry.
       const fresh = Date.now() - this.lastActivityAt < 4000;
       if (this.tierTrace && fresh) {
         lines.push(`   ${pulse}${this.tierTrace}`);
-      } else if (this.currentActivity) {
-        lines.push(`   ${fresh ? C.teal : C.dim}${this.currentActivity}${C.reset}`);
+      } else if (this.ticker.length > 0) {
+        const step = Math.floor(Date.now() / 250);
+        const idx = this.ticker.length - 1 - (step % this.ticker.length);
+        const head = this.ticker[idx].text;
+        const why = this.lastWhy ? ` ${C.gray}· ${this.lastWhy}${C.reset}` : "";
+        const more = this.ticker.length > 1 ? ` ${C.dim}(+${this.ticker.length - 1} more)${C.reset}` : "";
+        lines.push(`   ${fresh ? C.teal : C.dim}${head}${why}${more}${C.reset}`);
       } else if (this.pulsing) {
         lines.push(`   ${pulse}${C.teal}compacting…${C.reset}`);
-      }
-      // Phase 3 — explain-why line (fresh only).
-      if (this.lastWhy && fresh) lines.push(`   ${C.gray}${this.lastWhy}${C.reset}`);
-      // Phase 3 — recall/activity ticker (most-recent first), fresh only.
-      if (fresh) {
-        for (let i = this.ticker.length - 1; i >= 0; i--) {
-          if (lines.length >= 9) break; // leave room for the hint line (MAX 10)
-          lines.push(`   ${i === this.ticker.length - 1 ? "" : C.dim}${this.ticker[i].text}${C.reset}`);
-        }
       }
       // Plain-language hint so first-time users understand the widget. Always
       // last, dimmed. "/mega-help explains these terms."
@@ -318,7 +315,6 @@ export class MegaRuntime {
     this.statusKey = undefined;
     this.activeAgents = 0;
     this.currentTurn = 0;
-    this.currentActivity = undefined;
     this.lastActivityAt = 0;
     this.tierTrace = undefined;
     this.ticker.length = 0;

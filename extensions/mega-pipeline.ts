@@ -78,15 +78,13 @@ export function runCompact(
   // denominator (we don't want it pinned at 100% once we pass an old target).
   if (runtime.rt.tokensSaved > runtime.savedGoal) runtime.savedGoal = Math.ceil((runtime.rt.tokensSaved * 1.25) / 10_000) * 10_000;
 
-  // Live toolbar "now processing" line: what file/region just got compacted or
-  // deduped. Reset to the last-seen action after a few seconds (see snapshot).
+  // Live toolbar activity: what file/region just got compacted or deduped.
+  // Rendered via the rotating ticker line (see snapshot); the ring buffer is
+  // cycled one-per-repaint so the single line scrolls through recent files.
   const files = result.filesModified ?? [];
   const fileLabel = files.length
     ? files.map((f) => f.split("/").pop() ?? f).slice(0, 2).join(", ")
     : result.regionHash.slice(0, 8);
-  runtime.currentActivity = result.deduped
-    ? `♻ deduped ${fileLabel}`
-    : `🗜 compacted ${result.checkpointId} · ${fileLabel}`;
   runtime.lastActivityAt = Date.now();
   // Explain-why line: surfaced while fresh. Pulls the dedup reason (which for
   // L2 includes the cosine sim) so the user sees WHY a region was kept/dropped.

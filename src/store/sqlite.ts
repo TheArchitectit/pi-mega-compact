@@ -415,6 +415,20 @@ function initSchema(db: Database.Database): void {
       ts            INTEGER
     );
 
+    -- Durable "save to memory" store (taken over from memory extensions).
+    -- One row per saved memory; scoped by repo so memory travels with the
+    -- clone. All params are parameterized (PREVENT-002).
+    CREATE TABLE IF NOT EXISTS memories (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      repo              TEXT,
+      kind              TEXT DEFAULT 'note',   -- note | fact | decision | preference
+      content           TEXT NOT NULL,
+      tags              TEXT,                   -- JSON array of strings
+      created_at        INTEGER,
+      last_recalled_at  INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_memories_repo ON memories(repo);
+
     -- FTS5 trigram virtual table (Sprint 9+ pg_trgm-equivalent verification).
     CREATE VIRTUAL TABLE IF NOT EXISTS context_chunks_trgm USING fts5(
       id UNINDEXED,
@@ -580,6 +594,76 @@ export function addLesson(
   db.prepare(
     `INSERT INTO lessons(session_id, repo, lesson, ts) VALUES(?, ?, ?, ?)`,
   ).run(normalizeSessionId(sessionId), repo ?? null, lesson, now);
+}
+
+// --- Durable memory (save-to-memory takeover) ---------------------------------
+// One SQLite store for user-saved memories, scoped by repo. Mirrors the
+// lessons/sessions pattern: all state lives in SQLite from day one.
+
+export interface MemoryRecord {
+  id: number;
+  repo: string | null;
+  kind: string;
+  content: string;
+  tags: string[];
+  createdAt: number;
+  lastRecalledAt: number | null;
+}
+
+/** Save a memory to the current repo's store. Returns the new row id. */
+export function addMemory(
+  memory: { kind?: string; content: string; tags?: string[] },
+  repo: string | null,
+  stateDir: string = getStateDir(),
+): number {
+  const db = openStore(stateDir);
+  const now = Math.floor(Date.now() / 1000);
+  const res = db
+    .prepare(
+      `INSERT INTO memories(repo, kind, content, tags, created_at, last_recalled_at)
+       VALUES(?, ?, ?, ?, ?, NULL)`,
+    )
+    .run(repo ?? null, memory.kind ?? "note", memory.content, JSON.stringify(memory.tags ?? []), now);
+  return Number(res.lastInsertRowid);
+}
+
+/** List recent memories for a repo (or all repos when repo is null). */
+export function listMemories(repo: string | null, limit = 50, stateDir: string = getStateDir()): MemoryRecord[] {
+  const db = openStore(stateDir);
+  const rows = repo
+    ? db.prepare("SELECT * FROM memories WHERE repo = ? ORDER BY created_at DESC LIMIT ?").all(repo, limit)
+    : db.prepare("SELECT * FROM memories ORDER BY created_at DESC LIMIT ?").all(limit);
+  return (rows as any[]).map(mapMemoryRow);
+}
+
+/** Substring search across content + tags. */
+export function searchMemories(query: string, repo: string | null = null, limit = 50, stateDir: string = getStateDir()): MemoryRecord[] {
+  const db = openStore(stateDir);
+  const like = `%${query}%`;
+  const rows = repo
+    ? db.prepare("SELECT * FROM memories WHERE repo = ? AND (content LIKE ? OR tags LIKE ?) ORDER BY created_at DESC LIMIT ?").all(repo, like, like, limit)
+    : db.prepare("SELECT * FROM memories WHERE content LIKE ? OR tags LIKE ? ORDER BY created_at DESC LIMIT ?").all(like, like, limit);
+  return (rows as any[]).map(mapMemoryRow);
+}
+
+/** Mark a memory as recalled (updates last_recalled_at). Returns true if found. */
+export function recallMemory(id: number, stateDir: string = getStateDir()): boolean {
+  const db = openStore(stateDir);
+  const now = Math.floor(Date.now() / 1000);
+  const res = db.prepare("UPDATE memories SET last_recalled_at = ? WHERE id = ?").run(now, id);
+  return res.changes > 0;
+}
+
+function mapMemoryRow(row: any): MemoryRecord {
+  return {
+    id: row.id,
+    repo: row.repo ?? null,
+    kind: row.kind ?? "note",
+    content: row.content ?? "",
+    tags: row.tags ? JSON.parse(row.tags) : [],
+    createdAt: row.created_at ?? 0,
+    lastRecalledAt: row.last_recalled_at ?? null,
+  };
 }
 
 /** Map a DB row to the public StoredCheckpoint shape. */
