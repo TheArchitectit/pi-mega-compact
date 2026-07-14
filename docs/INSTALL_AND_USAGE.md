@@ -1,4 +1,4 @@
-# Install & Usage — pi-mega-compact (v0.4.9)
+# Install & Usage — pi-mega-compact (v0.4.11)
 
 A complete, copy-paste guide to installing pi-mega-compact and using **every**
 feature: the pi extension (auto-compact + recall), the OpenClaw plugin adapter,
@@ -113,36 +113,44 @@ pi update --extensions          # refreshes all npm packages in settings.package
 ```
 
 > pi loads the **TypeScript source** (`extensions/mega-compact.ts`) directly from
-> the installed package — `dist/` is not shipped. No separate build step is
-> needed on the user's machine; only the dev `npm run build` for the repo's own
-> tests/OpenClaw adapter.
+> the installed package. The package **also ships the compiled `dist/`** (since
+> v0.4.6 — the dashboard server runs from `dist/extensions/dashboard-server.js`,
+> which Node can execute standalone). No separate build step is needed on the
+> user's machine; the dev `npm run build` is only for the repo's own tests.
 
 ---
 
 ## 2. Use it with pi (auto-compact + recall)
 
-### Register the extension
+### No manual registration needed
 
-Add to your pi config (`~/.pi/agent/config.json`):
+If `npm:pi-mega-compact` is in your pi `settings.packages` (added by
+`pi install npm:pi-mega-compact`, or by `pi update --extensions` once present),
+you're done — pi reads the package's own `pi.extensions` manifest entry and loads
+`extensions/mega-compact.ts` directly. There is **no** `pi.extensions` key to edit
+and no symlink to create for normal use.
 
 ```jsonc
+// ~/.pi/agent/settings.json — the only thing that matters
 {
-  "pi": {
-    "extensions": ["~/.pi/agent/extensions/pi-mega-compact/extensions/mega-compact.ts"]
-  }
+  "packages": [
+    "npm:pi-mega-compact"
+  ]
 }
 ```
 
-Or use the bundled helper (needs `jq`):
-
 ```bash
-./install.sh            # copy into ~/.pi/agent/extensions/pi-mega-compact
-./install.sh -s         # symlink instead (dev mode)
+pi install npm:pi-mega-compact   # first time: adds to settings.packages + installs
+pi update --extensions           # thereafter: pulls the latest published version
 ```
+
+> The dev-only `./install.sh` helper (`copy` / `-s` symlink) is for hacking on a
+> checkout — it bypasses the package manager and is **not** updated by
+> `pi update --extensions`. Convert to the npm package before shipping.
 
 ### What happens automatically
 
-Once registered, pi-mega-compact runs itself:
+Once installed, pi-mega-compact runs itself:
 
 1. Past the context threshold (`MEGACOMPACT_FAST_GATE_PCT`, default 70%) the
    auto-trigger fires the Trident pipeline and persists a checkpoint
@@ -158,7 +166,7 @@ Once registered, pi-mega-compact runs itself:
 |---|---|
 | `/megacompact [summary...]` | Manual compact. A summary arg is used verbatim; otherwise the COLLAPSE heuristics build one. |
 | `/megacompact off` | Disable auto-compaction for this session. |
-| `/megacompact-status` | Config + current context usage + store stats (count, dedup rate, tokens saved). |
+| `/mega-status` | Config + current context usage + store stats (count, dedup rate, tokens saved). |
 | `/megacompact-recall [query]` | Semantic search the local store, dedupe against the current window, inline top-K. No query → your latest message. |
 | `/mega-dashboard` | Start the localhost dashboard + open in browser. |
 | `/mega-dashboard-status` | Report dashboard server status. |
@@ -373,6 +381,6 @@ rm -rf ~/.pi/agent/extensions/pi-mega-compact
 |---|---|
 | `ERR_DLOPEN_FAILED … NODE_MODULE_VERSION` | `npm rebuild better-sqlite3` (Node ABI mismatch). |
 | OpenClaw doesn't load the plugin | Confirm `npm run build` ran (needs `dist/extensions/openclaw-mega-compact.js`), `mega-compact` is in `plugins.allow`, and `entries.mega-compact.enabled=true`. |
-| No auto-inline on resume | Check `/megacompact-status` shows checkpoints; recall fires when persisted checkpoints + a usable query exist. |
+| No auto-inline on resume | Check `/mega-status` shows checkpoints; recall fires when persisted checkpoints + a usable query exist. |
 | Wrong collapse (FP) | Flip the suspect tier `MARK_ONLY_*=true`; see `docs/DEDUP_RUNBOOK.md`. |
-| Extension not loading | `/megacompact-status` should report store stats. For npm installs, confirm `pi-mega-compact` is in `settings.packages` (`pi list`) and the symlinked `extensions/pi-mega-compact` dev entry was removed (it overrides/duplicates the package). |
+| Extension not loading | `/mega-status` should report store stats. For npm installs, confirm `pi-mega-compact` is in `settings.packages` (`pi list`) and the symlinked `extensions/pi-mega-compact` dev entry was removed (it overrides/duplicates the package). |

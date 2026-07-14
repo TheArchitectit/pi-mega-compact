@@ -117,44 +117,45 @@ OpenAI-style contract and the `MEGACOMPACT_EMBEDDING_KEY` / `MEGACOMPACT_EMBEDDI
 
 ### Install from npm (recommended)
 
-```bash
-npm install pi-mega-compact
-```
+pi discovers extensions through its `settings.packages` array (the `npm:` prefix
+tells pi to install/update from the npm registry). No manual config registration
+is needed — the package's own `pi.extensions` manifest entry points pi at the
+right file.
 
-This places the package in `node_modules` and exposes the extension entry at
-`node_modules/pi-mega-compact/extensions/mega-compact.ts`. Then point pi at it
-(see "Register with pi" below).
-
-### Register with pi
-
-Add the extension to your pi config's `pi.extensions` list, pointing at the
-installed entry (npm path or a symlink into pi's extensions dir — either works):
+1. Make sure the package is listed in your pi config's `packages`:
 
 ```jsonc
+// ~/.pi/agent/settings.json
 {
-  "pi": {
-    "extensions": ["pi-mega-compact/extensions/mega-compact.ts"]
-  }
+  "packages": [
+    "npm:pi-mega-compact"
+  ]
 }
 ```
 
-Or symlink the installed package into pi's extensions dir (the simplest path if
-you run pi from the same machine):
+2. Install / update it:
 
 ```bash
-ln -s "$(npm root)/pi-mega-compact" ~/.pi/agent/extensions/pi-mega-compact
+pi update --extensions
 ```
 
-> **From a git checkout (development).** To hack on the extension, clone instead
-> and build locally:
+That's it. `pi update --extensions` installs every `npm:` entry in `packages`
+and pulls the latest published version — including on other devices that share
+this config. The package ships both the source (which pi loads directly) and the
+compiled `dist/`, so nothing else needs building.
+
+> **From a git checkout (development only).** To hack on the extension, clone and
+> build locally, then symlink it into pi's extensions dir — but this bypasses the
+> package manager, so it is NOT updated by `pi update --extensions`. Convert to the
+> npm package (above) before shipping. The bundled `./install.sh` helper does the
+> symlink + config edit (needs `jq`).
+>
 > ```bash
 > git clone https://github.com/TheArchitectit/pi-mega-compact.git \
 >   ~/.pi/agent/extensions/pi-mega-compact
 > cd ~/.pi/agent/extensions/pi-mega-compact
 > npm install && npm run build
 > ```
-> The bundled `./install.sh` helper (`copy`) / `./install.sh -s` (`symlink`) does
-> the same and also registers the path in pi's config (needs `jq`).
 
 ### Verify
 
@@ -166,16 +167,16 @@ npm run lint      # tsc --noEmit + guardrails scan clean
 ### Uninstall
 
 ```bash
+pi uninstall npm:pi-mega-compact   # removes from settings.packages + the npm tree
+# or, to keep the config entry but drop the package:
 npm uninstall pi-mega-compact
 ```
 
-If you symlinked it into pi's extensions dir, also remove that link:
+If you symlinked it into pi's extensions dir (dev only), also remove that link:
 
 ```bash
 rm -f ~/.pi/agent/extensions/pi-mega-compact
 ```
-
-Then remove the path from pi's `pi.extensions` array.
 
 ---
 
