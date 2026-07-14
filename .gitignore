@@ -20,3 +20,6 @@ sqlite.db-wal
 guardrails-template/
 sess_*
 sqlite.db
+
+# Local runtime audit/state dir from pi-crew / mega-compact
+.crew/
