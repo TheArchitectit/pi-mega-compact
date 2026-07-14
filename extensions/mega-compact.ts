@@ -790,26 +790,36 @@ export default function (pi: ExtensionAPI) {
 
   const portFile = join(currentStateDir, "port.pid");
   const runnerFile = join(currentStateDir, "_dashboard-runner.mjs");
+  const launchLog = join(currentStateDir, "_dashboard-launch.log");
   // Whether the runner must be spawned with --experimental-strip-types (true only
   // when we fall back to the .ts source outside node_modules; false when using
   // the shipped compiled dist/extensions/dashboard-server.js).
   let dashboardNeedsStrip = false;
 
-  /** Try to reach a running dashboard server. Returns { port, url } or null. */
-  async function isServerRunning(): Promise<{ port: number; url: string } | null> {
-    if (!existsSync(portFile)) return null;
-    try {
-      const info = JSON.parse(readFileSync(portFile, "utf-8"));
-      if (!info?.port) return null;
-      const url = `http://localhost:${info.port}`; // guardrails-allow PREVENT-PI-004: localhost URL of the dashboard server this extension spawned
-      // Quick liveness probe
-      const res = await fetch(`${url}/api/snapshot`, { signal: AbortSignal.timeout(1500) }); // guardrails-allow PREVENT-PI-004: localhost probe to the dashboard server this extension spawned
-      if (res.ok) return { port: info.port, url };
-    } catch {
-      // stale or unreachable — clean up
-      try { unlinkSync(portFile); } catch { /* ignore */ }
+  // The dashboard server binds 9320–9329 (TARGET_PORT..TARGET_PORT+PORT_RANGE-1
+  // in dashboard-server.js). Probe each for a live /api/snapshot so we can detect
+  // readiness even when port.pid landed in a different state dir than we poll.
+  async function findLivePort(): Promise<number | null> {
+    for (let port = 9320; port <= 9329; port++) {
+      try {
+        const res = await fetch(`http://localhost:${port}/api/snapshot`, { signal: AbortSignal.timeout(800) }); // guardrails-allow PREVENT-PI-004: localhost liveness probe of the dashboard server this extension spawned
+        if (res.ok) return port;
+      } catch { /* not on this port — try next */ }
     }
     return null;
+  }
+
+  /** Try to reach a running dashboard server. Returns { port, url } or null. */
+  async function isServerRunning(): Promise<{ port: number; url: string } | null> {
+    const port = await findLivePort();
+    if (!port) {
+      // Stale marker with no live server behind it — clean up.
+      if (existsSync(portFile)) {
+        try { unlinkSync(portFile); } catch { /* ignore */ }
+      }
+      return null;
+    }
+    return { port, url: `http://localhost:${port}` }; // guardrails-allow PREVENT-PI-004: localhost URL of the dashboard server this extension spawned
   }
 
   /**
@@ -850,11 +860,16 @@ export default function (pi: ExtensionAPI) {
     if (!resolved) return false;
     dashboardNeedsStrip = resolved.needsStripTypes;
     const script = [
-      `import { launchDashboardServer } from ${JSON.stringify(resolved.entry)};`,
-      `launchDashboardServer(${JSON.stringify(currentStateDir)}).catch(err => {`,
-      `  console.error("[mega-compact] dashboard failed:", err);`,
+      `import { appendFileSync } from "node:fs";`,
+      `const __log = ${JSON.stringify(launchLog)};`,
+      `function __fail(err) {`,
+      `  const msg = "[mega-compact] dashboard failed: " + (err && err.stack ? err.stack : String(err));`,
+      `  try { appendFileSync(__log, msg + "\\n"); } catch { /* ignore */ }`,
+      `  console.error(msg);`,
       `  process.exit(1);`,
-      `});`,
+      `}`,
+      `import { launchDashboardServer } from ${JSON.stringify(resolved.entry)};`,
+      `launchDashboardServer(${JSON.stringify(currentStateDir)}).catch(__fail);`,
     ].join("\n");
     writeFileSync(runnerFile, script);
     return true;
@@ -900,21 +915,24 @@ export default function (pi: ExtensionAPI) {
       });
       child.unref();
 
-      // Poll for port.pid (up to 5 seconds)
-      const deadline = Date.now() + 5_000;
-      let port: number | undefined;
+      // Poll for a live server (port 9320–9329) instead of relying solely on the
+      // port.pid marker, which can land in a different state dir than the one we
+      // poll when a prior compact left currentStateDir pointing elsewhere.
+      const deadline = Date.now() + 6_000;
+      let port: number | null = null;
       while (Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 300));
-        if (existsSync(portFile)) {
-          try {
-            const raw = JSON.parse(readFileSync(portFile, "utf-8"));
-            if (raw?.port) { port = raw.port; break; }
-          } catch { /* keep polling */ }
-        }
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        port = await findLivePort();
+        if (port) break;
       }
 
       if (!port) {
-        ctx.ui.notify("[mega-compact] dashboard server failed to start — check logs.");
+        let detail = "";
+        try {
+          const log = readFileSync(launchLog, "utf-8").trim();
+          if (log) detail = ` — ${log.split("\n").slice(-3).join("; ")}`;
+        } catch { /* no log yet */ }
+        ctx.ui.notify(`[mega-compact] dashboard server failed to start${detail}. See ${launchLog}`);
         return;
       }
 
