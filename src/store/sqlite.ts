@@ -145,6 +145,13 @@ function initSchema(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_raptor_session ON raptor_nodes(session_id);
     CREATE INDEX IF NOT EXISTS idx_raptor_parent ON raptor_nodes(parent_id);
+
+    -- FTS5 trigram virtual table (Sprint 9+ pg_trgm-equivalent verification).
+    CREATE VIRTUAL TABLE IF NOT EXISTS context_chunks_trgm USING fts5(
+      id UNINDEXED,
+      normalized_text,
+      tokenize='trigram'
+    );
   `);
   const v = db.prepare("SELECT value FROM meta WHERE key='schema_version'").get() as
     | { value: string }
@@ -152,15 +159,80 @@ function initSchema(db: Database.Database): void {
   if (!v) {
     db.prepare("INSERT INTO meta(key, value) VALUES(?, ?)").run("schema_version", String(SCHEMA_VERSION));
   }
+}
 
-  // FTS5 trigram virtual table (Sprint 9+ pg_trgm-equivalent verification).
-  db.exec(`
-    CREATE VIRTUAL TABLE IF NOT EXISTS context_chunks_trgm USING fts5(
-      id UNINDEXED,
-      normalized_text,
-      tokenize='trigram'
-    );
-  `);
+/** Read a string-valued meta key (or undefined). Used for cumulative counters. */
+export function getMeta(key: string, stateDir: string = getStateDir()): string | undefined {
+  const db = openStore(stateDir);
+  const row = db.prepare("SELECT value FROM meta WHERE key = ?").get(key) as
+    | { value: string }
+    | undefined;
+  return row?.value;
+}
+
+/**
+ * Cumulative "tokens saved" — the sum of stored checkpoint token estimates across
+ * all compactions in this store (one per repo). Persisted in the SQLite `meta`
+ * table so it survives session restarts and travels with the repo's state dir,
+ * mirroring how `storageDedupRate` is cumulative. Incremented in VectorStore.add()
+ * when a new (non-deduped) checkpoint is persisted.
+ */
+export function getTokensSaved(stateDir: string = getStateDir()): number {
+  const raw = getMeta("tokens_saved", stateDir);
+  const n = raw == null ? 0 : Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Add `delta` (>=0) to the cumulative tokens-saved counter. */
+export function addTokensSaved(delta: number, stateDir: string = getStateDir()): void {
+  if (!(delta > 0)) return;
+  const db = openStore(stateDir);
+  db.prepare(
+    `INSERT INTO meta(key, value) VALUES('tokens_saved', ?)
+     ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + ? AS TEXT)`,
+  ).run(String(delta), delta);
+}
+
+/** Cumulative store-wide dedup accounting (Sprint 9+). Persisted in the SQLite
+ *  `meta` table so it survives session restarts and travels with the repo's
+ *  state dir — mirroring `tokens_saved`. Replaces the legacy JSON
+ *  `dedup-stats.json` file (all stats now live in the SQLite store). */
+export interface DedupStats {
+  /** Total add() calls (new checkpoints + deduped collapses). */
+  attempts: number;
+  /** add() calls that collapsed onto an existing checkpoint. */
+  deduped: number;
+}
+
+/** Read a store-wide integer counter from the meta table (0 if absent). */
+export function getMetaNumber(key: string, stateDir: string = getStateDir()): number {
+  const raw = getMeta(key, stateDir);
+  const n = raw == null ? 0 : Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Atomically add `delta` to an integer meta counter. */
+function incMeta(key: string, delta: number, stateDir: string = getStateDir()): void {
+  if (!(delta > 0)) return;
+  const db = openStore(stateDir);
+  db.prepare(
+    `INSERT INTO meta(key, value) VALUES(?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + ? AS TEXT)`,
+  ).run(key, String(delta), delta);
+}
+
+/** Read the cumulative store-wide dedup counters. */
+export function getDedupStats(stateDir: string = getStateDir()): DedupStats {
+  return {
+    attempts: getMetaNumber("dedup_attempts", stateDir),
+    deduped: getMetaNumber("deduped", stateDir),
+  };
+}
+
+/** Increment the store-wide dedup counters for one add() call. */
+export function bumpDedupStats(deduped: boolean, stateDir: string = getStateDir()): void {
+  incMeta("dedup_attempts", 1, stateDir);
+  if (deduped) incMeta("deduped", 1, stateDir);
 }
 
 /** Map a DB row to the public StoredCheckpoint shape. */
@@ -420,6 +492,48 @@ export function storeStats(sessionId: string, stateDir: string = getStateDir()):
     totalTokenEstimate: row.tok,
     lastCheckpointId: row.lastId ?? undefined,
     lastSummary,
+  };
+}
+
+/** Repo-wide stats — aggregates every session in this store (one per repo).
+ *  Backed by the SQLite `meta` cumulative counters (`tokens_saved`,
+ *  `dedup_attempts`, `deduped`) plus a SUM over all `context_chunks`. This is the
+ *  cumulative, resumable, cross-device view the dashboard surfaces as "Repo …". */
+export interface RepoStats {
+  /** Total checkpoints across all sessions (excludes SemDeDup-removed rows). */
+  checkpointCount: number;
+  /** Sum of all stored checkpoint token estimates (repo-wide). */
+  totalTokenEstimate: number;
+  /** Total active sessions with at least one checkpoint. */
+  sessionCount: number;
+  /** Cumulative stored-summary tokens saved (Σ stored summaries). */
+  tokensSaved: number;
+  /** Cumulative dedup add() attempts (store-wide). */
+  dedupAttempts: number;
+  /** Cumulative deduped collapses (store-wide). */
+  dedupCollapsed: number;
+  /** Storage dedup rate (deduped / attempts), 0..1. */
+  storageDedupRate: number;
+}
+
+export function repoStats(stateDir: string = getStateDir()): RepoStats {
+  const db = openStore(stateDir);
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS c, COALESCE(SUM(token_estimate),0) AS tok,
+              COUNT(DISTINCT session_id) AS sessions
+       FROM context_chunks WHERE dedup_status != 'removed'`,
+    )
+    .get() as { c: number; tok: number; sessions: number };
+  const ds = getDedupStats(stateDir);
+  return {
+    checkpointCount: row.c,
+    totalTokenEstimate: row.tok,
+    sessionCount: row.sessions,
+    tokensSaved: getMetaNumber("tokens_saved", stateDir),
+    dedupAttempts: ds.attempts,
+    dedupCollapsed: ds.deduped,
+    storageDedupRate: ds.attempts === 0 ? 0 : ds.deduped / ds.attempts,
   };
 }
 

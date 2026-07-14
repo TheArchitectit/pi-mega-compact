@@ -168,25 +168,8 @@ export function saveSessionState(sessionId: string, state: SessionState, stateDi
 }
 
 /**
- * Cumulative store-wide dedup accounting. Lives outside the per-session
- * SessionState (which resets on every session instance) so the dedup rate
- * stays stable across session restarts. Persisted as plain JSON in the
- * state dir.
+ * Cumulative store-wide dedup accounting now lives in the SQLite `meta` table
+ * (see store/sqlite.ts: getDedupStats / bumpDedupStats). All store stats are
+ * SQLite-backed so they survive session restarts and travel with the repo's
+ * state dir. The legacy JSON `dedup-stats.json` path was removed.
  */
-export interface DedupStats {
-  /** Total add() calls (new checkpoints + deduped collapses). */
-  attempts: number;
-  /** add() calls that collapsed onto an existing checkpoint. */
-  deduped: number;
-}
-
-const DEDUP_STATS_FILE = "dedup-stats.json";
-
-export function loadDedupStats(stateDir: string = getStateDir()): DedupStats {
-  const file = join(stateDir, DEDUP_STATS_FILE);
-  return readGzJson<DedupStats>(file, { attempts: 0, deduped: 0 });
-}
-
-export function saveDedupStats(stats: DedupStats, stateDir: string = getStateDir()): void {
-  writeGzJson(join(stateDir, DEDUP_STATS_FILE), stats);
-}

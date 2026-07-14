@@ -57,7 +57,7 @@ interface SessionRuntime {
   lastCompactedTokens: number;
   dedupSkips: number;       // compactions skipped because regionHash already stored
   dedupAttempts: number;    // total compaction attempts (for hit-rate denominator)
-  tokensSaved: number;      // cumulative original − stored tokens this session
+  tokensSaved: number;      // this session-instance only: reset on session_start
 }
 
 function envFlag(name: string, fallback: number): number {
@@ -202,6 +202,15 @@ interface DashboardSnapshot {
     activeAgents: number;
     currentTurn: number;
   };
+  repo: {
+    checkpointCount: number;     // across all sessions in this repo's store
+    totalTokenEstimate: number;  // repo-wide stored checkpoint tokens
+    tokensSaved: number;         // repo-wide cumulative stored-summary tokens
+    sessionCount: number;        // distinct sessions with checkpoints
+    dedupAttempts: number;       // cumulative add() calls (store-wide)
+    dedupCollapsed: number;      // cumulative deduped collapses (store-wide)
+    storageDedupRate: number;    // deduped / attempts, 0..1
+  };
 }
 
 class Dashboard {
@@ -267,6 +276,7 @@ export default function (pi: ExtensionAPI) {
   function snapshot(ctx?: ExtensionContext): void {
     if (ctx) bindRepo(ctx.cwd);
     const st = store.stats(rt.sessionId);
+    const repo = store.repoStats();
     const armed = lastCtxPercent != null && lastCtxPercent >= config.fastGatePct;
     const ready = armed && (lastCtxTokens ?? 0) >= config.thresholdTokens;
     dashboard.snapshot({
@@ -295,6 +305,15 @@ export default function (pi: ExtensionAPI) {
       trigger: { armed, ready, currentTokens: lastCtxTokens, thresholdTokens: config.thresholdTokens, fastGatePct: config.fastGatePct },
       crew: { activeAgents, currentTurn },
       store: { checkpointCount: st.checkpointCount, totalTokenEstimate: st.totalTokenEstimate, tokensSaved: rt.tokensSaved, injectedCount: st.injectedCount, dedupHitRate: st.dedupHitRate, storageDedupRate: st.storageDedupRate, dedupAttempts: st.dedupAttempts, dedupCollapsed: st.dedupCollapsed },
+      repo: {
+        checkpointCount: repo.checkpointCount,
+        totalTokenEstimate: repo.totalTokenEstimate,
+        tokensSaved: repo.tokensSaved,
+        sessionCount: repo.sessionCount,
+        dedupAttempts: repo.dedupAttempts,
+        dedupCollapsed: repo.dedupCollapsed,
+        storageDedupRate: repo.storageDedupRate,
+      },
     });
 
     // Live stats widget above the editor
@@ -406,14 +425,11 @@ export default function (pi: ExtensionAPI) {
     rt.lastCompactedFrom = result.compactedFrom;
     rt.lastCompactedTokens = result.tokenEstimate;
     rt.dedupAttempts++;
-    // Cumulative tokens held in stored checkpoints this session. This is the
-    // compacted-summary size we persist on each (non-deduped) compaction — the
-    // dashboard's cumulative "tokens saved" figure. We accumulate the stored
-    // estimate rather than (original − stored) because the original dropped-region
-    // token count isn't reliably recoverable here; the stored size is exact.
-    if (!result.deduped) {
-      rt.tokensSaved += result.tokenEstimate;
-    }
+    // Per-session "tokens saved" = this session-instance only: the stored-summary
+    // tokens persisted on each NEW (non-deduped) compaction. It resets to 0 on
+    // session_start (rt is rebuilt) — so a fresh session shows 0 while the repo's
+    // cumulative saved (SQLite meta) keeps the historical running total.
+    if (!result.deduped) rt.tokensSaved += result.tokenEstimate;
     if (result.deduped) rt.dedupSkips++;
 
     // Sentinel marker: a non-LLM bookkeeping entry so subsequent triggers can

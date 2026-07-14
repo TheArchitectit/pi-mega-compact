@@ -63,6 +63,15 @@ interface Snapshot {
     activeAgents: number;
     currentTurn: number;
   };
+  repo: {
+    checkpointCount: number;
+    totalTokenEstimate: number;
+    tokensSaved: number;
+    sessionCount: number;
+    dedupAttempts: number;
+    dedupCollapsed: number;
+    storageDedupRate: number;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -84,6 +93,7 @@ function readSnapshot(snapshotPath: string) {
       trigger: { armed: false, ready: false, currentTokens: null, thresholdTokens: 100_000, fastGatePct: 80 },
       store: { checkpointCount: 0, totalTokenEstimate: 0, tokensSaved: 0, injectedCount: 0, dedupHitRate: 0, storageDedupRate: 0, dedupCollapsed: 0 },
       crew: { activeAgents: 0, currentTurn: 0 },
+      repo: { checkpointCount: 0, totalTokenEstimate: 0, tokensSaved: 0, sessionCount: 0, dedupAttempts: 0, dedupCollapsed: 0, storageDedupRate: 0 },
     } as Snapshot;
   }
 }
@@ -184,6 +194,17 @@ function dashboardHtml(tierName: string): string {
     </div>
   </div>
   <div class="card">
+    <h2>Repo (all sessions)</h2>
+    <div class="stat-grid">
+      <span class="label">Checkpoints</span><span class="value" id="rp-count">0</span>
+      <span class="label">Tokens Stored</span><span class="value" id="rp-tokens">0</span>
+      <span class="label">Tokens Saved</span><span class="value" id="rp-saved">0</span>
+      <span class="label">Sessions</span><span class="value" id="rp-sessions">0</span>
+      <span class="label">Collapsed</span><span class="value" id="rp-collapsed">0</span>
+      <span class="label">Storage Dedup</span><span class="value" id="rp-sdedup">0%</span>
+    </div>
+  </div>
+  <div class="card">
     <h2>Configuration</h2>
     <div class="conf-grid">
       <span class="label">Tier</span><span class="value" id="cf-tier">${tierName}</span>
@@ -249,6 +270,16 @@ function dashboardHtml(tierName: string): string {
     document.getElementById('st-sdedup').textContent = (sdr * 100 >= 10 ? Math.round(sdr * 100) : (sdr * 100).toFixed(1)) + '%';
     document.getElementById('st-collapsed').textContent = d.store.dedupCollapsed || 0;
     document.getElementById('st-lastid').textContent = d.session.lastCheckpointId || '—';
+
+    // Repo-wide (all sessions in this repo's SQLite store).
+    var repo = d.repo || { checkpointCount: 0, totalTokenEstimate: 0, tokensSaved: 0, sessionCount: 0, dedupCollapsed: 0, storageDedupRate: 0 };
+    document.getElementById('rp-count').textContent = repo.checkpointCount;
+    document.getElementById('rp-tokens').textContent = repo.totalTokenEstimate.toLocaleString();
+    document.getElementById('rp-saved').textContent = (repo.tokensSaved || 0).toLocaleString();
+    document.getElementById('rp-sessions').textContent = repo.sessionCount || 0;
+    document.getElementById('rp-collapsed').textContent = repo.dedupCollapsed || 0;
+    var rsdr = repo.storageDedupRate || 0;
+    document.getElementById('rp-sdedup').textContent = (rsdr * 100 >= 10 ? Math.round(rsdr * 100) : (rsdr * 100).toFixed(1)) + '%';
 
     // Crew / agents (live sub-agent activity + turn).
     var crew = d.crew || { activeAgents: 0, currentTurn: 0 };

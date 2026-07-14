@@ -14,7 +14,7 @@ import { cosineSimilarity, defaultEmbedder } from "./embedder.js";
 import { loadDedupConfig, type DedupConfigShape, type DedupTier } from "./config/dedup.js";
 import { logDecision } from "./monitoring.js";
 import type { StoredCheckpoint, SessionState } from "./store.js";
-import { getStateDir, normalizeSessionId, compressSmart, loadDedupStats, saveDedupStats } from "./store.js";
+import { getStateDir, normalizeSessionId, compressSmart } from "./store.js";
 import { computeContentDigest } from "./dedup/digest.js";
 import { minhashSignature, SIGNATURE_VERSION, NUM_HASHES } from "./dedup/l1-minhash.js";
 import { lshBands } from "./dedup/l1-lsh.js";
@@ -32,6 +32,10 @@ import {
   insertLshBuckets,
   lshCandidateChunks,
   setDedupStatus,
+  addTokensSaved,
+  getDedupStats,
+  bumpDedupStats,
+  repoStats as repoStatsFromStore,
 } from "./store/sqlite.js";
 import { migrateJsonToSqlite } from "./store/migrate.js";
 
@@ -137,9 +141,6 @@ export class VectorStore {
     const regionHash = computeRegionHash(input.regionText);
     const all = listCheckpoints(sessionId, this.stateDir);
     const cfg = this.cfg;
-    // Cumulative store-wide dedup accounting (survives session resets).
-    const ds = loadDedupStats(this.stateDir);
-    ds.attempts++;
     // Tracks whether a tier matched while in MARK_ONLY (record-but-don't-collapse),
     // and which tier.
     let markOnly: DedupTier | null = null;
@@ -165,8 +166,7 @@ export class VectorStore {
         } else {
           contentMatch.timestamp = input.timestamp;
           upsertCheckpoint(contentMatch, this.stateDir);
-          ds.deduped++;
-          saveDedupStats(ds, this.stateDir);
+          bumpDedupStats(true, this.stateDir);
           const r = { checkpoint: contentMatch, deduped: true, reason: "contentHash" };
           this.record("L0", "deduped", "contentHash", Date.now() - t0);
           return r;
@@ -181,8 +181,7 @@ export class VectorStore {
         if (cfg.MARK_ONLY_L0) {
           markOnly = "L0"; // fall through
         } else {
-          ds.deduped++;
-          saveDedupStats(ds, this.stateDir);
+          bumpDedupStats(true, this.stateDir);
           const r = { checkpoint: regionMatch, deduped: true, reason: "regionHash" };
           this.record("L0", "deduped", "regionHash", Date.now() - t0);
           return r;
@@ -203,8 +202,7 @@ export class VectorStore {
         } else {
           summaryMatch.timestamp = input.timestamp;
           upsertCheckpoint(summaryMatch, this.stateDir);
-          ds.deduped++;
-          saveDedupStats(ds, this.stateDir);
+          bumpDedupStats(true, this.stateDir);
           const r = { checkpoint: summaryMatch, deduped: true, reason: "summaryHash" };
           this.record("L0", "deduped", "summaryHash", Date.now() - t0);
           return r;
@@ -221,8 +219,7 @@ export class VectorStore {
       if (l1 && !cfg.MARK_ONLY_L1) {
         l1.timestamp = input.timestamp;
         upsertCheckpoint(l1, this.stateDir);
-        ds.deduped++;
-        saveDedupStats(ds, this.stateDir);
+        bumpDedupStats(true, this.stateDir);
         const r = { checkpoint: l1, deduped: true, reason: "l1MinHash" };
         this.record("L1", "deduped", "l1MinHash", Date.now() - t0);
         return r;
@@ -257,8 +254,7 @@ export class VectorStore {
           // Near-identical — update timestamp on existing checkpoint
           nearest.checkpoint.timestamp = input.timestamp;
           upsertCheckpoint(nearest.checkpoint, this.stateDir);
-          ds.deduped++;
-          saveDedupStats(ds, this.stateDir);
+          bumpDedupStats(true, this.stateDir);
           const r = { checkpoint: nearest.checkpoint, deduped: true, reason: "contentSimilarity" };
           this.record("L2", "deduped", "contentSimilarity", Date.now() - t0);
           return r;
@@ -291,6 +287,9 @@ export class VectorStore {
     // Persistence is SQLite (store/sqlite.ts). upsertCheckpoint keeps the
     // idempotent-by-id semantics the old JSON append implied.
     upsertCheckpoint(checkpoint, this.stateDir);
+    // Cumulative "tokens saved" counter (per-repo SQLite meta). Bumped for every
+    // new checkpoint persisted, so it survives sessions and travels with the repo.
+    addTokensSaved(input.tokenEstimate ?? 0, this.stateDir);
     // L1: persist this checkpoint's MinHash signature + LSH buckets so future
     // near-duplicate inserts can find it. Deterministic given the seed.
     const sig = minhashSignature(input.regionText);
@@ -320,7 +319,8 @@ export class VectorStore {
     } else {
       this.record("L0", "new", undefined, Date.now() - t0);
     }
-    saveDedupStats(ds, this.stateDir);
+    // Cumulative store-wide dedup accounting (attempt, not collapsed).
+    bumpDedupStats(false, this.stateDir);
     return { checkpoint, deduped: false };
   }
 
@@ -517,6 +517,7 @@ export class VectorStore {
     injectedCount: number;
     dedupHitRate: number; // injected / checkpoints, 0..1
     storageDedupRate: number; // deduped adds / total adds, 0..1 (cumulative)
+    tokensSaved: number; // cumulative stored checkpoint tokens (per-repo SQLite)
     dedupAttempts: number; // cumulative add() calls (store-wide)
     dedupCollapsed: number; // cumulative deduped collapses (store-wide)
   } {
@@ -528,17 +529,31 @@ export class VectorStore {
     );
     const last = ordered[ordered.length - 1];
     const injected = state.injectedCheckpointIds.length;
-    const ds = loadDedupStats(this.stateDir);
+    const ds = getDedupStats(this.stateDir);
+    // Per-session "tokens saved" = this session's Σ stored summary token
+    // estimates (stored-sum definition). Equal to totalTokenEstimate by
+    // construction; repo-wide cumulative saved lives in repoStats().
+    const sessionTok = cps.reduce((s, c) => s + (c.tokenEstimate ?? 0), 0);
     return {
       checkpointCount: cps.length,
-      totalTokenEstimate: cps.reduce((s, c) => s + (c.tokenEstimate ?? 0), 0),
+      totalTokenEstimate: sessionTok,
       lastCheckpointId: last?.checkpointId,
       lastSummary: last?.summary,
       injectedCount: injected,
       dedupHitRate: cps.length === 0 ? 0 : injected / cps.length,
       storageDedupRate: ds.attempts === 0 ? 0 : ds.deduped / ds.attempts,
+      tokensSaved: sessionTok,
       dedupAttempts: ds.attempts,
       dedupCollapsed: ds.deduped,
     };
+  }
+
+  /**
+   * Repo-wide stats — aggregates every session in this store (one per repo).
+   * Cumulative, resumable, cross-device. Surfaces the dashboard's "Repo …"
+   * figures; distinct from {@link stats} (per-session).
+   */
+  repoStats(): ReturnType<typeof repoStatsFromStore> {
+    return repoStatsFromStore(this.stateDir);
   }
 }

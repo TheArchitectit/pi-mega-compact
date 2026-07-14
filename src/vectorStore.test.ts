@@ -250,6 +250,51 @@ test("stats reports counts, last checkpoint, and dedup rate", () => {
   assert.ok(Math.abs(st2.dedupHitRate - 0.5) < 1e-9);
 });
 
+test("tokensSaved accumulates on new checkpoints; deduped add bumps collapsed not saved", () => {
+  const s = store();
+  // Two genuinely new checkpoints (stored-sum definition of tokensSaved).
+  s.add({ sessionId: "sess_saved", summary: "alpha", regionText: "region alpha text", tokenEstimate: 500, timestamp: 1 });
+  s.add({ sessionId: "sess_saved", summary: "beta", regionText: "region beta text", tokenEstimate: 700, timestamp: 2 });
+  const st = s.stats("sess_saved");
+  assert.equal(st.tokensSaved, 1200, "per-session tokensSaved = Σ stored summary tokens");
+  assert.equal(st.dedupCollapsed, 0);
+  assert.equal(st.dedupAttempts, 2);
+
+  // A third add that dedups onto an existing region (same summaryHash path):
+  // collapses onto an existing checkpoint, so it must NOT grow tokensSaved, but
+  // must bump dedupCollapsed + dedupAttempts.
+  const deduped = s.add({ sessionId: "sess_saved", summary: "alpha", regionText: "region alpha text", tokenEstimate: 500, timestamp: 3 });
+  assert.ok(deduped.deduped, "identical region should dedup");
+  const st3 = s.stats("sess_saved");
+  assert.equal(st3.tokensSaved, 1200, "deduped add does not add to tokensSaved (stored-sum)");
+  assert.equal(st3.dedupCollapsed, 1, "deduped collapse counted separately");
+  assert.equal(st3.dedupAttempts, 3);
+});
+
+test("repoStats aggregates every session in the SQLite store", () => {
+  const dir = join(baseTmp, `repo-${counter++}`);
+  const a = new VectorStore({ dedupSim: 0.9, stateDir: dir });
+  const b = new VectorStore({ dedupSim: 0.9, stateDir: dir }); // same disk store, diff instance
+  a.add({ sessionId: "sess_a", summary: "alpha", regionText: "region alpha text", tokenEstimate: 500, timestamp: 1 });
+  b.add({ sessionId: "sess_b", summary: "beta", regionText: "region beta text", tokenEstimate: 700, timestamp: 2 });
+
+  const repo = a.repoStats();
+  assert.equal(repo.checkpointCount, 2, "checkpoints across both sessions");
+  assert.equal(repo.sessionCount, 2, "two distinct sessions");
+  assert.equal(repo.totalTokenEstimate, 1200);
+  assert.equal(repo.tokensSaved, 1200, "repo-wide cumulative stored-summary tokens");
+  assert.equal(repo.dedupCollapsed, 0);
+
+  // A deduped add into sess_a collapses onto its existing checkpoint: repo
+  // tokensSaved stays put, dedupCollapsed climbs.
+  const deduped = a.add({ sessionId: "sess_a", summary: "alpha", regionText: "region alpha text", tokenEstimate: 500, timestamp: 3 });
+  assert.ok(deduped.deduped);
+  const repo2 = a.repoStats();
+  assert.equal(repo2.tokensSaved, 1200, "deduped collapse does not change repo tokensSaved");
+  assert.equal(repo2.dedupCollapsed, 1);
+  assert.equal(repo2.checkpointCount, 2, "still two stored checkpoints");
+});
+
 test("computeRegionHash normalizes whitespace before hashing", () => {
   const h1 = computeRegionHash("foo  bar");
   const h2 = computeRegionHash("foo bar");
