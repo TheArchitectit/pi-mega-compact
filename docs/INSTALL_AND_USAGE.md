@@ -1,4 +1,4 @@
-# Install & Usage — pi-mega-compact (v0.4.3)
+# Install & Usage — pi-mega-compact (v0.4.4)
 
 A complete, copy-paste guide to installing pi-mega-compact and using **every**
 feature: the pi extension (auto-compact + recall), the OpenClaw plugin adapter,
@@ -169,8 +169,14 @@ Above the pi editor:
 
 ```
  ⚡ medium │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
-   ◐ armed │ dedup: 92% │ saved: 45k tok
+   ◐ armed │ dedup: 92% │ used: 39k sess / 980k repo │ saved: 45k sess / 1.2M repo
 ```
+
+> **`used`** = stored checkpoint tokens; **`saved`** = tokens removed from context
+> (`original − stored`). Each shows **`sess`** (this session) vs **`repo`** (the
+> cumulative total across all sessions in this repo's store). The same split is
+> shown on the `/mega-dashboard` as **Tokens Stored / Original Tokens / Tokens
+> Saved** per-session and repo-wide.
 
 > **Per-repo state.** Runtime state (the SQLite db, `events.log`,
 > `dashboard.json`) lives at `<repo>/.pi/mega-compact/` for each git repo, so

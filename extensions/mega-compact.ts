@@ -333,19 +333,22 @@ export default function (pi: ExtensionAPI) {
       const dedupStr = storageRate * 100 >= 10
         ? `${Math.round(storageRate * 100)}%`
         : `${(storageRate * 100).toFixed(1)}%`;
-      // saved = cumulative original − stored tokens (this session). Show real
-      // token counts; use "k" only at/above 1000 so small-but-real savings are
-      // visible (previously Math.round(x/1000) rounded everything <1000 to 0).
-      const savedStr = rt.tokensSaved >= 1000
-        ? `${(rt.tokensSaved / 1000).toFixed(1)}k`
-        : `${rt.tokensSaved}`;
+      // saved = tokens removed from context (cumulative original − stored).
+      // Show BOTH this-session (rt.tokensSaved) and repo-wide-total
+      // (repo.tokensSaved) so the user sees per-session progress vs the running
+      // repo total. "used" = stored checkpoint tokens (repo.totalTokenEstimate
+      // vs st.totalTokenEstimate). Use "k" only at/above 1000 so small-but-real
+      // numbers stay visible (previously Math.round(x/1000) zeroed <1000).
+      const fmt = (x: number) => (x >= 1000 ? `${(x / 1000).toFixed(1)}k` : `${x}`);
+      const savedStr = `${fmt(rt.tokensSaved)} sess / ${fmt(repo.tokensSaved)} repo`;
+      const usedStr = `${fmt(st.totalTokenEstimate)} sess / ${fmt(repo.totalTokenEstimate)} repo`;
       const agentStr = activeAgents > 0 ? ` │ 🤖 ${activeAgents} agent${activeAgents === 1 ? "" : "s"}` : "";
       const turnStr = currentTurn > 0 ? ` │ turn ${currentTurn}` : "";
       ctx.ui.setWidget(
         WIDGET_KEY,
         [
           ` ⚡ ${config.tier} │ ${tokStr}/${maxStr} tokens (${pctStr}) │ ${st.checkpointCount} chkpt${st.checkpointCount === 1 ? "" : "s"}${agentStr}${turnStr}`,
-          `   ${triggerLabel} │ dedup: ${dedupStr} │ saved: ${savedStr} tok`,
+          `   ${triggerLabel} │ dedup: ${dedupStr} │ used: ${usedStr} │ saved: ${savedStr}`,
         ],
         { placement: "aboveEditor" },
       );

@@ -1,5 +1,31 @@
 # Release Notes — pi-mega-compact
 
+## v0.4.4 (2026-07-14)
+
+Toolbar now shows tokens used + saved, each split this-session vs repo total.
+
+### Changed
+
+- **Live status widget** (above the editor) gained a `used:` figure and a
+  repo/session split for both metrics:
+  ```
+   ◐ armed │ dedup: 92% │ used: 39k sess / 980k repo │ saved: 45k sess / 1.2M repo
+  ```
+  - `used` = stored checkpoint tokens; `saved` = tokens removed from context
+    (`original − stored`). Each shows **`sess`** (this session) next to **`repo`**
+    (cumulative across every session in the repo's store). Previously the toolbar
+    only showed per-session saved; the repo-vs-session breakdown existed only on
+    the dashboard.
+  - Numbers under 1000 show raw (no `k`) so small-but-real savings stay visible.
+
+### Install / Upgrade
+
+```bash
+pi update --extensions
+```
+
+---
+
 ## v0.4.3 (2026-07-14)
 
 Hotfix: v0.4.2 failed to load on repos that already had a `sqlite.db` from an
