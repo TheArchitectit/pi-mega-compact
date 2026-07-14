@@ -53,6 +53,11 @@ export interface AddInput {
   nextSteps?: string[];
   filesModified?: string[];
   tokenEstimate?: number;
+  /** Token count of the ORIGINAL dropped region (before compaction). Drives the
+   *  honest "tokens saved" = originalTokenEstimate − tokenEstimate (stored), or
+   *  the full originalTokenEstimate when the region dedups (nothing new stored).
+   *  Optional for back-compat with direct add() callers; defaults to stored. */
+  originalTokenEstimate?: number;
   /** Raw text of the compacted region — used to derive the regionHash + vector. */
   regionText: string;
   timestamp: number;
@@ -140,6 +145,10 @@ export class VectorStore {
     const sessionId = normalizeSessionId(input.sessionId);
     const regionHash = computeRegionHash(input.regionText);
     const all = listCheckpoints(sessionId, this.stateDir);
+    // Honest "tokens saved" base for this region. For a deduped add the whole
+    // original region is discarded (nothing new stored); for a new checkpoint
+    // we persist (orig − stored). Falls back to stored when orig is unknown.
+    const origTokens = input.originalTokenEstimate ?? input.tokenEstimate ?? 0;
     const cfg = this.cfg;
     // Tracks whether a tier matched while in MARK_ONLY (record-but-don't-collapse),
     // and which tier.
@@ -167,6 +176,8 @@ export class VectorStore {
           contentMatch.timestamp = input.timestamp;
           upsertCheckpoint(contentMatch, this.stateDir);
           bumpDedupStats(true, this.stateDir);
+          // Deduped: whole original region discarded, nothing new stored.
+          addTokensSaved(origTokens, this.stateDir);
           const r = { checkpoint: contentMatch, deduped: true, reason: "contentHash" };
           this.record("L0", "deduped", "contentHash", Date.now() - t0);
           return r;
@@ -182,6 +193,8 @@ export class VectorStore {
           markOnly = "L0"; // fall through
         } else {
           bumpDedupStats(true, this.stateDir);
+          // Deduped: whole original region discarded, nothing new stored.
+          addTokensSaved(origTokens, this.stateDir);
           const r = { checkpoint: regionMatch, deduped: true, reason: "regionHash" };
           this.record("L0", "deduped", "regionHash", Date.now() - t0);
           return r;
@@ -203,6 +216,8 @@ export class VectorStore {
           summaryMatch.timestamp = input.timestamp;
           upsertCheckpoint(summaryMatch, this.stateDir);
           bumpDedupStats(true, this.stateDir);
+          // Deduped: whole original region discarded, nothing new stored.
+          addTokensSaved(origTokens, this.stateDir);
           const r = { checkpoint: summaryMatch, deduped: true, reason: "summaryHash" };
           this.record("L0", "deduped", "summaryHash", Date.now() - t0);
           return r;
@@ -255,6 +270,8 @@ export class VectorStore {
           nearest.checkpoint.timestamp = input.timestamp;
           upsertCheckpoint(nearest.checkpoint, this.stateDir);
           bumpDedupStats(true, this.stateDir);
+          // Deduped: whole original region discarded, nothing new stored.
+          addTokensSaved(origTokens, this.stateDir);
           const r = { checkpoint: nearest.checkpoint, deduped: true, reason: "contentSimilarity" };
           this.record("L2", "deduped", "contentSimilarity", Date.now() - t0);
           return r;
@@ -275,6 +292,7 @@ export class VectorStore {
       nextSteps: input.nextSteps ?? [],
       filesModified: input.filesModified ?? [],
       tokenEstimate: input.tokenEstimate ?? 0,
+      originalTokenEstimate: input.originalTokenEstimate,
       regionHash,
       contentHash: digest.contentHash,
       contentHash2: digest.contentHash2,
@@ -287,9 +305,12 @@ export class VectorStore {
     // Persistence is SQLite (store/sqlite.ts). upsertCheckpoint keeps the
     // idempotent-by-id semantics the old JSON append implied.
     upsertCheckpoint(checkpoint, this.stateDir);
-    // Cumulative "tokens saved" counter (per-repo SQLite meta). Bumped for every
-    // new checkpoint persisted, so it survives sessions and travels with the repo.
-    addTokensSaved(input.tokenEstimate ?? 0, this.stateDir);
+    // Cumulative "tokens saved" counter (per-repo SQLite meta). For a NEW
+    // checkpoint the saved amount is (original − stored); for a deduped add the
+    // whole original region is discarded (handled in the deduped return paths
+    // below). Survives sessions and travels with the repo.
+    const stored = input.tokenEstimate ?? 0;
+    addTokensSaved(Math.max(0, origTokens - stored), this.stateDir);
     // L1: persist this checkpoint's MinHash signature + LSH buckets so future
     // near-duplicate inserts can find it. Deterministic given the seed.
     const sig = minhashSignature(input.regionText);
@@ -517,7 +538,8 @@ export class VectorStore {
     injectedCount: number;
     dedupHitRate: number; // injected / checkpoints, 0..1
     storageDedupRate: number; // deduped adds / total adds, 0..1 (cumulative)
-    tokensSaved: number; // cumulative stored checkpoint tokens (per-repo SQLite)
+    tokensSaved: number; // Σ(original − stored) for this session's checkpoints
+    originalTokens: number; // Σ original region size for this session's checkpoints
     dedupAttempts: number; // cumulative add() calls (store-wide)
     dedupCollapsed: number; // cumulative deduped collapses (store-wide)
   } {
@@ -530,10 +552,16 @@ export class VectorStore {
     const last = ordered[ordered.length - 1];
     const injected = state.injectedCheckpointIds.length;
     const ds = getDedupStats(this.stateDir);
-    // Per-session "tokens saved" = this session's Σ stored summary token
-    // estimates (stored-sum definition). Equal to totalTokenEstimate by
-    // construction; repo-wide cumulative saved lives in repoStats().
     const sessionTok = cps.reduce((s, c) => s + (c.tokenEstimate ?? 0), 0);
+    const sessionOrig = cps.reduce((s, c) => s + (c.originalTokenEstimate ?? 0), 0);
+    // Per-session "tokens saved" = Σ(original − stored) over this session's
+    // stored checkpoints. Deduped adds (whole region discarded, nothing stored)
+    // are counted in the repo-wide meta counter via repoStats(); the per-session
+    // DB sum here covers the rows that exist.
+    const sessionSaved = cps.reduce(
+      (s, c) => s + Math.max(0, (c.originalTokenEstimate ?? 0) - (c.tokenEstimate ?? 0)),
+      0,
+    );
     return {
       checkpointCount: cps.length,
       totalTokenEstimate: sessionTok,
@@ -542,7 +570,8 @@ export class VectorStore {
       injectedCount: injected,
       dedupHitRate: cps.length === 0 ? 0 : injected / cps.length,
       storageDedupRate: ds.attempts === 0 ? 0 : ds.deduped / ds.attempts,
-      tokensSaved: sessionTok,
+      tokensSaved: sessionSaved,
+      originalTokens: sessionOrig,
       dedupAttempts: ds.attempts,
       dedupCollapsed: ds.deduped,
     };

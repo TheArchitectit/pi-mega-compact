@@ -80,6 +80,7 @@ function initSchema(db: Database.Database): void {
       files_modified     TEXT,           -- JSON array
       embedding_blob     BLOB,           -- float32 vector
       token_estimate     INTEGER,
+      original_token_estimate INTEGER,    -- dropped region size (tokens saved = orig − stored)
       timestamp          INTEGER,
       dedup_status       TEXT DEFAULT 'active',
       compressed_original BLOB           -- optional DR copy
@@ -145,6 +146,42 @@ function initSchema(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_raptor_session ON raptor_nodes(session_id);
     CREATE INDEX IF NOT EXISTS idx_raptor_parent ON raptor_nodes(parent_id);
+
+    -- Foundation for future features (resume sessions, daily log, lessons
+    -- learned). Scaffolded now so all store data lives in SQLite from day one;
+    -- population is minimal (touchSession / logDaily on compact) and the full
+    -- UI/recall for these lands in later sprints.
+
+    -- Per-session registry (resume + per-repo session history).
+    CREATE TABLE IF NOT EXISTS sessions (
+      session_id    TEXT PRIMARY KEY,
+      repo          TEXT,
+      started_at    INTEGER,
+      ended_at      INTEGER,
+      last_compacted_at INTEGER,
+      status        TEXT DEFAULT 'active'
+    );
+
+    -- Append-only daily activity log (the "daily log" feature seed).
+    CREATE TABLE IF NOT EXISTS daily_log (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      day           TEXT NOT NULL,     -- YYYY-MM-DD
+      session_id    TEXT,
+      event         TEXT,             -- e.g. 'compact'
+      detail        TEXT,
+      tokens_saved  INTEGER DEFAULT 0,
+      ts            INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_daily_log_day ON daily_log(day);
+
+    -- Lessons learned (future recall/browse feature seed).
+    CREATE TABLE IF NOT EXISTS lessons (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id    TEXT,
+      repo          TEXT,
+      lesson        TEXT,
+      ts            INTEGER
+    );
 
     -- FTS5 trigram virtual table (Sprint 9+ pg_trgm-equivalent verification).
     CREATE VIRTUAL TABLE IF NOT EXISTS context_chunks_trgm USING fts5(
@@ -235,6 +272,65 @@ export function bumpDedupStats(deduped: boolean, stateDir: string = getStateDir(
   if (deduped) incMeta("deduped", 1, stateDir);
 }
 
+// --- Future-feature foundation (resume sessions / daily log / lessons) -------
+// Scaffolded tables + minimal helpers so all store data lives in SQLite from
+// day one. Full UI/recall for these lands in later sprints.
+
+/** Upsert a `sessions` row (resume + per-repo session history). */
+export function touchSession(
+  sessionId: string,
+  repo: string | undefined,
+  stateDir: string = getStateDir(),
+): void {
+  const db = openStore(stateDir);
+  const sid = normalizeSessionId(sessionId);
+  const existing = db
+    .prepare("SELECT started_at FROM sessions WHERE session_id = ?")
+    .get(sid) as { started_at: number | null } | undefined;
+  const now = Math.floor(Date.now() / 1000);
+  if (!existing) {
+    db.prepare(
+      `INSERT INTO sessions(session_id, repo, started_at, last_compacted_at, status)
+       VALUES(?, ?, ?, ?, 'active')`,
+    ).run(sid, repo ?? null, now, now);
+  } else {
+    db.prepare(
+      "UPDATE sessions SET last_compacted_at = ?, repo = COALESCE(?, repo), status = 'active' WHERE session_id = ?",
+    ).run(now, repo ?? null, sid);
+  }
+}
+
+/** Append a `daily_log` entry (day = YYYY-MM-DD, local-naive from Date). */
+export function logDaily(
+  sessionId: string,
+  event: string,
+  detail: string | undefined,
+  tokensSaved: number,
+  stateDir: string = getStateDir(),
+): void {
+  const db = openStore(stateDir);
+  const day = new Date().toISOString().slice(0, 10);
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare(
+    `INSERT INTO daily_log(day, session_id, event, detail, tokens_saved, ts)
+     VALUES(?, ?, ?, ?, ?, ?)`,
+  ).run(day, normalizeSessionId(sessionId), event, detail ?? null, tokensSaved, now);
+}
+
+/** Append a `lessons` entry (future lessons-learned browse/recall). */
+export function addLesson(
+  sessionId: string,
+  repo: string | undefined,
+  lesson: string,
+  stateDir: string = getStateDir(),
+): void {
+  const db = openStore(stateDir);
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare(
+    `INSERT INTO lessons(session_id, repo, lesson, ts) VALUES(?, ?, ?, ?)`,
+  ).run(normalizeSessionId(sessionId), repo ?? null, lesson, now);
+}
+
 /** Map a DB row to the public StoredCheckpoint shape. */
 function rowToCheckpoint(row: any): StoredCheckpoint {
   return {
@@ -247,6 +343,7 @@ function rowToCheckpoint(row: any): StoredCheckpoint {
     nextSteps: row.next_steps ? JSON.parse(row.next_steps) : [],
     filesModified: row.files_modified ? JSON.parse(row.files_modified) : [],
     tokenEstimate: row.token_estimate ?? 0,
+    originalTokenEstimate: row.original_token_estimate ?? undefined,
     regionHash: row.region_hash ?? "",
     contentHash: row.content_hash ?? undefined,
     contentHash2: row.content_hash2 ?? undefined,
@@ -269,11 +366,11 @@ export function upsertCheckpoint(cp: StoredCheckpoint, stateDir: string = getSta
         (id, session_id, region_hash, content_hash, content_hash2, content_hash_version,
          normalized_text, summary, topic_summary, summary_hash,
          key_decisions, next_steps, files_modified, embedding_blob,
-         token_estimate, timestamp, dedup_status, compressed_original)
+         token_estimate, original_token_estimate, timestamp, dedup_status, compressed_original)
        VALUES (@id, @sid, @region_hash, @content_hash, @content_hash2, @content_hash_version,
                @normalized_text, @summary, @topic_summary, @summary_hash,
                @key_decisions, @next_steps, @files_modified, @embedding_blob,
-               @token_estimate, @timestamp, @dedup_status, @compressed_original)
+               @token_estimate, @original_token_estimate, @timestamp, @dedup_status, @compressed_original)
        ON CONFLICT(session_id, id) DO UPDATE SET
          summary=excluded.summary,
          topic_summary=excluded.topic_summary,
@@ -283,6 +380,7 @@ export function upsertCheckpoint(cp: StoredCheckpoint, stateDir: string = getSta
          files_modified=excluded.files_modified,
          embedding_blob=excluded.embedding_blob,
          token_estimate=excluded.token_estimate,
+         original_token_estimate=excluded.original_token_estimate,
          timestamp=excluded.timestamp,
          dedup_status=excluded.dedup_status,
          compressed_original=excluded.compressed_original`,
@@ -302,6 +400,7 @@ export function upsertCheckpoint(cp: StoredCheckpoint, stateDir: string = getSta
       files_modified: jsonText(cp.filesModified),
       embedding_blob: encodeEmbedding(cp.embedding ?? []),
       token_estimate: cp.tokenEstimate ?? 0,
+      original_token_estimate: cp.originalTokenEstimate ?? null,
       timestamp: cp.timestamp ?? 0,
       dedup_status: "active",
       compressed_original: cp.compressedOriginal ?? null,
@@ -508,6 +607,8 @@ export interface RepoStats {
   sessionCount: number;
   /** Cumulative stored-summary tokens saved (Σ stored summaries). */
   tokensSaved: number;
+  /** Sum of original dropped-region token estimates (repo-wide). */
+  originalTokens: number;
   /** Cumulative dedup add() attempts (store-wide). */
   dedupAttempts: number;
   /** Cumulative deduped collapses (store-wide). */
@@ -521,14 +622,16 @@ export function repoStats(stateDir: string = getStateDir()): RepoStats {
   const row = db
     .prepare(
       `SELECT COUNT(*) AS c, COALESCE(SUM(token_estimate),0) AS tok,
+              COALESCE(SUM(original_token_estimate),0) AS orig,
               COUNT(DISTINCT session_id) AS sessions
        FROM context_chunks WHERE dedup_status != 'removed'`,
     )
-    .get() as { c: number; tok: number; sessions: number };
+    .get() as { c: number; tok: number; orig: number; sessions: number };
   const ds = getDedupStats(stateDir);
   return {
     checkpointCount: row.c,
     totalTokenEstimate: row.tok,
+    originalTokens: row.orig,
     sessionCount: row.sessions,
     tokensSaved: getMetaNumber("tokens_saved", stateDir),
     dedupAttempts: ds.attempts,

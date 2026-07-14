@@ -1,5 +1,48 @@
 # Release Notes — pi-mega-compact
 
+## v0.4.2 (2026-07-14)
+
+Honest "tokens saved" metric + SQLite foundation tables for future features.
+
+### Highlights
+
+- **Honest "tokens saved".** `tokensSaved` now means tokens *removed* from
+  context — `Σ(original region) − Σ(stored summaries)` for genuine compactions,
+  and the *whole* original region when a region dedups onto an existing
+  checkpoint (nothing new is stored). This replaces the earlier
+  "stored-summary total" definition (where `tokensSaved` ≈ `totalTokenEstimate`),
+  so the dashboard number now reflects real context reduction. For tiny sessions
+  where the summary is larger than the region, saved is `0` (nothing removed).
+- **New `Original Tokens` field.** `compactSession` now returns
+  `originalTokenEstimate` (the dropped region's token count), persisted per
+  checkpoint (`original_token_estimate`) and surfaced in both the per-session and
+  repo dashboard cards as **Original Tokens** alongside **Tokens Stored** and
+  **Tokens Saved**. The engine computes the stored size from the actual summary
+  string (`estimateBlockTokens`), so the count is honest for both the extractive
+  and legacy COLLAPSE paths.
+- **SQLite foundation tables** for future features: `sessions` (resume +
+  per-repo session history), `daily_log` (append-only activity log), and
+  `lessons` (lessons-learned seed). `touchSession()` + `logDaily()` fire on every
+  compaction, so data collects from day one. Full UI/recall for these lands in
+  later sprints.
+
+### Install / Upgrade
+
+```bash
+pi install npm:pi-mega-compact     # first time (replaces any dev symlink)
+pi update --extensions             # after a publish
+```
+
+### Changed
+
+- Bumped to 280 passing tests (all green).
+- `tokensSaved` semantics changed (see Highlights). The `dedupCollapsed` counter
+  is unchanged and remains separate from tokens saved.
+- `mega-compact.ts` records a `sessions` + `daily_log` entry on each compaction
+  (best-effort; never blocks compaction).
+
+---
+
 ## v0.4.1 (2026-07-14)
 
 Per-session + per-repo stats model, moved entirely into the per-repo SQLite

@@ -53,6 +53,7 @@ interface Snapshot {
   store: {
     checkpointCount: number;
     totalTokenEstimate: number;
+    originalTokens: number;
     tokensSaved: number;
     injectedCount: number;
     dedupHitRate: number;
@@ -66,6 +67,7 @@ interface Snapshot {
   repo: {
     checkpointCount: number;
     totalTokenEstimate: number;
+    originalTokens: number;
     tokensSaved: number;
     sessionCount: number;
     dedupAttempts: number;
@@ -91,9 +93,9 @@ function readSnapshot(snapshotPath: string) {
       session: { id: null, state: null, persistedThisSession: false, lastCheckpointId: null, lastCompactedFrom: 0 },
       context: { tokens: null, percent: null, contextWindow: 0 },
       trigger: { armed: false, ready: false, currentTokens: null, thresholdTokens: 100_000, fastGatePct: 80 },
-      store: { checkpointCount: 0, totalTokenEstimate: 0, tokensSaved: 0, injectedCount: 0, dedupHitRate: 0, storageDedupRate: 0, dedupCollapsed: 0 },
+      store: { checkpointCount: 0, totalTokenEstimate: 0, originalTokens: 0, tokensSaved: 0, injectedCount: 0, dedupHitRate: 0, storageDedupRate: 0, dedupCollapsed: 0 },
       crew: { activeAgents: 0, currentTurn: 0 },
-      repo: { checkpointCount: 0, totalTokenEstimate: 0, tokensSaved: 0, sessionCount: 0, dedupAttempts: 0, dedupCollapsed: 0, storageDedupRate: 0 },
+      repo: { checkpointCount: 0, totalTokenEstimate: 0, originalTokens: 0, tokensSaved: 0, sessionCount: 0, dedupAttempts: 0, dedupCollapsed: 0, storageDedupRate: 0 },
     } as Snapshot;
   }
 }
@@ -185,6 +187,7 @@ function dashboardHtml(tierName: string): string {
     <div class="stat-grid">
       <span class="label">Checkpoints</span><span class="value" id="st-count">0</span>
       <span class="label">Tokens Stored</span><span class="value" id="st-tokens">0</span>
+      <span class="label">Original Tokens</span><span class="value" id="st-orig">0</span>
       <span class="label">Tokens Saved</span><span class="value" id="st-saved">0</span>
       <span class="label">Injected</span><span class="value" id="st-injected">0</span>
       <span class="label">Dedup Rate</span><span class="value" id="st-dedup">0%</span>
@@ -198,6 +201,7 @@ function dashboardHtml(tierName: string): string {
     <div class="stat-grid">
       <span class="label">Checkpoints</span><span class="value" id="rp-count">0</span>
       <span class="label">Tokens Stored</span><span class="value" id="rp-tokens">0</span>
+      <span class="label">Original Tokens</span><span class="value" id="rp-orig">0</span>
       <span class="label">Tokens Saved</span><span class="value" id="rp-saved">0</span>
       <span class="label">Sessions</span><span class="value" id="rp-sessions">0</span>
       <span class="label">Collapsed</span><span class="value" id="rp-collapsed">0</span>
@@ -263,6 +267,7 @@ function dashboardHtml(tierName: string): string {
 
     document.getElementById('st-count').textContent = d.store.checkpointCount;
     document.getElementById('st-tokens').textContent = d.store.totalTokenEstimate.toLocaleString();
+    document.getElementById('st-orig').textContent = (d.store.originalTokens || 0).toLocaleString();
     document.getElementById('st-saved').textContent = (d.store.tokensSaved || 0).toLocaleString();
     document.getElementById('st-injected').textContent = d.store.injectedCount;
     document.getElementById('st-dedup').textContent = Math.round(d.store.dedupHitRate * 100) + '%';
@@ -272,9 +277,10 @@ function dashboardHtml(tierName: string): string {
     document.getElementById('st-lastid').textContent = d.session.lastCheckpointId || '—';
 
     // Repo-wide (all sessions in this repo's SQLite store).
-    var repo = d.repo || { checkpointCount: 0, totalTokenEstimate: 0, tokensSaved: 0, sessionCount: 0, dedupCollapsed: 0, storageDedupRate: 0 };
+    var repo = d.repo || { checkpointCount: 0, totalTokenEstimate: 0, originalTokens: 0, tokensSaved: 0, sessionCount: 0, dedupCollapsed: 0, storageDedupRate: 0 };
     document.getElementById('rp-count').textContent = repo.checkpointCount;
     document.getElementById('rp-tokens').textContent = repo.totalTokenEstimate.toLocaleString();
+    document.getElementById('rp-orig').textContent = (repo.originalTokens || 0).toLocaleString();
     document.getElementById('rp-saved').textContent = (repo.tokensSaved || 0).toLocaleString();
     document.getElementById('rp-sessions').textContent = repo.sessionCount || 0;
     document.getElementById('rp-collapsed').textContent = repo.dedupCollapsed || 0;

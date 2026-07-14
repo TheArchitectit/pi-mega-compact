@@ -58,6 +58,9 @@ export interface StoredCheckpoint {
   nextSteps: string[];
   filesModified: string[];
   tokenEstimate: number;
+  /** Token count of the ORIGINAL dropped region (before compaction). Drives the
+   *  honest "tokens saved" = originalTokenEstimate − tokenEstimate. */
+  originalTokenEstimate?: number;
   regionHash: string;
   /** Primary content-addressable hash (full 64-hex SHA-256 of normalized text). */
   contentHash?: string;

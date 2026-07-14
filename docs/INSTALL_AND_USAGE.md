@@ -1,4 +1,4 @@
-# Install & Usage — pi-mega-compact (v0.4.1)
+# Install & Usage — pi-mega-compact (v0.4.2)
 
 A complete, copy-paste guide to installing pi-mega-compact and using **every**
 feature: the pi extension (auto-compact + recall), the OpenClaw plugin adapter,
@@ -181,6 +181,13 @@ Above the pi editor:
 > `dedup:` field shows the cumulative storage dedup rate (e.g. `92%`, or `2.5%`
 > / `0.0%` for small/zero). For non-git working dirs, state falls back to
 > `MEGACOMPACT_STATE_DIR` (or the global default).
+>
+> **What "tokens saved" means (v0.4.2+):** it is the tokens *removed* from
+> context — `Σ(original region) − Σ(stored summaries)` — for genuine
+> compactions, and the *whole* original region when a region dedups onto an
+> existing checkpoint (nothing new is stored). This replaced the earlier
+> "stored-summary total" definition. The dashboard shows the three figures
+> side by side: **Tokens Stored**, **Original Tokens**, and **Tokens Saved**.
 
 ---
 

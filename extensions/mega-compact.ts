@@ -37,6 +37,7 @@ import { recallAndInline } from "../src/recall.js";
 import { autoCompactCheck } from "../src/compact.js";
 import { estimateSessionTokens } from "../src/tokens.js";
 import { normalizeSessionId } from "../src/store.js";
+import { touchSession, logDaily } from "../src/store/sqlite.js";
 import { Logger } from "../src/log.js";
 import type { EngineMessage } from "../src/types.js";
 import { writeFileSync, appendFileSync, readFileSync } from "node:fs";
@@ -191,7 +192,8 @@ interface DashboardSnapshot {
   store: {
     checkpointCount: number;
     totalTokenEstimate: number;
-    tokensSaved: number;
+    originalTokens: number;      // Σ original dropped-region tokens (this session)
+    tokensSaved: number;         // Σ(original − stored) for this session
     injectedCount: number;
     dedupHitRate: number;
     storageDedupRate: number;
@@ -205,7 +207,8 @@ interface DashboardSnapshot {
   repo: {
     checkpointCount: number;     // across all sessions in this repo's store
     totalTokenEstimate: number;  // repo-wide stored checkpoint tokens
-    tokensSaved: number;         // repo-wide cumulative stored-summary tokens
+    originalTokens: number;      // repo-wide Σ original dropped-region tokens
+    tokensSaved: number;         // repo-wide cumulative (original − stored) + deduped orig
     sessionCount: number;        // distinct sessions with checkpoints
     dedupAttempts: number;       // cumulative add() calls (store-wide)
     dedupCollapsed: number;      // cumulative deduped collapses (store-wide)
@@ -304,10 +307,11 @@ export default function (pi: ExtensionAPI) {
       context: { tokens: lastCtxTokens, percent: lastCtxPercent, contextWindow: lastCtxWindow },
       trigger: { armed, ready, currentTokens: lastCtxTokens, thresholdTokens: config.thresholdTokens, fastGatePct: config.fastGatePct },
       crew: { activeAgents, currentTurn },
-      store: { checkpointCount: st.checkpointCount, totalTokenEstimate: st.totalTokenEstimate, tokensSaved: rt.tokensSaved, injectedCount: st.injectedCount, dedupHitRate: st.dedupHitRate, storageDedupRate: st.storageDedupRate, dedupAttempts: st.dedupAttempts, dedupCollapsed: st.dedupCollapsed },
+      store: { checkpointCount: st.checkpointCount, totalTokenEstimate: st.totalTokenEstimate, originalTokens: st.originalTokens, tokensSaved: rt.tokensSaved, injectedCount: st.injectedCount, dedupHitRate: st.dedupHitRate, storageDedupRate: st.storageDedupRate, dedupAttempts: st.dedupAttempts, dedupCollapsed: st.dedupCollapsed },
       repo: {
         checkpointCount: repo.checkpointCount,
         totalTokenEstimate: repo.totalTokenEstimate,
+        originalTokens: repo.originalTokens,
         tokensSaved: repo.tokensSaved,
         sessionCount: repo.sessionCount,
         dedupAttempts: repo.dedupAttempts,
@@ -425,12 +429,27 @@ export default function (pi: ExtensionAPI) {
     rt.lastCompactedFrom = result.compactedFrom;
     rt.lastCompactedTokens = result.tokenEstimate;
     rt.dedupAttempts++;
-    // Per-session "tokens saved" = this session-instance only: the stored-summary
-    // tokens persisted on each NEW (non-deduped) compaction. It resets to 0 on
-    // session_start (rt is rebuilt) — so a fresh session shows 0 while the repo's
-    // cumulative saved (SQLite meta) keeps the historical running total.
-    if (!result.deduped) rt.tokensSaved += result.tokenEstimate;
+    // Honest "tokens saved" for this session-instance only:
+    //   new checkpoint      → original − stored
+    //   deduped onto existing → whole original region (nothing new stored)
+    // Resets to 0 on session_start (rt is rebuilt) — so a fresh session shows 0
+    // while the repo's cumulative saved (SQLite meta) keeps the running total.
+    const saved = result.deduped
+      ? result.originalTokenEstimate
+      : Math.max(0, result.originalTokenEstimate - result.tokenEstimate);
+    rt.tokensSaved += saved;
     if (result.deduped) rt.dedupSkips++;
+
+    // Record session activity + a daily-log entry in the per-repo SQLite store
+    // (foundation for resume-sessions / daily-log features). Best-effort — never
+    // block a compaction on bookkeeping.
+    try {
+      const repo = resolveRepoRoot(ctx.cwd);
+      touchSession(sid, repo, currentStateDir);
+      logDaily(sid, "compact", result.checkpointId, saved, currentStateDir);
+    } catch {
+      /* non-fatal: stats bookkeeping only */
+    }
 
     // Sentinel marker: a non-LLM bookkeeping entry so subsequent triggers can
     // skip re-vectorizing an already-compacted region (zero token cost).
@@ -441,7 +460,6 @@ export default function (pi: ExtensionAPI) {
       deduped: result.deduped,
     });
 
-    const saved = result.tokenEstimate;
     setStatus(
       ctx,
       rt.persistedThisSession

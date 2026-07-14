@@ -15,7 +15,7 @@
 import { findSuperseded, supersede } from "./supersede.js";
 import { summarizeMessages, mergeCompactSummaries, formatCompactSummary } from "./compact.js";
 import { extractiveSummarize } from "./extractive.js";
-import { estimateSessionTokens } from "./tokens.js";
+import { estimateSessionTokens, estimateBlockTokens } from "./tokens.js";
 import { computeRegionHash, VectorStore, type SearchHit } from "./vectorStore.js";
 import type { EngineMessage } from "./types.js";
 
@@ -51,6 +51,11 @@ export interface CompactResult {
   summary: string;
   regionHash: string;
   tokenEstimate: number;
+  /** Token count of the original dropped region (before compaction). The honest
+   *  "tokens saved" base = originalTokenEstimate − tokenEstimate (stored), or the
+   *  full originalTokenEstimate when the region deduped onto an existing
+   *  checkpoint (nothing new stored). */
+  originalTokenEstimate: number;
   /** Index in `messages` where the compacted slice begins (for the caller to
    *  build a drop range). */
   compactedFrom: number;
@@ -87,6 +92,7 @@ export function compactSession(input: CompactInput, store: VectorStore = getDefa
       summary: "",
       regionHash: "",
       tokenEstimate: 0,
+      originalTokenEstimate: 0,
       compactedFrom,
     };
   }
@@ -105,7 +111,6 @@ export function compactSession(input: CompactInput, store: VectorStore = getDefa
   let keyDecisions: string[];
   let nextSteps: string[];
   let filesModified: string[];
-  let tokenEstimate: number;
 
   if (useExtractive && !input.summary) {
     const ext = extractiveSummarize(keep);
@@ -114,7 +119,6 @@ export function compactSession(input: CompactInput, store: VectorStore = getDefa
     keyDecisions = input.keyDecisions ?? ext.keyDecisions;
     nextSteps = input.nextSteps ?? ext.nextSteps;
     filesModified = input.filesModified ?? ext.filesModified;
-    tokenEstimate = input.tokenEstimate ?? ext.tokenEstimate;
   } else {
     const collapsed = input.summary ?? summarizeMessages(keep);
     summary = formatCompactSummary(collapsed);
@@ -122,8 +126,17 @@ export function compactSession(input: CompactInput, store: VectorStore = getDefa
     keyDecisions = input.keyDecisions ?? [];
     nextSteps = input.nextSteps ?? [];
     filesModified = input.filesModified ?? [];
-    tokenEstimate = input.tokenEstimate ?? estimateSessionTokens(compactable);
   }
+
+  // Honest "tokens saved" accounting:
+  //  - originalTokenEstimate = the dropped region's token count (what context
+  //    held before compaction) = the compacted slice's tokens.
+  //  - storedTokens = the persisted summary's token count, computed from the
+  //    actual summary string so it's honest for BOTH the extractive and legacy
+  //    COLLAPSE paths (the legacy path's fallback estimateSessionTokens is the
+  //    *original* size, not the stored size).
+  const originalTokenEstimate = estimateSessionTokens(compactable);
+  const storedTokens = estimateBlockTokens(summary);
 
   // Region text = the compacted slice, used for dedup + embedding.
   const regionText = input.regionText ?? keep.map((m) => m.text).join("\n");
@@ -137,7 +150,8 @@ export function compactSession(input: CompactInput, store: VectorStore = getDefa
     nextSteps,
     filesModified,
     regionText,
-    tokenEstimate,
+    tokenEstimate: storedTokens,
+    originalTokenEstimate,
     timestamp: input.timestamp ?? 0,
   });
 
@@ -148,7 +162,8 @@ export function compactSession(input: CompactInput, store: VectorStore = getDefa
     checkpointId: add.checkpoint.checkpointId,
     summary,
     regionHash,
-    tokenEstimate,
+    tokenEstimate: storedTokens,
+    originalTokenEstimate,
     compactedFrom,
   };
 }
