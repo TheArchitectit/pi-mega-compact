@@ -1,5 +1,32 @@
 # Release Notes — pi-mega-compact
 
+## v0.4.9 (2026-07-14)
+
+Hotfix: dashboard server failed to start from the npm install (regression of
+v0.4.5's fix).
+
+### Fixed
+
+- **`[mega-compact] dashboard server failed to start`** on every npm install.
+  v0.4.5 made the runner import `dashboard-server.ts` + spawn with
+  `--experimental-strip-types`. That worked from a source checkout but **Node
+  refuses to strip-type `.ts` files under `node_modules`**
+  (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), so it broke in every real
+  install. The package ships the compiled `dist/extensions/dashboard-server.js`
+  (since v0.4.6) — a new `resolveDashboardEntry()` prefers that compiled entry
+  (no strip-types flag needed; it imports only Node built-ins), and only falls
+  back to the `.ts` source + strip-types when the compiled file is absent AND we
+  are NOT under `node_modules` (dev checkout without a build). Verified end-to-end
+  against a simulated `node_modules` install: `port.pid` written, server up.
+
+### Install / Upgrade
+
+```bash
+pi update --extensions
+```
+
+---
+
 ## v0.4.8 (2026-07-14)
 
 Docs/plan drop — ships the design plans; no runtime changes.

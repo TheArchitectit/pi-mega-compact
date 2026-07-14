@@ -27,7 +27,7 @@
 import type { ExtensionAPI, ExtensionContext, ContextEvent, SessionBeforeCompactEvent } from "@earendil-works/pi-coding-agent";
 import { sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { join, dirname } from "node:path";
+import { join, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { STATE_DIR_DEFAULT } from "../src/config.js";
 import { VectorStore } from "../src/vectorStore.js";
@@ -790,6 +790,10 @@ export default function (pi: ExtensionAPI) {
 
   const portFile = join(currentStateDir, "port.pid");
   const runnerFile = join(currentStateDir, "_dashboard-runner.mjs");
+  // Whether the runner must be spawned with --experimental-strip-types (true only
+  // when we fall back to the .ts source outside node_modules; false when using
+  // the shipped compiled dist/extensions/dashboard-server.js).
+  let dashboardNeedsStrip = false;
 
   /** Try to reach a running dashboard server. Returns { port, url } or null. */
   async function isServerRunning(): Promise<{ port: number; url: string } | null> {
@@ -808,23 +812,52 @@ export default function (pi: ExtensionAPI) {
     return null;
   }
 
+  /**
+   * Resolve the launchable dashboard-server module.
+   *
+   * CRITICAL: Node's `--experimental-strip-types` REFUSES to strip .ts files that
+   * live under `node_modules` (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING). Since
+   * the published package installs under node_modules, importing the .ts source
+   * fails in every real install (it only worked from a source checkout). So we
+   * prefer the COMPILED dist/extensions/dashboard-server.js (which the package
+   * ships from v0.4.6 — it imports only Node built-ins, so it runs standalone),
+   * and only fall back to the .ts source (with strip-types) when the compiled
+   * file is absent AND we're not under node_modules (dev checkout without a build).
+   *
+   * Returns { entry, needsStripTypes }.
+   */
+  function resolveDashboardEntry(): { entry: string; needsStripTypes: boolean } | null {
+    const here = dirname(fileURLToPath(import.meta.url)); // .../extensions
+    const candidates = [
+      // 1. Compiled sibling when running from dist/ (import.meta is dist/extensions/…js)
+      { entry: join(here, "dashboard-server.js"), strip: false },
+      // 2. Compiled under the package's dist/ when running from source extensions/…ts
+      { entry: join(here, "..", "dist", "extensions", "dashboard-server.js"), strip: false },
+      // 3. Last resort: the .ts source (only strippable OUTSIDE node_modules)
+      { entry: join(here, "dashboard-server.ts"), strip: true },
+    ];
+    for (const c of candidates) {
+      if (!existsSync(c.entry)) continue;
+      if (c.strip && c.entry.includes(`${sep}node_modules${sep}`)) continue; // unstrippable
+      return { entry: c.entry, needsStripTypes: c.strip };
+    }
+    return null;
+  }
+
   /** Write a small ESM runner script that imports and launches the dashboard server. */
-  function writeRunnerScript(): void {
-    // The npm package ships SOURCE only (no dist/), so the launchable entry is
-    // the .ts file — not dashboard-server.js (which only exists after a local
-    // build). dashboard-server.ts imports only Node built-ins, so it loads under
-    // node's --experimental-strip-types without any other compiled code. The
-    // child is spawned with that flag (see the spawn below) so the import below
-    // resolves from the source install path.
-    const sourceServer = join(dirname(fileURLToPath(import.meta.url)), "dashboard-server.ts");
+  function writeRunnerScript(): boolean {
+    const resolved = resolveDashboardEntry();
+    if (!resolved) return false;
+    dashboardNeedsStrip = resolved.needsStripTypes;
     const script = [
-      `import { launchDashboardServer } from ${JSON.stringify(sourceServer)};`,
+      `import { launchDashboardServer } from ${JSON.stringify(resolved.entry)};`,
       `launchDashboardServer(${JSON.stringify(currentStateDir)}).catch(err => {`,
       `  console.error("[mega-compact] dashboard failed:", err);`,
       `  process.exit(1);`,
       `});`,
     ].join("\n");
     writeFileSync(runnerFile, script);
+    return true;
   }
 
   /** Open a URL in the default browser. Platform-aware. Uses spawn (not exec) to avoid shell injection. */
@@ -855,9 +888,13 @@ export default function (pi: ExtensionAPI) {
 
       // Start the server
       ctx.ui.notify("[mega-compact] starting dashboard server…");
-      writeRunnerScript();
+      if (!writeRunnerScript()) {
+        ctx.ui.notify("[mega-compact] dashboard entry not found — check logs.");
+        return;
+      }
 
-      const child = spawn(process.execPath, ["--experimental-strip-types", runnerFile], {
+      const args = dashboardNeedsStrip ? ["--experimental-strip-types", runnerFile] : [runnerFile];
+      const child = spawn(process.execPath, args, {
         detached: true,
         stdio: "ignore",
       });
