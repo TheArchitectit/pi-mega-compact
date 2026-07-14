@@ -358,21 +358,38 @@ export default function (pi: ExtensionAPI) {
       const usedStr = `${C.cyan}${fmt(st.totalTokenEstimate)} sess${C.reset} / ${C.blue}${fmt(repo.totalTokenEstimate)} repo${C.reset}`;
       const agentStr = activeAgents > 0 ? ` │ 🤖 ${activeAgents} agent${activeAgents === 1 ? "" : "s"}` : "";
       const turnStr = currentTurn > 0 ? ` │ turn ${currentTurn}` : "";
+      // Phase 3 — pulsing status glyph while a compaction is in flight.
+      const pulse = pulsing ? `${C.cyan}${PULSE[Math.floor(Date.now() / 250) % PULSE.length]}${C.reset} ` : "";
       const lines = [
-        ` ${C.amber}⚡ ${config.tier}${C.reset} │ ${tokStr}/${maxStr} tokens (${C.bold}${pctStr}${C.reset}) │ ${st.checkpointCount} chkpt${st.checkpointCount === 1 ? "" : "s"}${agentStr}${turnStr}`,
+        ` ${C.amber}⚡ ${config.tier}${C.reset} │ ${tokStr}/${maxStr} tokens (${C.bold}${pctStr}${C.reset}) │ ${st.checkpointCount} chkpt${agentStr}${turnStr}`,
         `   ${triggerLabel} │ ${C.magenta}dedup: ${dedupStr}${C.reset} │ ${C.gray}used:${C.reset} ${usedStr} │ ${C.gray}saved:${C.reset} ${savedStr}`,
       ];
+      // Phase 3 — compact progress bar: session tokens saved toward the rolling goal.
+      if (rt.tokensSaved > 0) {
+        const goal = Math.max(savedGoal, 1);
+        const pct = Math.min(100, Math.round((rt.tokensSaved / goal) * 100));
+        const filled = Math.round((pct / 100) * 10);
+        const bar = "▓".repeat(filled) + "░".repeat(10 - filled);
+        lines.push(`   ${C.green}saved ${fmt(rt.tokensSaved)} ${bar}${C.reset} ${pct}% of ${fmt(goal)}`);
+      }
       // Live "now processing" line — teal while fresh (≤4s), then the last-seen
       // action keeps the widget lively. Cleared on session reset.
-      if (tierTrace) {
-        // Per-tier dedup progress is more relevant than the last action while a
-        // compaction is mid-flight, so prefer it when fresh.
-        const fresh = Date.now() - lastActivityAt < 4000;
-        if (fresh) lines.push(`   ${tierTrace}`);
-        else if (currentActivity) lines.push(`   ${C.dim}${currentActivity}${C.reset}`);
+      const fresh = Date.now() - lastActivityAt < 4000;
+      if (tierTrace && fresh) {
+        lines.push(`   ${pulse}${tierTrace}`);
       } else if (currentActivity) {
-        const fresh = Date.now() - lastActivityAt < 4000;
         lines.push(`   ${fresh ? C.teal : C.dim}${currentActivity}${C.reset}`);
+      } else if (pulsing) {
+        lines.push(`   ${pulse}${C.teal}compacting…${C.reset}`);
+      }
+      // Phase 3 — explain-why line (fresh only).
+      if (lastWhy && fresh) lines.push(`   ${C.gray}${lastWhy}${C.reset}`);
+      // Phase 3 — recall/activity ticker (most-recent first), fresh only.
+      if (fresh) {
+        for (let i = ticker.length - 1; i >= 0; i--) {
+          if (lines.length >= 10) break; // MAX_WIDGET_LINES guard
+          lines.push(`   ${i === ticker.length - 1 ? "" : C.dim}${ticker[i].text}${C.reset}`);
+        }
       }
       ctx.ui.setWidget(WIDGET_KEY, lines, { placement: "aboveEditor" });
     }
@@ -406,6 +423,27 @@ export default function (pi: ExtensionAPI) {
   // Built from the store's sync onTier callback during a compaction so the user
   // watches each tier evaluate in real time. Cleared once the outcome settles.
   let tierTrace: string | undefined;
+  // Phase 3 — standout toolbar state.
+  // Recall/activity ticker: a small ring buffer (≤5) of recent compact/recall
+  // events so the widget shows a live history instead of a single last action.
+  interface TickerEntry { text: string; at: number; }
+  const ticker: TickerEntry[] = [];
+  const TICKER_MAX = 5;
+  function pushTicker(text: string): void {
+    ticker.push({ text, at: Date.now() });
+    while (ticker.length > TICKER_MAX) ticker.shift();
+    lastActivityAt = Date.now();
+  }
+  // Pulsing status: set true while a compaction is in flight, cleared on result.
+  let pulsing = false;
+  // Rolling "saved" goal for the progress bar — grows as we save more, so the
+  // bar always has a meaningful denominator (never sits at 100% forever).
+  let savedGoal = 50_000;
+  // Last explain-why line (dedup reason / anchor-kept / superseded), surfaced
+  // while fresh.
+  let lastWhy: string | undefined = undefined;
+  // Cycling glyph phases for the pulsing status.
+  const PULSE = ["◐", "◓", "◑", "◒"];
   // ANSI palette for the toolbar. The pi TUI's Text component preserves ANSI
   // escape codes (see wrapTextWithAnsi), so raw escapes render as colors. No
   // chalk dependency needed — these are just strings.
@@ -446,6 +484,10 @@ export default function (pi: ExtensionAPI) {
     currentActivity = undefined;
     lastActivityAt = 0;
     tierTrace = undefined;
+    ticker.length = 0;
+    pulsing = false;
+    savedGoal = 50_000;
+    lastWhy = undefined;
   }
 
   /** Build the sync onTier callback that paints the live per-tier trace. */
@@ -488,6 +530,7 @@ export default function (pi: ExtensionAPI) {
     const keepFrom = opts.keepFrom ?? Math.max(0, view.length - config.preserveRecent);
     if (keepFrom <= 0) return { skipped: true as const };
 
+    pulsing = true; // animate the status line while the (sync) pipeline runs
     const result = compactSession(
       {
         sessionId: sid,
@@ -499,6 +542,7 @@ export default function (pi: ExtensionAPI) {
       },
       store,
     );
+    pulsing = false;
 
     if (result.skipped) return { skipped: true as const };
     if (!result.deduped) {
@@ -518,6 +562,9 @@ export default function (pi: ExtensionAPI) {
       : Math.max(0, result.originalTokenEstimate - result.tokenEstimate);
     rt.tokensSaved += saved;
     if (result.deduped) rt.dedupSkips++;
+    // Grow the rolling "saved" goal so the progress bar always has a fresh
+    // denominator (we don't want it pinned at 100% once we pass an old target).
+    if (rt.tokensSaved > savedGoal) savedGoal = Math.ceil((rt.tokensSaved * 1.25) / 10_000) * 10_000;
 
     // Live toolbar "now processing" line: what file/region just got compacted or
     // deduped. Reset to the last-seen action after a few seconds (see snapshot).
@@ -529,6 +576,18 @@ export default function (pi: ExtensionAPI) {
       ? `♻ deduped ${fileLabel}`
       : `🗜 compacted ${result.checkpointId} · ${fileLabel}`;
     lastActivityAt = Date.now();
+    // Explain-why line: surfaced while fresh. Pulls the dedup reason (which for
+    // L2 includes the cosine sim) so the user sees WHY a region was kept/dropped.
+    lastWhy = result.deduped
+      ? `why: deduped@${result.dedupReason ?? "tier"}`
+      : `why: compacted → ${result.checkpointId}`;
+    // Recall/activity ticker: record this event in the ring buffer.
+    const savedK = (saved / 1000).toFixed(1);
+    pushTicker(
+      result.deduped
+        ? `${C.green}♻${C.reset} deduped ${fileLabel} · ${savedK}k saved`
+        : `${C.cyan}🗜${C.reset} ${result.checkpointId} · +${savedK}k · ${fileLabel}`,
+    );
     // The per-tier trace has settled into the final outcome — fold it back into
     // the activity line and stop showing the live trace.
     tierTrace = undefined;
@@ -590,6 +649,14 @@ export default function (pi: ExtensionAPI) {
       store,
     );
     dashboard.event("recall", { source, query: query.slice(0, 120), injected: result.toInject.length, empty: result.empty });
+    if (!result.empty && result.toInject.length > 0) {
+      const top = result.toInject[0];
+      const scorePct = Math.round((top.score ?? 0) * 100);
+      const files = top.checkpoint.filesModified ?? [];
+      const label = files.length ? files.map((f) => f.split("/").pop() ?? f).slice(0, 2).join(", ") : top.checkpoint.checkpointId;
+      pushTicker(`${C.amber}↩${C.reset} recalled ${top.checkpoint.checkpointId} · ${scorePct}% · ${label}`);
+      lastWhy = `why: recalled@${scorePct}% (${result.toInject.length} chkpt)`;
+    }
     return result;
   }
 
