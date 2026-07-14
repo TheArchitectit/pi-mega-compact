@@ -1,5 +1,29 @@
 # Release Notes — pi-mega-compact
 
+## v0.4.3 (2026-07-14)
+
+Hotfix: v0.4.2 failed to load on repos that already had a `sqlite.db` from an
+earlier version.
+
+### Fixed
+
+- **`no such column: original_token_estimate`** crash on extension bind. v0.4.2
+  added the `original_token_estimate` column to `context_chunks` via
+  `CREATE TABLE IF NOT EXISTS`, which is a no-op on a pre-existing table — so any
+  store created before v0.4.2 was missing the column and `repoStats()` (called at
+  load) threw, taking the whole extension down. Added an idempotent
+  `ensureColumn()` migration (`ALTER TABLE … ADD COLUMN`, guarded by
+  `PRAGMA table_info`) that adds the column to existing stores on open. Also added
+  a regression test that builds a pre-0.4.2 table and asserts `repoStats()` works.
+
+### Install / Upgrade
+
+```bash
+pi update --extensions
+```
+
+---
+
 ## v0.4.2 (2026-07-14)
 
 Honest "tokens saved" metric + SQLite foundation tables for future features.

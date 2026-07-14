@@ -174,6 +174,38 @@ test("checkAllIntegrity covers every session", () => {
   assert.ok(reports.every((r: { ok: boolean }) => r.ok));
 });
 
+// --- schema migration (v0.4.2: original_token_estimate) -------------------
+
+test("Sprint 10 migration: pre-0.4.2 db gains original_token_estimate and repoStats works", () => {
+  const dir = join(baseTmp, `run-${counter++}`);
+  // Simulate a v0.4.1-era store: openStore() builds the full current schema,
+  // then drop the original_token_estimate column that 0.4.2 added. CREATE TABLE
+  // IF NOT EXISTS is a no-op on an existing table, which is exactly why the
+  // shipped v0.4.2 crashed at runtime on old repos ("no such column").
+  const db = openStore(dir);
+  db.exec("ALTER TABLE context_chunks DROP COLUMN original_token_estimate;");
+  closeStore(dir);
+
+  // Re-open through the real code path — must ALTER the column in, not crash.
+  const vs = new VectorStore({ dedupSim: 0.9, stateDir: dir });
+  vs.add({
+    sessionId: "sess_mig",
+    summary: "legacy region",
+    regionText: "some region text to compact",
+    tokenEstimate: 100,
+    originalTokenEstimate: 500,
+    timestamp: 1,
+  });
+  const repo = vs.repoStats();
+  // No "no such column" crash = migration succeeded; totals reflect the new col.
+  assert.equal(repo.checkpointCount, 1);
+  assert.equal(repo.originalTokens, 500, "originalTokens read from migrated column");
+  // Re-open a second time to prove idempotency (column already exists).
+  closeStore(dir);
+  const vs2 = new VectorStore({ dedupSim: 0.9, stateDir: dir });
+  assert.equal(vs2.repoStats().originalTokens, 500, "stable across re-open");
+});
+
 // --- cleanup ---------------------------------------------------------------
 
 test("Sprint 10 cleanup", () => {

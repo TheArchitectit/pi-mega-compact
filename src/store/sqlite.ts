@@ -190,12 +190,31 @@ function initSchema(db: Database.Database): void {
       tokenize='trigram'
     );
   `);
+  // Idempotent column migrations. `CREATE TABLE IF NOT EXISTS` is a no-op on a
+  // pre-existing table, so new columns added to context_chunks after a store was
+  // first created (e.g. original_token_estimate in v0.4.2) must be ALTERed in for
+  // databases created by an older version — otherwise repoStats()/upsert crash
+  // with "no such column" and the extension fails to load. Additive only.
+  ensureColumn(db, "context_chunks", "original_token_estimate", "INTEGER");
   const v = db.prepare("SELECT value FROM meta WHERE key='schema_version'").get() as
     | { value: string }
     | undefined;
   if (!v) {
     db.prepare("INSERT INTO meta(key, value) VALUES(?, ?)").run("schema_version", String(SCHEMA_VERSION));
   }
+}
+
+/**
+ * Add `column` (with `decl`, e.g. "INTEGER") to `table` if it does not already
+ * exist. Idempotent: checks PRAGMA table_info first, so it is safe to run on
+ * every open. Table/column/decl are code-controlled constants (never user
+ * input), so the unavoidable identifier interpolation here does not violate
+ * PREVENT-002 (no external data reaches this SQL).
+ */
+function ensureColumn(db: Database.Database, table: string, column: string, decl: string): void {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (cols.some((c) => c.name === column)) return;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
 }
 
 /** Read a string-valued meta key (or undefined). Used for cumulative counters. */
