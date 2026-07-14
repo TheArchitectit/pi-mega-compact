@@ -137,6 +137,96 @@ PHASE 6 — New ideas (not in any prior review) to make it fantastic [effort: va
     RAPTOR tree) to a portable JSON for backup/migration across machines. [M]
 
 ================================================================================
+PHASE 5b — Dashboard navigation: tabs + multi-repo + model/provider      [effort: M]
+================================================================================
+Today the dashboard is a SINGLE static HTML page spawned per-repo with one
+`stateDir` (`<repo>/.pi/mega-compact/`). Each repo has its OWN SQLite DB and
+there is NO cross-repo registry. To deliver the user's ask — (1) navigation +
+tabs: **Summary · Current repo · All repos**, (2) capture **model + provider**
+into SQL — we redesign the dashboard around a tiny **global index**.
+
+### Tabs
+- **Summary** — aggregate across every repo this machine has ever run on:
+  total checkpoints, total tokens saved, total compressed-original retained
+  (data-safety), a repo-count + per-repo sparkline of saved, and the active
+  model/provider (see below).
+- **Current repo** — today's single-repo view (context, store, data-safety,
+  integrity) for the repo the dashboard was launched from.
+- **All repos** — a sortable table, one row per repo:
+  `repo | provider/model | checkpoints | tokens saved | compressed-original |
+  last compacted | integrity`. Click → drills into that repo's Current-repo view.
+
+### Cross-repo architecture (the real work)
+Two viable options — pick ONE:
+- **(A) Global index DB** (recommended): add a machine-wide SQLite at
+  `~/.pi/agent/extensions/pi-mega-compact/_index.sqlite` (state dir
+  `dirname(import.meta.url)/..`). Every `bindRepo()` upserts a `repo_registry`
+  row + appends model snapshots. The dashboard server reads BOTH the index and
+  each repo's own DB (opened on demand from the registry's `state_dir` column).
+  Keeps it local/sync, satisfies PREVENT-PI-004.
+- **(B) Filesystem scan**: at server start, walk known locations for
+  `<repo>/.pi/mega-compact/sqlite.db` (or a `repo_registry.json` left by
+  `bindRepo`). Fragile (depends on discovering every repo root) — prefer (A).
+
+The server is still spawned with a `stateDir`, but now also opens the global
+index for the Summary/All-repos tabs, and opens a per-repo DB on drill-down.
+
+### SQL to add (global index DB)
+```sql
+CREATE TABLE IF NOT EXISTS repo_registry (
+  repo_root     TEXT PRIMARY KEY,          -- absolute path to the git repo
+  display_name  TEXT,                       -- basename of repo_root
+  state_dir     TEXT NOT NULL,              -- path to its .pi/mega-compact dir
+  first_seen    INTEGER,
+  last_seen     INTEGER,
+  last_compacted_at INTEGER,
+  checkpoint_count INTEGER DEFAULT 0,
+  tokens_saved  INTEGER DEFAULT 0,
+  compressed_original_bytes INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS model_snapshots (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  repo_root     TEXT NOT NULL,             -- FK-ish to repo_registry.repo_root
+  provider      TEXT NOT NULL,             -- Model.provider (ProviderId)
+  provider_name TEXT,                      -- modelRegistry.getProviderDisplayName()
+  model_id      TEXT NOT NULL,             -- Model.id
+  model_name    TEXT,                      -- Model.name
+  context_window INTEGER,                  -- Model.contextWindow
+  max_tokens    INTEGER,                   -- Model.maxTokens
+  reasoning     INTEGER DEFAULT 0,         -- Model.reasoning (bool)
+  captured_at   INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_model_repo ON model_snapshots(repo_root);
+```
+
+### Where model/provider come from (pi runtime)
+- `ctx.model: Model<any> | undefined` — fields: `id`, `name`, `provider`,
+  `baseUrl`, `contextWindow`, `maxTokens`, `reasoning`.
+- `ctx.modelRegistry.getProviderDisplayName(provider)` → human name.
+- Capture on `pi.on("model_select", e => e.model)` AND on `session_start`
+  (fallback to `ctx.model`), NOT per-compact — it changes rarely.
+- `ctx.getContextUsage()` already gives `contextWindow`/`tokens`/`percent` for
+  the live context card.
+- Store a snapshot per (repo, model change); the Summary tab shows the most
+  recent model_snapshot per repo.
+
+### API additions (dashboard-server.ts)
+- `GET /api/index` → `{ repos: [...registry rows...], models: {...repo_root: latest snapshot...} }`
+- `GET /api/repo/:repoRoot` → forwards to that repo's existing `/api/snapshot`
+  (open its `state_dir` DB, reuse readSnapshot; or shell the repo server).
+- SSE already live-streams the current repo's events; add a lightweight
+  `repo_registry` watch so the All-repos table updates on `bindRepo`.
+
+### Touch list
+- src/store/sqlite.ts — global index open/upsert helpers (`upsertRepo`,
+  `recordModelSnapshot`, `listRepos`, `latestModel`).
+- extensions/mega-compact.ts — `bindRepo` upserts registry + captures model on
+  `model_select` + `session_start`; pass index path to the dashboard server.
+- extensions/dashboard-server.ts — open index + per-repo DBs; `/api/index`,
+  `/api/repo/:root`; Summary/All-repos/Current tabs in HTML + nav JS.
+- Tests: global-index upsert/list, model snapshot capture, multi-repo aggregate.
+
+================================================================================
 NON-GOALS (explicitly excluded — don't port)
 ================================================================================
 - FAISS (GPU/CPU), pgvector, Ollama LLM summarization, Postgres CTE descendants,
@@ -160,9 +250,12 @@ FILES TOUCH (likely)
 - src/compact.ts (extractive collapse; supersede-by-file-path; dry-run preview)
 - extensions/mega-compact.ts (toolbar: bar/ticker/badge/pulse/why; commands:
   restore/history/view/dr/preview/bench/export; auto-compact cadence)
-- extensions/dashboard-server.ts (integrity badge; per-file map; timeline)
+- extensions/dashboard-server.ts (integrity badge; per-file map; timeline;
+  Phase 5b multi-repo tabs + model/provider capture)
+- src/store/sqlite.ts (restore/history/export readers; persist chkpt counter;
+  soft-delete; Phase 5b global index: upsertRepo/recordModelSnapshot/listRepos)
 - tests: vectorStore.test.ts, recall.test.ts, engine.test.ts, compact.test.ts,
-  mega-compact.test.ts, sprint10.test.ts, dedup/raptor/*
+  mega-compact.test.ts, sprint10.test.ts, dedup/raptor/*, phase5b-index.test.ts
 
 ================================================================================
 VERIFICATION
