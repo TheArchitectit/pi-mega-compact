@@ -111,38 +111,32 @@ OpenAI-style contract and the `MEGACOMPACT_EMBEDDING_KEY` / `MEGACOMPACT_EMBEDDI
 ### Requirements
 
 - **Node >= 18**
-- `npm install` builds the **`better-sqlite3`** native module (one-time, local
+- install builds the **`better-sqlite3`** native module (one-time, local
   compile). No network call and no API key are needed at runtime.
-- A pi coding agent install that loads extensions from `~/.pi/agent/extensions/`.
+- A pi coding agent install with package support (`pi install` / `pi update
+  --extensions`). npm-installed packages are auto-discovered via the package's
+  `pi` manifest entry; local checkouts load from `~/.pi/agent/extensions/`.
 
 ### Install from npm (recommended)
 
-pi discovers extensions through its `settings.packages` array (the `npm:` prefix
-tells pi to install/update from the npm registry). No manual config registration
-is needed — the package's own `pi.extensions` manifest entry points pi at the
-right file.
-
-1. Make sure the package is listed in your pi config's `packages`:
-
-```jsonc
-// ~/.pi/agent/settings.json
-{
-  "packages": [
-    "npm:pi-mega-compact"
-  ]
-}
-```
-
-2. Install / update it:
+pi installs extensions as **packages**. `pi install npm:<pkg>` writes an
+`npm:` source into your pi config's `packages` array; pi then auto-discovers the
+extension from the package's own `"pi": { "extensions": [...] }` manifest entry
+— **no manual `settings.json` edit is needed**.
 
 ```bash
-pi update --extensions
+pi install npm:pi-mega-compact        # first time: adds to packages + installs
+pi update --extensions                # thereafter: pulls the latest published version
 ```
 
-That's it. `pi update --extensions` installs every `npm:` entry in `packages`
-and pulls the latest published version — including on other devices that share
-this config. The package ships both the source (which pi loads directly) and the
-compiled `dist/`, so nothing else needs building.
+`pi update --extensions` refreshes every `npm:` entry in `packages` (including on
+other devices that share this config). The package ships both the TypeScript
+source (which pi loads directly) and the compiled `dist/`, so nothing else needs
+building.
+
+> **Tip — keep the spec unpinned.** Use `npm:pi-mega-compact`, not
+> `npm:pi-mega-compact@0.4.11`. Version-pinned specs are *skipped* by
+> `pi update --extensions`, so a pin would freeze you on that release.
 
 > **From a git checkout (development only).** To hack on the extension, clone and
 > build locally, then symlink it into pi's extensions dir — but this bypasses the

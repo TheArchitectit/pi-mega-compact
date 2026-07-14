@@ -112,6 +112,10 @@ pi install npm:pi-mega-compact
 pi update --extensions          # refreshes all npm packages in settings.packages
 ```
 
+> **Keep the spec unpinned.** `npm:pi-mega-compact` (no version) is refreshed by
+> `pi update --extensions`. A pinned spec like `npm:pi-mega-compact@0.4.11` is
+> *skipped* by updates — don't pin unless you intend to freeze on a release.
+
 > pi loads the **TypeScript source** (`extensions/mega-compact.ts`) directly from
 > the installed package. The package **also ships the compiled `dist/`** (since
 > v0.4.6 — the dashboard server runs from `dist/extensions/dashboard-server.js`,
