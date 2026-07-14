@@ -1,4 +1,4 @@
-# Install & Usage — pi-mega-compact (v0.4.4)
+# Install & Usage — pi-mega-compact (v0.4.5)
 
 A complete, copy-paste guide to installing pi-mega-compact and using **every**
 feature: the pi extension (auto-compact + recall), the OpenClaw plugin adapter,

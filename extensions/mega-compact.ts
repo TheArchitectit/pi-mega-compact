@@ -774,9 +774,15 @@ export default function (pi: ExtensionAPI) {
 
   /** Write a small ESM runner script that imports and launches the dashboard server. */
   function writeRunnerScript(): void {
-    const compiledServer = join(dirname(fileURLToPath(import.meta.url)), "dashboard-server.js");
+    // The npm package ships SOURCE only (no dist/), so the launchable entry is
+    // the .ts file — not dashboard-server.js (which only exists after a local
+    // build). dashboard-server.ts imports only Node built-ins, so it loads under
+    // node's --experimental-strip-types without any other compiled code. The
+    // child is spawned with that flag (see the spawn below) so the import below
+    // resolves from the source install path.
+    const sourceServer = join(dirname(fileURLToPath(import.meta.url)), "dashboard-server.ts");
     const script = [
-      `import { launchDashboardServer } from ${JSON.stringify(compiledServer)};`,
+      `import { launchDashboardServer } from ${JSON.stringify(sourceServer)};`,
       `launchDashboardServer(${JSON.stringify(currentStateDir)}).catch(err => {`,
       `  console.error("[mega-compact] dashboard failed:", err);`,
       `  process.exit(1);`,
@@ -815,7 +821,7 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify("[mega-compact] starting dashboard server…");
       writeRunnerScript();
 
-      const child = spawn(process.execPath, [runnerFile], {
+      const child = spawn(process.execPath, ["--experimental-strip-types", runnerFile], {
         detached: true,
         stdio: "ignore",
       });

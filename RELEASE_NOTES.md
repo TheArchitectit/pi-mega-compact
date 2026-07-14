@@ -1,5 +1,29 @@
 # Release Notes — pi-mega-compact
 
+## v0.4.5 (2026-07-14)
+
+Hotfix: dashboard server failed to start from the npm install.
+
+### Fixed
+
+- **`[mega-compact] dashboard server failed to start — check logs`** on
+  `/mega-dashboard`. The npm package ships **source only** (no `dist/`), but the
+  spawned runner imported `dashboard-server.js` — a file that only exists after a
+  local `npm run build`. The child died instantly and never wrote `port.pid`, so
+  the command reported failure. The runner now imports the `.ts` source
+  (`dashboard-server.ts`, which pulls only Node built-ins) and the child is
+  spawned with Node's `--experimental-strip-types` flag, so the server launches
+  directly from the install path on Node ≥ 22.6. Verified end-to-end
+  (`port.pid` written, `/api/snapshot` returns 200).
+
+### Install / Upgrade
+
+```bash
+pi update --extensions
+```
+
+---
+
 ## v0.4.4 (2026-07-14)
 
 Toolbar now shows tokens used + saved, each split this-session vs repo total.
