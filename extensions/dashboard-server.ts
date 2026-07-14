@@ -53,8 +53,15 @@ interface Snapshot {
   store: {
     checkpointCount: number;
     totalTokenEstimate: number;
+    tokensSaved: number;
     injectedCount: number;
     dedupHitRate: number;
+    storageDedupRate: number;
+    dedupCollapsed: number;
+  };
+  crew: {
+    activeAgents: number;
+    currentTurn: number;
   };
 }
 
@@ -75,7 +82,8 @@ function readSnapshot(snapshotPath: string) {
       session: { id: null, state: null, persistedThisSession: false, lastCheckpointId: null, lastCompactedFrom: 0 },
       context: { tokens: null, percent: null, contextWindow: 0 },
       trigger: { armed: false, ready: false, currentTokens: null, thresholdTokens: 100_000, fastGatePct: 80 },
-      store: { checkpointCount: 0, totalTokenEstimate: 0, injectedCount: 0, dedupHitRate: 0 },
+      store: { checkpointCount: 0, totalTokenEstimate: 0, tokensSaved: 0, injectedCount: 0, dedupHitRate: 0, storageDedupRate: 0, dedupCollapsed: 0 },
+      crew: { activeAgents: 0, currentTurn: 0 },
     } as Snapshot;
   }
 }
@@ -166,9 +174,12 @@ function dashboardHtml(tierName: string): string {
     <h2>Vector Store</h2>
     <div class="stat-grid">
       <span class="label">Checkpoints</span><span class="value" id="st-count">0</span>
-      <span class="label">Total Tokens</span><span class="value" id="st-tokens">0</span>
+      <span class="label">Tokens Stored</span><span class="value" id="st-tokens">0</span>
+      <span class="label">Tokens Saved</span><span class="value" id="st-saved">0</span>
       <span class="label">Injected</span><span class="value" id="st-injected">0</span>
       <span class="label">Dedup Rate</span><span class="value" id="st-dedup">0%</span>
+      <span class="label">Storage Dedup</span><span class="value" id="st-sdedup">0%</span>
+      <span class="label">Collapsed</span><span class="value" id="st-collapsed">0</span>
       <span class="label">Last ID</span><span class="value" id="st-lastid">—</span>
     </div>
   </div>
@@ -180,6 +191,14 @@ function dashboardHtml(tierName: string): string {
       <span class="label">Fast Gate</span><span class="value" id="cf-gate">—</span>
       <span class="label">Auto</span><span class="value" id="cf-auto">—</span>
       <span class="label">Anchor</span><span class="value" id="cf-anchor">—</span>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Crew / Agents</h2>
+    <div class="stat-grid">
+      <span class="label">Active Agents</span><span class="value" id="cr-agents">0</span>
+      <span class="label">Current Turn</span><span class="value" id="cr-turn">0</span>
+      <span class="label">Status</span><span class="value" id="cr-status">idle</span>
     </div>
   </div>
 </div>
@@ -223,9 +242,20 @@ function dashboardHtml(tierName: string): string {
 
     document.getElementById('st-count').textContent = d.store.checkpointCount;
     document.getElementById('st-tokens').textContent = d.store.totalTokenEstimate.toLocaleString();
+    document.getElementById('st-saved').textContent = (d.store.tokensSaved || 0).toLocaleString();
     document.getElementById('st-injected').textContent = d.store.injectedCount;
     document.getElementById('st-dedup').textContent = Math.round(d.store.dedupHitRate * 100) + '%';
+    var sdr = d.store.storageDedupRate || 0;
+    document.getElementById('st-sdedup').textContent = (sdr * 100 >= 10 ? Math.round(sdr * 100) : (sdr * 100).toFixed(1)) + '%';
+    document.getElementById('st-collapsed').textContent = d.store.dedupCollapsed || 0;
     document.getElementById('st-lastid').textContent = d.session.lastCheckpointId || '—';
+
+    // Crew / agents (live sub-agent activity + turn).
+    var crew = d.crew || { activeAgents: 0, currentTurn: 0 };
+    document.getElementById('cr-agents').textContent = crew.activeAgents || 0;
+    document.getElementById('cr-turn').textContent = crew.currentTurn || 0;
+    document.getElementById('cr-status').textContent = (crew.activeAgents > 0)
+      ? ('▶ ' + crew.activeAgents + ' running') : 'idle';
 
     document.getElementById('cf-tier').textContent = d.tier;
     document.getElementById('cf-threshold').textContent = d.config.thresholdTokens.toLocaleString();

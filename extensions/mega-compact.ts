@@ -57,6 +57,7 @@ interface SessionRuntime {
   lastCompactedTokens: number;
   dedupSkips: number;       // compactions skipped because regionHash already stored
   dedupAttempts: number;    // total compaction attempts (for hit-rate denominator)
+  tokensSaved: number;      // cumulative original − stored tokens this session
 }
 
 function envFlag(name: string, fallback: number): number {
@@ -190,11 +191,16 @@ interface DashboardSnapshot {
   store: {
     checkpointCount: number;
     totalTokenEstimate: number;
+    tokensSaved: number;
     injectedCount: number;
     dedupHitRate: number;
     storageDedupRate: number;
     dedupAttempts: number;
     dedupCollapsed: number;
+  };
+  crew: {
+    activeAgents: number;
+    currentTurn: number;
   };
 }
 
@@ -287,7 +293,8 @@ export default function (pi: ExtensionAPI) {
       },
       context: { tokens: lastCtxTokens, percent: lastCtxPercent, contextWindow: lastCtxWindow },
       trigger: { armed, ready, currentTokens: lastCtxTokens, thresholdTokens: config.thresholdTokens, fastGatePct: config.fastGatePct },
-      store: { checkpointCount: st.checkpointCount, totalTokenEstimate: st.totalTokenEstimate, injectedCount: st.injectedCount, dedupHitRate: st.dedupHitRate, storageDedupRate: st.storageDedupRate, dedupAttempts: st.dedupAttempts, dedupCollapsed: st.dedupCollapsed },
+      crew: { activeAgents, currentTurn },
+      store: { checkpointCount: st.checkpointCount, totalTokenEstimate: st.totalTokenEstimate, tokensSaved: rt.tokensSaved, injectedCount: st.injectedCount, dedupHitRate: st.dedupHitRate, storageDedupRate: st.storageDedupRate, dedupAttempts: st.dedupAttempts, dedupCollapsed: st.dedupCollapsed },
     });
 
     // Live stats widget above the editor
@@ -303,7 +310,12 @@ export default function (pi: ExtensionAPI) {
       const dedupStr = storageRate * 100 >= 10
         ? `${Math.round(storageRate * 100)}%`
         : `${(storageRate * 100).toFixed(1)}%`;
-      const savedStr = st.totalTokenEstimate > 0 ? `${Math.round(st.totalTokenEstimate / 1000)}k` : "0";
+      // saved = cumulative original − stored tokens (this session). Show real
+      // token counts; use "k" only at/above 1000 so small-but-real savings are
+      // visible (previously Math.round(x/1000) rounded everything <1000 to 0).
+      const savedStr = rt.tokensSaved >= 1000
+        ? `${(rt.tokensSaved / 1000).toFixed(1)}k`
+        : `${rt.tokensSaved}`;
       const agentStr = activeAgents > 0 ? ` │ 🤖 ${activeAgents} agent${activeAgents === 1 ? "" : "s"}` : "";
       const turnStr = currentTurn > 0 ? ` │ turn ${currentTurn}` : "";
       ctx.ui.setWidget(
@@ -326,6 +338,7 @@ export default function (pi: ExtensionAPI) {
     lastCompactedTokens: 0,
     dedupSkips: 0,
     dedupAttempts: 0,
+    tokensSaved: 0,
   };
   let debounceUntil = 0;
   // Agent tracking for real-time widget updates
@@ -352,6 +365,7 @@ export default function (pi: ExtensionAPI) {
       lastCompactedTokens: 0,
       dedupSkips: 0,
       dedupAttempts: 0,
+      tokensSaved: 0,
     };
     statusKey = undefined;
     activeAgents = 0;
@@ -392,6 +406,14 @@ export default function (pi: ExtensionAPI) {
     rt.lastCompactedFrom = result.compactedFrom;
     rt.lastCompactedTokens = result.tokenEstimate;
     rt.dedupAttempts++;
+    // Cumulative tokens held in stored checkpoints this session. This is the
+    // compacted-summary size we persist on each (non-deduped) compaction — the
+    // dashboard's cumulative "tokens saved" figure. We accumulate the stored
+    // estimate rather than (original − stored) because the original dropped-region
+    // token count isn't reliably recoverable here; the stored size is exact.
+    if (!result.deduped) {
+      rt.tokensSaved += result.tokenEstimate;
+    }
     if (result.deduped) rt.dedupSkips++;
 
     // Sentinel marker: a non-LLM bookkeeping entry so subsequent triggers can

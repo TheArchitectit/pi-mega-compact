@@ -322,9 +322,15 @@ test("state snapshot writes dashboard.json after compaction", async () => {
   const ctx = h.ctx({ getContextUsage: () => ({ tokens: 200000, contextWindow: 200000, percent: 100 }) });
   // Fire auto-trigger compaction (context event above 80% threshold)
   await h.fire("context", { type: "context", messages: h.session }, ctx);
-  const { existsSync: ex } = await import("node:fs");
+  const { existsSync: ex, readFileSync: rf } = await import("node:fs");
   const { join: j } = await import("node:path");
-  assert.ok(ex(j(h.stateDir, "dashboard.json")), "dashboard.json written after compaction");
+  const snapPath = j(h.stateDir, "dashboard.json");
+  assert.ok(ex(snapPath), "dashboard.json written after compaction");
+  const snap = JSON.parse(rf(snapPath, "utf-8"));
+  // Item B: tokensSaved is populated (original − stored) after a real compaction.
+  assert.ok(snap.store.tokensSaved > 0, "snapshot.store.tokensSaved > 0 after compaction");
+  // Item A: crew (live agent) block is present in the dashboard snapshot.
+  assert.ok(snap.crew && typeof snap.crew.activeAgents === "number", "snapshot.crew.activeAgents present");
 });
 
 test("events.log receives compaction events", async () => {
