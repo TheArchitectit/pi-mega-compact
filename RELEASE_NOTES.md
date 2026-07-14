@@ -1,5 +1,28 @@
 # Release Notes — pi-mega-compact
 
+## v0.4.8 (2026-07-14)
+
+Docs/plan drop — ships the design plans; no runtime changes.
+
+### Changed
+
+- Added `PLAN_standout.md` (the best-in-class roadmap: live per-tier progress,
+  RAPTOR served live with memory-mcp-derived techniques, standout toolbar, cheap
+  restore/history/DR commands, ported compaction techniques, and new
+  differentiators) and `PLAN_tokens_saved.md` (the tokens-saved metric design).
+  These are design artifacts for review, not runtime code.
+- Runtime unchanged from v0.4.7 (colorized toolbar + live teal activity line +
+  the dashboard fix from v0.4.5). Publish this so `pi update --extensions` pulls
+  the plans alongside the current dashboard for testing.
+
+### Install / Upgrade
+
+```bash
+pi update --extensions
+```
+
+---
+
 ## v0.4.7 (2026-07-14)
 
 Colorized toolbar + live "now processing" activity line.
