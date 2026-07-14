@@ -53,6 +53,7 @@
 | Keyword | Document | Location |
 |---------|----------|----------|
 | testing, QA, manual testing, bug reports, test suite, DR drill, benchmark | [TESTER_GUIDE.md](../TESTER_GUIDE.md) | repo root |
+| install, setup, usage, openclaw plugin, commands, troubleshooting | [INSTALL_AND_USAGE.md](INSTALL_AND_USAGE.md) | docs/ |
 | release notes, v0.2.0, migration guide, breaking change, what's new | [RELEASE_NOTES.md](../RELEASE_NOTES.md) | repo root |
 | changelog, per-release changes, sprint breakdown | [CHANGELOG.md](../CHANGELOG.md) | repo root |
 | dashboard, live monitoring, widget, SSE, token gauge | [DASHBOARD.md](../extensions/DASHBOARD.md) | extensions/ |

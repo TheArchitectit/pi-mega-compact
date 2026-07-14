@@ -105,6 +105,9 @@ OpenAI-style contract and the `MEGACOMPACT_EMBEDDING_KEY` / `MEGACOMPACT_EMBEDDI
 
 ## Installation
 
+> **Full step-by-step guide** (pi + OpenClaw + every command + troubleshooting):
+> [`docs/INSTALL_AND_USAGE.md`](docs/INSTALL_AND_USAGE.md).
+
 ### Requirements
 
 - **Node >= 18**
