@@ -209,6 +209,36 @@ test("/megacompact-status reports live store stats", async () => {
   assert.ok(h.notifies.some((n) => n.includes("store:") && n.includes("chkpt")), "status shows checkpoint count");
 });
 
+// ---- Model/provider capture (Phase 5b model_snapshots) ----------------------
+test("model_select captures model + provider into SQL", async () => {
+  const h = harness();
+  const modelCtx = h.ctx({
+    model: { id: "claude-opus-4-8", name: "Claude Opus 4.8", provider: "anthropic", contextWindow: 200000, maxTokens: 32000, reasoning: false, cost: { input: 0.000015, output: 0.000075 } },
+    modelRegistry: { getProviderDisplayName: (p: string) => (p === "anthropic" ? "Anthropic" : p) },
+  });
+  await h.fire("model_select", {}, modelCtx);
+  const { latestModelSnapshot } = await import("../src/store/sqlite.js");
+  const snap = latestModelSnapshot(h.stateDir);
+  assert.ok(snap, "model_snapshots row persisted");
+  assert.equal(snap!.modelId, "claude-opus-4-8", "correct model id captured");
+  assert.equal(snap!.provider, "anthropic", "correct provider captured");
+  assert.equal(snap!.providerName, "Anthropic", "provider display name resolved");
+  assert.equal(snap!.inputRate, 0.000015, "input rate captured");
+});
+
+test("/mega-status surfaces the captured model + provider", async () => {
+  const h = harness();
+  const modelCtx = h.ctx({
+    model: { id: "claude-opus-4-8", name: "Claude Opus 4.8", provider: "anthropic", contextWindow: 200000, maxTokens: 32000, reasoning: false, cost: { input: 0.000015, output: 0.000075 } },
+    modelRegistry: { getProviderDisplayName: () => "Anthropic" },
+  });
+  await h.fire("model_select", {}, modelCtx);
+  await h.fire("context", { type: "context", messages: h.session }, h.ctx({ getContextUsage: () => ({ tokens: 200000, contextWindow: 200000, percent: 100 }) }));
+  const ctx = h.ctx({ getContextUsage: () => ({ tokens: 50000, contextWindow: 200000, percent: 25 }) });
+  await h.commands["mega-status"].handler("", ctx);
+  assert.ok(h.notifies.some((n) => n.includes("🤖 model:") && n.includes("Claude Opus 4.8") && n.includes("Anthropic")), "status surfaces captured model + provider");
+});
+
 // ---- Named compaction tiers -------------------------------------------------
 // low=50k, medium=100k, high=200k, ultra=1M, mega=10M. Driven through the REAL
 // loadConfig()/status path by setting MEGACOMPACT_TIER before loading the ext.

@@ -1,0 +1,386 @@
+/**
+ * mega-runtime.ts — the shared live state of the mega-compact extension.
+ *
+ * The original mega-compact.ts was a single large closure over ~20 mutable
+ * variables. This module lifts that state into a `MegaRuntime` class so the
+ * event/command/pipeline modules can share it without re-declaring it. All
+ * behavior (store/dashboard rebinding, dashboard snapshot shape, the
+ * above-editor widget math, model capture) is preserved byte-for-byte from the
+ * original closure.
+ */
+
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { join } from "node:path";
+import { VectorStore } from "../src/vectorStore.js";
+import { toEngineMessages } from "../src/adapt.js";
+import { normalizeSessionId } from "../src/store.js";
+import { Logger } from "../src/log.js";
+import { recordModelSnapshot, type ModelSnapshot } from "../src/store/sqlite.js";
+import { repoStateDir, resolveRepoRoot, type MegaConfig } from "./mega-config.js";
+import { Dashboard, type DashboardSnapshot } from "./mega-dashboard.js";
+
+export const STATUS_KEY = "mega-compact";
+export const WIDGET_KEY = "mega-compact-stats";
+export const MARKER_TYPE = "mega-compact-marker";
+
+/** Per-session runtime state kept in the closure (mirrors neuralwatt-mcr). */
+interface SessionRuntime {
+  sessionId: string;
+  persistedThisSession: boolean;
+  lastCheckpointId: string | undefined;
+  lastCompactedFrom: number;
+  lastCompactedTokens: number;
+  dedupSkips: number;       // compactions skipped because regionHash already stored
+  dedupAttempts: number;    // total compaction attempts (for hit-rate denominator)
+  tokensSaved: number;      // this session-instance only: reset on session_start
+}
+
+/** ANSI palette for the toolbar. The pi TUI's Text component preserves ANSI
+ *  escape codes (see wrapTextWithAnsi), so raw escapes render as colors. No
+ *  chalk dependency needed — these are just strings. */
+export const C = {
+  reset: "\x1b[0m",
+  dim: "\x1b[2m",
+  bold: "\x1b[1m",
+  amber: "\x1b[38;5;214m", // tier / ready
+  green: "\x1b[38;5;120m", // saved
+  cyan: "\x1b[38;5;51m", // used / live activity
+  teal: "\x1b[38;5;37m", // processing (compress/dedup)
+  magenta: "\x1b[38;5;201m", // dedup rate
+  blue: "\x1b[38;5;75m", // repo totals
+  gray: "\x1b[38;5;245m", // labels
+};
+
+const PULSE = ["◐", "◓", "◑", "◒"];
+
+interface TickerEntry { text: string; at: number; }
+
+export class MegaRuntime {
+  config: MegaConfig;
+  // Store/dashboard/logger are rebound per-repo by bindRepo() so each git repo
+  // gets its own isolated state dir. They start bound to the global default.
+  store: VectorStore;
+  logger: Logger;
+  dashboard: Dashboard;
+  activeRepoRoot: string | null = null;
+  currentStateDir: string;
+
+  // The only mutable per-session state. Reset on session_start / session_tree.
+  rt: SessionRuntime = {
+    sessionId: normalizeSessionId(undefined),
+    persistedThisSession: false,
+    lastCheckpointId: undefined,
+    lastCompactedFrom: 0,
+    lastCompactedTokens: 0,
+    dedupSkips: 0,
+    dedupAttempts: 0,
+    tokensSaved: 0,
+  };
+  debounceUntil = 0;
+  // Agent tracking for real-time widget updates
+  activeAgents = 0;
+  currentTurn = 0;
+  // Recall block produced by auto-inline (resume/branch) that the next
+  // before_agent_start should prepend to the system prompt. Unset after use.
+  pendingRecallBlock: string | undefined;
+  statusKey: string | undefined; // current status text for dashboard
+  // Active model/provider (for real cost estimation). Captured from ctx.model
+  // on model_select + session_start; persisted to SQL so cost + the dashboard
+  // can read it without a live ctx.
+  currentModel: ModelSnapshot | undefined;
+  // Live "what it's doing right now" line for the toolbar. Set on each
+  // compaction; shown in teal while recent, then kept as the last-seen action so
+  // the widget is never blank. Cleared on session reset.
+  currentActivity: string | undefined;
+  lastActivityAt = 0;
+  // Live per-tier dedup trace (Phase 1): e.g. "L0 ✓ → L1 ✓ → L2 0.91 → stored".
+  // Built from the store's sync onTier callback during a compaction so the user
+  // watches each tier evaluate in real time. Cleared once the outcome settles.
+  tierTrace: string | undefined;
+  // Phase 3 — standout toolbar state.
+  // Recall/activity ticker: a small ring buffer (≤5) of recent compact/recall
+  // events so the widget shows a live history instead of a single last action.
+  ticker: TickerEntry[] = [];
+  readonly TICKER_MAX = 5;
+  // Pulsing status: set true while a compaction is in flight, cleared on result.
+  pulsing = false;
+  // Rolling "saved" goal for the progress bar — grows as we save more, so the
+  // bar always has a meaningful denominator (never sits at 100% forever).
+  savedGoal = 50_000;
+  // Last explain-why line (dedup reason / anchor-kept / superseded), surfaced
+  // while fresh.
+  lastWhy: string | undefined = undefined;
+
+  // Context tracking for the dashboard (updated in the context handler).
+  lastCtxTokens: number | null = null;
+  lastCtxPercent: number | null = null;
+  lastCtxWindow = 0;
+
+  constructor(config: MegaConfig) {
+    this.config = config;
+    this.store = new VectorStore({ dedupSim: config.dedupSim, stateDir: config.stateDir });
+    this.logger = new Logger({ enabled: config.debug, path: join(config.stateDir, "mega-compact.log") });
+    this.dashboard = new Dashboard(config.stateDir);
+    this.currentStateDir = config.stateDir;
+  }
+
+  // ---- per-repo binding -----------------------------------------------------
+
+  /**
+   * Point store/dashboard/logger at the current repo's state dir. Rebuilds the
+   * instances only when the repo root changes, so cross-repo dedup stats, db,
+   * and events are fully isolated. Falls back to the global default outside git.
+   */
+  bindRepo(cwd: string | undefined): string {
+    const dir = cwd ? repoStateDir(cwd, this.config.stateDir) : this.config.stateDir;
+    const key = cwd ? resolveRepoRoot(cwd) ?? dir : dir;
+    if (key === this.activeRepoRoot) return dir;
+    this.activeRepoRoot = key;
+    this.currentStateDir = dir;
+    this.store = new VectorStore({ dedupSim: this.config.dedupSim, stateDir: dir });
+    this.logger = new Logger({ enabled: this.config.debug, path: join(dir, "mega-compact.log") });
+    this.dashboard = new Dashboard(dir);
+    return dir;
+  }
+
+  // ---- dashboard snapshot + widget ------------------------------------------
+
+  /** Collect live state and write it to disk (+ paint the above-editor widget). */
+  snapshot(ctx?: ExtensionContext): void {
+    if (ctx) this.bindRepo(ctx.cwd);
+    const st = this.store.stats(this.rt.sessionId);
+    const repo = this.store.repoStats();
+    const di = this.store.dataInvariant();
+    const armed = this.lastCtxPercent != null && this.lastCtxPercent >= this.config.fastGatePct;
+    const ready = armed && (this.lastCtxTokens ?? 0) >= this.config.thresholdTokens;
+    this.dashboard.snapshot({
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      tier: this.config.tier,
+      config: {
+        fastGatePct: this.config.fastGatePct,
+        thresholdTokens: this.config.thresholdTokens,
+        anchorUserMessages: this.config.anchorUserMessages,
+        preserveRecent: this.config.preserveRecent,
+        auto: this.config.auto,
+        autoInline: this.config.autoInline,
+      },
+      session: {
+        id: this.rt.sessionId,
+        state: this.statusKey ?? "idle",
+        persistedThisSession: this.rt.persistedThisSession,
+        lastCheckpointId: this.rt.lastCheckpointId ?? null,
+        lastCompactedFrom: this.rt.lastCompactedFrom,
+        lastCompactedTokens: this.rt.lastCompactedTokens,
+        dedupSkips: this.rt.dedupSkips,
+        dedupAttempts: this.rt.dedupAttempts,
+      },
+      context: { tokens: this.lastCtxTokens, percent: this.lastCtxPercent, contextWindow: this.lastCtxWindow },
+      trigger: { armed, ready, currentTokens: this.lastCtxTokens, thresholdTokens: this.config.thresholdTokens, fastGatePct: this.config.fastGatePct },
+      crew: { activeAgents: this.activeAgents, currentTurn: this.currentTurn },
+      store: { checkpointCount: st.checkpointCount, totalTokenEstimate: st.totalTokenEstimate, originalTokens: st.originalTokens, tokensSaved: this.rt.tokensSaved, injectedCount: st.injectedCount, dedupHitRate: st.dedupHitRate, storageDedupRate: st.storageDedupRate, dedupAttempts: st.dedupAttempts, dedupCollapsed: st.dedupCollapsed },
+      repo: {
+        checkpointCount: repo.checkpointCount,
+        totalTokenEstimate: repo.totalTokenEstimate,
+        originalTokens: repo.originalTokens,
+        tokensSaved: repo.tokensSaved,
+        sessionCount: repo.sessionCount,
+        dedupAttempts: repo.dedupAttempts,
+        dedupCollapsed: repo.dedupCollapsed,
+        storageDedupRate: repo.storageDedupRate,
+      },
+      integrity: {
+        regionsRetained: di.regionsRetained,
+        compressedOriginalBytes: di.compressedOriginalBytes,
+        duplicatesCollapsed: di.duplicatesCollapsed,
+        bytesPermanentlyDeleted: di.bytesPermanentlyDeleted,
+      },
+    } as DashboardSnapshot);
+
+    // Live stats widget above the editor
+    if (ctx) {
+      const tokStr = this.lastCtxTokens != null ? `${Math.round(this.lastCtxTokens / 1000)}k` : "?";
+      const maxStr = this.lastCtxWindow > 0 ? `${Math.round(this.lastCtxWindow / 1000)}k` : "?";
+      const pctStr = this.lastCtxPercent != null ? `${Math.round(this.lastCtxPercent * 10) / 10}%` : "?%";
+      const triggerLabel = ready ? `${C.green}● ready${C.reset}` : armed ? `${C.amber}◐ armed${C.reset}` : `${C.gray}○ idle${C.reset}`;
+      // Storage dedup rate is cumulative (store-wide, per-repo) and survives
+      // session resets. Always show a number: 0% before any compaction, a
+      // decimal for sub-10% rates so small-but-real dedup isn't rounded away.
+      const storageRate = st.storageDedupRate; // 0..1
+      const dedupStr = storageRate * 100 >= 10
+        ? `${Math.round(storageRate * 100)}%`
+        : `${(storageRate * 100).toFixed(1)}%`;
+      // saved = tokens removed from context (cumulative original − stored).
+      // Show BOTH this-session (rt.tokensSaved) and repo-wide-total
+      // (repo.tokensSaved) so the user sees per-session progress vs the running
+      // repo total. "used" = stored checkpoint tokens (repo.totalTokenEstimate
+      // vs st.totalTokenEstimate). Use "k" only at/above 1000 so small-but-real
+      // numbers stay visible (previously Math.round(x/1000) zeroed <1000).
+      const fmt = (x: number) => (x >= 1000 ? `${(x / 1000).toFixed(1)}k` : `${x}`);
+      const savedStr = `${C.green}${fmt(this.rt.tokensSaved)} sess${C.reset} / ${C.blue}${fmt(repo.tokensSaved)} repo${C.reset}`;
+      const usedStr = `${C.cyan}${fmt(st.totalTokenEstimate)} sess${C.reset} / ${C.blue}${fmt(repo.totalTokenEstimate)} repo${C.reset}`;
+      const agentStr = this.activeAgents > 0 ? ` │ 🤖 ${this.activeAgents} agent${this.activeAgents === 1 ? "" : "s"}` : "";
+      const turnStr = this.currentTurn > 0 ? ` │ turn ${this.currentTurn}` : "";
+      // Phase 3 — pulsing status glyph while a compaction is in flight.
+      const pulse = this.pulsing ? `${C.cyan}${PULSE[Math.floor(Date.now() / 250) % PULSE.length]}${C.reset} ` : "";
+      const lines = [
+        ` ${C.amber}⚡ ${this.config.tier}${C.reset} │ ${tokStr}/${maxStr} tokens (${C.bold}${pctStr}${C.reset}) │ ${st.checkpointCount} saved${agentStr}${turnStr}`,
+        `   ${triggerLabel} │ ${C.magenta}repeat-skipped: ${dedupStr}${C.reset} │ ${C.gray}memory held:${C.reset} ${usedStr} │ ${C.gray}space freed:${C.reset} ${savedStr}`,
+      ];
+      // Phase 3 — compact progress bar: session tokens saved toward the rolling goal.
+      if (this.rt.tokensSaved > 0) {
+        const goal = Math.max(this.savedGoal, 1);
+        const pct = Math.min(100, Math.round((this.rt.tokensSaved / goal) * 100));
+        const filled = Math.round((pct / 100) * 10);
+        const bar = "▓".repeat(filled) + "░".repeat(10 - filled);
+        lines.push(`   ${C.green}saved ${fmt(this.rt.tokensSaved)} ${bar}${C.reset} ${pct}% of ${fmt(goal)}`);
+      }
+      // Live "now processing" line — teal while fresh (≤4s), then the last-seen
+      // action keeps the widget lively. Cleared on session reset.
+      const fresh = Date.now() - this.lastActivityAt < 4000;
+      if (this.tierTrace && fresh) {
+        lines.push(`   ${pulse}${this.tierTrace}`);
+      } else if (this.currentActivity) {
+        lines.push(`   ${fresh ? C.teal : C.dim}${this.currentActivity}${C.reset}`);
+      } else if (this.pulsing) {
+        lines.push(`   ${pulse}${C.teal}compacting…${C.reset}`);
+      }
+      // Phase 3 — explain-why line (fresh only).
+      if (this.lastWhy && fresh) lines.push(`   ${C.gray}${this.lastWhy}${C.reset}`);
+      // Phase 3 — recall/activity ticker (most-recent first), fresh only.
+      if (fresh) {
+        for (let i = this.ticker.length - 1; i >= 0; i--) {
+          if (lines.length >= 9) break; // leave room for the hint line (MAX 10)
+          lines.push(`   ${i === this.ticker.length - 1 ? "" : C.dim}${this.ticker[i].text}${C.reset}`);
+        }
+      }
+      // Plain-language hint so first-time users understand the widget. Always
+      // last, dimmed. "/mega-help explains these terms."
+      if (lines.length < 10) {
+        lines.push(`   ${C.dim}auto-compresses old context to free space · nothing deleted · /mega-help${C.reset}`);
+      }
+      ctx.ui.setWidget(WIDGET_KEY, lines, { placement: "aboveEditor" });
+    }
+  }
+
+  setStatus(ctx: ExtensionContext, text: string | undefined): void {
+    this.statusKey = text;
+    ctx.ui.setStatus(STATUS_KEY, text);
+  }
+
+  resetRuntime(sessionId: string | undefined): void {
+    const sid = normalizeSessionId(sessionId);
+    if (this.rt.sessionId === sid && this.rt.persistedThisSession) return; // same session, keep checkpoint memory
+    this.rt = {
+      sessionId: sid,
+      persistedThisSession: false,
+      lastCheckpointId: undefined,
+      lastCompactedFrom: 0,
+      lastCompactedTokens: 0,
+      dedupSkips: 0,
+      dedupAttempts: 0,
+      tokensSaved: 0,
+    };
+    this.statusKey = undefined;
+    this.activeAgents = 0;
+    this.currentTurn = 0;
+    this.currentActivity = undefined;
+    this.lastActivityAt = 0;
+    this.tierTrace = undefined;
+    this.ticker.length = 0;
+    this.pulsing = false;
+    this.savedGoal = 50_000;
+    this.lastWhy = undefined;
+  }
+
+  /**
+   * Capture the active model/provider from ctx.model and persist it so cost
+   * estimation + the dashboard can read real pricing. Cheap + idempotent-ish:
+   * only writes a new row when the model id changes (models change rarely).
+   */
+  captureModel(ctx: ExtensionContext): void {
+    const m = ctx.model;
+    if (!m) return;
+    if (this.currentModel && this.currentModel.modelId === m.id && this.currentModel.provider === m.provider) return;
+    let providerName: string | null = null;
+    try { providerName = ctx.modelRegistry?.getProviderDisplayName(m.provider) ?? null; } catch { /* optional */ }
+    const snap: Omit<ModelSnapshot, "capturedAt"> = {
+      provider: m.provider,
+      providerName,
+      modelId: m.id,
+      modelName: m.name ?? null,
+      inputRate: m.cost?.input ?? 0,
+      outputRate: m.cost?.output ?? 0,
+      contextWindow: m.contextWindow ?? 0,
+      maxTokens: m.maxTokens ?? 0,
+      reasoning: !!m.reasoning,
+    };
+    this.currentModel = { ...snap, capturedAt: Date.now() };
+    try {
+      const repo = resolveRepoRoot(ctx.cwd) ?? this.currentStateDir;
+      recordModelSnapshot(repo, snap, this.currentStateDir);
+    } catch { /* non-fatal: cost estimation degrades to model-in-memory only */ }
+  }
+
+  /** Build the sync onTier callback that paints the live per-tier trace. */
+  makeTierCallback(ctx: ExtensionContext): (ev: { tier: "L0" | "L1" | "L2" | "new"; status: "scanning" | "deduped" | "passed" | "stored"; detail?: string }) => void {
+    const order: Array<"L0" | "L1" | "L2" | "new"> = ["L0", "L1", "L2", "new"];
+    const seen = new Map<string, string>();
+    const glyph = (status: string) =>
+      status === "deduped" ? `${C.green}✓${C.reset}` :
+        status === "passed" ? `${C.dim}○${C.reset}` :
+          status === "scanning" ? `${C.amber}…${C.reset}` :
+            `${C.cyan}●${C.reset}`;
+    return (ev) => {
+      const label =
+        ev.tier === "new"
+          ? `${C.cyan}stored${C.reset}`
+          : `${ev.tier} ${glyph(ev.status)}` +
+            (ev.detail ? ` ${C.gray}(${ev.detail})${C.reset}` : "");
+      // Show the most recent outcome per tier (collapses re-fires).
+      seen.set(ev.tier, label);
+      const show: string[] = [];
+      for (const t of order) if (seen.has(t)) show.push(seen.get(t)!);
+      this.tierTrace = `${C.teal}⚙${C.reset} ${show.join(` ${C.gray}→${C.reset} `)}`;
+      this.lastActivityAt = Date.now();
+      try { this.snapshot(ctx); } catch { /* non-fatal */ }
+    };
+  }
+
+  // Phase 3 — recall/activity ticker ring buffer.
+  pushTicker(text: string): void {
+    this.ticker.push({ text, at: Date.now() });
+    while (this.ticker.length > this.TICKER_MAX) this.ticker.shift();
+    this.lastActivityAt = Date.now();
+  }
+
+  /** Convert the messages pi hands us in the `context` event into the engine view. */
+  engineView(messages: AgentMessage[]): ReturnType<typeof toEngineMessages> {
+    return toEngineMessages(messages);
+  }
+}
+
+/**
+ * Latest user message text — used as the auto-inline recall query.
+ * Kept as a free function (not instance state) since it only reads ctx.
+ */
+export function recentUserQuery(ctx: ExtensionContext): string {
+  try {
+    const entries = ctx.sessionManager.getEntries();
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const msgs = sessionEntryToContextMessages(entries[i]);
+      for (let j = msgs.length - 1; j >= 0; j--) {
+        if (msgs[j].role === "user") {
+          const c = (msgs[j] as { content: unknown }).content;
+          if (typeof c === "string") return c;
+          if (Array.isArray(c)) return c.map((b: any) => b.text).join(" ");
+        }
+      }
+    }
+  } catch {
+    /* best-effort */
+  }
+  return "";
+}

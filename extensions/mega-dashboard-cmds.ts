@@ -1,0 +1,209 @@
+/**
+ * mega-dashboard-cmds.ts — the local web-dashboard slash commands.
+ *
+ * Spawns / discovers / stops the optional localhost dashboard server
+ * (extensions/dashboard-server.ts) as a detached child process. All network
+ * usage here is loopback-only and audited via // guardrails-allow PREVENT-PI-004.
+ */
+
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { join, dirname, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import { existsSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
+import { spawn } from "node:child_process"; // guardrails-allow PREVENT-PI-004: spawns the optional, user-triggered localhost dashboard server only
+import { MegaRuntime } from "./mega-runtime.js";
+
+/** Register the dashboard server lifecycle commands. */
+export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime): void {
+  const portFile = join(runtime.currentStateDir, "port.pid");
+  const runnerFile = join(runtime.currentStateDir, "_dashboard-runner.mjs");
+  const launchLog = join(runtime.currentStateDir, "_dashboard-launch.log");
+  // Whether the runner must be spawned with --experimental-strip-types (true only
+  // when we fall back to the .ts source outside node_modules; false when using
+  // the shipped compiled dist/extensions/dashboard-server.js).
+  let dashboardNeedsStrip = false;
+
+  // The dashboard server binds 9320–9329 (TARGET_PORT..TARGET_PORT+PORT_RANGE-1
+  // in dashboard-server.js). Probe each for a live /api/snapshot so we can detect
+  // readiness even when port.pid landed in a different state dir than we poll.
+  async function findLivePort(): Promise<number | null> {
+    for (let port = 9320; port <= 9329; port++) {
+      try {
+        const res = await fetch(`http://localhost:${port}/api/snapshot`, { signal: AbortSignal.timeout(800) }); // guardrails-allow PREVENT-PI-004: localhost liveness probe of the dashboard server this extension spawned
+        if (res.ok) return port;
+      } catch { /* not on this port — try next */ }
+    }
+    return null;
+  }
+
+  /** Try to reach a running dashboard server. Returns { port, url } or null. */
+  async function isServerRunning(): Promise<{ port: number; url: string } | null> {
+    const port = await findLivePort();
+    if (!port) {
+      // Stale marker with no live server behind it — clean up.
+      if (existsSync(portFile)) {
+        try { unlinkSync(portFile); } catch { /* ignore */ }
+      }
+      return null;
+    }
+    return { port, url: `http://localhost:${port}` }; // guardrails-allow PREVENT-PI-004: localhost URL of the dashboard server this extension spawned
+  }
+
+  /**
+   * Resolve the launchable dashboard-server module.
+   *
+   * CRITICAL: Node's `--experimental-strip-types` REFUSES to strip .ts files that
+   * live under `node_modules` (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING). Since
+   * the published package installs under node_modules, importing the .ts source
+   * fails in every real install (it only worked from a source checkout). So we
+   * prefer the COMPILED dist/extensions/dashboard-server.js (which the package
+   * ships from v0.4.6 — it imports only Node built-ins, so it runs standalone),
+   * and only fall back to the .ts source (with strip-types) when the compiled
+   * file is absent AND we're not under node_modules (dev checkout without a build).
+   *
+   * Returns { entry, needsStripTypes }.
+   */
+  function resolveDashboardEntry(): { entry: string; needsStripTypes: boolean } | null {
+    const here = dirname(fileURLToPath(import.meta.url)); // .../extensions
+    const candidates = [
+      // 1. Compiled sibling when running from dist/ (import.meta is dist/extensions/…js)
+      { entry: join(here, "dashboard-server.js"), strip: false },
+      // 2. Compiled under the package's dist/ when running from source extensions/…ts
+      { entry: join(here, "..", "dist", "extensions", "dashboard-server.js"), strip: false },
+      // 3. Last resort: the .ts source (only strippable OUTSIDE node_modules)
+      { entry: join(here, "dashboard-server.ts"), strip: true },
+    ];
+    for (const c of candidates) {
+      if (!existsSync(c.entry)) continue;
+      if (c.strip && c.entry.includes(`${sep}node_modules${sep}`)) continue; // unstrippable
+      return { entry: c.entry, needsStripTypes: c.strip };
+    }
+    return null;
+  }
+
+  /** Write a small ESM runner script that imports and launches the dashboard server. */
+  function writeRunnerScript(): boolean {
+    const resolved = resolveDashboardEntry();
+    if (!resolved) return false;
+    dashboardNeedsStrip = resolved.needsStripTypes;
+    const script = [
+      `import { appendFileSync } from "node:fs";`,
+      `const __log = ${JSON.stringify(launchLog)};`,
+      `function __fail(err) {`,
+      `  const msg = "[mega-compact] dashboard failed: " + (err && err.stack ? err.stack : String(err));`,
+      `  try { appendFileSync(__log, msg + "\\n"); } catch { /* ignore */ }`,
+      `  console.error(msg);`,
+      `  process.exit(1);`,
+      `}`,
+      `import { launchDashboardServer } from ${JSON.stringify(resolved.entry)};`,
+      `launchDashboardServer(${JSON.stringify(runtime.currentStateDir)}).catch(__fail);`,
+    ].join("\n");
+    writeFileSync(runnerFile, script);
+    return true;
+  }
+
+  /** Open a URL in the default browser. Platform-aware. Uses spawn (not exec) to avoid shell injection. */
+  function openBrowser(url: string): void {
+    const cmd =
+      process.platform === "darwin" ? "open" :
+        process.platform === "win32" ? "start" :
+          "xdg-open";
+    try {
+      spawn(cmd, [url], { detached: true, stdio: "ignore" }).unref();
+    } catch {
+      /* non-fatal — user can open manually */
+    }
+  }
+
+  pi.registerCommand("mega-dashboard", {
+    description: "Start the local web dashboard and optionally open it in the default browser.",
+    handler: async (_args: string, ctx: ExtensionContext) => {
+      runtime.bindRepo(ctx.cwd);
+      let info = await isServerRunning();
+
+      if (info) {
+        ctx.ui.notify(`[mega-compact] dashboard already running at ${info.url}`);
+        const open = await ctx.ui.confirm("mega-compact dashboard", `Open ${info.url} in browser?`);
+        if (open) openBrowser(info.url);
+        return;
+      }
+
+      // Start the server
+      ctx.ui.notify("[mega-compact] starting dashboard server…");
+      if (!writeRunnerScript()) {
+        ctx.ui.notify("[mega-compact] dashboard entry not found — check logs.");
+        return;
+      }
+
+      const args = dashboardNeedsStrip ? ["--experimental-strip-types", runnerFile] : [runnerFile];
+      const child = spawn(process.execPath, args, {
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+
+      // Poll for a live server (port 9320–9329) instead of relying solely on the
+      // port.pid marker, which can land in a different state dir than the one we
+      // poll when a prior compact left currentStateDir pointing elsewhere.
+      const deadline = Date.now() + 6_000;
+      let port: number | null = null;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        port = await findLivePort();
+        if (port) break;
+      }
+
+      if (!port) {
+        let detail = "";
+        try {
+          const log = readFileSync(launchLog, "utf-8").trim();
+          if (log) detail = ` — ${log.split("\n").slice(-3).join("; ")}`;
+        } catch { /* no log yet */ }
+        ctx.ui.notify(`[mega-compact] dashboard server failed to start${detail}. See ${launchLog}`);
+        return;
+      }
+
+      const url = `http://localhost:${port}`; // guardrails-allow PREVENT-PI-004: localhost URL of the dashboard server this extension spawned
+      ctx.ui.notify(`[mega-compact] dashboard running at ${url}`);
+      const open = await ctx.ui.confirm("mega-compact dashboard", `Open ${url} in browser?`);
+      if (open) openBrowser(url);
+    },
+  });
+
+  pi.registerCommand("mega-dashboard-stop", {
+    description: "Stop the local dashboard server.",
+    handler: async (_args: string, ctx: ExtensionContext) => {
+      if (!existsSync(portFile)) {
+        ctx.ui.notify("[mega-compact] no dashboard server running.");
+        return;
+      }
+      try {
+        const info = JSON.parse(readFileSync(portFile, "utf-8"));
+        // Verify the server is actually ours by probing the port before killing
+        try {
+          await fetch(`http://localhost:${info.port}/api/snapshot`, { signal: AbortSignal.timeout(1000) }); // guardrails-allow PREVENT-PI-004: localhost probe to verify the dashboard server is ours before stopping it
+        } catch {
+          // Not responding — just clean up stale pid file
+          try { unlinkSync(portFile); } catch { /* ok */ }
+          ctx.ui.notify("[mega-compact] dashboard was not running (stale pid file cleaned up).");
+          return;
+        }
+        if (info?.pid) process.kill(info.pid, "SIGTERM");
+      } catch { /* already dead */ }
+      try { unlinkSync(portFile); } catch { /* ok */ }
+      ctx.ui.notify("[mega-compact] dashboard stopped.");
+    },
+  });
+
+  pi.registerCommand("mega-dashboard-status", {
+    description: "Check if the dashboard server is running.",
+    handler: async (_args: string, ctx: ExtensionContext) => {
+      const info = await isServerRunning();
+      if (info) {
+        ctx.ui.notify(`[mega-compact] dashboard running at ${info.url}`);
+      } else {
+        ctx.ui.notify("[mega-compact] dashboard is not running. Use /dashboard to start it.");
+      }
+    },
+  });
+}
