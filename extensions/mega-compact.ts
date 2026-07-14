@@ -363,8 +363,8 @@ export default function (pi: ExtensionAPI) {
       // Phase 3 — pulsing status glyph while a compaction is in flight.
       const pulse = pulsing ? `${C.cyan}${PULSE[Math.floor(Date.now() / 250) % PULSE.length]}${C.reset} ` : "";
       const lines = [
-        ` ${C.amber}⚡ ${config.tier}${C.reset} │ ${tokStr}/${maxStr} tokens (${C.bold}${pctStr}${C.reset}) │ ${st.checkpointCount} chkpt${agentStr}${turnStr}`,
-        `   ${triggerLabel} │ ${C.magenta}dedup: ${dedupStr}${C.reset} │ ${C.gray}used:${C.reset} ${usedStr} │ ${C.gray}saved:${C.reset} ${savedStr}`,
+        ` ${C.amber}⚡ ${config.tier}${C.reset} │ ${tokStr}/${maxStr} tokens (${C.bold}${pctStr}${C.reset}) │ ${st.checkpointCount} saved${agentStr}${turnStr}`,
+        `   ${triggerLabel} │ ${C.magenta}repeat-skipped: ${dedupStr}${C.reset} │ ${C.gray}memory held:${C.reset} ${usedStr} │ ${C.gray}space freed:${C.reset} ${savedStr}`,
       ];
       // Phase 3 — compact progress bar: session tokens saved toward the rolling goal.
       if (rt.tokensSaved > 0) {
@@ -389,9 +389,14 @@ export default function (pi: ExtensionAPI) {
       // Phase 3 — recall/activity ticker (most-recent first), fresh only.
       if (fresh) {
         for (let i = ticker.length - 1; i >= 0; i--) {
-          if (lines.length >= 10) break; // MAX_WIDGET_LINES guard
+          if (lines.length >= 9) break; // leave room for the hint line (MAX 10)
           lines.push(`   ${i === ticker.length - 1 ? "" : C.dim}${ticker[i].text}${C.reset}`);
         }
+      }
+      // Plain-language hint so first-time users understand the widget. Always
+      // last, dimmed. "/mega-help explains these terms."
+      if (lines.length < 10) {
+        lines.push(`   ${C.dim}auto-compresses old context to free space · nothing deleted · /mega-help${C.reset}`);
       }
       ctx.ui.setWidget(WIDGET_KEY, lines, { placement: "aboveEditor" });
     }
@@ -990,6 +995,23 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify(
         `[mega-compact] ${cp.checkpointId} — original region (${original.length} chars):\n` +
         `${original.slice(0, 1500)}${original.length > 1500 ? "\n…(truncated)" : ""}`,
+      );
+    },
+  });
+
+  pi.registerCommand("mega-help", {
+    description: "Plain-language glossary of what mega-compact's stats mean.",
+    handler: async (_args: string, ctx: ExtensionContext) => {
+      ctx.ui.notify(
+        `[mega-compact] glossary — what the numbers mean:\n` +
+        `• token — a chunk of text (~4 chars). Context window = how much text fits in memory at once.\n` +
+        `• space freed — how much conversation we've compressed away to make room (the win).\n` +
+        `• memory held — how much compact summary we're currently keeping as your 'notes'.\n` +
+        `• saved checkpoint — a compact summary of an old conversation chunk we stored.\n` +
+        `• repeat-skipped — how often new text matched something we already had, so we didn't store a duplicate.\n` +
+        `• injected — times we pasted an old saved note back into the chat because it was relevant.\n` +
+        `• recall relevance — of those, how often the note was actually on-topic.\n` +
+        `• data safety — every compressed region is kept verbatim; nothing is permanently deleted. /mega-restore brings any of it back.`,
       );
     },
   });

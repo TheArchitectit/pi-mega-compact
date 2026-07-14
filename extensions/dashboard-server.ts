@@ -133,6 +133,15 @@ function dashboardHtml(tierName: string): string {
   .card.safe h2 { color: #3fb950; }
   .safe-note { font-size: 12px; color: #8b949e; margin: 12px 0 0; line-height: 1.5; }
   .value.ok { color: #3fb950; }
+  .label {
+    cursor: help;
+    border-bottom: 1px dotted #484f58;
+  }
+  .card.legend { grid-column: 1 / -1; }
+  .legend-list { margin: 0; padding-left: 18px; color: #c9d1d9; }
+  .legend-list li { margin-bottom: 8px; line-height: 1.5; }
+  .legend-list b { color: #f0f6fc; }
+  .legend-note { font-size: 12px; color: #8b949e; margin: 12px 0 0; font-style: italic; }
   .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #8b949e; margin-bottom: 12px; font-weight: 600; }
   .meter-track { background: #21262d; border-radius: 4px; height: 20px; overflow: hidden; margin: 8px 0; }
   .meter-fill { height: 100%; border-radius: 4px; transition: width .6s ease; min-width: 2px; }
@@ -190,15 +199,15 @@ function dashboardHtml(tierName: string): string {
   <div class="card">
     <h2>Vector Store</h2>
     <div class="stat-grid">
-      <span class="label">Checkpoints</span><span class="value" id="st-count">0</span>
-      <span class="label">Tokens Stored</span><span class="value" id="st-tokens">0</span>
-      <span class="label">Original Tokens</span><span class="value" id="st-orig">0</span>
-      <span class="label">Tokens Saved</span><span class="value" id="st-saved">0</span>
-      <span class="label">Injected</span><span class="value" id="st-injected">0</span>
-      <span class="label">Dedup Rate</span><span class="value" id="st-dedup">0%</span>
-      <span class="label">Storage Dedup</span><span class="value" id="st-sdedup">0%</span>
-      <span class="label">Collapsed</span><span class="value" id="st-collapsed">0</span>
-      <span class="label">Last ID</span><span class="value" id="st-lastid">—</span>
+      <span class="label" title="A saved summary of a chunk of your conversation that was compacted to free up space.">Checkpoints</span><span class="value" id="st-count">0</span>
+      <span class="label" title="How much conversation we are currently holding as compact summaries (the 'memory' this extension keeps). Smaller is better.">Tokens Stored</span><span class="value" id="st-tokens">0</span>
+      <span class="label" title="Total size of the original conversation text before it was compacted.">Original Tokens</span><span class="value" id="st-orig">0</span>
+      <span class="label" title="How much conversation space we have freed up for you (original size minus the compact summary we kept).">Tokens Saved</span><span class="value" id="st-saved">0</span>
+      <span class="label" title="How many times old context was automatically brought back into the conversation because it was relevant to what you were doing.">Injected</span><span class="value" id="st-injected">0</span>
+      <span class="label" title="Of the times we recalled old context, how often it was actually on-topic.">Recall Relevance</span><span class="value" id="st-dedup">0%</span>
+      <span class="label" title="How often new content matched something we already had, so we skipped storing a duplicate copy. Higher = less wasted space.">Storage Dedup</span><span class="value" id="st-sdedup">0%</span>
+      <span class="label" title="How many duplicate chunks we collapsed into one instead of storing separately.">Collapsed</span><span class="value" id="st-collapsed">0</span>
+      <span class="label" title="The ID of the most recent saved checkpoint.">Last ID</span><span class="value" id="st-lastid">—</span>
     </div>
   </div>
   <div class="card">
@@ -240,6 +249,18 @@ function dashboardHtml(tierName: string): string {
       <span class="label">Current Turn</span><span class="value" id="cr-turn">0</span>
       <span class="label">Status</span><span class="value" id="cr-status">idle</span>
     </div>
+  </div>
+  <div class="card legend">
+    <h2>What these numbers mean</h2>
+    <ul class="legend-list">
+      <li><b>Tokens saved</b> — conversation space this extension has freed up for you (it compacted old text into short summaries).</li>
+      <li><b>Tokens stored</b> — how much "memory" (compact summaries) the extension is currently holding for this repo.</li>
+      <li><b>Injected</b> — times old context was automatically pasted back in because it was relevant to your current task.</li>
+      <li><b>Recall relevance</b> — of those, how often the recalled context was actually on-topic.</li>
+      <li><b>Storage dedup</b> — how often new content matched something already saved, so a duplicate copy was skipped (saves space).</li>
+      <li><b>Data safety</b> — every compacted region is kept verbatim (compressed). Nothing is permanently deleted; you can restore any of it.</li>
+    </ul>
+    <p class="legend-note">Hover any label above for a quick explanation.</p>
   </div>
 </div>
 
