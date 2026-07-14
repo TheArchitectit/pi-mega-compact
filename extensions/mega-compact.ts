@@ -42,6 +42,7 @@ import type { EngineMessage } from "../src/types.js";
 import { writeFileSync, appendFileSync, readFileSync } from "node:fs";
 import { existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { spawn } from "node:child_process"; // guardrails-allow PREVENT-PI-004: spawns the optional, user-triggered localhost dashboard server only
+import { execSync } from "node:child_process"; // guardrails-allow PREVENT-PI-004: read-only `git rev-parse` to scope the store per-repo
 
 const STATUS_KEY = "mega-compact";
 const WIDGET_KEY = "mega-compact-stats";
@@ -100,6 +101,8 @@ function loadConfig() {
   const { tier, thresholdTokens } = resolveThreshold();
   return {
     tier,
+    // Global default; the live store/dashboard are rebound per-repo at runtime
+    // via bindRepo() so each git repo gets its own isolated state dir.
     stateDir: process.env.MEGACOMPACT_STATE_DIR ?? STATE_DIR_DEFAULT,
     fastGatePct: envFlag("MEGACOMPACT_FAST_GATE_PCT", 70),
     thresholdTokens,
@@ -111,6 +114,34 @@ function loadConfig() {
     dedupSim: Number(process.env.MEGACOMPACT_DEDUP_SIM ?? "0.9"),
     debug: envBool("MEGACOMPACT_DEBUG", false),
   };
+}
+
+/**
+ * Resolve the current repo's git root from a cwd. Returns undefined for a
+ * non-git directory (caller falls back to a global state dir).
+ */
+function resolveRepoRoot(cwd: string): string | undefined {
+  try {
+    const out = execSync("git rev-parse --show-toplevel", {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    return out || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Per-repo state dir: <repo>/.pi/mega-compact (tracked, so it travels with the
+ * repo across devices — not gitignored). Falls back to `fallback` for non-git
+ * cwds (the explicit MEGACOMPACT_STATE_DIR override, if set).
+ */
+function repoStateDir(cwd: string, fallback: string): string {
+  const root = resolveRepoRoot(cwd);
+  if (!root) return fallback;
+  return join(root, ".pi", "mega-compact");
 }
 
 // ---- Live dashboard -------------------------------------------------------
@@ -161,6 +192,9 @@ interface DashboardSnapshot {
     totalTokenEstimate: number;
     injectedCount: number;
     dedupHitRate: number;
+    storageDedupRate: number;
+    dedupAttempts: number;
+    dedupCollapsed: number;
   };
 }
 
@@ -193,9 +227,31 @@ function engineView(messages: AgentMessage[]): EngineMessage[] {
 
 export default function (pi: ExtensionAPI) {
   const config = loadConfig();
-  const store = new VectorStore({ dedupSim: config.dedupSim, stateDir: config.stateDir });
-  const logger = new Logger({ enabled: config.debug, path: join(config.stateDir, "mega-compact.log") });
-  const dashboard = new Dashboard(config.stateDir);
+  // Store/dashboard/logger are rebound per-repo by bindRepo() (below) so each
+  // git repo gets its own isolated state dir. They start bound to the global
+  // default until the first handler resolves a cwd.
+  let store = new VectorStore({ dedupSim: config.dedupSim, stateDir: config.stateDir });
+  let logger = new Logger({ enabled: config.debug, path: join(config.stateDir, "mega-compact.log") });
+  let dashboard = new Dashboard(config.stateDir);
+  let activeRepoRoot: string | null = null;
+  let currentStateDir = config.stateDir;
+
+  /**
+   * Point store/dashboard/logger at the current repo's state dir. Rebuilds the
+   * instances only when the repo root changes, so cross-repo dedup stats, db,
+   * and events are fully isolated. Falls back to the global default outside git.
+   */
+  function bindRepo(cwd: string | undefined): string {
+    const dir = cwd ? repoStateDir(cwd, config.stateDir) : config.stateDir;
+    const key = cwd ? resolveRepoRoot(cwd) ?? dir : dir;
+    if (key === activeRepoRoot) return dir;
+    activeRepoRoot = key;
+    currentStateDir = dir;
+    store = new VectorStore({ dedupSim: config.dedupSim, stateDir: dir });
+    logger = new Logger({ enabled: config.debug, path: join(dir, "mega-compact.log") });
+    dashboard = new Dashboard(dir);
+    return dir;
+  }
 
   // --- snapshot() helper: collect live state and write it to disk ---
   let lastCtxTokens: number | null = null;
@@ -203,6 +259,7 @@ export default function (pi: ExtensionAPI) {
   let lastCtxWindow: number = 0;
 
   function snapshot(ctx?: ExtensionContext): void {
+    if (ctx) bindRepo(ctx.cwd);
     const st = store.stats(rt.sessionId);
     const armed = lastCtxPercent != null && lastCtxPercent >= config.fastGatePct;
     const ready = armed && (lastCtxTokens ?? 0) >= config.thresholdTokens;
@@ -230,7 +287,7 @@ export default function (pi: ExtensionAPI) {
       },
       context: { tokens: lastCtxTokens, percent: lastCtxPercent, contextWindow: lastCtxWindow },
       trigger: { armed, ready, currentTokens: lastCtxTokens, thresholdTokens: config.thresholdTokens, fastGatePct: config.fastGatePct },
-      store: { checkpointCount: st.checkpointCount, totalTokenEstimate: st.totalTokenEstimate, injectedCount: st.injectedCount, dedupHitRate: st.dedupHitRate },
+      store: { checkpointCount: st.checkpointCount, totalTokenEstimate: st.totalTokenEstimate, injectedCount: st.injectedCount, dedupHitRate: st.dedupHitRate, storageDedupRate: st.storageDedupRate, dedupAttempts: st.dedupAttempts, dedupCollapsed: st.dedupCollapsed },
     });
 
     // Live stats widget above the editor
@@ -239,8 +296,13 @@ export default function (pi: ExtensionAPI) {
       const maxStr = lastCtxWindow > 0 ? `${Math.round(lastCtxWindow / 1000)}k` : "?";
       const pctStr = lastCtxPercent != null ? `${Math.round(lastCtxPercent * 10) / 10}%` : "?%";
       const triggerLabel = ready ? "● ready" : armed ? "◐ armed" : "○ idle";
-      const dedupRate = rt.dedupAttempts > 0 ? rt.dedupSkips / rt.dedupAttempts : 0;
-      const dedupStr = rt.dedupAttempts > 0 ? `${Math.round(dedupRate * 100)}%` : "—";
+      // Storage dedup rate is cumulative (store-wide, per-repo) and survives
+      // session resets. Always show a number: 0% before any compaction, a
+      // decimal for sub-10% rates so small-but-real dedup isn't rounded away.
+      const storageRate = st.storageDedupRate; // 0..1
+      const dedupStr = storageRate * 100 >= 10
+        ? `${Math.round(storageRate * 100)}%`
+        : `${(storageRate * 100).toFixed(1)}%`;
       const savedStr = st.totalTokenEstimate > 0 ? `${Math.round(st.totalTokenEstimate / 1000)}k` : "0";
       const agentStr = activeAgents > 0 ? ` │ 🤖 ${activeAgents} agent${activeAgents === 1 ? "" : "s"}` : "";
       const turnStr = currentTurn > 0 ? ` │ turn ${currentTurn}` : "";
@@ -302,6 +364,7 @@ export default function (pi: ExtensionAPI) {
     messages: AgentMessage[],
     opts: { keepFrom?: number; summary?: string } = {},
   ) {
+    bindRepo(ctx.cwd);
     const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
     resetRuntime(sid);
     rt.sessionId = sid;
@@ -371,6 +434,7 @@ export default function (pi: ExtensionAPI) {
    * or report it (command).
    */
   function doRecall(ctx: ExtensionContext, query: string, source: "resume" | "command") {
+    bindRepo(ctx.cwd);
     const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
     const result = recallAndInline(
       { sessionId: sid, query, limit: config.autoInlineK, source, skipInjected: true },
@@ -441,16 +505,24 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.setWidget(WIDGET_KEY, [], { placement: "aboveEditor" });
   });
 
-  // ---- Agent tracking for real-time widget updates -----------------------
+  // ---- Agent tracking for real-time widget + status-line updates ---------
   pi.on("agent_start", async (_event, ctx) => {
     activeAgents++;
     dashboard.event("agent_start", { activeAgents });
+    // Surface live agent activity on the status line (toolbar), not just the
+    // above-editor widget — otherwise concurrent agents look frozen.
+    setStatus(ctx, `mega-compact: ▶ ${activeAgents} agent${activeAgents === 1 ? "" : "s"}`);
     snapshot(ctx);
   });
 
   pi.on("agent_end", async (_event, ctx) => {
     activeAgents = Math.max(0, activeAgents - 1);
     dashboard.event("agent_end", { activeAgents });
+    if (activeAgents > 0) {
+      setStatus(ctx, `mega-compact: ▶ ${activeAgents} agent${activeAgents === 1 ? "" : "s"}`);
+    } else {
+      setStatus(ctx, config.auto ? "mega-compact: ready" : "mega-compact: manual only");
+    }
     snapshot(ctx);
   });
 
@@ -540,7 +612,7 @@ export default function (pi: ExtensionAPI) {
       const r = (ran as { result: { deduped: boolean; checkpointId?: string; tokenEstimate: number } }).result;
       ctx.ui.notify(
         `[mega-compact] ${r.deduped ? "region already compacted (deduped)" : `persisted ${r.checkpointId}`} · ` +
-          `${r.tokenEstimate} tok · ${config.stateDir}`,
+          `${r.tokenEstimate} tok · ${currentStateDir}`,
       );
     },
   });
@@ -575,6 +647,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("mega-status", {
     description: "Show mega-compact config and current context usage.",
     handler: async (_args: string, ctx: ExtensionContext) => {
+      bindRepo(ctx.cwd);
       const usage = ctx.getContextUsage();
       const pct = usage?.percent != null ? `${usage.percent}%` : "n/a";
       const tokens = usage?.tokens != null ? `${usage.tokens} tok` : "n/a";
@@ -588,7 +661,7 @@ export default function (pi: ExtensionAPI) {
           `injected=${st.injectedCount} · dedup=${(st.dedupHitRate * 100).toFixed(0)}%\n` +
           `[mega-compact] anchor=${config.anchorUserMessages} preserveRecent=${config.preserveRecent} ` +
           `autoInlineK=${config.autoInlineK} dedupSim=${config.dedupSim} debug=${config.debug}\n` +
-          `[mega-compact] stateDir=${config.stateDir}`,
+          `[mega-compact] stateDir=${currentStateDir}`,
       );
     },
   });
@@ -620,8 +693,8 @@ export default function (pi: ExtensionAPI) {
 
   // ---- Dashboard server commands ----------------------------------------
 
-  const portFile = join(config.stateDir, "port.pid");
-  const runnerFile = join(config.stateDir, "_dashboard-runner.mjs");
+  const portFile = join(currentStateDir, "port.pid");
+  const runnerFile = join(currentStateDir, "_dashboard-runner.mjs");
 
   /** Try to reach a running dashboard server. Returns { port, url } or null. */
   async function isServerRunning(): Promise<{ port: number; url: string } | null> {
@@ -645,7 +718,7 @@ export default function (pi: ExtensionAPI) {
     const compiledServer = join(dirname(fileURLToPath(import.meta.url)), "dashboard-server.js");
     const script = [
       `import { launchDashboardServer } from ${JSON.stringify(compiledServer)};`,
-      `launchDashboardServer(${JSON.stringify(config.stateDir)}).catch(err => {`,
+      `launchDashboardServer(${JSON.stringify(currentStateDir)}).catch(err => {`,
       `  console.error("[mega-compact] dashboard failed:", err);`,
       `  process.exit(1);`,
       `});`,
@@ -669,6 +742,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("mega-dashboard", {
     description: "Start the local web dashboard and optionally open it in the default browser.",
     handler: async (_args: string, ctx: ExtensionContext) => {
+      bindRepo(ctx.cwd);
       let info = await isServerRunning();
 
       if (info) {

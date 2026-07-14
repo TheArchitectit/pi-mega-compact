@@ -216,7 +216,7 @@ before starting pi.
 | `MEGACOMPACT_AUTO_INLINE` | `true` | Auto-inline on resume / branch. |
 | `MEGACOMPACT_AUTO_INLINE_K` | `3` | Top-K checkpoints to auto-inline. |
 | `MEGACOMPACT_DEDUP_SIM` | `0.90` | Cosine threshold to collapse near-dupes. |
-| `MEGACOMPACT_STATE_DIR` | `~/.pi/agent/extensions/pi-mega-compact` | Override the store location. |
+| `MEGACOMPACT_STATE_DIR` | _(none — per-repo default)_ | Override the store location. By default state is per-repo at `<repo>/.pi/mega-compact/`; this env var forces a single explicit dir (used as the fallback for non-git cwds). |
 
 #### Dedup pipeline flags (v0.2.0 — single source: `src/config/dedup.ts`)
 

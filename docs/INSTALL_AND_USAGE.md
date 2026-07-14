@@ -94,6 +94,14 @@ Above the pi editor:
    ◐ armed │ dedup: 92% │ saved: 45k tok
 ```
 
+> **Per-repo state.** Runtime state (the SQLite db, `events.log`,
+> `dashboard.json`, `dedup-stats.json`) lives at `<repo>/.pi/mega-compact/`
+> for each git repo, so dedup stats and checkpoints are isolated per project
+> and travel with the clone (tracked in git, not ignored). The `dedup:` field
+> shows the cumulative storage dedup rate (e.g. `92%`, or `2.5%` / `0.0%` for
+> small/zero). For non-git working dirs, state falls back to
+> `MEGACOMPACT_STATE_DIR` (or the global default).
+
 ---
 
 ## 3. Use it with OpenClaw (plugin adapter)
@@ -143,11 +151,11 @@ Then register + enable it in `~/.openclaw/openclaw.json`:
 Restart OpenClaw. You should see a log line
 `mega-compact: registered compaction provider "mega-compact"`.
 
-> **Store sharing:** the adapter defaults its state dir to the **same**
-> `~/.pi/agent/extensions/pi-mega-compact` as the pi extension, so checkpoints
-> created under pi are visible under OpenClaw (and vice-versa) unless you point
-> `stateDir` elsewhere. Override with the `stateDir` config key or the
-> `MEGA_COMPACT_STATE_DIR` env var.
+> **Store sharing:** by default both adapters scope state **per git repo** at
+> `<repo>/.pi/mega-compact/`, so checkpoints created under pi in a repo are
+> visible to OpenClaw in the same repo, and dedup is isolated per project.
+> Override with the `stateDir` config key or the `MEGACOMPACT_STATE_DIR` env
+> var (single explicit dir; also the fallback for non-git cwds).
 
 ### OpenClaw tools
 

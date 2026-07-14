@@ -1,5 +1,39 @@
 # Release Notes — pi-mega-compact
 
+## v0.4.0 (2026-07-14)
+
+Per-repo context isolation, a dedup rate that survives session restarts, and
+live agent activity in the toolbar.
+
+### Highlights
+
+- **Per-repo state isolation.** Runtime state now lives at `<repo>/.pi/mega-compact/`
+  per git repo instead of one global directory. Dedup stats, checkpoints, and
+  `/mega-recall` results are isolated per repo — no more leaking another repo's
+  `dedup: 96%` into a fresh project. The dir is committed (not gitignored), so
+  your compacted context travels with the clone and resumes across devices.
+- **Stable live dedup rate.** The toolbar `dedup:` field shows a cumulative
+  storage dedup rate persisted in `dedup-stats.json`. It no longer resets to
+  `—` on every new session, and sub-10% rates show a decimal (`2.5%`) while
+  zero attempts show `0.0%`. Always populated.
+- **Live agent tracking on the status line.** Running sub-agents now surface as
+  `mega-compact: ▶ N agents` in the toolbar while active, reverting to
+  `mega-compact: ready` when idle.
+
+### Changed
+
+- Runtime state dir default moved from `~/.pi/agent/extensions/pi-mega-compact`
+  (global) to `<repo>/.pi/mega-compact` (per repo). `MEGACOMPACT_STATE_DIR`
+  remains the override for non-git working directories.
+- Bumped to 278 passing tests (all green).
+
+### Upgrade notes
+
+No migration needed — the SQLite schema is unchanged. On first run in a repo,
+mega-compact creates `<repo>/.pi/mega-compact/` automatically. The old global
+`~/.pi/agent/extensions/pi-mega-compact/sqlite.db` is no longer used (it remains
+only as a fallback for non-git cwds); you may delete it.
+
 ## v0.2.0 (2026-07-13)
 
 The **storage-backend release**: the per-session gzipped-JSON checkpoint files

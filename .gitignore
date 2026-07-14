@@ -7,6 +7,14 @@ dist/
 
 # Local runtime state for the extension (checkpoints / vector db)
 .pi-mega-compact-state/
+.pi/
+dashboard.json
+events.log
+dedup-stats.json
+bloom.json.gz
+sqlite.db
+sqlite.db-shm
+sqlite.db-wal
 
 # Vendored upstream template (config pieces extracted into .claude/.guardrails)
 guardrails-template/

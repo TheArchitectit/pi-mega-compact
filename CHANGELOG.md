@@ -1,5 +1,43 @@
 # Changelog
 
+## v0.4.0 (2026-07-14)
+
+Per-repo state isolation, a stable live dedup rate, and real-time agent
+activity in the toolbar. No breaking change to the SQLite store schema or the
+dedup pipeline — the on-disk location of runtime state moves from a single
+global dir to one dir per git repo.
+
+### Added
+- **Per-repo state dir.** Each git repo gets its own isolated store at
+  `<repo>/.pi/mega-compact/` (checkpoints SQLite db, `events.log`,
+  `dashboard.json`, `dedup-stats.json`). The store is scoped by repo root, so
+  cross-repo dedup stats, checkpoints, and `/mega-recall` results are fully
+  isolated — a new repo starts with `dedup: 0.0%` and 0 checkpoints instead of
+  inheriting another repo's numbers. The dir is **tracked in git** (not
+  gitignored) so context travels with the clone and stays resumeable across
+  devices. Non-git cwds fall back to `MEGACOMPACT_STATE_DIR` (or the global
+  default).
+- **Stable storage dedup rate.** The widget/dashboard now show a cumulative
+  *storage* dedup rate (`deduped adds / total adds`), persisted in
+  `dedup-stats.json` and surviving session restarts. Previously the widget used
+  a per-session closure counter that reset on every session instance, so the
+  rate read `—`/`0%` on a fresh session even after heavy dedup. Sub-10% rates
+  render with a decimal (e.g. `2.5%`); zero attempts show `0.0%` rather than
+  `—`, so the field is always populated.
+- **Live agent activity on the toolbar status line.** `agent_start`/`agent_end`
+  now push `mega-compact: ▶ N agents` to the status text (not just the
+  above-editor widget), so concurrent sub-agents are visible while they run.
+  Restores to `mega-compact: ready` when idle.
+
+### Fixed
+- `bindRepo()` honors the explicit `MEGACOMPACT_STATE_DIR` override for non-git
+  cwds (regression where it fell back to the hardcoded global default instead).
+- All 278 tests pass.
+
+### Docs
+- `README.md` and `docs/INSTALL_AND_USAGE.md` note the per-repo state location
+  and the `MEGACOMPACT_STATE_DIR` fallback semantics.
+
 ## v0.3.0 (2026-07-13)
 
 OpenClaw plugin support plus an expanded, graded test suite. Additive on top of
