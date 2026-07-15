@@ -11,6 +11,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { compactSession } from "../src/engine.js";
+import type { EngineMessage } from "../src/types.js";
 import { recallAndInline } from "../src/recall.js";
 import { normalizeSessionId } from "../src/store.js";
 import { touchSession, logDaily } from "../src/store/sqlite.js";
@@ -51,8 +52,29 @@ export function runCompact(
     config.preserveRecentMin,
   );
   const keepFrom = opts.keepFrom ?? Math.max(0, view.length - preserve);
-  if (keepFrom <= 0) return { skipped: true };
+  // For very small sessions (fewer messages than preserveRecent), allow
+  // compacting everything except the last message — the user explicitly
+  // requested compaction, so don't refuse it just because the session is short.
+  if (keepFrom <= 0) {
+    if (view.length <= 1) return { skipped: true };
+    // Use the fallback: compact everything except the last message
+    const fallbackKeepFrom = view.length - 1;
+    return doCompact(view, fallbackKeepFrom, opts, sid, config, pi, ctx, runtime);
+  }
 
+  return doCompact(view, keepFrom, opts, sid, config, pi, ctx, runtime);
+}
+
+function doCompact(
+  view: EngineMessage[],
+  keepFrom: number,
+  opts: { keepFrom?: number; summary?: string; compressionPressure?: number },
+  sid: string,
+  config: MegaConfig,
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  runtime: MegaRuntime,
+): RunCompactResult {
   runtime.pulsing = true; // animate the status line while the (sync) pipeline runs
   const result = compactSession(
     {
