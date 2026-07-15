@@ -1,6 +1,6 @@
 {
   "name": "pi-mega-compact",
-  "version": "0.4.21",
+  "version": "0.4.23",
   "description": "Layered, local, vector-backed context compressor for pi — supersede/collapse/cluster compaction with deduped inline recall.",
   "type": "module",
   "license": "BSD-2-Clause",
@@ -20,7 +20,7 @@
     "trident"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=22.13"
   },
   "files": [
     "dist",
@@ -46,19 +46,17 @@
     "guardrails": "python3 scripts/regression_check.py --all || node scripts/guardrails-scan.mjs",
     "precommit": "bash .claude/hooks/pre-commit.sh",
     "prepublishOnly": "npm run build",
-    "postinstall": "npm rebuild better-sqlite3 @mongodb-js/zstd || true"
+    "postinstall": "npm rebuild @mongodb-js/zstd || true"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "openclaw": ">=0.1.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^20.0.0",
+    "@types/node": "^22.20.1",
     "typescript": "^5.4.0"
   },
   "dependencies": {
-    "@mongodb-js/zstd": "^7.0.0",
-    "better-sqlite3": "^12.11.1"
+    "@mongodb-js/zstd": "^7.0.0"
   }
 }

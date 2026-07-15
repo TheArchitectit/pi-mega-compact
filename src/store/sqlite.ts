@@ -2,11 +2,13 @@
  * sqlite.ts — Sprint 8 storage backbone (the "one store").
  *
  * Replaces the per-session gzipped-JSON checkpoint files with a single local
- * SQLite database (better-sqlite3, in-process, FS-backed, ZERO network calls —
- * honors PREVENT-PI-004). Chosen over PGlite because PGlite is async-only in
- * every published version, and VectorStore (engine.ts / recall.ts / the
- * extension) is fully synchronous — adopting PGlite would have cascaded async
- * through the whole call chain. SQLite keeps every VectorStore signature sync.
+ * SQLite database (node:sqlite — the Node built-in, in-process, FS-backed,
+ * ZERO network calls — honors PREVENT-PI-004). No native build and no install
+ * scripts, so it survives pi's npm blocked-install-scripts gate (better-sqlite3's
+ * native binary could not be built under pi, which crashed every `pi update
+ * --extensions`). node:sqlite is synchronous, so every VectorStore signature
+ * stays sync. PGlite + pgvector (async) is layered on in vectorIndex.ts for
+ * real HNSW indexing (Slice 2 of the dual-backend plan).
  *
  * FTS5 `trigram` tokenizer is created for the Sprint 9+ dedup tiers (MinHash/LSH
  * / pg_trgm-equivalent verification). The default cosine path stays a linear
@@ -15,7 +17,7 @@
  * All queries are parameterized (PREVENT-002) — never string-concatenated.
  */
 
-import Database from "better-sqlite3";
+import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -31,12 +33,15 @@ function encodeEmbedding(v: number[]): Buffer {
   for (let i = 0; i < v.length; i++) buf.writeFloatLE(v[i] ?? 0, i * 4);
   return buf;
 }
-/** Decode a Float32 BLOB back to a number[]. */
-function decodeEmbedding(buf: Buffer | null | undefined): number[] {
+/** Decode a Float32 BLOB back to a number[]. node:sqlite returns BLOBs as
+ *  Uint8Array, so decode via DataView (Buffer is a Uint8Array subclass — both
+ *  work). */
+function decodeEmbedding(buf: Uint8Array | null | undefined): number[] {
   if (!buf || buf.length === 0) return [];
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
   const n = buf.length / 4;
   const out = new Array<number>(n);
-  for (let i = 0; i < n; i++) out[i] = buf.readFloatLE(i * 4);
+  for (let i = 0; i < n; i++) out[i] = dv.getFloat32(i * 4, true);
   return out;
 }
 
@@ -47,17 +52,17 @@ function jsonText(v: unknown): string {
 // In-process cache so the same stateDir reuses one connection (and so a fresh
 // VectorStore over the same dir shares the open DB). Cross-process durability
 // comes from reopening the same file path — proven by the integration test.
-const cache = new Map<string, Database.Database>();
+const cache = new Map<string, DatabaseSync>();
 
 /** Open (or reuse) the SQLite store for a state dir. */
-export function openStore(stateDir: string = getStateDir()): Database.Database {
+export function openStore(stateDir: string = getStateDir()): DatabaseSync {
   const existing = cache.get(stateDir);
   if (existing) return existing;
 
   if (!existsSync(stateDir)) mkdirSync(stateDir, { recursive: true });
-  const db = new Database(join(stateDir, "sqlite.db"));
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
+  const db = new DatabaseSync(join(stateDir, "sqlite.db"));
+  db.exec("PRAGMA journal_mode = WAL");
+  db.exec("PRAGMA foreign_keys = ON");
   initSchema(db);
   cache.set(stateDir, db);
   return db;
@@ -87,17 +92,17 @@ export function getIndexDir(): string {
   }
 }
 
-let indexCache: Database.Database | undefined;
+let indexCache: DatabaseSync | undefined;
 let indexCacheDir: string | undefined;
 
 /** Open (or reuse) the machine-wide index DB. WAL for concurrent writers. */
-export function openIndexStore(indexDir: string = getIndexDir()): Database.Database {
+export function openIndexStore(indexDir: string = getIndexDir()): DatabaseSync {
   if (indexCache && indexCacheDir === indexDir) return indexCache;
   if (!existsSync(indexDir)) mkdirSync(indexDir, { recursive: true });
-  const db = new Database(join(indexDir, "index.sqlite"));
-  db.pragma("journal_mode = WAL");
-  db.pragma("busy_timeout = 3000"); // tolerate brief cross-process write contention
-  db.exec(`
+  const iddb = new DatabaseSync(join(indexDir, "index.sqlite"));
+  iddb.exec("PRAGMA journal_mode = WAL");
+  iddb.exec("PRAGMA busy_timeout = 3000"); // tolerate brief cross-process write contention
+  iddb.exec(`
     CREATE TABLE IF NOT EXISTS repo_registry (
       repo_root                 TEXT PRIMARY KEY,
       display_name              TEXT,
@@ -117,9 +122,9 @@ export function openIndexStore(indexDir: string = getIndexDir()): Database.Datab
     );
     CREATE INDEX IF NOT EXISTS idx_registry_last_seen ON repo_registry(last_seen DESC);
   `);
-  indexCache = db;
+  indexCache = iddb;
   indexCacheDir = indexDir;
-  return db;
+  return iddb;
 }
 
 /** One row of the global repo registry (multi-repo dashboard source). */
@@ -276,7 +281,7 @@ export function closeIndexStore(): void {
   }
 }
 
-function initSchema(db: Database.Database): void {
+function initSchema(db: DatabaseSync): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS context_chunks (
       id                  TEXT NOT NULL,
@@ -457,7 +462,7 @@ function initSchema(db: Database.Database): void {
  * input), so the unavoidable identifier interpolation here does not violate
  * PREVENT-002 (no external data reaches this SQL).
  */
-function ensureColumn(db: Database.Database, table: string, column: string, decl: string): void {
+function ensureColumn(db: DatabaseSync, table: string, column: string, decl: string): void {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
   if (cols.some((c) => c.name === column)) return;
   db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
@@ -666,6 +671,24 @@ function mapMemoryRow(row: any): MemoryRecord {
   };
 }
 
+/**
+ * Run `fn` atomically. Uses SAVEPOINT so it nests safely under an outer
+ * transaction (unlike `BEGIN`, which SQLite rejects when one is already open).
+ * Mirrors better-sqlite3's `db.transaction(fn)` semantics — callers that wrap a
+ * batch in withTx (e.g. backfill) can still call helpers that also use withTx.
+ */
+export function withTx(db: DatabaseSync, fn: () => void): void {
+  db.exec("SAVEPOINT mc_tx");
+  try {
+    fn();
+    db.exec("RELEASE mc_tx");
+  } catch (e) {
+    db.exec("ROLLBACK TO mc_tx");
+    db.exec("RELEASE mc_tx");
+    throw e;
+  }
+}
+
 /** Map a DB row to the public StoredCheckpoint shape. */
 function rowToCheckpoint(row: any): StoredCheckpoint {
   return {
@@ -684,7 +707,9 @@ function rowToCheckpoint(row: any): StoredCheckpoint {
     contentHash2: row.content_hash2 ?? undefined,
     contentHashVersion: row.content_hash_version ?? undefined,
     normalizedText: row.normalized_text ?? undefined,
-    compressedOriginal: row.compressed_original ?? undefined,
+    // node:sqlite returns BLOBs as Uint8Array; normalize to Buffer so callers
+    // (e.g. decompressSmart → Buffer.toString) behave as under better-sqlite3.
+    compressedOriginal: row.compressed_original ? Buffer.from(row.compressed_original) : undefined,
     embedding: decodeEmbedding(row.embedding_blob),
     timestamp: Number(row.timestamp ?? 0),
     dedupStatus: row.dedup_status ?? undefined,
@@ -695,7 +720,7 @@ function rowToCheckpoint(row: any): StoredCheckpoint {
 export function upsertCheckpoint(cp: StoredCheckpoint, stateDir: string = getStateDir()): void {
   const db = openStore(stateDir);
   const sid = normalizeSessionId(cp.sessionId);
-  const tx = db.transaction(() => {
+  withTx(db, () => {
     db.prepare(
       `INSERT INTO context_chunks
         (id, session_id, region_hash, content_hash, content_hash2, content_hash_version,
@@ -720,25 +745,25 @@ export function upsertCheckpoint(cp: StoredCheckpoint, stateDir: string = getSta
          dedup_status=excluded.dedup_status,
          compressed_original=excluded.compressed_original`,
     ).run({
-      id: cp.checkpointId,
-      sid,
-      region_hash: cp.regionHash ?? null,
-      content_hash: cp.contentHash ?? null,
-      content_hash2: cp.contentHash2 ?? null,
-      content_hash_version: cp.contentHashVersion ?? null,
-      normalized_text: cp.normalizedText ?? null,
-      summary: cp.summary ?? "",
-      topic_summary: cp.topicSummary ?? null,
-      summary_hash: cp.summaryHash ?? null,
-      key_decisions: jsonText(cp.keyDecisions),
-      next_steps: jsonText(cp.nextSteps),
-      files_modified: jsonText(cp.filesModified),
-      embedding_blob: encodeEmbedding(cp.embedding ?? []),
-      token_estimate: cp.tokenEstimate ?? 0,
-      original_token_estimate: cp.originalTokenEstimate ?? null,
-      timestamp: cp.timestamp ?? 0,
-      dedup_status: "active",
-      compressed_original: cp.compressedOriginal ?? null,
+      "@id": cp.checkpointId,
+      "@sid": sid,
+      "@region_hash": cp.regionHash ?? null,
+      "@content_hash": cp.contentHash ?? null,
+      "@content_hash2": cp.contentHash2 ?? null,
+      "@content_hash_version": cp.contentHashVersion ?? null,
+      "@normalized_text": cp.normalizedText ?? null,
+      "@summary": cp.summary ?? "",
+      "@topic_summary": cp.topicSummary ?? null,
+      "@summary_hash": cp.summaryHash ?? null,
+      "@key_decisions": jsonText(cp.keyDecisions),
+      "@next_steps": jsonText(cp.nextSteps),
+      "@files_modified": jsonText(cp.filesModified),
+      "@embedding_blob": encodeEmbedding(cp.embedding ?? []),
+      "@token_estimate": cp.tokenEstimate ?? 0,
+      "@original_token_estimate": cp.originalTokenEstimate ?? null,
+      "@timestamp": cp.timestamp ?? 0,
+      "@dedup_status": "active",
+      "@compressed_original": cp.compressedOriginal ?? null,
     });
 
     // FTS5 virtual tables don't support UPSERT — delete any prior row, reinsert.
@@ -749,7 +774,6 @@ export function upsertCheckpoint(cp: StoredCheckpoint, stateDir: string = getSta
       "INSERT INTO context_chunks_trgm(id, normalized_text) VALUES(?, ?)",
     ).run(cp.checkpointId, cp.normalizedText ?? cp.summary ?? "");
   });
-  tx();
 }
 
 // --- Sprint 11: MinHash signatures + LSH buckets --------------------------
@@ -786,11 +810,10 @@ export function insertLshBuckets(
   const ins = db.prepare(
     "INSERT OR IGNORE INTO dedup_lsh_buckets(bucket_key, chunk_id, session_id, signature_version) VALUES(?, ?, ?, ?)",
   );
-  const tx = db.transaction(() => {
+  withTx(db, () => {
     del.run(chunkId);
     for (const key of bucketKeys) ins.run(key, chunkId, sid, signatureVersion);
   });
-  tx();
 }
 
 /**
@@ -864,7 +887,7 @@ export function setDedupStatus(
 
 // --- Session state (injection tracking) ------------------------------------
 
-function loadSessionStateRow(sid: string, db: Database.Database): SessionState {
+function loadSessionStateRow(sid: string, db: DatabaseSync): SessionState {
   const row = db.prepare("SELECT * FROM session_state WHERE session_id = ?").get(sid) as any;
   if (!row) {
     return { injectedCheckpointIds: [], storedRegionHashes: [] };

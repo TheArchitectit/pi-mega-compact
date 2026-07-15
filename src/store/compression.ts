@@ -5,7 +5,7 @@
  *
  *  1. `compressSmart` / `decompressSmart` — SYNCHRONOUS, zlib-based. Used by the
  *     VectorStore write path (which must stay synchronous — see Sprint 8 plan:
- *     better-sqlite3 replaced PGlite precisely to avoid an async cascade).
+ *     node:sqlite replaced PGlite precisely to avoid an async cascade).
  *
  *  2. `compressZstd` / `decompressZstd` — ASYNCHRONOUS, via @mongodb-js/zstd.
  *     Optional, used for DR-export / large-blob paths where an await is fine.

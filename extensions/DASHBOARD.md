@@ -2,8 +2,8 @@
 
 A lightweight local web dashboard for monitoring mega-compact's live state — compactions, context usage, checkpoints, and recall hits.
 
-Uses Node built-in modules (`http`, `fs`, `path`) plus `better-sqlite3` (the
-project's one-store DB backend) to read the machine-wide multi-repo index.
+Uses Node built-in modules (`http`, `fs`, `path`, `node:sqlite` — the project's
+one-store DB backend) to read the machine-wide multi-repo index.
 
 ## Quick Start
 
@@ -74,7 +74,7 @@ The server runs as a detached child process, independent of the pi session. It:
 - Auto-discovers the state directory from the `port.pid` file
 - Cleans up stale `port.pid` files from dead processes
 - Supports `SIGTERM`/`SIGINT` for graceful shutdown
-- Serves static HTML; reads the multi-repo index from SQLite (`better-sqlite3`)
+- Serves static HTML; reads the multi-repo index from SQLite (`node:sqlite`)
 
 ## Browser UI
 

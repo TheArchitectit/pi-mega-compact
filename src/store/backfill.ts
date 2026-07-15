@@ -16,12 +16,12 @@
  * SQLite is the source of truth; this touches no network (PREVENT-PI-004).
  */
 
-import type { Database } from "better-sqlite3";
+import type { DatabaseSync } from "node:sqlite";
 import { openStore } from "./sqlite.js";
 import { computeContentDigest } from "../dedup/digest.js";
 import { minhashSignature, SIGNATURE_VERSION, NUM_HASHES } from "../dedup/l1-minhash.js";
 import { lshBands } from "../dedup/l1-lsh.js";
-import { upsertMinhashSignature, insertLshBuckets, listCheckpoints, saveRaptorTree } from "./sqlite.js";
+import { upsertMinhashSignature, insertLshBuckets, listCheckpoints, saveRaptorTree, withTx } from "./sqlite.js";
 import { buildRaptorTree, type Leaf } from "../dedup/raptor/tree.js";
 import type { Embedder } from "../embedder.js";
 import { defaultEmbedder } from "../embedder.js";
@@ -45,7 +45,7 @@ interface PhaseProgressRow {
   processed: number;
 }
 
-function ensureProgressTable(db: Database): void {
+function ensureProgressTable(db: DatabaseSync): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS backfill_progress (
       name TEXT PRIMARY KEY,
@@ -57,7 +57,7 @@ function ensureProgressTable(db: Database): void {
   `);
 }
 
-function progress(db: Database): { lastSid: string | null; lastId: string | null; updated: number; dups: number } {
+function progress(db: DatabaseSync): { lastSid: string | null; lastId: string | null; updated: number; dups: number } {
   const row = db
     .prepare("SELECT last_session_id, last_id, updated, duplicates_resolved FROM backfill_progress WHERE name='content_hashes'")
     .get() as { last_session_id: string | null; last_id: string | null; updated: number; duplicates_resolved: number } | undefined;
@@ -91,7 +91,7 @@ export function backfillContentHashes(stateDir: string = getStateDir()): Backfil
   let lastSid = start.lastSid;
   let lastId = start.lastId;
 
-  const tx = db.transaction((rows: { id: string; session_id: string; summary: string }[]) => {
+  function applyRows(rows: { id: string; session_id: string; summary: string }[]): void {
     const lookup = db.prepare(
       "SELECT id FROM context_chunks WHERE session_id = ? AND content_hash = ? AND content_hash2 = ? AND id != ? LIMIT 1",
     );
@@ -123,10 +123,10 @@ export function backfillContentHashes(stateDir: string = getStateDir()): Backfil
       lastId = row.id;
       processed++;
     }
-  });
+  }
 
   if (pending.length > 0) {
-    tx(pending);
+    withTx(db, () => applyRows(pending));
     db.prepare(
       "INSERT INTO backfill_progress(name, last_session_id, last_id, updated, duplicates_resolved) VALUES('content_hashes',?,?,?,?) ON CONFLICT(name) DO UPDATE SET last_session_id=excluded.last_session_id, last_id=excluded.last_id, updated=excluded.updated, duplicates_resolved=excluded.duplicates_resolved",
     ).run(lastSid, lastId, updated, duplicatesResolved);
@@ -150,7 +150,7 @@ export function isBackfillComplete(stateDir: string = getStateDir()): boolean {
 
 // ---- Sprint 14: L1 / L2 / RAPTOR phase backfill (resumable) ---------------
 
-function phaseCursor(db: Database, phase: BackfillPhase): { lastId: string | null; processed: number } {
+function phaseCursor(db: DatabaseSync, phase: BackfillPhase): { lastId: string | null; processed: number } {
   ensureProgressTable(db);
   const row = db
     .prepare("SELECT last_id, updated AS processed FROM backfill_progress WHERE name = ?")
@@ -158,7 +158,7 @@ function phaseCursor(db: Database, phase: BackfillPhase): { lastId: string | nul
   return { lastId: row?.last_id ?? null, processed: row?.processed ?? 0 };
 }
 
-function savePhaseCursor(db: Database, phase: BackfillPhase, lastId: string | null, processed: number): void {
+function savePhaseCursor(db: DatabaseSync, phase: BackfillPhase, lastId: string | null, processed: number): void {
   db.prepare(
     `INSERT INTO backfill_progress(name, last_session_id, last_id, updated, duplicates_resolved)
      VALUES(?, NULL, ?, ?, 0)
@@ -201,7 +201,7 @@ export function backfillPhase(
 
   for (let i = Math.max(0, startIndex); i < all.length; i += batchSize) {
     const batch = all.slice(i, i + batchSize);
-    const tx = db.transaction(() => {
+    withTx(db, () => {
       for (const cp of batch) {
         const sig = minhashSignature(cp.normalizedText ?? cp.summary ?? "");
         if (sig.length === NUM_HASHES) {
@@ -217,7 +217,6 @@ export function backfillPhase(
         processed++;
       }
     });
-    tx();
     savePhaseCursor(db, phase, cursor ?? null, processed);
     batches++;
     if (THROTTLE_MS > 0) { const end = Date.now() + THROTTLE_MS; while (Date.now() < end) { /* throttle */ } }

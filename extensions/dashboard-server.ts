@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, watch, writeFileSync }
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import Database from "better-sqlite3";
+import { DatabaseSync } from "node:sqlite";
 
 // --- Multi-repo index (Phase 5b) ------------------------------------------------
 // The extension writes a machine-wide repo registry into a single SQLite DB
@@ -54,11 +54,11 @@ interface IndexRepo {
 function readIndex(): { updatedAt: string; summary: unknown; repos: unknown[] } | null {
   const indexPath = join(getIndexDir(), "index.sqlite");
   if (!existsSync(indexPath)) return null;
-  let db: Database.Database | undefined;
+  let db: DatabaseSync | undefined;
   try {
     // Read-only + immutable WAL so a concurrent writer's WAL never blocks us.
-    db = new Database(indexPath, { readonly: true, fileMustExist: true });
-    db.pragma("journal_mode = WAL");
+    db = new DatabaseSync(indexPath, { readOnly: true });
+    db.exec("PRAGMA journal_mode = WAL");
     const rows = db
       .prepare("SELECT * FROM repo_registry ORDER BY last_seen DESC")
       .all() as Record<string, unknown>[];
