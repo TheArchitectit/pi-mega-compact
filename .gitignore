@@ -5,6 +5,11 @@ dist/
 .env.*
 .DS_Store
 
+# FORBIDDEN — npm is the ONLY distribution path (PREVENT-DIST-001).
+# Never produce or commit a `.tgz` (`npm pack`); tarballs bypass pi's package
+# manager and don't propagate to other devices. `npm publish` only.
+*.tgz
+
 # Local runtime state for the extension (checkpoints / vector db)
 .pi-mega-compact-state/
 .pi/

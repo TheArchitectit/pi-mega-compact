@@ -83,6 +83,14 @@ on the registry. A symlinked `extensions/` dir entry is *not* part of that
 flow, so to get updates you must install the extension as a managed npm
 package (not a symlink).
 
+> **No tarballs — ever (PREVENT-DIST-001).** Never build or rely on a `.tgz`
+> (`npm pack`) for testing or shipping. A tarball bypasses pi's package manager
+> and does **not** propagate to other devices — `pi update --extensions` only
+> touches `npm:` entries on the registry. The one valid path is `npm publish`
+> (writes the new version to the registry) → `pi update --extensions` on each
+> device. `.gitignore` rejects `*.tgz` so one can't be committed by accident;
+> if a stray tarball appears, delete it (`rm *.tgz`) and re-publish via npm.
+
 **Shipping a change:**
 
 1. Bump the version in `package.json` (SemVer). `pi update` checks `latest >

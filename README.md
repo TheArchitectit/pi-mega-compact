@@ -151,6 +151,13 @@ building.
 > npm install && npm run build
 > ```
 
+> **No tarballs — ever.** Distribution and updates go through `npm publish` +
+> `pi update --extensions` **only**. Never build or rely on a `.tgz` (`npm pack`):
+> a tarball bypasses pi's package manager and does not propagate to other devices.
+> To validate a real install, bump the version, `npm publish`, then
+> `pi update --extensions` on the device. (`.gitignore` rejects `*.tgz` so one can't
+> be committed by accident.)
+
 ### Verify
 
 ```bash
