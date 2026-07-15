@@ -40,7 +40,6 @@ import {
   dataInvariantStats,
 } from "./store/sqlite.js";
 import {
-  upsertEmbedding as indexUpsertEmbedding,
   initVectorIndex,
   searchAsync as vectorIndexSearch,
   type VectorIndexHit,
@@ -388,12 +387,6 @@ export class VectorStore {
     // Cumulative store-wide dedup accounting (attempt, not collapsed).
     bumpDedupStats(false, this.stateDir);
     onTier?.({ tier: "new", status: "stored" });
-    // Slice 2: best-effort, fire-and-forget mirror of this new checkpoint into
-    // the async global PGlite/HNSW index. NEVER awaited — must not block or
-    // throw into the synchronous add() path. On failure the index degrades to
-    // the sync scan (handled inside vectorIndex). The node:sqlite store remains
-    // authoritative; the index is rebuildable from it at any time.
-    void indexUpsertEmbedding(this.repoId, sessionId, checkpointId, checkpoint.embedding);
     return { checkpoint, deduped: false };
   }
 

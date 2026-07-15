@@ -18,7 +18,7 @@
 
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, rmSync, existsSync } from "node:fs";
 
 // PGlite + pgvector are script-free WASM (no native build) → survive pi's
 // install-script block. Imported lazily so a missing/broken package degrades
@@ -82,37 +82,65 @@ export function initVectorIndex(): Promise<PGliteInstance | undefined> {
   if (isVectorIndexDisabled()) return Promise.resolve(undefined);
   if (db) return Promise.resolve(db);
   if (initPromise) return initPromise;
-  initPromise = (async (): Promise<PGliteInstance | undefined> => {
-    try {
-      const dir = indexDir();
-      mkdirSync(dir, { recursive: true });
-      const pg = await new PGlite({
-        dataDir: dir,
-        extensions: { vector },
-      });
-      await pg.exec("CREATE EXTENSION IF NOT EXISTS vector;");
-      await pg.exec(`
-        CREATE TABLE IF NOT EXISTS vector_index (
-          repo_id       TEXT NOT NULL,
-          session_id    TEXT NOT NULL,
-          checkpoint_id TEXT NOT NULL,
-          embedding     vector(${EMBEDDING_DIM}) NOT NULL,
-          PRIMARY KEY (repo_id, session_id, checkpoint_id)
-        );
-      `);
-      // HNSW index over cosine distance for fast NN. Created idempotently.
-      await pg.exec(
-        "CREATE INDEX IF NOT EXISTS vector_index_hnsw ON vector_index USING hnsw (embedding vector_cosine_ops);",
-      );
-      db = pg;
-      return pg;
-    } catch (err) {
-      disabled = true;
-      logWarn(`init failed: ${err instanceof Error ? err.message : String(err)}`);
-      return undefined;
-    }
-  })();
+  initPromise = openPgLite(/* retryOnCorrupt */ true);
   return initPromise;
+}
+
+/**
+ * Open + schema-init PGlite. When `retryOnCorrupt` is true, a WASM-level
+ * abort (typically from a corrupted/torn data dir) triggers a delete + one
+ * retry — the dir is rebuilt from scratch by PGlite's initdb.
+ */
+async function openPgLite(
+  retryOnCorrupt: boolean,
+): Promise<PGliteInstance | undefined> {
+  try {
+    const dir = indexDir();
+    mkdirSync(dir, { recursive: true });
+    const pg = await new PGlite({
+      dataDir: dir,
+      extensions: { vector },
+    });
+    await pg.exec("CREATE EXTENSION IF NOT EXISTS vector;");
+    await pg.exec(`
+      CREATE TABLE IF NOT EXISTS vector_index (
+        repo_id       TEXT NOT NULL,
+        session_id    TEXT NOT NULL,
+        checkpoint_id TEXT NOT NULL,
+        embedding     vector(${EMBEDDING_DIM}) NOT NULL,
+        PRIMARY KEY (repo_id, session_id, checkpoint_id)
+      );
+    `);
+    // HNSW index over cosine distance for fast NN. Created idempotently.
+    await pg.exec(
+      "CREATE INDEX IF NOT EXISTS vector_index_hnsw ON vector_index USING hnsw (embedding vector_cosine_ops);",
+    );
+    db = pg;
+    return pg;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Self-heal: a WASM Aborted() typically means the data dir is corrupted
+    // (torn WAL from concurrent access). Delete it and retry once.
+    if (
+      retryOnCorrupt &&
+      (msg.includes("Aborted") || msg.includes("RuntimeError"))
+    ) {
+      try {
+        const dir = indexDir();
+        if (existsSync(dir)) {
+          rmSync(dir, { recursive: true, force: true });
+        }
+        // Clear singleton state so the retry starts fresh.
+        initPromise = undefined;
+        return openPgLite(/* retryOnCorrupt */ false);
+      } catch {
+        // Self-heal failed — fall through to disable.
+      }
+    }
+    disabled = true;
+    logWarn(`init failed: ${msg}`);
+    return undefined;
+  }
 }
 
 function toVectorLiteral(v: number[]): string {
@@ -211,6 +239,8 @@ export async function closeVectorIndex(): Promise<void> {
   }
   db = undefined;
   initPromise = undefined;
+  disabled = false;
+  warned = false;
 }
 
 /**

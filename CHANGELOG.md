@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.4.26 (2026-07-16)
+
+Fix PGlite WASM corruption when multiple test workers hit the shared global
+vector index directory concurrently. Five test failures (dedup-engine,
+sprint10, sprint12, vectorIndex) reduced to zero.
+
+### Fixed
+- **Multi-process PGlite corruption.** `VectorStore.add()` fired a
+  fire-and-forget `upsertEmbedding()` on every checkpoint add. Under
+  `node --test`'s parallel file execution, 20 workers each spawned their own
+  PGlite WASM instance on the same data directory simultaneously — concurrent
+  writes corrupted the `pg_control` file, producing `RuntimeError:
+  terminated.aborted` on every subsequent init. Moved the index mirror from
+  per-add (`vectorStore.ts`) to per-compaction (`mega-pipeline.ts`), so only
+  the main runtime process ever touches the global directory.
+- **Unrecoverable index after corruption.** Once `pg_control` was corrupted,
+  every `new PGlite({ dataDir })` aborted immediately — the only fix was
+  manual `rm -rf`. `initVectorIndex()` now catches WASM `RuntimeError`,
+  deletes the corrupted data directory, and retries once. The next startup
+  rebuilds the index from the authoritative `node:sqlite` store.
+
+### Changed
+- **`closeVectorIndex()` resets the `disabled` flag.** Previously, once the
+  kill-switch (`MEGACOMPACT_PGLITE_DISABLED`) was tested and the index closed,
+  subsequent calls to `initVectorIndex()` in the same process silently
+  returned `undefined` even without the env var set. The `disabled` flag is
+  now reset on close, matching the expected lifecycle.
+- **`isVectorIndexDisabled()` exported.** Test and pipeline code can now check
+  the kill-switch state without side effects.
+
 ## v0.4.24 (2026-07-15)
 
 Fix "dashboard server failed to start" being a silent, undiagnosable error.

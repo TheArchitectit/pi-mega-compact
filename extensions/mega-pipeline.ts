@@ -22,6 +22,7 @@ import {
 import { resolveRepoRoot, preserveRecentForPressure, type MegaConfig } from "./mega-config.js";
 import { runRaptor } from "../src/dedup/raptor/index.js";
 import { loadDedupConfig } from "../src/config/dedup.js";
+import { upsertEmbedding as indexUpsertEmbedding } from "../src/store/vectorIndex.js";
 
 export type RunCompactResult =
   | { skipped: true }
@@ -161,6 +162,29 @@ export function runCompact(
       }
     } catch {
       /* non-fatal: tree refresh never blocks a compaction */
+    }
+  }
+
+  // Slice 2: best-effort mirror of the new checkpoint into the async global
+  // PGlite/HNSW vector index. Fires once per compaction (not per-add), so the
+  // shared global dir is never hammered by concurrent test workers.
+  // Non-fatal: a WASM init failure degrades to the sync scan silently.
+  if (!result.deduped) {
+    try {
+      const all = runtime.store.list(sid);
+      const latest = all.find((cp) => cp.checkpointId === result.checkpointId);
+      if (latest?.embedding) {
+        void indexUpsertEmbedding(
+          runtime.currentStateDir,
+          sid,
+          latest.checkpointId,
+          latest.embedding,
+        ).catch(() => {
+          /* non-fatal: index refresh never blocks a compaction */
+        });
+      }
+    } catch {
+      /* non-fatal: index refresh never blocks a compaction */
     }
   }
 
