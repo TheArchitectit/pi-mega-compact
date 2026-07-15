@@ -38,6 +38,10 @@ export interface CompactInput {
   timestamp?: number;
   /** When true (default), use extractive summary instead of raw concatenation. */
   useExtractiveSummary?: boolean;
+  /** Context-window pressure (0–1): how close the session is to the model
+   *  limit. Drives adaptive compression strength in the stored checkpoint
+   *  (Fix E). 0/undefined = room to spare; 1 = at the limit. */
+  compressionPressure?: number;
   /** Sync progress callback fired by the store as each dedup tier is evaluated
    *  (L0→L1→L2→new). Lets the UI render a live "L0 ✓ → L1 ✓ → L2 0.91 → stored"
    *  progress line during compaction. Never awaited; must be side-effect-free-ish
@@ -174,6 +178,7 @@ export function compactSession(input: CompactInput, store: VectorStore = getDefa
     originalTokenEstimate,
     timestamp: input.timestamp ?? 0,
     onTier: input.onTier,
+    compressionPressure: input.compressionPressure,
   });
 
   return {

@@ -66,6 +66,9 @@ export interface AddInput {
    *  Lets the UI render live per-tier progress during compaction. Never awaited;
    *  must be cheap. Optional for back-compat. */
   onTier?: (ev: { tier: "L0" | "L1" | "L2" | "new"; status: "scanning" | "deduped" | "passed" | "stored"; detail?: string }) => void;
+  /** Context-window pressure (0–1) — escalates the stored checkpoint's sync
+   *  compression strength (Fix E). Optional; defaults to 0 (brotli-4). */
+  compressionPressure?: number;
 }
 
 /** Default L2 semantic-dedup enable flag (trigram embedder is local, zero-network). */
@@ -318,7 +321,10 @@ export class VectorStore {
       contentHash2: digest.contentHash2,
       contentHashVersion: digest.contentHashVersion,
       normalizedText: digest.normalizedText,
-      compressedOriginal: compressSmart(Buffer.from(input.regionText, "utf-8")),
+      compressedOriginal: compressSmart(
+        Buffer.from(input.regionText, "utf-8"),
+        input.compressionPressure,
+      ),
       embedding,
       timestamp: input.timestamp,
     };

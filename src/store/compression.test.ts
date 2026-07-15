@@ -81,3 +81,61 @@ test("zstd helper roundtrips (async) and is not sync-decoded", async () => {
   assert.equal(auto.isZstd, true, "flagged as zstd");
   assert.deepEqual(await decompressZstd(c), data, "zstd roundtrip");
 });
+
+test("module loads without a top-level zstd import (Fix A: no load crash)", async () => {
+  // The extension must load even when the @mongodb-js/zstd native addon is
+  // absent (clean/allowScripts-blocked install). The dynamic import() lives
+  // inside the helpers, so importing this module must never throw.
+  const mod = await import("./compression.js");
+  assert.equal(typeof mod.compressSmart, "function", "compressSmart exported");
+  assert.equal(typeof mod.compressZstd, "function", "compressZstd exported");
+  // The real invariant: no STATIC `import ... from "@mongodb-js/zstd"` at the
+  // top level (that's what crashed the whole extension). zstd must be loaded
+  // lazily inside the helpers only. Check the source text.
+  const { readFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  // Tests run with cwd at repo root (`node --test`), so resolve the source.
+  const src = readFileSync(join(process.cwd(), "src/store/compression.ts"), "utf-8");
+  const staticImport = /^import\s+.+\s+from\s+["']@mongodb-js\/zstd["'];?$/m;
+  assert.equal(
+    staticImport.test(src),
+    false,
+    "no static top-level import of @mongodb-js/zstd (would crash load if binary absent)",
+  );
+  assert.ok(
+    src.includes('await import("@mongodb-js/zstd")'),
+    "zstd is loaded lazily via dynamic import() inside the helpers",
+  );
+});
+
+test("compressSmart escalates brotli quality with pressure (Fix E)", () => {
+  // Large (>32KB) payloads hit the brotli tier; higher pressure → brotli-11
+  // → smaller output than the default brotli-4, and still decodes.
+  const words = Array.from({ length: 6000 }, (_, i) => "word" + ((i * 2654435761) % 9973));
+  const big = Buffer.from(words.join(" "));
+  const low = compressSmart(big, 0);
+  const high = compressSmart(big, 1);
+  assert.equal(isVersioned(low), true, "versioned header preserved at p=0");
+  assert.equal(isVersioned(high), true, "versioned header preserved at p=1");
+  assert.ok(high.length < low.length, "high pressure compresses smaller");
+  assert.deepEqual(decompressSmart(low), big, "p=0 roundtrip");
+  assert.deepEqual(decompressSmart(high), big, "p=1 roundtrip");
+  // Small payloads ignore pressure (gzip tier) but still roundtrip.
+  const small = buf("hello world ", 300);
+  assert.deepEqual(decompressSmart(compressSmart(small, 1)), small, "small ignores pressure");
+  // pressure out of range is clamped (no throw, still versioned + decodable).
+  assert.deepEqual(decompressSmart(compressSmart(big, 5)), big, "over-pressure clamped");
+  assert.deepEqual(decompressSmart(compressSmart(big, -1)), big, "under-pressure clamped");
+});
+
+test("pressureFromPct + preserveRecentForPressure scale with context (Fix E)", async () => {
+  const { pressureFromPct, preserveRecentForPressure } = await import("../config.js");
+  assert.equal(pressureFromPct(50), 0.5, "pct→pressure");
+  assert.equal(pressureFromPct(null), 0, "null pct → 0");
+  assert.equal(pressureFromPct(150), 1, "pct clamped");
+  // low pressure keeps preserveRecent; high pressure compacts deeper (min floor).
+  assert.equal(preserveRecentForPressure(0, 4, 2), 4, "p=0 → preserveRecent");
+  assert.equal(preserveRecentForPressure(1, 4, 2), 2, "p=1 → preserveRecentMin");
+  assert.equal(preserveRecentForPressure(0.5, 4, 2), 3, "p=0.5 → interpolates");
+  assert.ok(preserveRecentForPressure(1, 4, 2) >= 2, "never below floor");
+});

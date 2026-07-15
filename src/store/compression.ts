@@ -32,7 +32,13 @@ import {
   brotliDecompressSync,
   constants as zlibConstants,
 } from "node:zlib";
-import zstd from "@mongodb-js/zstd";
+// zstd is loaded lazily (see compressZstdWithLevel / decompressZstd). It is an
+// OPTIONAL async DR-export dependency: its native addon (`zstd.node`) is not in
+// the npm tarball and may be absent on a clean/allowScripts-blocked install, so
+// a static import here would crash the whole extension at load time. Lazy
+// import keeps the extension loadable even when the binary is missing; the DR
+// path throws a clear error only if it is actually used. (Fix A.)
+// import zstd from "@mongodb-js/zstd";
 
 // --- Versioned format markers ----------------------------------------------
 const MAGIC_HI = 0xec;
@@ -59,6 +65,12 @@ function header(ver: number, tag: number): Buffer {
   return Buffer.from([MAGIC_HI, MAGIC_LO, ver, tag]);
 }
 
+/** Clamp a value to the [0, 1] range (pressure bands). */
+function clamp01(n: number): number {
+  if (Number.isNaN(n)) return 0;
+  return n < 0 ? 0 : n > 1 ? 1 : n;
+}
+
 /**
  * Compress synchronously using the best zlib tier for the payload size.
  *
@@ -68,21 +80,36 @@ function header(ver: number, tag: number): Buffer {
  *   4KB–32KB → gzip level 6 (tag 0x02)
  *   > 32 KB  → brotli 4     (tag 0x05)
  *
- * Writes the versioned header so readers disambiguate from legacy blobs.
+ * `pressure` (0–1, optional) escalates the brotli quality for the large tier
+ * when the session is near its context limit — the "variable compression as we
+ * approach the limit" design (Fix E). Low/undefined pressure keeps brotli-4;
+ * high pressure pushes toward brotli-11. Stays fully synchronous (brotli-11 is
+ * sync via brotliCompressSync) so the sync `add()` contract is preserved; zstd
+ * is reserved for the async DR-export path only. Same versioned header/tags for
+ * every pressure, so decompressSmart is unaffected.
  */
-export function compressSmart(data: Buffer): Buffer {
+export function compressSmart(data: Buffer, pressure = 0): Buffer {
+  const p = clamp01(pressure);
   const len = data.length;
   if (len < SIZE_TINY) {
     return Buffer.concat([header(1, TAG_RAW), data]);
   }
   if (len < SIZE_SMALL) {
-    return Buffer.concat([header(1, TAG_GZIP_1), gzipSync(data, { level: 1 })]);
+    // Small tier: escalate gzip level 1 → 9 with context pressure (Fix E) so
+    // the "variable compression as we approach the limit" dial bites for
+    // short sessions too, not just the >32KB brotli tier.
+    const level = Math.max(1, Math.min(9, Math.round(1 + 8 * p)));
+    return Buffer.concat([header(1, TAG_GZIP_1), gzipSync(data, { level })]);
   }
   if (len < SIZE_MEDIUM) {
-    return Buffer.concat([header(1, TAG_GZIP_6), gzipSync(data, { level: 6 })]);
+    // Medium tier: escalate gzip level 6 → 9 with context pressure (Fix E).
+    const level = Math.max(6, Math.min(9, Math.round(6 + 3 * p)));
+    return Buffer.concat([header(1, TAG_GZIP_6), gzipSync(data, { level })]);
   }
+  // Large tier: escalate brotli quality 4 → 11 with context pressure (Fix E).
+  const quality = Math.max(4, Math.min(11, Math.round(4 + 7 * p)));
   const compressed = brotliCompressSync(data, {
-    params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 },
+    params: { [zlibConstants.BROTLI_PARAM_QUALITY]: quality },
   });
   return Buffer.concat([header(1, TAG_BROTLI_4), compressed]);
 }
@@ -164,6 +191,18 @@ const ZSTD_MAGIC_HI = 0x5a; // 'Z'
 const ZSTD_MAGIC_LO = 0x53; // 'S'
 
 async function compressZstdWithLevel(data: Buffer, level: number): Promise<Buffer> {
+  // Lazy import: the native addon may be absent (clean/allowScripts install).
+  // Throws a clear, actionable error instead of a load-time crash.
+  let zstd: typeof import("@mongodb-js/zstd");
+  try {
+    zstd = await import("@mongodb-js/zstd");
+  } catch {
+    throw new Error(
+      "zstd is not available — the @mongodb-js/zstd native addon (zstd.node) " +
+        "was not built. Run the extension's native install step (or allow npm " +
+        "install scripts) to enable DR-export compression.",
+    );
+  }
   const compressed = await zstd.compress(data, level);
   return Buffer.concat([Buffer.from([ZSTD_MAGIC_HI, ZSTD_MAGIC_LO]), compressed]);
 }
@@ -189,6 +228,8 @@ export async function decompressZstd(buf: Buffer): Promise<Buffer> {
   if (!isZstd(buf)) {
     throw new Error("decompressZstd: buffer is not a zstd blob (missing ZS marker)");
   }
+  // Lazy import (see compressZstdWithLevel for rationale).
+  const zstd = await import("@mongodb-js/zstd");
   return zstd.decompress(buf.subarray(2));
 }
 

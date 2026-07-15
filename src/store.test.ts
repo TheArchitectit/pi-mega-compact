@@ -130,6 +130,28 @@ test("compression tier: GZIP-1 and GZIP-6 tiers produce valid, smaller output", 
   assert.deepEqual(decompressSmart(big), Buffer.from("compress me ".repeat(1800)));
 });
 
+test("Fix E: pressure escalates gzip tier strength (sync, no zstd)", () => {
+  const small = Buffer.from("compress me ".repeat(200)); // 512B–4KB band
+  const medium = Buffer.from("compress me ".repeat(1800)); // 4KB–32KB band
+
+  // Low pressure → cheap levels (gzip-1 / gzip-6).
+  const lowSmall = compressSmart(small, 0);
+  const lowMedium = compressSmart(medium, 0);
+  assert.equal(lowSmall[3], 0x01, "small tier tag");
+  assert.equal(lowMedium[3], 0x02, "medium tier tag");
+  assert.ok(decompressSmart(lowSmall).equals(small), "low-pressure small roundtrips");
+  assert.ok(decompressSmart(lowMedium).equals(medium), "low-pressure medium roundtrips");
+
+  // High pressure → stronger levels (gzip-9 / gzip-9); tag unchanged, output
+  // must still decode to the exact original (versioned header preserved).
+  const highSmall = compressSmart(small, 1);
+  const highMedium = compressSmart(medium, 1);
+  assert.equal(highSmall[3], 0x01, "tag unchanged under pressure");
+  assert.equal(highMedium[3], 0x02, "tag unchanged under pressure");
+  assert.ok(decompressSmart(highSmall).equals(small), "high-pressure small roundtrips");
+  assert.ok(decompressSmart(highMedium).equals(medium), "high-pressure medium roundtrips");
+});
+
 // ---------------------------------------------------------------------------
 // normalizeSessionId
 // ---------------------------------------------------------------------------

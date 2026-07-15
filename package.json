@@ -45,7 +45,8 @@
     "test": "npm run build && node --test \"dist/src/**/*.test.js\" \"dist/extensions/**/*.test.js\"",
     "guardrails": "python3 scripts/regression_check.py --all || node scripts/guardrails-scan.mjs",
     "precommit": "bash .claude/hooks/pre-commit.sh",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "postinstall": "npm rebuild better-sqlite3 @mongodb-js/zstd || true"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
