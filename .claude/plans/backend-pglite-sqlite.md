@@ -53,8 +53,10 @@ bindings file`. Hits **everyone** on a fresh `pi update --extensions`.
   and `engines.node` → `>=22.13`; postinstall now only best-effort rebuilds
   zstd. Dashboard + backfill ported to `DatabaseSync`.
   **Gate: 301 tests + tsc + guardrails-scan + regression all green.**
-  Packed `pi-mega-compact-0.4.23.tgz` for user uninstall/re-test.
-  → Next: user uninstalls old ext + `pi update --extensions`; verify no crash.
+  Ship via npm ONLY (tarballs/symlinks are forbidden — npm is the sole
+  cross-device path; see memory `pi-npm-workflow`): bump version, `npm publish`,
+  then `pi update --extensions` on each device.
+  → Next: publish; user runs `pi update --extensions`; verify no crash.
 - **Slice 2 — PGlite/pgvector index. ✅ DONE (v0.4.25)**
   Added `@electric-sql/pglite@^0.5.4` + `@electric-sql/pglite-pgvector@^0.0.5`
   (peer-aligned; pgvector 0.0.5 requires pglite 0.5.x). New
@@ -78,13 +80,17 @@ bindings file`. Hits **everyone** on a fresh `pi update --extensions`.
   it survives pi's `install-scripts` block (PREVENT-PI-004 OK, WASM is local).
   **Gate: build + lint + guardrails-scan + regression green; new
   `vectorIndex.test.ts` (cross-repo HNSW, repoId scope, dim guard, kill-switch)
-  green.** Packed `pi-mega-compact-0.4.25.tgz` for user re-test.
-  → Next: user re-tests install under pi; Slice 3 packaging polish.
+  green.** Ship via npm ONLY — NO tarball, NO symlink (forbidden; npm is the
+  sole cross-device path, memory `pi-npm-workflow`): `npm publish` @ 0.4.25,
+  then `pi update --extensions`.
+  → Next: publish 0.4.25; user runs `pi update --extensions` to re-test the
+  script-free WASM install under pi; Slice 3 packaging polish.
 - **Slice 3 — packaging.** `package.json`: remove `better-sqlite3`, add
   `pglite`/`pglite-pgvector`; bump `engines.node` to `>=22.13`; bump version
-  (→ 0.4.23); revise `.npmrc` (node:sqlite/pglite need no scripts; keep
+  (→ 0.4.25); revise `.npmrc` (node:sqlite/pglite need no scripts; keep
   postinstall only as a best-effort rebuild of zstd). Update README/CLAUDE to
-  reflect the dual backend. Pack + full re-test.
+  reflect the dual backend. Ship via npm publish (NO tarball — npm-only, per
+  `pi-npm-workflow`); `pi update --extensions` full re-test on device.
 
 ## Risks / HALT
 - **engines bump** (18 → 22.13) is breaking for Node < 22.13 users. Accept per

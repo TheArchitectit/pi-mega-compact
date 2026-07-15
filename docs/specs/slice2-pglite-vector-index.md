@@ -59,7 +59,7 @@ Today `VectorStore.search()` is an O(n) linear cosine scan over one session's `e
 **OUT OF SCOPE**
 - Making the sync store async (explicitly forbidden).
 - Removing the sync linear scan (stays the default).
-- Slice 3 packaging polish (README/CLAUDE dual-backend docs, `.npmrc` review, final pack + re-test) — separate slice.
+- Slice 3 packaging polish (README/CLAUDE dual-backend docs, `.npmrc` review) — separate slice. Ship via npm ONLY (no tarball/symlink — npm is the sole cross-device path, per memory `pi-npm-workflow`).
 - zstd/DR path (unchanged from Fix A).
 
 ---
@@ -120,7 +120,7 @@ Today `VectorStore.search()` is an O(n) linear cosine scan over one session's `e
 2. Sync store + recall behavior is byte-identical when PGlite is disabled/absent (no regression — sync scan is still the default).
 3. `searchAsync(q)` returns cross-repo nearest neighbors via HNSW; `searchAsync(q, k, {repoId})` filters to one repo.
 4. PGlite init/write failure logs once + degrades to sync scan; `add()`/compaction/extension-load never break.
-5. Extension still loads under pi's install-script block (PGlite is script-free WASM — verified by pack + install re-test in Slice 3).
+5. Extension still loads under pi's install-script block (PGlite is script-free WASM — verified by npm publish + `pi update --extensions` re-install in Slice 3; NO tarball, npm is the only cross-device path per memory `pi-npm-workflow`).
 
 ---
 
