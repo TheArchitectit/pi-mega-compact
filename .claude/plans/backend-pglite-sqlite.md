@@ -55,11 +55,31 @@ bindings file`. Hits **everyone** on a fresh `pi update --extensions`.
   **Gate: 301 tests + tsc + guardrails-scan + regression all green.**
   Packed `pi-mega-compact-0.4.23.tgz` for user uninstall/re-test.
   → Next: user uninstalls old ext + `pi update --extensions`; verify no crash.
-- **Slice 2 — PGlite/pgvector index.** Add `@electric-sql/pglite` +
-  `@electric-sql/pglite-pgvector`. New `src/store/vectorIndex.ts`: async init,
-  `upsertEmbedding(id, vector)`, `searchAsync(query, k)` via HNSW. Wire
-  `vectorStore` to maintain it (best-effort) and expose `searchAsync`. Add a
-  cross-repo recall test proving HNSW NN across sessions.
+- **Slice 2 — PGlite/pgvector index. ✅ DONE (v0.4.25)**
+  Added `@electric-sql/pglite@^0.5.4` + `@electric-sql/pglite-pgvector@^0.0.5`
+  (peer-aligned; pgvector 0.0.5 requires pglite 0.5.x). New
+  `src/store/vectorIndex.ts`: lazy singleton `initVectorIndex()`,
+  `upsertEmbedding()` (dim-guarded to 512), `searchAsync({repoId?})` via HNSW
+  `vector_cosine_ops`, `rebuildFromSqlite()`, `closeVectorIndex()`. Topology =
+  **hybrid global**: ONE PGlite DB at `~/.pi/mega-compact-vector` with `repo_id`
+  first-class → cross-repo NN by default, `repoId` filter for single-repo. The
+  pgvector extension is passed at init (`extensions: { vector }`) + file-backed
+  dataDir (not `:memory:`); vector params are cast `$n::vector`.
+  `vectorStore.add()` fires a best-effort **fire-and-forget** `upsertEmbedding`
+  on each NEW checkpoint (never awaited, never throws into the sync path);
+  `vectorStore.searchAsync()` hydrates hits from the authoritative node:sqlite
+  store (a hit's repoId doubles as that repo's stateDir) and falls back to the
+  sync per-session scan on empty/failure. `recall.ts` gains async
+  `recallAndInlineAsync({crossRepo})`; the sync `recallAndInline` is unchanged
+  and remains the default. Added `getCheckpoint()` to `store/sqlite.ts` for
+  hydration. **Default-on, best-effort**: `MEGACOMPACT_PGLITE_DISABLED=true`
+  kill-switch; any init/write failure logs once + degrades to the sync scan.
+  Kept `@mongodb-js/zstd` (DR path) — pglite is WASM/JS, no install script, so
+  it survives pi's `install-scripts` block (PREVENT-PI-004 OK, WASM is local).
+  **Gate: build + lint + guardrails-scan + regression green; new
+  `vectorIndex.test.ts` (cross-repo HNSW, repoId scope, dim guard, kill-switch)
+  green.** Packed `pi-mega-compact-0.4.25.tgz` for user re-test.
+  → Next: user re-tests install under pi; Slice 3 packaging polish.
 - **Slice 3 — packaging.** `package.json`: remove `better-sqlite3`, add
   `pglite`/`pglite-pgvector`; bump `engines.node` to `>=22.13`; bump version
   (→ 0.4.23); revise `.npmrc` (node:sqlite/pglite need no scripts; keep

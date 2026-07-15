@@ -137,3 +137,66 @@ export function recallAndInline(
     empty: toInject.length === 0,
   };
 }
+
+/**
+ * Slice 2 async cross-repo recall. Same dedup/bound/inline contract as
+ * `recallAndInline`, but backed by `VectorStore.searchAsync` so it can recall
+ * across repos (HNSW NN over the global PGlite index) when `opts.crossRepo` is
+ * set. The synchronous `recallAndInline` is unchanged and remains the default
+ * per-session path. Inline-window dedupe + token cap (Fix C) apply here too.
+ *
+ * `store` must provide `searchAsync` (the live VectorStore does). Errors fall
+ * back to an empty result — recall is a bonus, never a hard dependency.
+ */
+export async function recallAndInlineAsync(
+  opts: RecallInjectOptions & { crossRepo?: boolean; repoId?: string },
+  store: Pick<VectorStore, "searchAsync" | "wasInjected" | "markInjected">,
+): Promise<RecallInjectResult> {
+  const limit = opts.limit ?? 3;
+  const skip = opts.skipInjected ?? true;
+  const maxTokens = opts.recallMaxTokens ?? 0;
+  const doWindowDedupe = opts.windowDedupe ?? false;
+  const dedupSim = opts.dedupSim ?? 0.9;
+
+  let hits: SearchHit[] = [];
+  try {
+    hits = await store.searchAsync(opts.sessionId, opts.query, limit, {
+      crossRepo: opts.crossRepo,
+      repoId: opts.repoId,
+    });
+  } catch {
+    hits = [];
+  }
+
+  let liveEmbeddings: number[][] = [];
+  if (doWindowDedupe && opts.liveWindow && opts.liveWindow.length > 0) {
+    const embedder = defaultEmbedder();
+    liveEmbeddings = opts.liveWindow.map((m) => embedder.embed(m));
+  }
+
+  const toInject: SearchHit[] = [];
+  const parts: string[] = [];
+  let blockTokens = 0;
+
+  for (const h of hits) {
+    if (skip && store.wasInjected(opts.sessionId, h.checkpoint.checkpointId)) continue;
+    if (doWindowDedupe && liveEmbeddings.length > 0) {
+      const hitVec = defaultEmbedder().embed(h.checkpoint.summary);
+      if (liveEmbeddings.some((v) => cosineSimilarity(v, hitVec) >= dedupSim)) continue;
+    }
+    const part = formatRecallBlock([h]);
+    const partTokens = estimateBlockTokens(part);
+    if (maxTokens > 0 && blockTokens + partTokens > maxTokens) break;
+    parts.push(part);
+    toInject.push(h);
+    blockTokens += partTokens;
+    store.markInjected(opts.sessionId, h.checkpoint.checkpointId);
+  }
+
+  const block = parts.join("\n");
+  const report = toInject.map(
+    (h) => `  • ${h.checkpoint.checkpointId} (${h.checkpoint.summary.slice(0, 60).replace(/\n/g, " ")}…)`,
+  );
+
+  return { toInject, report, block, empty: toInject.length === 0 };
+}

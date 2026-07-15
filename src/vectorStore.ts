@@ -26,6 +26,7 @@ import {
   listCheckpoints,
   nextCheckpointId,
   upsertCheckpoint,
+  getCheckpoint,
   loadSessionState,
   saveSessionState,
   upsertMinhashSignature,
@@ -38,6 +39,12 @@ import {
   repoStats as repoStatsFromStore,
   dataInvariantStats,
 } from "./store/sqlite.js";
+import {
+  upsertEmbedding as indexUpsertEmbedding,
+  initVectorIndex,
+  searchAsync as vectorIndexSearch,
+  type VectorIndexHit,
+} from "./store/vectorIndex.js";
 import { rehydrateRaptorTree } from "./dedup/raptor/index.js";
 import { stagedExpansion } from "./dedup/raptor/retrieval.js";
 import { migrateJsonToSqlite } from "./store/migrate.js";
@@ -98,6 +105,13 @@ export class VectorStore {
   private readonly cfg: DedupConfigShape;
   /** Optional monitoring target (Sprint 14). Undefined → no monitoring. */
   private readonly eventsPath?: string;
+  /**
+   * Repo key for the async PGlite vector index (Slice 2). We use the stateDir
+   * itself as the repo id — it is already unique per repo and available here
+   * without crossing into the pi-runtime layer (src/ stays pi-agnostic). The
+   * global index keys on repoId so recall can span repos.
+   */
+  private readonly repoId: string;
 
   constructor(
     opts: {
@@ -110,10 +124,13 @@ export class VectorStore {
       config?: DedupConfigShape;
       /** Optional events.log path for decision monitoring (Sprint 14). */
       eventsPath?: string;
+      /** Repo id for the async cross-repo vector index. Defaults to stateDir. */
+      repoId?: string;
     } = {},
   ) {
     this.embedder = opts.embedder ?? defaultEmbedder();
     this.stateDir = opts.stateDir ?? getStateDir();
+    this.repoId = opts.repoId ?? this.stateDir;
     // Sprint 14: all tier flags/thresholds flow from the single config source
     // (DedupConfig). The legacy opts.dedupSim / opts.l2Enabled remain accepted
     // for backward-compat callers but flags are authoritative via `cfg`.
@@ -371,6 +388,12 @@ export class VectorStore {
     // Cumulative store-wide dedup accounting (attempt, not collapsed).
     bumpDedupStats(false, this.stateDir);
     onTier?.({ tier: "new", status: "stored" });
+    // Slice 2: best-effort, fire-and-forget mirror of this new checkpoint into
+    // the async global PGlite/HNSW index. NEVER awaited — must not block or
+    // throw into the synchronous add() path. On failure the index degrades to
+    // the sync scan (handled inside vectorIndex). The node:sqlite store remains
+    // authoritative; the index is rebuildable from it at any time.
+    void indexUpsertEmbedding(this.repoId, sessionId, checkpointId, checkpoint.embedding);
     return { checkpoint, deduped: false };
   }
 
@@ -470,6 +493,60 @@ export class VectorStore {
     }));
     const ranked = mmrRerank(mmrItems, k, this.cfg.MMR_LAMBDA);
     return ranked;
+  }
+
+  /**
+   * Slice 2: async cross-repo (or single-repo) recall via the PGlite/HNSW index.
+   *
+   * This is the ONLY async recall surface and is a BONUS path — the synchronous
+   * `search()` above remains the default. `opts.repoId` scopes to one repo; omit
+   * it for cross-repo nearest-neighbor recall (the headline capability the sync
+   * per-session scan cannot provide).
+   *
+   * Best-effort: if the index is disabled/empty/failing, we fall back to the
+   * synchronous per-session `search()` for THIS repo so callers always get a
+   * sensible result. Hydrates each hit's StoredCheckpoint from the authoritative
+   * node:sqlite store (the hit's repoId doubles as that repo's stateDir), then
+   * MMR-dedupes the merged set.
+   */
+  async searchAsync(
+    sessionId: string,
+    query: string,
+    k = 3,
+    opts: { repoId?: string; crossRepo?: boolean } = {},
+  ): Promise<SearchHit[]> {
+    const sid = normalizeSessionId(sessionId);
+    const qv = this.embedder.embed(query);
+    // repoId filter: explicit opts.repoId wins; else this repo unless crossRepo.
+    const repoId = opts.repoId ?? (opts.crossRepo ? undefined : this.repoId);
+    let indexHits: VectorIndexHit[] = [];
+    try {
+      await initVectorIndex();
+      indexHits = await vectorIndexSearch(qv, { k: Math.max(k * 2, k), repoId });
+    } catch {
+      indexHits = [];
+    }
+    if (indexHits.length === 0) {
+      // Index empty/unavailable → synchronous per-session fallback (this repo).
+      return this.search(sid, query, k);
+    }
+    // Hydrate each index hit from the authoritative node:sqlite store. repoId is
+    // that repo's stateDir, so cross-repo hits resolve against their own store.
+    const hydrated: SearchHit[] = [];
+    for (const h of indexHits) {
+      const cp = getCheckpoint(h.sessionId, h.checkpointId, h.repoId);
+      if (cp && cp.dedupStatus !== "removed") {
+        hydrated.push({ checkpoint: cp, score: h.score });
+      }
+    }
+    if (hydrated.length === 0) return this.search(sid, query, k);
+    // MMR-dedupe the merged candidate set for diversity (mirrors sync search).
+    const mmrItems: MmrItem<SearchHit>[] = hydrated.map((h) => ({
+      item: h,
+      vector: h.checkpoint.embedding,
+      relevance: h.score,
+    }));
+    return mmrRerank(mmrItems, k, this.cfg.MMR_LAMBDA);
   }
 
   /**

@@ -872,6 +872,19 @@ export function hasCheckpoint(sessionId: string, checkpointId: string, stateDir:
   return row !== undefined;
 }
 
+/** Fetch a single checkpoint by (session, id), or undefined if absent. */
+export function getCheckpoint(
+  sessionId: string,
+  checkpointId: string,
+  stateDir: string = getStateDir(),
+): StoredCheckpoint | undefined {
+  const db = openStore(stateDir);
+  const row = db
+    .prepare("SELECT * FROM context_chunks WHERE session_id = ? AND id = ? LIMIT 1")
+    .get(normalizeSessionId(sessionId), checkpointId) as any;
+  return row ? rowToCheckpoint(row) : undefined;
+}
+
 /** Mark a checkpoint's dedup_status (e.g. 'removed' by SemDeDup). */
 export function setDedupStatus(
   checkpointId: string,
