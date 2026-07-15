@@ -5,7 +5,7 @@
 **Focus:** make the extension survive install AND net-reduce tokens at read time
 **Priority:** P0
 **Effort:** L (multi-part: Fix A–E)
-**Status:** IN PROGRESS (A, B, E committed; C, D partial)
+**Status:** COMPLETE (Fix A–E committed; 301 tests green)
 **Depends on:** Sprints 8–15 (full pipeline shipped), PLAN.md phases 1–7
 
 ---
@@ -116,13 +116,13 @@ Two bugs + one unused lever, one root theme: the extension must survive install 
 | `extensions/mega-compact-driver.ts` | B (new), D-hook (RAPTOR root) | ✅ committed |
 | `extensions/mega-events.ts` | B (`session_before_compact` returns compaction; drop `{cancel}`), E (pressure wiring) | ✅ committed |
 | `extensions/mega-pipeline.ts` | B (import driver), E (deepen keepFrom) | ✅ committed |
-| `extensions/mega-config.ts` | E (preserveRecentMin), C (recallMaxTokens/windowDedupe) | E ✅ / C pending |
-| `src/dedup/raptor/index.ts` | D (export `recallRaptorRootSummary`) | ✅ committed |
-| `src/recall.ts` | C (live window + inline dedupe + bound) | ⬜ pending |
-| `src/vectorStore.ts` | D (serve tree in `search`) | ⬜ pending |
-| `src/store/backfill.ts` / `mega-pipeline.ts` | D (build tree at compaction) | ⬜ pending |
-| `src/config/dedup.ts` | D (flip `RAPTOR_ENABLED` default) | ⬜ pending |
-| tests: `store.test.ts`, `store/compression.test.ts`, `mega-compact-driver.test.ts` (new), RAPTOR promote test | A–E | A/E ✅; B ✅ (handler); D pending |
+| `extensions/mega-config.ts` | E (preserveRecentMin), C (recallMaxTokens/windowDedupe) | ✅ committed |
+| `src/dedup/raptor/index.ts` | D (export `recallRaptorRootSummary` + `rehydrateRaptorTree`) | ✅ committed |
+| `src/recall.ts` | C (live window + inline dedupe + bound) | ✅ committed |
+| `src/vectorStore.ts` | D (serve tree in `search` via `raptorSearchHits`) | ✅ committed |
+| `src/store/backfill.ts` / `mega-pipeline.ts` | D (build tree at compaction) | ✅ committed (mega-pipeline) |
+| `src/config/dedup.ts` | D (flip `RAPTOR_ENABLED` default) | ✅ committed |
+| tests: `store.test.ts`, `store/compression.test.ts`, `recall.test.ts`, `dedup/raptor/promote.test.ts` | A–E | ✅ all committed |
 
 ---
 
