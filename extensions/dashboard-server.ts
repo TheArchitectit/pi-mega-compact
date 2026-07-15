@@ -12,11 +12,31 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { existsSync, mkdirSync, readFileSync, unlinkSync, watch, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, watch, writeFileSync, appendFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
+
+// ---------------------------------------------------------------------------
+// Local runtime log
+//
+// The dashboard server is spawned as a DETACHED child. When it is launched with
+// `stdio: "ignore"` (the old default) any crash before the first console.log is
+// invisible — there is no log to "check". We therefore mirror every lifecycle
+// line to a file in the state dir so a failed start is always diagnosable. The
+// launcher also captures stderr, so this doubles as defense-in-depth.
+// ---------------------------------------------------------------------------
+
+let LOG_PATH: string | null = null;
+function log(...parts: unknown[]): void {
+  const line = `[mega-compact][dashboard] ${parts.map((p) => (typeof p === "string" ? p : JSON.stringify(p))).join(" ")}`;
+  // eslint-disable-next-line no-console
+  console.error(line); // stderr — captured by the launcher pipe
+  if (LOG_PATH) {
+    try { appendFileSync(LOG_PATH, new Date().toISOString() + " " + line + "\n"); } catch { /* non-fatal */ }
+  }
+}
 
 // --- Multi-repo index (Phase 5b) ------------------------------------------------
 // The extension writes a machine-wide repo registry into a single SQLite DB
@@ -738,7 +758,7 @@ function dashboardHtml(tierName: string): string {
 // Server
 // ---------------------------------------------------------------------------
 
-export function launchDashboardServer(stateDir: string): Promise<{ port: number; url: string }> {
+export async function launchDashboardServer(stateDir: string): Promise<{ port: number; url: string }> {
   // Our own package version — exposed at /api/version so the launcher can
   // detect a stale server (started by an older build) and replace it on
   // upgrade instead of reuse it.
@@ -757,17 +777,37 @@ export function launchDashboardServer(stateDir: string): Promise<{ port: number;
   const portFile = join(stateDir, "port.pid");
   const snapshotPath = join(stateDir, "dashboard.json");
   const eventsPath = join(stateDir, "events.log");
+  LOG_PATH = join(stateDir, "dashboard.log");
+  log("launch invoked", { stateDir });
 
-  // ── Existing server? ──────────────────────────────────────────────────────
+  // ── Existing server? ───────────────────────────────────────────────────────
+  // A stale port.pid pointing at a dead/competing process is the classic cause
+  // of "dashboard failed to start" — we return a port that is NOT actually
+  // serving. Probe for a live server on that port first; only reuse the marker
+  // when something real answers /api/version. Otherwise drop it and start fresh.
   if (existsSync(portFile)) {
     try {
       const info = JSON.parse(readFileSync(portFile, "utf-8"));
       if (info && info.port) {
-        return Promise.resolve({ port: info.port, url: `http://localhost:${info.port}` });
+        let live = false;
+        try {
+          const probe = await fetch(`http://localhost:${info.port}/api/version`, { signal: AbortSignal.timeout(800) });
+          live = probe.ok;
+        } catch {
+          live = false;
+        }
+        if (live) {
+          log("reusing live server from port.pid", { port: info.port });
+          return { port: info.port, url: `http://localhost:${info.port}` };
+        }
+        log("port.pid present but no live server — treating as stale", { port: info.port });
       }
     } catch {
-      // stale file, overwrite
+      log("port.pid unparseable — treating as stale");
     }
+    // stale file, remove so the fresh bind does not collide with a lingering
+    // process that still holds the port
+    try { unlinkSync(portFile); } catch { /* ignore */ }
   }
 
   // ── New server ────────────────────────────────────────────────────────────
@@ -891,20 +931,26 @@ export function launchDashboardServer(stateDir: string): Promise<{ port: number;
     function tryPort(port: number) {
       server.once("error", (err: NodeJS.ErrnoException) => {
         if (err.code === "EADDRINUSE" && port < TARGET_PORT + PORT_RANGE - 1) {
+          log("port in use, trying next", { port });
           tryPort(port + 1);
         } else {
+          log("listen failed", { port, code: err.code, message: err.message });
           reject(err);
         }
       });
 
       server.listen(port, "127.0.0.1", () => {
         const url = `http://localhost:${port}`;
+        log("server running", { url });
+        // eslint-disable-next-line no-console
         console.log(`[mega-compact] dashboard server running: ${url}`);
 
         // Write port.pid
         try {
           writeFileSync(portFile, JSON.stringify({ port, pid: process.pid }));
-        } catch { /* non-fatal */ }
+        } catch (e) {
+          log("could not write port.pid", { error: String(e) });
+        }
 
         // Graceful cleanup
         const cleanup = () => {

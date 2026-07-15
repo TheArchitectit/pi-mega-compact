@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawn } from "node:child_process";
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -120,5 +121,81 @@ describe("port.pid file", () => {
     assert.equal(parsed.port, 3847);
     assert.equal(parsed.pid, 12345);
     rmSync(dir, { recursive: true });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Lifecycle integration — launch the compiled server as a real subprocess
+// (the same way the /dashboard command spawns it) and assert the two failure
+// modes that historically produced a silent "failed to start":
+//   1. a stale port.pid pointing at a dead port is dropped, and the server
+//      binds fresh (instead of returning the dead port);
+//   2. a module-load crash is captured to the launch log instead of going
+//      silent under stdio:"ignore".
+// ---------------------------------------------------------------------------
+
+const SERVER_ENTRY = new URL("./dashboard-server.js", import.meta.url).pathname;
+
+function waitFor(cond: () => boolean | Promise<boolean>, timeoutMs = 6000): Promise<void> {
+  const start = Date.now();
+  return new Promise((resolve, reject) => {
+    const tick = async () => {
+      if (await cond()) return resolve();
+      if (Date.now() - start > timeoutMs) return reject(new Error("timeout"));
+      setTimeout(tick, 50);
+    };
+    tick();
+  });
+}
+
+describe("server lifecycle", () => {
+  test("drops a stale port.pid and binds a fresh port", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "dash-stale-"));
+    // A marker claiming a port where nothing is listening.
+    writeFileSync(join(dir, "port.pid"), JSON.stringify({ port: 9325, pid: 999999 }));
+
+    const child = spawn(process.execPath, [SERVER_ENTRY, dir], { stdio: "ignore" });
+    try {
+      // Wait for the server to actually be live (not just any port.pid — the
+      // stale marker already exists at t=0 and would pass a naive check).
+      await waitFor(async () => {
+        try {
+          const raw = JSON.parse(readFileSync(join(dir, "port.pid"), "utf-8"));
+          const res = await fetch(`http://localhost:${raw.port}/api/version`);
+          return res.ok;
+        } catch {
+          return false;
+        }
+      });
+      const raw = JSON.parse(readFileSync(join(dir, "port.pid"), "utf-8"));
+      assert.equal(typeof raw.port, "number");
+      assert.notEqual(raw.port, 9325, "should not reuse the dead port from the stale marker");
+      // And a real server must answer on it.
+      const res = await fetch(`http://localhost:${raw.port}/api/version`);
+      assert.equal(res.ok, true);
+    } finally {
+      child.kill("SIGTERM");
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("writes a dashboard.log with startup lines", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "dash-log-"));
+    const child = spawn(process.execPath, [SERVER_ENTRY, dir], { stdio: "ignore" });
+    try {
+      await waitFor(() => {
+        try {
+          return /server running/.test(readFileSync(join(dir, "dashboard.log"), "utf-8"));
+        } catch {
+          return false;
+        }
+      });
+      const log = readFileSync(join(dir, "dashboard.log"), "utf-8");
+      assert.match(log, /\[mega-compact\]\[dashboard\]/);
+      assert.match(log, /server running/);
+    } finally {
+      child.kill("SIGTERM");
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

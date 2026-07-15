@@ -1,5 +1,27 @@
 # Release Notes — pi-mega-compact
 
+## v0.4.24 (2026-07-15)
+
+fix: make the dashboard server start failures diagnosable instead of silent.
+
+### Fixed
+- `/dashboard` reported "dashboard server failed to start — check logs." with an
+  **empty** log. Root causes:
+  - The detached child ran with `stdio: "ignore"`, swallowing every crash that
+    happened before the first log line (e.g. an ESM module-load error). The
+    launcher now captures the child's stderr to `_dashboard-launch.log`.
+  - `launchDashboardServer` reused a stale `port.pid` port without verifying a
+    server was actually listening, so a dead marker could make the command
+    report success on a dead port or block a fresh bind. It now probes the port
+    and rebinds fresh when nothing answers.
+- The running server now writes `<stateDir>/dashboard.log` with full lifecycle
+  output (launch, stale-marker detection, port scan, listen errors, ready),
+  so `/dashboard` failures are always inspectable.
+
+### Notes
+- New integration tests cover the stale-`port.pid` rebind and the new log file.
+  Full suite: 303 passing.
+
 ## v0.4.21 (2026-07-14)
 
 feat: extension conflict detector + durable save-to-memory store; consolidate

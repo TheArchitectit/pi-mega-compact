@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.4.24 (2026-07-15)
+
+Fix "dashboard server failed to start" being a silent, undiagnosable error.
+
+### Fixed
+- **Silent dashboard start failures.** The dashboard server ran as a detached
+  child with `stdio: "ignore"`, so any crash *before* the first log line
+  (notably an ESM module-load/parse error, or a missing server entry) died
+  with no output — and the `/dashboard` command's "check logs" message pointed
+  at an **empty** `_dashboard-launch.log`. The launcher now redirects the
+  child's stderr into the launch log, so the real cause is always captured.
+- **Stale `port.pid` short-circuit.** `launchDashboardServer` returned the port
+  from an existing `port.pid` *without* checking that a server was actually
+  listening on it. A stale marker (from a crashed/orphaned prior run) made
+  `/dashboard` report success on a dead port — or, worse, blocked a fresh bind.
+  The server now probes `http://localhost:<port>/api/version` before reusing a
+  marker and drops it (and rebinds fresh) when nothing answers.
+- **Server runtime logging.** The dashboard server now mirrors every
+  lifecycle event (launch, stale marker detected, port-scan, listen failure,
+  ready) into `<stateDir>/dashboard.log`, so a failed or slow start is always
+  inspectable.
+
+### Added
+- `dashboard.log` written by the running server into the per-repo state dir.
+- Integration tests covering the stale-`port.pid` rebind and the new log file.
+
 ## v0.4.0 (2026-07-14)
 
 Per-repo state isolation, a stable live dedup rate, and real-time agent

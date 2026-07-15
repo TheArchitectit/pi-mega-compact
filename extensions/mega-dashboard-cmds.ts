@@ -9,7 +9,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { join, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { existsSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, writeFileSync, readFileSync, unlinkSync, openSync, closeSync } from "node:fs";
 import { spawn } from "node:child_process"; // guardrails-allow PREVENT-PI-004: spawns the optional, user-triggered localhost dashboard server only
 import { MegaRuntime } from "./mega-runtime.js";
 
@@ -209,11 +209,32 @@ export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime
         return;
       }
 
+      // Clear any stale marker so a fresh bind never collides with a lingering
+      // orphan, and truncate the launch log so the next error report shows only
+      // this attempt's output.
+      try { unlinkSync(portFile); } catch { /* ignore */ }
+      try { writeFileSync(launchLog, ""); } catch { /* ignore */ }
+
       const args = dashboardNeedsStrip ? ["--experimental-strip-types", runnerFile] : [runnerFile];
+      // Redirect the child's stderr to the launch log so that a CRASH BEFORE the
+      // runner's own __fail handler runs (e.g. an ESM module-load / parse error,
+      // or a missing entry) is still captured. With the old `stdio: "ignore"`
+      // these failures were completely silent and the "check logs" message
+      // pointed at an empty file. We open the fd in the parent and pass it to the
+      // child; once spawned we close our copy (the child keeps its own dup).
+      let stderrFd: number;
+      try {
+        stderrFd = openSync(launchLog, "a");
+      } catch {
+        stderrFd = -1; // fall back to ignored stderr
+      }
       const child = spawn(process.execPath, args, {
         detached: true,
-        stdio: "ignore",
+        stdio: ["ignore", "ignore", stderrFd >= 0 ? stderrFd : "ignore"],
       });
+      if (stderrFd >= 0) {
+        try { closeSync(stderrFd); } catch { /* ignore */ }
+      }
       child.unref();
 
       // Poll for a live server (port 9320–9329) instead of relying solely on the
