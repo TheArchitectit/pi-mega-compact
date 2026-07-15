@@ -29,6 +29,7 @@
 | dedup upgrade spec, QA review, MinHash/LSH/RAPTOR | [dedup-implementation-plan.md](dedup-implementation-plan.md) | docs/ |
 | compaction redesign notes | [compaction-redesign.md](compaction-redesign.md) | docs/ |
 | fix plan: zstd load crash + tokens-grow-on-read + RAPTOR promotion (durable trim, Fix A–E) | [specs/fix-durable-trim.md](specs/fix-durable-trim.md) | docs/ |
+| slice 2: PGlite/pgvector async HNSW index (cross-repo recall) | [specs/slice2-pglite-vector-index.md](specs/slice2-pglite-vector-index.md) | docs/ |
 
 ---
 

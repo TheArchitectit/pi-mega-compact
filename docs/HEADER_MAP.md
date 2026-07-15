@@ -194,4 +194,20 @@
 | Execution: Install hardening | 146 | 0 |
 | Files To Change | 152 | 0 |
 | Acceptance | 178 | 0 |
-| Rollback | 187 | 0 | |
+| Rollback | 187 | 0 |
+
+## docs/specs/slice2-pglite-vector-index.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Safety Protocols | 10 | 0 |
+| Decisions (locked) | 22 | 0 |
+| Problem / Motivation | 30 | 0 |
+| Architecture | 36 | 0 |
+| Scope (in/out) | 52 | 0 |
+| Execution: vectorIndex.ts | 70 | 0 |
+| Execution: vectorStore wiring | 86 | 0 |
+| Execution: recall crossRepo | 98 | 0 |
+| Files To Change | 110 | 0 |
+| Acceptance | 122 | 0 |
+| Rollback | 134 | 0 |
