@@ -20,6 +20,8 @@ import {
   MARKER_TYPE,
 } from "./mega-runtime.js";
 import { resolveRepoRoot, preserveRecentForPressure, type MegaConfig } from "./mega-config.js";
+import { runRaptor } from "../src/dedup/raptor/index.js";
+import { loadDedupConfig } from "../src/config/dedup.js";
 
 export type RunCompactResult =
   | { skipped: true }
@@ -130,6 +132,37 @@ export function runCompact(
     tokenEstimate: result.tokenEstimate,
     deduped: result.deduped,
   });
+
+  // Fix D: refresh the RAPTOR tree for this session so live recall (search) can
+  // serve high-level summaries. Best-effort + non-fatal: never block compaction.
+  // Budget-guarded (RAPTOR_BUDGET_MS) so it can't hang a large session.
+  if (config.raptorEnabled && !result.deduped) {
+    try {
+      const dd = loadDedupConfig();
+      const all = runtime.store.list(sid);
+      const leaves = all.map((cp) => ({
+        id: cp.checkpointId,
+        messages: [],
+        sourceText: cp.normalizedText ?? cp.summary ?? cp.regionHash,
+        embedding: cp.embedding,
+      }));
+      if (leaves.length >= 2) {
+        runRaptor(
+          leaves,
+          {
+            stateDir: runtime.currentStateDir,
+            sessionId: sid,
+            budgetMs: dd.RAPTOR_BUDGET_MS,
+            clustersPerLevel: dd.RAPTOR_CLUSTERS_PER_LEVEL,
+            consistencyThreshold: dd.RAPTOR_CONSISTENCY,
+            logger: runtime.logger,
+          },
+        );
+      }
+    } catch {
+      /* non-fatal: tree refresh never blocks a compaction */
+    }
+  }
 
   runtime.setStatus(
     ctx,

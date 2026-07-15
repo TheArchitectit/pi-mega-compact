@@ -103,7 +103,7 @@ export function loadConfig(): MegaConfig {
     autoInline: envBool("MEGACOMPACT_AUTO_INLINE", true),
     autoInlineK: envFlag("MEGACOMPACT_AUTO_INLINE_K", 3),
     dedupSim: Number(process.env.MEGACOMPACT_DEDUP_SIM ?? "0.9"),
-    raptorEnabled: envBool("MEGACOMPACT_RAPTOR_ENABLED", false),
+    raptorEnabled: envBool("MEGACOMPACT_RAPTOR_ENABLED", true),
     recallMaxTokens: envFlag("MEGACOMPACT_RECALL_MAX_TOKENS", 1500),
     windowDedupe: envBool("MEGACOMPACT_WINDOW_DEDUPE", true),
     debug: envBool("MEGACOMPACT_DEBUG", false),

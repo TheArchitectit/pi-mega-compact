@@ -66,7 +66,10 @@ export function loadDedupConfig(): DedupConfigShape {
     L0_ENABLED: envBool("MEGACOMPACT_L0_ENABLED", true),
     L1_ENABLED: envBool("MEGACOMPACT_L1_ENABLED", true),
     L2_ENABLED: envBool("MEGACOMPACT_L2_ENABLED", true),
-    RAPTOR_ENABLED: envBool("MEGACOMPACT_RAPTOR_ENABLED", false), // shadow by default
+    // Fix D: RAPTOR promoted to live recall. Default ON; canary.ts sequences it
+    // last (L0→L1→L2→RAPTOR) and auto-disables on p95 breach, so promotion is
+    // safe. `RAPTOR_SHADOW_MODE=false` still gates serving during transition.
+    RAPTOR_ENABLED: envBool("MEGACOMPACT_RAPTOR_ENABLED", true),
     MARK_ONLY_L0: envBool("MEGACOMPACT_MARK_ONLY_L0", false),
     MARK_ONLY_L1: envBool("MEGACOMPACT_MARK_ONLY_L1", false),
     MARK_ONLY_L2: envBool("MEGACOMPACT_MARK_ONLY_L2", false),

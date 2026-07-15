@@ -38,6 +38,8 @@ import {
   repoStats as repoStatsFromStore,
   dataInvariantStats,
 } from "./store/sqlite.js";
+import { rehydrateRaptorTree } from "./dedup/raptor/index.js";
+import { stagedExpansion } from "./dedup/raptor/retrieval.js";
 import { migrateJsonToSqlite } from "./store/migrate.js";
 
 export interface SearchHit {
@@ -438,6 +440,29 @@ export class VectorStore {
     // MMR (QA #10) is part of the L2 semantic tier: skip it when L2 is disabled
     // (Sprint 14 flag), returning the plain relevance-ranked window instead.
     if (!this.cfg.L2_ENABLED) return window.slice(0, k);
+
+    // Fix D: when RAPTOR is promoted, ALSO recall high-level tree summaries and
+    // merge them with the flat hits via MMR so RAPTOR + flat don't double-cover.
+    // RAPTOR returns fewer, broader hits (O(log n) high-level nodes) than the
+    // O(n) flat leaves, tightening the block at read time.
+    if (this.cfg.RAPTOR_ENABLED) {
+      const raptorHits = this.raptorSearchHits(sid, query, k);
+      if (raptorHits.length > 0) {
+        const merged: SearchHit[] = [...window];
+        for (const rh of raptorHits) {
+          if (!merged.some((m) => m.checkpoint.checkpointId === rh.checkpoint.checkpointId)) {
+            merged.push(rh);
+          }
+        }
+        const mmrItems: MmrItem<SearchHit>[] = merged.map((h) => ({
+          item: h,
+          vector: h.checkpoint.embedding,
+          relevance: h.score,
+        }));
+        return mmrRerank(mmrItems, k, this.cfg.MMR_LAMBDA);
+      }
+    }
+
     const mmrItems: MmrItem<SearchHit>[] = window.map((h) => ({
       item: h,
       vector: h.checkpoint.embedding,
@@ -445,6 +470,37 @@ export class VectorStore {
     }));
     const ranked = mmrRerank(mmrItems, k, this.cfg.MMR_LAMBDA);
     return ranked;
+  }
+
+  /**
+   * Serve the RAPTOR tree for a query (Fix D): rehydrate the persisted tree and
+   * return its staged-expansion leaf hits as SearchHits. Returns [] when no tree
+   * exists (small sessions — flat search remains the path). Best-effort/non-fatal.
+   */
+  private raptorSearchHits(sid: string, query: string, k: number): SearchHit[] {
+    try {
+      const tree = rehydrateRaptorTree(sid, this.stateDir);
+      if (!tree || !tree.rootId) return [];
+      const leafIds = stagedExpansion(query, tree, {
+        embedder: this.embedder,
+        k,
+        topM: this.cfg.RAPTOR_CLUSTERS_PER_LEVEL,
+        mmrLambda: this.cfg.MMR_LAMBDA,
+      });
+      if (leafIds.length === 0) return [];
+      const all = listCheckpoints(sid, this.stateDir).filter(
+        (cp) => cp.dedupStatus !== "removed",
+      );
+      const qv = this.embedder.embed(query);
+      const hits: SearchHit[] = [];
+      for (const id of leafIds) {
+        const cp = all.find((c) => c.checkpointId === id);
+        if (cp) hits.push({ checkpoint: cp, score: cosineSimilarity(qv, cp.embedding) });
+      }
+      return hits;
+    } catch {
+      return [];
+    }
   }
 
   /**

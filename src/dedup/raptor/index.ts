@@ -89,10 +89,22 @@ export function recallRaptor(
   opts: { embedder?: Embedder; stateDir: string; k?: number; topM?: number },
 ): string[] {
   const embedder = opts.embedder ?? defaultEmbedder();
-  const nodes = listRaptorNodes(sessionId, opts.stateDir);
-  if (nodes.length === 0) return [];
-  // Rehydrate a minimal in-memory tree (parent links reconstructed from children).
-  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const tree = rehydrateRaptorTree(sessionId, opts.stateDir);
+  if (!tree) return [];
+  return stagedExpansion(query, tree, { embedder, k: opts.k, topM: opts.topM });
+}
+
+/**
+ * Rehydrate a persisted RAPTOR tree from raptor_nodes (Fix D): rebuild the
+ * in-memory RaptorTree + parent links so vectorStore.search can serve it live.
+ * Returns null when no tree exists (caller falls back to the flat path).
+ */
+export function rehydrateRaptorTree(
+  sessionId: string,
+  stateDir: string,
+): RaptorTree | null {
+  const nodes = listRaptorNodes(sessionId, stateDir);
+  if (nodes.length === 0) return null;
   const tree: RaptorTree = {
     nodes: new Map(
       nodes.map((n) => [
@@ -109,12 +121,15 @@ export function recallRaptor(
         },
       ]),
     ),
-    rootId: nodes.reduce<typeof nodes[number] | null>((best, n) => (!best || n.level > (best?.level ?? -1) ? n : best), null)?.id ?? null,
+    rootId:
+      nodes.reduce<typeof nodes[number] | null>(
+        (best, n) => (!best || n.level > (best?.level ?? -1) ? n : best),
+        null,
+      )?.id ?? null,
     levels: Math.max(1, ...nodes.map((n) => n.level + 1)),
     timedOut: false,
   };
-  void byId;
-  return stagedExpansion(query, tree, { embedder, k: opts.k, topM: opts.topM });
+  return tree;
 }
 
 /**
