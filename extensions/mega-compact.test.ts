@@ -45,6 +45,7 @@ function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
   let statusKey: string | undefined;
   let statusText: string | undefined;
   const notifies: string[] = [];
+  const compactCalls: any[] = [];
 
   // Minimal AgentMessage factory for the session we project into the extension.
   function msg(role: string, text: string, toolName?: string): AgentMessage {
@@ -107,7 +108,30 @@ function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
       hasPendingMessages: () => false,
       shutdown: () => {},
       getContextUsage: () => ({ tokens: 200000, contextWindow: 200000, percent: 100 }),
-      compact: () => {},
+      // Faithful mock: ctx.compact() starts pi's flow, which fires the
+      // session_before_compact handler (where WE supply the durable trim).
+      compact: (opts?: any) => {
+        compactCalls.push(opts);
+        if (handlers["session_before_compact"]) {
+          return handlers["session_before_compact"](
+            {
+              type: "session_before_compact",
+              reason: "threshold",
+              willRetry: false,
+              signal: undefined,
+              // pi computed the cut honoring anchor floor + tool-pair (PREVENT-PI-002);
+              // our handler reuses it as firstKeptEntryId.
+              preparation: {
+                firstKeptEntryId: "e2",
+                messagesToSummarize: session.slice(0, 2),
+                tokensBefore: 500,
+              },
+            } as any,
+            makeCtx(),
+          );
+        }
+        return undefined;
+      },
       getSystemPrompt: () => "system base",
       ...over,
     } as any;
@@ -143,14 +167,14 @@ function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
   mod.default(pi);
 
   return {
-    stateDir, handlers, commands, appended, get status() { return { statusKey, statusText }; }, notifies,
+    stateDir, handlers, commands, appended, get status() { return { statusKey, statusText }; }, notifies, compactCalls,
     fire: (ev: string, event: any, ctx: any) => handlers[ev](event, ctx),
     ctx: makeCtx,
     session,
   };
 }
 
-test("auto-trigger: past threshold persists a chkpt and drops context", async () => {
+test("auto-trigger: past threshold persists a chkpt and starts a durable trim", async () => {
   const h = harness();
   const messages = h.session;
   const ctx = h.ctx({ getContextUsage: () => ({ tokens: 200000, contextWindow: 200000, percent: 100 }) });
@@ -159,27 +183,50 @@ test("auto-trigger: past threshold persists a chkpt and drops context", async ()
   const { listCheckpoints } = await import("../src/store/sqlite.js");
   assert.ok(listCheckpoints("sess_ext_001", h.stateDir).length > 0, "checkpoint persisted to local vector db");
   assert.equal(h.appended.some((a) => a.t === "mega-compact-marker"), true, "marker sentinel appended");
-  // Context dropped (the compacted range was trimmed).
-  assert.ok(res && Array.isArray(res.messages), "context handler returns filtered messages");
-  assert.ok((res.messages as any[]).length < messages.length, "outgoing context shrank");
+  // The context handler no longer drops messages itself (that was ephemeral —
+  // the read-path token-growth bug). It triggers pi's compaction flow, which
+  // calls our session_before_compact handler to supply the DURABLE trim.
+  assert.equal(res, undefined, "context handler returns nothing (no local drop)");
+  assert.equal(h.compactCalls.length, 1, "ctx.compact() called to start durable trim");
+  // The durable trim was supplied (summary + firstKeptEntryId from pi's prep).
+  assert.ok(h.compactCalls[0] !== undefined, "compaction flow executed");
 });
 
-test("session_before_compact cancels once we've persisted", async () => {
+test("session_before_compact supplies our durable trim (not pi's summary)", async () => {
   const h = harness();
-  const ctx = h.ctx();
-  // First fire the auto-trigger so a checkpoint is persisted this session.
-  await h.fire("context", { type: "context", messages: h.session }, h.ctx({ getContextUsage: () => ({ tokens: 200000, contextWindow: 200000, percent: 100 }) }));
-  // Now pi tries to compact natively — we must cancel (no double-compact).
-  const res = await h.fire("session_before_compact", { type: "session_before_compact", reason: "overflow", willRetry: true, preparation: {}, signal: undefined } as any, ctx);
-  assert.deepEqual(res, { cancel: true });
+  // pi fires session_before_compact with its own computed preparation.
+  const res = await h.fire(
+    "session_before_compact",
+    {
+      type: "session_before_compact",
+      reason: "overflow",
+      willRetry: true,
+      preparation: { firstKeptEntryId: "e2", messagesToSummarize: h.session.slice(0, 2), tokensBefore: 500 },
+      signal: undefined,
+    } as any,
+    h.ctx(),
+  );
+  assert.ok(res && res.compaction, "returns a compaction result");
+  assert.equal(res.compaction.firstKeptEntryId, "e2", "reuses pi's cut boundary (PREVENT-PI-002 safe)");
+  assert.ok(typeof res.compaction.summary === "string" && res.compaction.summary.length > 0, "our summary supplied");
+  assert.ok(res.compaction.tokensBefore >= 0, "tokensBefore reported");
 });
 
-test("session_before_compact does NOT cancel when nothing persisted", async () => {
+test("session_before_compact falls back to pi when nothing to summarize", async () => {
   const h = harness();
-  const ctx = h.ctx();
-  // Do NOT fire context first; this session has no checkpoint.
-  const res = await h.fire("session_before_compact", { type: "session_before_compact", reason: "threshold", willRetry: false, preparation: {}, signal: undefined } as any, ctx);
-  assert.deepEqual(res, {});
+  // Empty preparation → no messages to summarize → return {} so pi compacts natively.
+  const res = await h.fire(
+    "session_before_compact",
+    {
+      type: "session_before_compact",
+      reason: "threshold",
+      willRetry: false,
+      preparation: { firstKeptEntryId: "e0", messagesToSummarize: [], tokensBefore: 0 },
+      signal: undefined,
+    } as any,
+    h.ctx(),
+  );
+  assert.deepEqual(res, {}, "no compaction supplied → pi runs its own");
 });
 
 test("resume auto-inline stages recall into the system prompt", async () => {

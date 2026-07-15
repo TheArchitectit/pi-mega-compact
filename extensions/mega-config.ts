@@ -34,10 +34,16 @@ export interface MegaConfig {
   fastGatePct: number;
   anchorUserMessages: number;
   preserveRecent: number;
+  /** High-pressure floor for preserveRecent — when context is near the limit
+   *  we compact deeper, but never below this (keeps recent turns for coherence). */
+  preserveRecentMin: number;
   auto: boolean;
   autoInline: boolean;
   autoInlineK: number;
   dedupSim: number;
+  /** RAPTOR hierarchical recall enabled (Fix D). Drives both live recall and
+   *  the durable-trim summary source (root summary). */
+  raptorEnabled: boolean;
   debug: boolean;
 }
 
@@ -65,6 +71,13 @@ function resolveThreshold(): { tier: CompactTier | "custom"; thresholdTokens: nu
   return { tier, thresholdTokens: COMPACT_TIERS[tier] };
 }
 
+/**
+ * Pressure helpers for adaptive compression (Fix E) live in src/config.ts
+ * (pi-agnostic) so unit tests can import them without the pi runtime. Re-export
+ * here so the extension has one import surface.
+ */
+export { pressureFromPct, preserveRecentForPressure } from "../src/config.js";
+
 /** Build the resolved config from env + defaults. */
 export function loadConfig(): MegaConfig {
   const { tier, thresholdTokens } = resolveThreshold();
@@ -77,10 +90,12 @@ export function loadConfig(): MegaConfig {
     thresholdTokens,
     anchorUserMessages: envFlag("MEGACOMPACT_ANCHOR_USER_MESSAGES", 3),
     preserveRecent: envFlag("MEGACOMPACT_PRESERVE_RECENT", 4),
+    preserveRecentMin: envFlag("MEGACOMPACT_PRESERVE_RECENT_MIN", 2),
     auto: envBool("MEGACOMPACT_AUTO", true),
     autoInline: envBool("MEGACOMPACT_AUTO_INLINE", true),
     autoInlineK: envFlag("MEGACOMPACT_AUTO_INLINE_K", 3),
     dedupSim: Number(process.env.MEGACOMPACT_DEDUP_SIM ?? "0.9"),
+    raptorEnabled: envBool("MEGACOMPACT_RAPTOR_ENABLED", false),
     debug: envBool("MEGACOMPACT_DEBUG", false),
   };
 }

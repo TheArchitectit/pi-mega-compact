@@ -116,3 +116,23 @@ export function recallRaptor(
   void byId;
   return stagedExpansion(query, tree, { embedder, k: opts.k, topM: opts.topM });
 }
+
+/**
+ * Return the RAPTOR root summary for a session, if a tree has been built.
+ * Used by the durable-trim driver (Fix B/D) to supply pi a session-level
+ * compressed summary instead of one slice's extractive summary. Returns
+ * undefined when no tree exists yet (caller falls back to the slice summary).
+ */
+export function recallRaptorRootSummary(
+  sessionId: string,
+  stateDir: string,
+): string | undefined {
+  const nodes = listRaptorNodes(sessionId, stateDir);
+  if (nodes.length === 0) return undefined;
+  // Highest-level node = the root (covers all leaves).
+  const root = nodes.reduce<(typeof nodes)[number] | null>(
+    (best, n) => (!best || n.level > best.level ? n : best),
+    null,
+  );
+  return root?.summary || undefined;
+}

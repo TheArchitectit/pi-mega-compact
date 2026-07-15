@@ -11,10 +11,10 @@ import type { ExtensionAPI, ExtensionContext, ContextEvent, SessionBeforeCompact
 import { normalizeSessionId } from "../src/store.js";
 import { autoCompactCheck } from "../src/compact.js";
 import { estimateSessionTokens } from "../src/tokens.js";
-import { dropCompactedRange } from "../src/adapt.js";
 import { MegaRuntime, recentUserQuery, WIDGET_KEY } from "./mega-runtime.js";
 import { runCompact, doRecall } from "./mega-pipeline.js";
-import type { MegaConfig } from "./mega-config.js";
+import { driveNativeCompaction } from "./mega-compact-driver.js";
+import { pressureFromPct, type MegaConfig } from "./mega-config.js";
 
 /** Register all pi lifecycle event handlers. */
 export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, config: MegaConfig): void {
@@ -119,7 +119,15 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
     runtime.snapshot(ctx);
   });
 
-  // ---- Auto-trigger: fast-gate → confirm → Trident+persist → drop --------
+  // ---- Auto-trigger: own the decision, pi owns the durable write ----------
+  // OUR auto-trigger (over threshold + debounce): persist our Trident checkpoint,
+  // then start pi's compaction flow via ctx.compact(). That fires
+  // `session_before_compact`, where OUR handler returns our summary +
+  // firstKeptEntryId, and pi durably writes the trim to disk (appendCompaction).
+  // Result: auto-compact AND a durable trim — resume reloads the trimmed window,
+  // no full-reload + additive recall inflation (Fix B kills the token-growth bug).
+  // We do NOT drop messages here (that would be ephemeral; the read-only session
+  // manager can't trim disk, so the trim has to come through pi).
   pi.on("context", async (event: ContextEvent, ctx: ExtensionContext) => {
     if (!config.auto) return;
     const usage = ctx.getContextUsage();
@@ -133,15 +141,11 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
 
     const messages = event.messages;
     const view = runtime.engineView(messages);
-    // Prefer the runtime's real token estimate; fall back to our heuristic
-    // (and to a percent-of-window proxy when tokens is unknown).
     const currentTokens =
       usage?.tokens ?? estimateSessionTokens(view) ??
       Math.round((pct / 100) * (usage?.contextWindow ?? 0));
 
     // FAST GATE: token-based (tier threshold), not percentage-based.
-    // A 20% gate on a 2M window = 400k, which is way above the 50k low-tier
-    // threshold. Gate on the actual token count instead.
     if (currentTokens < config.thresholdTokens) return;
 
     const check = autoCompactCheck(currentTokens, config.thresholdTokens); // SERVER-STYLE CONFIRM (local)
@@ -152,29 +156,44 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
     if (now < runtime.debounceUntil) return;
     runtime.debounceUntil = now + 2000;
 
-    const ran = runCompact(pi, runtime, config, ctx, messages);
+    // Adaptive compression (Fix E): scale compression strength + keepFrom depth
+    // with how close we are to the model context limit.
+    const pressure = pressureFromPct(pct);
+    const ran = runCompact(pi, runtime, config, ctx, messages, { compressionPressure: pressure });
     if (ran.skipped) return;
 
-    // DROP the compacted range from the outgoing context, honoring the anchor
-    // floor + tool-pair boundary guards (PREVENT-PI-001/002).
-    const kept = dropCompactedRange(messages, ran.keepFrom!, config.anchorUserMessages);
-    if (kept.length < messages.length) {
-      return { messages: kept };
-    }
+    // Start pi's compaction flow so our session_before_compact handler can
+    // supply the durable trim (pi writes it to disk). We never use pi's summary.
+    ctx.compact({ customInstructions: undefined });
   });
 
-  // ---- Cancel native compaction once we've persisted our own -------------
-  pi.on("session_before_compact", async (_event: SessionBeforeCompactEvent, ctx: ExtensionContext) => {
+  // ---- Supply a DURABLE trim to pi's native compaction (Fix B) ----------
+  // We run the Trident pipeline to produce a compressed summary, then return
+  // it as a CompactionResult. pi writes the summary into a compactionSummary
+  // entry AND truncates the on-disk transcript from firstKeptEntryId. This is
+  // the durable fix for "tokens grow on read": the trim survives resume, so
+  // there is no full-reload + additive recall inflation.
+  pi.on("session_before_compact", async (event: SessionBeforeCompactEvent, ctx: ExtensionContext) => {
     runtime.resetRuntime(ctx.sessionManager.getSessionId());
-    if (runtime.rt.persistedThisSession) {
-      // We already persisted a checkpoint for this session (via the context
-      // hook drop) — cancel pi's own compaction to avoid double-compacting.
-      // Our context-hook drop already trimmed the window.
-      return { cancel: true };
+    if (!config.auto) return {}; // let pi run its own native compaction
+    try {
+      const result = driveNativeCompaction(event, runtime, config);
+      if (result) {
+        runtime.logger.info("native-compact", {
+          sessionId: runtime.rt.sessionId,
+          firstKeptEntryId: result.compaction.firstKeptEntryId,
+          tokensBefore: result.compaction.tokensBefore,
+          summaryTokens: result.compaction.estimatedTokensAfter,
+        });
+        return { compaction: result.compaction };
+      }
+    } catch (err) {
+      runtime.logger.error("native-compact-failed", {
+        sessionId: runtime.rt.sessionId,
+        error: String(err instanceof Error ? err.message : err),
+      });
     }
-    // We haven't persisted yet this session: let pi run its native compaction.
-    // (Our auto-trigger only fires again past the threshold, and will then
-    // capture a checkpoint next time around.)
+    // Fall back to pi's own native compaction if we can't supply one.
     return {};
   });
 }

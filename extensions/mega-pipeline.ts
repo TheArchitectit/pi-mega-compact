@@ -18,7 +18,7 @@ import {
   C,
   MARKER_TYPE,
 } from "./mega-runtime.js";
-import { resolveRepoRoot, type MegaConfig } from "./mega-config.js";
+import { resolveRepoRoot, preserveRecentForPressure, type MegaConfig } from "./mega-config.js";
 
 export type RunCompactResult =
   | { skipped: true }
@@ -31,7 +31,7 @@ export function runCompact(
   config: MegaConfig,
   ctx: ExtensionContext,
   messages: AgentMessage[],
-  opts: { keepFrom?: number; summary?: string } = {},
+  opts: { keepFrom?: number; summary?: string; compressionPressure?: number } = {},
 ): RunCompactResult {
   runtime.bindRepo(ctx.cwd);
   const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
@@ -39,7 +39,14 @@ export function runCompact(
   runtime.rt.sessionId = sid;
 
   const view = runtime.engineView(messages);
-  const keepFrom = opts.keepFrom ?? Math.max(0, view.length - config.preserveRecent);
+  // keepFrom deepens with context pressure (Fix E): under high pressure we
+  // compact more of the session, down to the preserveRecentMin floor.
+  const preserve = preserveRecentForPressure(
+    opts.compressionPressure ?? 0,
+    config.preserveRecent,
+    config.preserveRecentMin,
+  );
+  const keepFrom = opts.keepFrom ?? Math.max(0, view.length - preserve);
   if (keepFrom <= 0) return { skipped: true };
 
   runtime.pulsing = true; // animate the status line while the (sync) pipeline runs
@@ -51,6 +58,7 @@ export function runCompact(
       summary: opts.summary,
       timestamp: Date.now(),
       onTier: runtime.makeTierCallback(ctx),
+      compressionPressure: opts.compressionPressure,
     },
     runtime.store,
   );
