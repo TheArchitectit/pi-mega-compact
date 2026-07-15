@@ -44,6 +44,14 @@ export interface MegaConfig {
   /** RAPTOR hierarchical recall enabled (Fix D). Drives both live recall and
    *  the durable-trim summary source (root summary). */
   raptorEnabled: boolean;
+  /** Token ceiling for the re-injected recall block (Fix C). Recall stops
+   *  adding checkpoints once the block would exceed this — bounds read-path
+   *  token cost so it can never net-inflate the window. */
+  recallMaxTokens: number;
+  /** Inline-dedupe recalled checkpoints against the live window (Fix C): drop
+   *  a hit whose summary is ≥ dedupSim similar to a live message — "dedupe on
+   *  inline/read" so we never re-inject context already resident. */
+  windowDedupe: boolean;
   debug: boolean;
 }
 
@@ -96,6 +104,8 @@ export function loadConfig(): MegaConfig {
     autoInlineK: envFlag("MEGACOMPACT_AUTO_INLINE_K", 3),
     dedupSim: Number(process.env.MEGACOMPACT_DEDUP_SIM ?? "0.9"),
     raptorEnabled: envBool("MEGACOMPACT_RAPTOR_ENABLED", false),
+    recallMaxTokens: envFlag("MEGACOMPACT_RECALL_MAX_TOKENS", 1500),
+    windowDedupe: envBool("MEGACOMPACT_WINDOW_DEDUPE", true),
     debug: envBool("MEGACOMPACT_DEBUG", false),
   };
 }

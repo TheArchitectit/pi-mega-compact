@@ -16,6 +16,8 @@
 
 import { recall as searchRecall } from "./engine.js";
 import type { SearchHit, VectorStore } from "./vectorStore.js";
+import { estimateBlockTokens } from "./tokens.js";
+import { defaultEmbedder, cosineSimilarity } from "./embedder.js";
 
 export type RecallSource = "resume" | "command" | "sentinel";
 
@@ -26,6 +28,16 @@ export interface RecallInjectOptions {
   source: RecallSource;
   /** Skip checkpoints already injected this session (recall dedup). */
   skipInjected?: boolean;
+  /** Token ceiling for the re-injected block (Fix C). Recall stops adding once
+   *  the block would exceed this, so the read path can never net-inflate. */
+  recallMaxTokens?: number;
+  /** Inline-dedupe hits against the live window (Fix C): drop a hit whose
+   *  summary is ≥ `dedupSim` similar to a live message. */
+  windowDedupe?: boolean;
+  /** Live window text (from the session manager) used for inline dedupe. */
+  liveWindow?: string[];
+  /** Similarity threshold for inline dedupe (defaults to 0.9). */
+  dedupSim?: number;
 }
 
 export interface RecallInjectResult {
@@ -70,23 +82,50 @@ export function recallAndInline(
 ): RecallInjectResult {
   const limit = opts.limit ?? 3;
   const skip = opts.skipInjected ?? true;
+  const maxTokens = opts.recallMaxTokens ?? 0; // 0 = unbounded (legacy behavior)
+  const doWindowDedupe = opts.windowDedupe ?? false;
+  const dedupSim = opts.dedupSim ?? 0.9;
 
   const { hits } = searchRecall(
     { sessionId: opts.sessionId, query: opts.query, limit, skipInjected: false },
     store as VectorStore,
   );
 
-  // Shared dedup: drop checkpoints already injected this session, then mark the
-  // survivors so repeated triggers are free. (Cosine near-dup collapse already
-  // happened inside store.search.)
+  // Precompute live-window embeddings once for inline dedupe (Fix C). Trigram
+  // embedder is local + cheap; never a network call (PREVENT-PI-004).
+  let liveEmbeddings: number[][] = [];
+  if (doWindowDedupe && opts.liveWindow && opts.liveWindow.length > 0) {
+    const embedder = defaultEmbedder();
+    liveEmbeddings = opts.liveWindow.map((m) => embedder.embed(m));
+  }
+
+  // Shared dedup + bounded/inline block assembly. We build the block
+  // incrementally so the token cap can stop mid-stream (Fix C).
   const toInject: SearchHit[] = [];
+  const parts: string[] = [];
+  let blockTokens = 0;
+
   for (const h of hits) {
     if (skip && store.wasInjected(opts.sessionId, h.checkpoint.checkpointId)) continue;
+
+    // Inline dedupe: skip a hit already resident in the live window (Fix C).
+    if (doWindowDedupe && liveEmbeddings.length > 0) {
+      const hitVec = defaultEmbedder().embed(h.checkpoint.summary);
+      if (liveEmbeddings.some((v) => cosineSimilarity(v, hitVec) >= dedupSim)) continue;
+    }
+
+    const part = formatRecallBlock([h]);
+    const partTokens = estimateBlockTokens(part);
+    // Token cap: never push a chunk that would overrun the ceiling.
+    if (maxTokens > 0 && blockTokens + partTokens > maxTokens) break;
+
+    parts.push(part);
     toInject.push(h);
+    blockTokens += partTokens;
     store.markInjected(opts.sessionId, h.checkpoint.checkpointId);
   }
 
-  const block = formatRecallBlock(toInject);
+  const block = parts.join("\n");
   const report = toInject.map(
     (h) => `  • ${h.checkpoint.checkpointId} (${h.checkpoint.summary.slice(0, 60).replace(/\n/g, " ")}…)`,
   );

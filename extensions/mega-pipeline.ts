@@ -8,6 +8,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { compactSession } from "../src/engine.js";
 import { recallAndInline } from "../src/recall.js";
@@ -168,8 +169,22 @@ export function doRecall(
 ) {
   runtime.bindRepo(ctx.cwd);
   const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
+  // Live window text for inline dedupe (Fix C): drop recalled checkpoints that
+  // are already resident in the session, so recall never re-injects context the
+  // model can already see. Best-effort — an empty window just skips dedupe.
+  const liveWindow = config.windowDedupe ? extractLiveWindow(ctx) : undefined;
   const result = recallAndInline(
-    { sessionId: sid, query, limit: config.autoInlineK, source, skipInjected: true },
+    {
+      sessionId: sid,
+      query,
+      limit: config.autoInlineK,
+      source,
+      skipInjected: true,
+      recallMaxTokens: config.recallMaxTokens,
+      windowDedupe: config.windowDedupe,
+      liveWindow,
+      dedupSim: config.dedupSim,
+    },
     runtime.store,
   );
   runtime.dashboard.event("recall", { source, query: query.slice(0, 120), injected: result.toInject.length, empty: result.empty });
@@ -182,4 +197,27 @@ export function doRecall(
     runtime.lastWhy = `why: recalled@${scorePct}% (${result.toInject.length} chkpt)`;
   }
   return result;
+}
+
+/**
+ * Extract the live-window message texts from the session manager (Fix C),
+ * for inline-dedupe of recalled checkpoints. Best-effort: returns [] on any
+ * error so recall falls back to unbounded (still correct, just no dedupe).
+ * Mirrors recentUserQuery's use of sessionEntryToContextMessages.
+ */
+function extractLiveWindow(ctx: ExtensionContext): string[] {
+  try {
+    const entries = ctx.sessionManager.getEntries();
+    const texts: string[] = [];
+    for (const e of entries) {
+      for (const m of sessionEntryToContextMessages(e)) {
+        const c = (m as { content?: unknown }).content;
+        if (typeof c === "string") texts.push(c);
+        else if (Array.isArray(c)) texts.push(c.map((b: any) => b.text).join(" "));
+      }
+    }
+    return texts;
+  } catch {
+    return [];
+  }
 }
