@@ -211,3 +211,46 @@
 | Files To Change | 110 | 0 |
 | Acceptance | 122 | 0 |
 | Rollback | 134 | 0 |
+
+## docs/superpowers/CONTINUITY-BRANCH-ROADMAP.md (branch map for v0.5.0)
+
+| Section | Line | Offset |
+|---------|------|--------|
+| What this branch solves (audited findings) | 1 | 0 |
+| The core design decision (S16) | 2 | 0 |
+| Sprint map (S16–S23) | 3 | 0 |
+| Primary documents (read order) | 4 | 0 |
+| Prior queued plans that fed this | 5 | 0 |
+| Guardrails | 6 | 0 |
+| Execution | 7 | 0 |
+| Rollback summary | 8 | 0 |
+
+## docs/superpowers/specs/2026-07-15-compaction-continuity-cross-repo-memory-design.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Context (why now) | 1 | 0 |
+| Goals / Non-goals | 2–3 | 0 |
+| Resolved decisions | 4 | 0 |
+| Architecture (compaction-continuity redesign) | 5 | 0 |
+| Workstream breakdown (S16–S23) | 6 | 0 |
+| Per-workstream design | 7 | 0 |
+| Risks / HALT | 8 | 0 |
+| Testing strategy | 9 | 0 |
+| Rollback | 10 | 0 |
+| Optional split | 11 | 0 |
+
+## docs/superpowers/plans/2026-07-15-compaction-continuity-cross-repo-memory.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| File structure (all sprints) | top | 0 |
+| Sprint S16 — Compaction Continuity | S16 | 0 |
+| Sprint S17 — Cross-Repo Recall Wire-Up | S17 | 0 |
+| Sprint S18 — Cross-Repo Dedup Markers + Tracking | S18 | 0 |
+| Sprint S19 — Multi-Repo Dashboard (Phase 5b) | S19 | 0 |
+| Sprint S20 — Memory-RAG: Auto-Review | S20 | 0 |
+| Sprint S21 — Memory-RAG: Recall + Consolidation | S21 | 0 |
+| Sprint S22 — Slice 3 Docs Close-Out | S22 | 0 |
+| Sprint S23 — Release (tag v0.5.0) | S23 | 0 |
+| Self-Review | end | 0 |
