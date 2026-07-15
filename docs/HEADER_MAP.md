@@ -176,3 +176,22 @@
 | Circuit Breakers | 1965 | 0 |
 | Backfill Orchestration | 2154 | 0 |
 | Testing & Validation | 2421 | 0 |
+
+---
+
+## docs/specs/fix-durable-trim.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Safety Protocols | 13 | 0 |
+| Problem Statement | 27 | 0 |
+| Scope Boundary | 56 | 0 |
+| Execution: Fix A (lazy zstd) | 71 | 0 |
+| Execution: Fix B (durable trim driver) | 78 | 0 |
+| Execution: Fix C (honest + bounded recall) | 96 | 0 |
+| Execution: Fix D (RAPTOR promotion) | 107 | 0 |
+| Execution: Fix E (adaptive pressure) | 124 | 0 |
+| Execution: Install hardening | 146 | 0 |
+| Files To Change | 152 | 0 |
+| Acceptance | 178 | 0 |
+| Rollback | 187 | 0 | |
