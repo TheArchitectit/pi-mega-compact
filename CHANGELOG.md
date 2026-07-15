@@ -1,5 +1,49 @@
 # Changelog
 
+## v0.4.28 (2026-07-15)
+
+Fix the user-facing `Compaction failed: Nothing to compact (session too small)`
+error that the auto-trigger surfaced whenever pi's native compaction had
+nothing durable to trim.
+
+### Fixed
+- **"Nothing to compact" thrown to the user by the auto-trigger.** The
+  `context` handler auto-fired `ctx.compact()` based on *in-memory* token
+  pressure (our threshold), but pi's `compact()` throws "Nothing to compact
+  (session too small)" when the *on-disk* transcript is below its
+  `keepRecentTokens` budget (default 20k). The throw fires inside pi's
+  `compact()` *before* `session_before_compact` is emitted, so our handler
+  there can never intercept it; and `ctx.compact()`'s `onError` callback runs
+  only *after* pi has already emitted a `compaction_end` event carrying the
+  error message (which the interactive UI renders), so `onError` cannot mute
+  it either. Added `piCompactWouldNoop(ctx)` (in `mega-pipeline.ts`): before
+  calling `ctx.compact()`, the auto-trigger reads `ctx.sessionManager.getBranch()`
+  and skips the call when pi would no-op — mirroring pi's `prepareCompaction`
+  return-undefined conditions (last entry is a compaction → "Already
+  compacted"; <2 cut-point messages or transcript under the
+  `keepRecentTokens` budget → "Nothing to compact"). Skipping is correct, not
+  a compromise: by then our own recall checkpoint (`runCompact`, Path A) is
+  already persisted, and the durable on-disk trim is unnecessary for a
+  transcript small enough that reloading it on resume isn't a token-growth
+  problem. (pi's own silent `_runAutoCompaction` path handles the same
+  condition with a `return false`; we're forced through the throwing public
+  path because that's all the extension API exposes.)
+- **v0.4.27's `doCompact` small-session fallback** (compacting all-but-last
+  for short sessions) remains, but it alone never fixed this — the error
+  came from pi, not our `runCompact`. The gate above is the actual fix.
+
+### Added
+- `MEGACOMPACT_DURABLE_TRIM_FLOOR` env override (default 20000 = pi's
+  `keepRecentTokens` default). Raise it if you raise pi's
+  `compact.keepRecentTokens`, so the gate keeps predicting pi's no-op
+  threshold correctly.
+
+### Tests
+- New `piCompactWouldNoop` integration tests in `mega-compact.test.ts`: the
+  positive path (compactable transcript → `ctx.compact()` still called) and
+  the skip path (small transcript → `ctx.compact()` skipped, recall checkpoint
+  still persisted, no error). Mock `sessionManager` now exposes `getBranch()`.
+
 ## v0.4.26 (2026-07-16)
 
 Fix PGlite WASM corruption when multiple test workers hit the shared global

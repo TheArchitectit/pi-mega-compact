@@ -12,7 +12,7 @@ import { normalizeSessionId } from "../src/store.js";
 import { autoCompactCheck } from "../src/compact.js";
 import { estimateSessionTokens } from "../src/tokens.js";
 import { MegaRuntime, recentUserQuery, WIDGET_KEY } from "./mega-runtime.js";
-import { runCompact, doRecall } from "./mega-pipeline.js";
+import { runCompact, doRecall, piCompactWouldNoop } from "./mega-pipeline.js";
 import { driveNativeCompaction } from "./mega-compact-driver.js";
 import { pressureFromPct, type MegaConfig } from "./mega-config.js";
 
@@ -161,6 +161,14 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
     const pressure = pressureFromPct(pct);
     const ran = runCompact(pi, runtime, config, ctx, messages, { compressionPressure: pressure });
     if (ran.skipped) return;
+
+    // Skip pi's durable-trim flow when pi would no-op ("Nothing to compact /
+    // Already compacted"). pi throws that error *before* session_before_compact
+    // fires and renders it via a compaction_end event we can't mute (onError is
+    // too late), so the only fix is to not call ctx.compact() on a no-op. Our
+    // recall checkpoint above is already persisted; the durable trim is
+    // unnecessary for a transcript pi would keep in full anyway.
+    if (piCompactWouldNoop(ctx)) return;
 
     // Start pi's compaction flow so our session_before_compact handler can
     // supply the durable trim (pi writes it to disk). We never use pi's summary.

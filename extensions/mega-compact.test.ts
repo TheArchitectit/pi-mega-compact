@@ -83,6 +83,9 @@ function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
   const sessionManager = {
     getSessionId: () => "sess_ext_001",
     getEntries: () => session.map(toEntry),
+    // Faithful mock: getBranch() returns the current branch's entries, which
+    // piCompactWouldNoop() reads to predict whether ctx.compact() would no-op.
+    getBranch: () => session.map(toEntry),
   };
 
   function makeCtx(over: Partial<any> = {}) {
@@ -177,19 +180,46 @@ function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
 test("auto-trigger: past threshold persists a chkpt and starts a durable trim", async () => {
   const h = harness();
   const messages = h.session;
+  // The mock session is tiny (~100 tokens). piCompactWouldNoop() would skip
+  // ctx.compact() for a transcript under pi's keepRecentTokens budget — so
+  // lower the floor to 0 to simulate a transcript large enough that pi WOULD
+  // compact (the positive path this test exercises).
+  process.env.MEGACOMPACT_DURABLE_TRIM_FLOOR = "0";
+  try {
+    const ctx = h.ctx({ getContextUsage: () => ({ tokens: 200000, contextWindow: 200000, percent: 100 }) });
+    const res = await h.fire("context", { type: "context", messages }, ctx);
+    // L1->L4 ran: a checkpoint was persisted to the SQLite store + a marker entry written.
+    const { listCheckpoints } = await import("../src/store/sqlite.js");
+    assert.ok(listCheckpoints("sess_ext_001", h.stateDir).length > 0, "checkpoint persisted to local vector db");
+    assert.equal(h.appended.some((a) => a.t === "mega-compact-marker"), true, "marker sentinel appended");
+    // The context handler no longer drops messages itself (that was ephemeral —
+    // the read-path token-growth bug). It triggers pi's compaction flow, which
+    // calls our session_before_compact handler to supply the DURABLE trim.
+    assert.equal(res, undefined, "context handler returns nothing (no local drop)");
+    assert.equal(h.compactCalls.length, 1, "ctx.compact() called to start durable trim");
+    // The durable trim was supplied (summary + firstKeptEntryId from pi's prep).
+    assert.ok(h.compactCalls[0] !== undefined, "compaction flow executed");
+  } finally {
+    delete process.env.MEGACOMPACT_DURABLE_TRIM_FLOOR;
+  }
+});
+
+test("auto-trigger: skips ctx.compact() when pi would no-op (session too small)", async () => {
+  const h = harness();
+  const messages = h.session;
+  // Default floor (20000): the tiny mock transcript is below pi's
+  // keepRecentTokens budget, so piCompactWouldNoop() must skip ctx.compact()
+  // rather than surface pi's "Nothing to compact (session too small)" throw.
+  delete process.env.MEGACOMPACT_DURABLE_TRIM_FLOOR;
   const ctx = h.ctx({ getContextUsage: () => ({ tokens: 200000, contextWindow: 200000, percent: 100 }) });
   const res = await h.fire("context", { type: "context", messages }, ctx);
-  // L1->L4 ran: a checkpoint was persisted to the SQLite store + a marker entry written.
-  const { listCheckpoints } = await import("../src/store/sqlite.js");
-  assert.ok(listCheckpoints("sess_ext_001", h.stateDir).length > 0, "checkpoint persisted to local vector db");
-  assert.equal(h.appended.some((a) => a.t === "mega-compact-marker"), true, "marker sentinel appended");
-  // The context handler no longer drops messages itself (that was ephemeral —
-  // the read-path token-growth bug). It triggers pi's compaction flow, which
-  // calls our session_before_compact handler to supply the DURABLE trim.
   assert.equal(res, undefined, "context handler returns nothing (no local drop)");
-  assert.equal(h.compactCalls.length, 1, "ctx.compact() called to start durable trim");
-  // The durable trim was supplied (summary + firstKeptEntryId from pi's prep).
-  assert.ok(h.compactCalls[0] !== undefined, "compaction flow executed");
+  assert.equal(h.compactCalls.length, 0, "ctx.compact() NOT called — pi would no-op");
+  // Our recall checkpoint still persisted (Path A) — the durable trim is the
+  // only thing skipped; recall is independent of it.
+  const { listCheckpoints } = await import("../src/store/sqlite.js");
+  assert.ok(listCheckpoints("sess_ext_001", h.stateDir).length > 0, "recall checkpoint still persisted");
+  assert.equal(h.appended.some((a) => a.t === "mega-compact-marker"), true, "marker sentinel still appended");
 });
 
 test("session_before_compact supplies our durable trim (not pi's summary)", async () => {
