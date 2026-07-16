@@ -174,7 +174,13 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
         const entries = ctx.sessionManager.getEntries();
         const view = runtime.engineView(entries.flatMap((e: any) => (e.message ? [e.message] : [])));
         const ops = reviewConversation(view, []);
-        if (ops.length) await applyMemoryOps(ops, runtime.currentStateDir);
+        if (ops.length) {
+          await applyMemoryOps(ops, runtime.currentStateDir);
+          // S21.2: a memory op landed in this turn window. The pipeline reads
+          // this counter after a successful compaction and fires
+          // `consolidateMemories` only when it's > 0.
+          runtime.memoriesTouchedThisCompaction += ops.length;
+        }
       } catch {
         /* non-fatal — auto-review must not break the turn loop */
       }

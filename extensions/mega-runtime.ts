@@ -108,6 +108,11 @@ export class MegaRuntime {
   readonly TICKER_MAX = 5;
   // Pulsing status: set true while a compaction is in flight, cleared on result.
   pulsing = false;
+  // S21.2: set by `applyMemoryOps` when a memory add/replace/remove lands in
+  // the current compaction. The pipeline reads this after a successful compact
+  // to decide whether to fire `consolidateMemories` (skip the work entirely
+  // when no memory rows changed).
+  memoriesTouchedThisCompaction = 0;
   // Rolling "saved" goal for the progress bar — grows as we save more, so the
   // bar always has a meaningful denominator (never sits at 100% forever).
   savedGoal = 50_000;

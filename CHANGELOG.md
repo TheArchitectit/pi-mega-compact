@@ -1,5 +1,36 @@
 # Changelog
 
+## v0.5.0-unreleased — Sprint S21 (memory recall inclusion + auto-consolidate)
+
+### Added
+- **`recallMemories()` wired into `recallAndInline`** (`src/recall.ts`,
+  `src/memory.ts`, `src/memoryRecall.ts`) — durable memories are now recalled as
+  part of the unified Layer-5 pipeline, alongside checkpoint recall. Hits are
+  capped by `recallMaxTokens`, deduped against any checkpoint block already
+  inlined, and surfaced under a `Durable memories:` header so they're
+  distinguishable from session-recall hits. When auto-inline is off, the block
+  is still assembled (via `pendingMemoryRecallBlock`) and shown on the next
+  `before_agent_start`.
+- **`consolidateMemories()`** (`src/memory.ts`) — finds near-duplicate rows in
+  the `memories` table via cosine similarity, merges them into one (append the
+  lesser row's content as a new sentence; mark the redundant row removed), and
+  returns the number of merges performed. Threshold is `CONSOLIDATE_COSINE`
+  (default 0.7) — tighter than off-line SemDeDup (0.95) on purpose: real-world
+  memory drift means a re-stated decision rarely hits 0.95 against the
+  original, and the cost of a missed merge is unbounded table growth. Empty
+  input, singletons, and all-distinct sets are no-ops.
+- **Pipeline wiring** (`extensions/mega-pipeline.ts`, `extensions/mega-events.ts`,
+  `extensions/mega-runtime.ts`) — `doCompact` fires `consolidateMemories` after
+  a successful compaction, but only when `runtime.memoriesTouchedThisCompaction
+  > 0` (set by `turn_end` whenever `applyMemoryOps` writes rows). This means
+  consolidation runs at most once per compaction and never fires on a
+  compaction window where memory was untouched. Best-effort + non-fatal: a
+  consolidate failure cannot block a compaction, and a successful pass emits
+  a green `∫ consolidated N memory dups` line into the live ticker.
+- **Tests** — `src/memory.test.ts` gains a 3-test block for `consolidateMemories`
+  (pair-matches near-dups, leaves unrelated rows alone, empty/singleton
+  fast-paths return 0).
+
 ## v0.5.0-unreleased — Sprint S20 (memory auto-review)
 
 Auto-review the conversation and persist durable memories to SQLite, then

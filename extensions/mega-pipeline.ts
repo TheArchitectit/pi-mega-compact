@@ -16,6 +16,7 @@ import { recallAndInline, recallAndInlineAsync, formatRecallBlock, type RecallIn
 import { normalizeSessionId } from "../src/store.js";
 import { estimateBlockTokens } from "../src/tokens.js";
 import { touchSession, logDaily } from "../src/store/sqlite.js";
+import { consolidateMemories } from "../src/memory.js";
 import {
   MegaRuntime,
   C,
@@ -77,6 +78,10 @@ function doCompact(
   runtime: MegaRuntime,
 ): RunCompactResult {
   runtime.pulsing = true; // animate the status line while the (sync) pipeline runs
+  // S21.2: reset the per-compaction memory-op counter so the post-compact
+  // consolidate pass only fires when memory rows actually changed during the
+  // compaction window (turn_end → auto-review may have written some).
+  runtime.memoriesTouchedThisCompaction = 0;
   const result = compactSession(
     {
       sessionId: sid,
@@ -146,6 +151,28 @@ function doCompact(
     logDaily(sid, "compact", result.checkpointId, saved, runtime.currentStateDir);
   } catch {
     /* non-fatal: stats bookkeeping only */
+  }
+
+  // S21.2: best-effort consolidation of near-duplicate memories for this repo.
+  // Runs after the per-repo stats touch so `consolidateMemories` can use the
+  // same stateDir. Non-fatal — a failed consolidate never blocks a compaction.
+  // Only runs when new memory ops landed in this pass (otherwise the prior
+  // compaction's consolidate already had its shot — re-running would just
+  // touch every row again with no merges).
+  if (!result.deduped && runtime.memoriesTouchedThisCompaction > 0) {
+    try {
+      const root = resolveRepoRoot(ctx.cwd);
+      void consolidateMemories(runtime.currentStateDir, root).then(
+        (n) => {
+          if (n > 0) runtime.pushTicker(`${C.green}∫${C.reset} consolidated ${n} memory dup${n === 1 ? "" : "s"}`);
+        },
+        () => {
+          /* swallow: consolidate failures must never surface to the user */
+        },
+      );
+    } catch {
+      /* non-fatal */
+    }
   }
 
   // Sentinel marker: a non-LLM bookkeeping entry so subsequent triggers can

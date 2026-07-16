@@ -46,6 +46,7 @@ export interface DedupConfigShape {
   DEDUP_SIM: number; // legacy content-similarity fallback
   MMR_LAMBDA: number; // retrieval diversity
   SEMDEDUP_COSINE: number; // offline SemDeDup pair threshold
+  CONSOLIDATE_COSINE: number; // memory consolidation merge threshold (Sprint 21)
   // Caps / budgets.
   SIMILARITY_BUDGET_MS: number;
   L1_VERIFY_BUDGET_MS: number;
@@ -79,6 +80,7 @@ export function loadDedupConfig(): DedupConfigShape {
     DEDUP_SIM: envNum("MEGACOMPACT_DEDUP_SIM", 0.9),
     MMR_LAMBDA: envNum("MEGACOMPACT_MMR_LAMBDA", 0.5),
     SEMDEDUP_COSINE: envNum("MEGACOMPACT_SEMDEDUP_COSINE", 0.95),
+    CONSOLIDATE_COSINE: envNum("MEGACOMPACT_CONSOLIDATE_COSINE", 0.7),
     SIMILARITY_BUDGET_MS: envNum("MEGACOMPACT_SIMILARITY_BUDGET_MS", 50),
     L1_VERIFY_BUDGET_MS: envNum("MEGACOMPACT_L1_VERIFY_BUDGET_MS", 20),
     L1_CANDIDATE_CAP: envNum("MEGACOMPACT_L1_CANDIDATE_CAP", 100),
