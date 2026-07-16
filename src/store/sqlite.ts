@@ -488,7 +488,12 @@ function initSchema(db: DatabaseSync): void {
       content           TEXT NOT NULL,
       tags              TEXT,                   -- JSON array of strings
       created_at        INTEGER,
-      last_recalled_at  INTEGER
+      last_recalled_at  INTEGER,
+      -- S20 memory-RAG extension (auto-review add/replace/remove ops).
+      category          TEXT,                   -- typed bucket, e.g. decision | fact | preference
+      target            TEXT,                   -- optional subject/scope this memory targets
+      last_referenced   INTEGER,               -- last time memory was referenced by recall (epoch s)
+      source_turn       INTEGER                -- conversation turn that produced this memory
     );
     CREATE INDEX IF NOT EXISTS idx_memories_repo ON memories(repo);
 
@@ -505,6 +510,12 @@ function initSchema(db: DatabaseSync): void {
   // databases created by an older version — otherwise repoStats()/upsert crash
   // with "no such column" and the extension fails to load. Additive only.
   ensureColumn(db, "context_chunks", "original_token_estimate", "INTEGER");
+  // S20 memory-RAG extension: additive columns for auto-review ops. Idempotent —
+  // only alters DBs created by an older version that lack these columns.
+  ensureColumn(db, "memories", "category", "TEXT");
+  ensureColumn(db, "memories", "target", "TEXT");
+  ensureColumn(db, "memories", "last_referenced", "INTEGER");
+  ensureColumn(db, "memories", "source_turn", "INTEGER");
   const v = db.prepare("SELECT value FROM meta WHERE key='schema_version'").get() as
     | { value: string }
     | undefined;
@@ -671,11 +682,15 @@ export interface MemoryRecord {
   tags: string[];
   createdAt: number;
   lastRecalledAt: number | null;
+  category: string | null;
+  target: string | null;
+  lastReferenced: number | null;
+  sourceTurn: number | null;
 }
 
 /** Save a memory to the current repo's store. Returns the new row id. */
 export function addMemory(
-  memory: { kind?: string; content: string; tags?: string[] },
+  memory: { kind?: string; content: string; tags?: string[]; category?: string; target?: string; sourceTurn?: number },
   repo: string | null,
   stateDir: string = getStateDir(),
 ): number {
@@ -683,10 +698,19 @@ export function addMemory(
   const now = Math.floor(Date.now() / 1000);
   const res = db
     .prepare(
-      `INSERT INTO memories(repo, kind, content, tags, created_at, last_recalled_at)
-       VALUES(?, ?, ?, ?, ?, NULL)`,
+      `INSERT INTO memories(repo, kind, content, tags, created_at, last_recalled_at, category, target, source_turn)
+       VALUES(?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
     )
-    .run(repo ?? null, memory.kind ?? "note", memory.content, JSON.stringify(memory.tags ?? []), now);
+    .run(
+      repo ?? null,
+      memory.kind ?? "note",
+      memory.content,
+      JSON.stringify(memory.tags ?? []),
+      now,
+      memory.category ?? null,
+      memory.target ?? null,
+      memory.sourceTurn ?? null,
+    );
   return Number(res.lastInsertRowid);
 }
 
@@ -717,6 +741,58 @@ export function recallMemory(id: number, stateDir: string = getStateDir()): bool
   return res.changes > 0;
 }
 
+/** Mark a memory as referenced (updates last_referenced). Returns true if found. */
+export function referenceMemory(id: number, stateDir: string = getStateDir()): boolean {
+  const db = openStore(stateDir);
+  const now = Math.floor(Date.now() / 1000);
+  const res = db.prepare("UPDATE memories SET last_referenced = ? WHERE id = ?").run(now, id);
+  return res.changes > 0;
+}
+
+/** Replace a memory's mutable fields by id. Returns true if a row was updated. */
+export function replaceMemory(
+  id: number,
+  patch: { kind?: string; content?: string; tags?: string[]; category?: string; target?: string; sourceTurn?: number },
+  stateDir: string = getStateDir(),
+): boolean {
+  const db = openStore(stateDir);
+  const res = db
+    .prepare(
+      `UPDATE memories
+       SET kind = COALESCE(?, kind),
+           content = COALESCE(?, content),
+           tags = COALESCE(?, tags),
+           category = COALESCE(?, category),
+           target = COALESCE(?, target),
+           source_turn = COALESCE(?, source_turn)
+       WHERE id = ?`,
+    )
+    .run(
+      patch.kind ?? null,
+      patch.content ?? null,
+      patch.tags ? JSON.stringify(patch.tags) : null,
+      "category" in patch ? (patch.category ?? null) : null,
+      "target" in patch ? (patch.target ?? null) : null,
+      "sourceTurn" in patch ? (patch.sourceTurn ?? null) : null,
+      id,
+    );
+  return res.changes > 0;
+}
+
+/** Remove a memory by id. Returns true if a row was deleted. */
+export function removeMemory(id: number, stateDir: string = getStateDir()): boolean {
+  const db = openStore(stateDir);
+  const res = db.prepare("DELETE FROM memories WHERE id = ?").run(id);
+  return res.changes > 0;
+}
+
+/** Look up a single memory by id (or undefined). */
+export function getMemory(id: number, stateDir: string = getStateDir()): MemoryRecord | undefined {
+  const db = openStore(stateDir);
+  const row = db.prepare("SELECT * FROM memories WHERE id = ?").get(id);
+  return row ? mapMemoryRow(row) : undefined;
+}
+
 function mapMemoryRow(row: any): MemoryRecord {
   return {
     id: row.id,
@@ -726,6 +802,10 @@ function mapMemoryRow(row: any): MemoryRecord {
     tags: row.tags ? JSON.parse(row.tags) : [],
     createdAt: row.created_at ?? 0,
     lastRecalledAt: row.last_recalled_at ?? null,
+    category: row.category ?? null,
+    target: row.target ?? null,
+    lastReferenced: row.last_referenced ?? null,
+    sourceTurn: row.source_turn ?? null,
   };
 }
 
