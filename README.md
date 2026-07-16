@@ -6,28 +6,39 @@ sessions into a **local SQLite store** and offers **deduped inline recall** — 
 running **locally inside the extension**, with **no remote MCP server** and
 **zero network calls at runtime** (PREVENT-PI-004).
 
-> **Current version:** `v0.6.1` — storage backend is **`node:sqlite`**
+> **Current version:** `v0.6.2` — storage backend is **`node:sqlite`**
 > (`DatabaseSync`, a Node ≥22.13 built-in), replacing the old `better-sqlite3`
 > native addon and the per-session gzipped JSON checkpoint files. **Zero native
 > build step, fully local, zero network at runtime.** Legacy
 > `.checkpoints.json.gz` snapshots are retained as disaster-recovery fallbacks
-> and auto-imported on first run. Cross-repo recall, durable memory, and a
-> localhost dashboard round out the continuity story.
+> and auto-imported on first run. The S24 line ties auto-compact, the tier
+> label, trim depth, and durable-memory review to one **unified pressure
+> signal**, adds a **cross-repo memory-RAG index**, and relieves context
+> **during team runs** (not just at the end).
 
 ---
 
 ## What this is (the 30-second version)
 
-pi's context window is finite. When a session gets long, pi-mega-compact:
+pi's context window is finite. When a session gets long — especially a team run
+with sub-agents — pi-mega-compact keeps it going without overflowing:
 
-1. **Watches** context usage and, past a threshold, **compacts** the older part of
-   the conversation into a short structured summary + key facts ("a checkpoint").
-2. **Stores** each checkpoint in a **local vector database** (SQLite) with an
-   embedding, so similar regions can be found later — and so **duplicate
-   work is never stored twice**.
-3. **Recalls** the right checkpoints automatically when you resume a session or
-   invoke a recall command, re-injecting only what's relevant (deduped against
-   what's already in view).
+1. **Watches one signal.** A single live `pressure = currentTokens / thresholdTokens`
+   drives everything — the tier label, how aggressively the live trim drops
+   context, and how often durable memory is reviewed. As context fills, the whole
+   system reacts together; as it's relieved, it backs off.
+2. **Compacts in two layers.** On every LLM call it returns a **live, compacted
+   view** (the model sees a summary + recent anchor, non-destructively). And it
+   persists a durable **checkpoint** — and, at each agent settle during a team
+   run, fires pi's **native durable trim** so the on-disk transcript is actually
+   truncated (context relieves mid-run, and resume reloads the trimmed transcript
+   instead of a 150k window).
+3. **Stores** each checkpoint in a **local vector database** (SQLite) with an
+   embedding, so similar regions are found later and **duplicate work is never
+   stored twice**.
+4. **Recalls** the right context automatically — same-repo checkpoints on resume,
+   plus **cross-repo memory-RAG**: decisions you saved in one repo are inlined as
+   context when you start a session in another.
 
 Everything lives on **your disk**. No telemetry, no API, no MCP server, no cloud.
 The only optional network surface is a **user-triggered localhost dashboard** you
@@ -35,11 +46,13 @@ open yourself.
 
 ### Why "mega"?
 
-The compaction pipeline is a **Trident** — three deterministic stages that run
-over your conversation before anything is persisted. The checkpoint it produces
-is small (a summary + key decisions + next steps + files touched), so the same
-session that would otherwise overflow its window keeps going on a fraction of the
-tokens.
+The compaction pipeline is a **Trident** — three deterministic stages
+(supersede → collapse → cluster) that run over your conversation before anything
+is persisted. The checkpoint it produces is small (a summary + key decisions +
+next steps + files touched), so the same session that would otherwise overflow
+its window keeps going on a fraction of the tokens. On top of the Trident, a
+single pressure signal orchestrates the live trim, the durable trim, and memory
+review as one coherent system rather than four independent triggers.
 
 ---
 
@@ -52,9 +65,12 @@ Layer 3  Cluster (vectorize)  local vector index → semantic dedup + recall
 Layer 2  Collapse (summarize)  summarizeMessages() heuristic + agent summary on /mega-compact
 Layer 1  Supersede (prune)     drop obsolete file-reads / superseded turns (zero cost)
 ─────────────────────────────────────────────────────────────────────────
-Trigger   context/turn_end → % gate → auto_compact_check → fire
+Trigger   context → token fast-gate → autoCompactCheck → live trim (per call)
+Durable    agent_end (idle + over threshold) → ctx.compact() → session_before_compact
+          supplies the summary; pi truncates the transcript (relieves context)
+Live      context handler returns { messages:[summary, …recent] } — model sees a
+          compacted window every LLM call; the on-disk transcript is untouched
 Marker    insert compact-marker; dedupe so repeated triggers cost ~0 tokens
-Cancel    session_before_compact → { cancel:true } once persisted (no double-compact)
 ```
 
 **One store, three ways to read it back — one dedup engine:**
@@ -168,7 +184,7 @@ building.
 pi-mega-compact uses a dual local backend — **zero network, no native build step**:
 
 - **`node:sqlite`** (`DatabaseSync`, Node ≥22.13 built-in) — the synchronous source of truth for checkpoints, session state, and the dedup index. No dependency, no install script, survives pi's `install-scripts` block.
-- **PGlite + `@electric-sql/pglite-pgvector`** (WASM Postgres + HNSW `vector_cosine_ops`) — an optional, best-effort async vector index for **cross-repo recall** at `~/.pi/mega-compact-vector`. The sync store stays authoritative; the index degrades to the sync per-session scan on any failure.
+- **PGlite + `@electric-sql/pglite-pgvector`** (WASM Postgres + HNSW `vector_cosine_ops`) — an optional, best-effort async vector index for **cross-repo recall** at `~/.pi/mega-compact-vector`. It holds both checkpoint embeddings and durable-memory embeddings, so decisions saved in one repo are findable from another. The sync store stays authoritative; the index degrades to the sync per-session scan on any failure.
 
 Kill-switch: `MEGACOMPACT_PGLITE_DISABLED=1` fully disables the PGlite index (falls back to sync scan). Requires Node ≥22.13 (`engines.node`).
 
@@ -178,7 +194,7 @@ On resume, recall augments from other repos' checkpoints when this repo's store 
 
 ### Memory
 
-pi-mega-compact auto-reviews the conversation every 10 turns and writes durable `decision`/`fact`/`preference` memories to SQLite (local, hallucination-guarded). Relevant memories are injected as RAG context on recall (capped, deduped). Manual: `/mega-memory save|list|forget`.
+pi-mega-compact auto-reviews the conversation every 10 turns (the cadence shortens as pressure climbs) and writes durable `decision`/`fact`/`preference` memories to SQLite (local, hallucination-guarded). Relevant memories are injected as RAG context on recall (capped, deduped). **Cross-repo memory-RAG (S24):** every memory write is mirrored into the PGlite/HNSW index, so when same-repo recall is thin the system augments with the nearest memories from *other* repos (stricter `MEGACOMPACT_CROSSREPO_COSINE` floor, deduped against what's already in view). Manual: `/mega-memory save|list|forget` (or `/m`).
 
 ### Uninstall
 
@@ -352,7 +368,7 @@ The extension entry adapts between the engine and pi's runtime types.
 
 ```bash
 npm run build      # tsc
-npm test           # build + node --test on dist/**/*.test.js (346 tests)
+npm test           # build + node --test on dist/**/*.test.js (353 tests)
 npm run lint       # tsc --noEmit + guardrails-scan
 npm run guardrails # regression_check + guardrails-scan
 ```
