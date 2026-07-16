@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.6.3 (2026-07-16) — hotfix: lazy-load PGlite (no load crash when missing)
+
+- **Bug fix:** `src/store/vectorIndex.ts` + `src/store/memoryIndex.ts` used a
+  static top-level `import` of `@electric-sql/pglite`, crashing the whole
+  extension at load when the package is absent. Switched to a dynamic `import()`
+  inside a new `loadPgLite()`; the type import is kept (`import type`, erased at
+  build). `initVectorIndex`/`initMemoryIndex` now return `undefined` on a missing
+  package and every caller degrades to the sync scan. See
+  `docs/specs/fix-pglite-lazy-import.md`.
+
 ## v0.5.0 (2026-07-16) — compaction continuity + cross-repo recall + memory-RAG
 
 The S16–S23 slice: pi now compacts **and continues** (no more stop-after-

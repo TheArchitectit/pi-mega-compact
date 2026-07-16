@@ -1,5 +1,33 @@
 # Release Notes — pi-mega-compact
 
+## v0.6.3 (2026-07-16)
+
+**Hotfix: extension no longer crashes at load when `@electric-sql/pglite` is
+missing.** The PGlite async index (Slice 2 + S24 memory-RAG) is a redundant,
+additive index over the authoritative `node:sqlite` store. It was imported with a
+**static top-level `import`**, which pi resolves at module-load time — so a
+missing package threw `Cannot find module '@electric-sql/pglite'` and took down
+the *entire* extension (compaction, memory recall, everything), even though the
+index is only best-effort. The package is now **lazily imported** inside
+`loadPgLite()`; when absent, the index logs one warning and degrades to the sync
+scan — the extension loads and the default recall path keeps working.
+
+### Fixed
+- **Load crash on missing `@electric-sql/pglite`** (`src/store/vectorIndex.ts`,
+  `src/store/memoryIndex.ts`). Static value import → dynamic `import()` inside a
+  new `loadPgLite()` helper; the `import type` (erased at compile, no load cost)
+  is kept so types are retained. `initVectorIndex`/`initMemoryIndex` return
+  `undefined` and every caller falls back to the authoritative sync scan.
+- Regression coverage: `src/store/vectorIndex.test.ts` + `memoryIndex.test.ts`
+  (cross-repo recall + disabled/kill-switch) confirm both the working and
+  degraded paths.
+
+### Notes
+- Patch bump (0.6.2 → 0.6.3). Full suite: 353 passing. No schema/config change.
+- If you want the cross-repo async index to actually function on a clean
+  `pi update --extensions`, confirm pglite lands in `node_modules`; this fix only
+  makes a missing package non-fatal.
+
 ## v0.6.2 (2026-07-16)
 
 S24 follow-up: cross-repo memory-RAG index + fix "auto-compact doesn't relieve

@@ -212,6 +212,17 @@
 | Acceptance | 122 | 0 |
 | Rollback | 134 | 0 |
 
+## docs/specs/fix-pglite-lazy-import.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Safety | 9 | 0 |
+| Problem | 18 | 0 |
+| Scope | 40 | 0 |
+| Execution | 47 | 0 |
+| Acceptance | 70 | 0 |
+| Rollback | 84 | 0 |
+
 ## docs/superpowers/CONTINUITY-BRANCH-ROADMAP.md (branch map for v0.5.0)
 
 | Section | Line | Offset |

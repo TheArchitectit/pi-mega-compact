@@ -30,6 +30,7 @@
 | compaction redesign notes | [compaction-redesign.md](compaction-redesign.md) | docs/ |
 | fix plan: zstd load crash + tokens-grow-on-read + RAPTOR promotion (durable trim, Fix A–E) | [specs/fix-durable-trim.md](specs/fix-durable-trim.md) | docs/ |
 | slice 2: PGlite/pgvector async HNSW index (cross-repo recall) | [specs/slice2-pglite-vector-index.md](specs/slice2-pglite-vector-index.md) | docs/ |
+| **fix: lazy-load PGlite so a missing package degrades instead of crashing extension load (v0.6.3)** | [specs/fix-pglite-lazy-import.md](specs/fix-pglite-lazy-import.md) | docs/ |
 | **S24: unified pressure signal — auto-compact + tier + memory tied to one `pressure` (removes `/mega-tier`, memory storage hardening)** | [specs/s24-unified-pressure.md](specs/s24-unified-pressure.md) | docs/ |
 | **v0.5.0 branch roadmap: continuity + cross-repo + memory-RAG (S16–S23)** | [superpowers/CONTINUITY-BRANCH-ROADMAP.md](superpowers/CONTINUITY-BRANCH-ROADMAP.md) | docs/ |
 | v0.5.0 design spec (compaction continuity + cross-repo + memory-RAG) | [superpowers/specs/2026-07-15-compaction-continuity-cross-repo-memory-design.md](superpowers/specs/2026-07-15-compaction-continuity-cross-repo-memory-design.md) | docs/ |

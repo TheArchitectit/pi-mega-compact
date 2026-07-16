@@ -21,10 +21,12 @@ import { join } from "node:path";
 import { mkdirSync, rmSync, existsSync } from "node:fs";
 
 // PGlite + pgvector are script-free WASM (no native build) → survive pi's
-// install-script block. Imported lazily so a missing/broken package degrades
-// gracefully instead of crashing module load.
-import { PGlite, type PGlite as PGliteInstance } from "@electric-sql/pglite";
-import { vector } from "@electric-sql/pglite-pgvector";
+// install-script block. The VALUE import is LAZY (dynamic import inside
+// openPgLite) so a missing/broken package degrades to the sync scan instead of
+// crashing module load. A static top-level `import { PGlite }` would throw
+// "Cannot find module" at pi startup and take down the whole extension. The
+// `import type` below is erased at compile time and emits NO runtime load.
+import type { PGlite as PGliteInstance, Extension } from "@electric-sql/pglite";
 
 /** Vector dimension produced by the default TrigramEmbedder (src/embedder.ts). */
 export const EMBEDDING_DIM = 512;
@@ -42,6 +44,12 @@ let db: PGliteInstance | undefined;
 let initPromise: Promise<PGliteInstance | undefined> | undefined;
 let disabled = false;
 let warned = false;
+/** Lazily-loaded PGlite module + pgvector extension (see loadPgLite). */
+let pgliteMod: {
+  PGlite: typeof import("@electric-sql/pglite")["PGlite"];
+  vector: Extension;
+} | undefined;
+let pgliteLoadFailed = false;
 
 function indexDir(): string {
   const override = process.env.MEGACOMPACT_VECTOR_INDEX_DIR;
@@ -87,6 +95,30 @@ export function initVectorIndex(): Promise<PGliteInstance | undefined> {
 }
 
 /**
+ * Lazily load the PGlite module + pgvector extension via dynamic import. Caches
+ * success and permanent failure. Returns undefined (once, then forever) when the
+ * package is missing/broken so callers fall back to the sync scan. Never throws.
+ */
+async function loadPgLite(): Promise<
+  { PGlite: typeof import("@electric-sql/pglite")["PGlite"]; vector: Extension } | undefined
+> {
+  if (pgliteMod) return pgliteMod;
+  if (pgliteLoadFailed) return undefined;
+  try {
+    const [pglitePkg, pgvectorPkg] = await Promise.all([
+      import("@electric-sql/pglite"),
+      import("@electric-sql/pglite-pgvector"),
+    ]);
+    pgliteMod = { PGlite: pglitePkg.PGlite, vector: pgvectorPkg.vector };
+    return pgliteMod;
+  } catch (err) {
+    pgliteLoadFailed = true;
+    logWarn(`package unavailable: ${err instanceof Error ? err.message : String(err)}`);
+    return undefined;
+  }
+}
+
+/**
  * Open + schema-init PGlite. When `retryOnCorrupt` is true, a WASM-level
  * abort (typically from a corrupted/torn data dir) triggers a delete + one
  * retry — the dir is rebuilt from scratch by PGlite's initdb.
@@ -95,11 +127,13 @@ async function openPgLite(
   retryOnCorrupt: boolean,
 ): Promise<PGliteInstance | undefined> {
   try {
+    const mod = await loadPgLite();
+    if (!mod) return undefined;
     const dir = indexDir();
     mkdirSync(dir, { recursive: true });
-    const pg = await new PGlite({
+    const pg = await new mod.PGlite({
       dataDir: dir,
-      extensions: { vector },
+      extensions: { vector: mod.vector },
     });
     await pg.exec("CREATE EXTENSION IF NOT EXISTS vector;");
     await pg.exec(`
