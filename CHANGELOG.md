@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.5.0-unreleased — Sprint S20 (memory auto-review)
+
+Auto-review the conversation and persist durable memories to SQLite, then
+recall them as RAG context. Local, hallucination-guarded, no LLM by default.
+
+### Added
+- **`reviewConversation()`** (`src/memory.ts`) — extractive, hallucination-guarded
+  review of recent user requests. Detects decision-style statements (via
+  `DECISION_PATTERNS`), emits `add`/`replace`/`remove` `MemoryOp`, and grounds
+  every op in an actual message so no fabricated memory is stored. No LLM.
+- **`applyMemoryOps()`** (`src/memoryOps.ts`) — applies add/replace/remove ops to
+  the `memories` table. Replaces match by existing content, removes by content,
+  adds are idempotent. Thin layer over `src/store/sqlite.ts` helpers (no raw SQL).
+- **Auto-review trigger** — `extensions/mega-events.ts` `turn_end` fires
+  `reviewConversation` + `applyMemoryOps` every `MEGACOMPACT_MEMORY_REVIEW_INTERVAL`
+  turns (default 10) when `MEGACOMPACT_MEMORY_AUTO_REVIEW` is on (default true).
+  Best-effort, non-fatal.
+- `memories` table gains `category` / `target` / `last_referenced` / `source_turn`
+  columns (S20.1, additive + idempotent `ensureColumn` migration).
+
+### Tests
+- `src/memory.test.ts` (3): add on decision, replace on contradiction,
+  none on smalltalk. `src/memoryOps.test.ts`: add / idempotent-add / replace /
+  remove.
+
 ## v0.5.0-unreleased — Sprint S19 (multi-repo dashboard)
 
 Surface every repo in one dashboard. Reads the machine-wide `repo_registry`

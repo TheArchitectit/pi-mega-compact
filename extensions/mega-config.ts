@@ -56,6 +56,11 @@ export interface MegaConfig {
    *  tighter than same-repo so only genuinely-relevant cross-repo context is
    *  injected. */
   crossRepoCosine: number;
+  /** Memory-RAG auto-review enabled (S20). Every memoryReviewInterval turns the
+   *  conversation is auto-reviewed into durable add/replace/remove memories. */
+  memoryAutoReview: boolean;
+  /** Turn cadence for the auto-review scan (S20). Default 10. */
+  memoryReviewInterval: number;
   /** Token ceiling for the re-injected recall block (Fix C). Recall stops
    *  adding checkpoints once the block would exceed this — bounds read-path
    *  token cost so it can never net-inflate the window. */
@@ -119,6 +124,8 @@ export function loadConfig(): MegaConfig {
     legacyDurableTrim: envBool("MEGACOMPACT_LEGACY_DURABLE_TRIM", false),
     crossRepoEnabled: envBool("MEGACOMPACT_CROSSREPO_ENABLED", true),
     crossRepoCosine: Number(process.env.MEGACOMPACT_CROSSREPO_COSINE ?? "0.90"),
+    memoryAutoReview: envBool("MEGACOMPACT_MEMORY_AUTO_REVIEW", true),
+    memoryReviewInterval: envFlag("MEGACOMPACT_MEMORY_REVIEW_INTERVAL", 10),
     recallMaxTokens: envFlag("MEGACOMPACT_RECALL_MAX_TOKENS", 1500),
     windowDedupe: envBool("MEGACOMPACT_WINDOW_DEDUPE", true),
     debug: envBool("MEGACOMPACT_DEBUG", false),

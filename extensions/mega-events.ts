@@ -140,6 +140,22 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
   pi.on("turn_end", async (event, ctx) => {
     runtime.dashboard.event("turn_end", { turnIndex: event.turnIndex });
     runtime.snapshot(ctx);
+
+    // S20: auto-review the conversation every N turns and persist durable
+    // memories. Best-effort + non-fatal: a review failure must never break the
+    // agent loop. Debounced by memoryReviewInterval turns.
+    if (config.memoryAutoReview && runtime.currentTurn > 0 && runtime.currentTurn % config.memoryReviewInterval === 0) {
+      try {
+        const { reviewConversation } = await import("../src/memory.js");
+        const { applyMemoryOps } = await import("../src/memoryOps.js");
+        const entries = ctx.sessionManager.getEntries();
+        const view = runtime.engineView(entries.flatMap((e: any) => (e.message ? [e.message] : [])));
+        const ops = reviewConversation(view, []);
+        if (ops.length) await applyMemoryOps(ops, runtime.currentStateDir);
+      } catch {
+        /* non-fatal — auto-review must not break the turn loop */
+      }
+    }
   });
 
   // ---- Auto-trigger: live trim (compact and continue) + native durable ----
