@@ -178,8 +178,9 @@ pi-mega-compact auto-reviews the conversation every 10 turns and writes durable 
 ### Verify
 
 ```bash
-npm test          # all unit/integration tests pass (278 as of v0.4.0)
+npm test          # all unit/integration tests pass (346 as of v0.5.0)
 npm run lint      # tsc --noEmit + guardrails scan clean
+python3 scripts/regression_check.py --all   # spec/plan regression gate
 ```
 
 ### Uninstall
@@ -283,6 +284,25 @@ collapse (safe partial-rollout / auto-degrade state).
 See `docs/DEDUP_RUNBOOK.md` for incident response (SEV tiers, first-15-min
 checklist, MARK_ONLY degrade) and `docs/RETENTION_POLICY.md` for TTL / soft-delete
 / VACUUM.
+
+#### Continuity + memory knobs (v0.5.0)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MEGACOMPACT_LEGACY_DURABLE_TRIM` | `false` | Restore the v0.4.28 auto-trigger (`ctx.compact()` stops the agent). One-release rollback; default uses live context-event trim + pi native auto-compaction (compact-and-continue). |
+| `MEGACOMPACT_CROSSREPO_ENABLED` | `true` | Cross-repo recall on resume + `/mega-recall --cross-repo` (HNSW index over every repo). |
+| `MEGACOMPACT_CROSSREPO_COSINE` | `0.90` | Stricter cosine floor for cross-repo hits (vs `0.85` same-repo). |
+| `MEGACOMPACT_MEMORY_AUTO_REVIEW` | `true` | Auto-review the conversation every `MEGACOMPACT_MEMORY_REVIEW_INTERVAL` turns → durable memories. |
+| `MEGACOMPACT_MEMORY_REVIEW_INTERVAL` | `10` | Turns between auto-review cycles. |
+| `MEGACOMPACT_PGLITE_DISABLED` | `1` | Kill-switch for the PGlite/HNSW cross-repo index (falls back to sync per-session scan). |
+
+#### Dashboard (v0.5.0)
+
+The localhost-only dashboard adds a **Summary** + **All-repos** view over the
+machine-wide `repo_registry`, plus a **cross-repo drift** report (`GET /api/drift`)
+flagging stale repos (>30d idle), compaction lag (an active repo >24h behind the
+most-recently-active repo's last compaction), and recent model churn (within 7d).
+All read-only — the report never writes the index.
 
 ---
 

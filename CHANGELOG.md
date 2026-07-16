@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.5.0-unreleased — Cross-repo drift detection (R4)
+
+A read-only health report over the machine-wide `repo_registry`, surfaced on the
+dashboard, so multi-repo drift is visible at a glance.
+
+### Added
+- **`detectCrossRepoDrift()`** (`src/driftDetection.ts`) — classifies each
+  registered repo as `ok`, `stale` (>30d idle, info), `compaction_lag` (active
+  but >24h behind the most-recently-active repo's last compaction, warn), or
+  `model_churn` (model changed within 7d, info). Returns `{ generatedAt, totals,
+  repos }`. Read-only — never writes the registry.
+- **`GET /api/drift`** (`extensions/dashboard-server.ts`) — serves the drift
+  report from the global index. Lazily requires `driftDetection` via
+  `createRequire` so the sync HTTP handler stays sync.
+
+### Tests
+- `src/driftDetection.test.ts` (5): empty registry, stale flag, compaction-lag
+  flag, all-ok, and recent model churn.
+
 ## v0.5.0-unreleased — Sprint S21 (memory recall inclusion + auto-consolidate)
 
 ### Added
@@ -104,6 +123,35 @@ repos' checkpoints, tokens saved, compressed-originals, and active model.
   the global index, launches the real server subprocess on a private port, and
   asserts `/api/index` returns both repos with the correct aggregate summary
   (`totalCheckpoints` = 3 + 5, `totalTokensSaved` = 1000 + 2000).
+
+## v0.5.0-unreleased — Sprint S18 (cross-repo dedup markers + tracking)
+
+Machine-wide injected-set so a foreign checkpoint injected in repo A is never
+re-injected by repo B; cross-repo injections tracked in `events.log` + `/mega-status`.
+
+### Added
+- **Machine-wide injected-set** (`markInjectedGlobal` / `wasInjectedGlobal`
+  in `src/store/sqlite.ts`, backed by the `injected_global` table in
+  `~/.mega-compact-index/index.sqlite`). A checkpoint injected in any repo is
+  seen as injected by every other repo's recall, so cross-repo context is
+  never duplicated across the machine. Failure → degrades to the per-session
+  injected-set (current behavior), non-fatal.
+- **Cross-repo dedup in recall** (`recallAndInlineAsync` in `src/recall.ts`) —
+  after the per-session `wasInjected` check, also skips a hit already in the
+  machine-wide set when `globalIndexDir` is configured; `markInjected` is
+  accompanied by `markInjectedGlobal` on a foreign (`repoId`-bearing) hit.
+- **`/mega-status` cross-repo stats** (`extensions/mega-commands.ts`) — counts
+  recorded `recall-crossrepo` injections and the number of repos indexed from the
+  global registry, shown in the status line. Best-effort, non-fatal.
+- **`/api/repos` + `/api/summary` endpoints** (`extensions/dashboard-server.ts`)
+  over the machine-wide registry — Summary carries `repoCount`,
+  `totalTokensSaved`, `totalCheckpoints`, and `activeRepos` (repos seen in the
+  last 24h); All-repos lists each registered repo. `/api/repos?active=Nh`
+  filters to recently-active repos.
+
+### Tests
+- `dashboard-server.test.ts` (S19/S22): `/api/repos` honors `?active=Nh`
+  and `/api/summary` reports the 24h `activeRepos` count from seeded fixtures.
 
 ## v0.5.0-unreleased — Sprint S17 (cross-repo recall)
 

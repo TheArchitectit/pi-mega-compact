@@ -74,6 +74,8 @@
 | durable memory RAG (auto-review, recall inclusion, dedup, consolidation) | [README.md#memory-v050](../README.md#memory-v050) + [src/memory.ts](../src/memory.ts) + [src/memoryRecall.ts](../src/memoryRecall.ts) + [src/memoryOps.ts](../src/memoryOps.ts) | repo root + src/ |
 | tier `-memory` flag on `/mega-recall` + recall dedup logic | [src/recall.ts](../src/recall.ts) + [extensions/mega-commands.ts](../extensions/mega-commands.ts) | src/ + extensions/ |
 | memory pipeline trigger (`turn_end` + `doCompact` consolidation gate) | [extensions/mega-events.ts](../extensions/mega-events.ts) + [extensions/mega-pipeline.ts](../extensions/mega-pipeline.ts) | extensions/ |
+| cross-repo drift detection (stale / compaction-lag / model-churn) | [src/driftDetection.ts](../src/driftDetection.ts) + `GET /api/drift` in [extensions/dashboard-server.ts](../extensions/dashboard-server.ts) | src/ + extensions/ |
+| machine-wide injected-set (dedup cross-repo) + `/api/repos` + `/api/summary` | [src/store/sqlite.ts](../src/store/sqlite.ts) (`markInjectedGlobal`/`wasInjectedGlobal`) + [extensions/dashboard-server.ts](../extensions/dashboard-server.ts) | src/ + extensions/ |
 
 ---
 

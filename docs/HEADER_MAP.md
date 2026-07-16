@@ -254,3 +254,19 @@
 | Sprint S22 — Slice 3 Docs Close-Out | S22 | 0 |
 | Sprint S23 — Release (tag v0.5.0) | S23 | 0 |
 | Self-Review | end | 0 |
+
+---
+
+## src/ (v0.5.0 source index)
+
+| File | Purpose (sprint) |
+|------|-------------------|
+| `src/memory.ts` | Auto-review (`reviewConversation`) + consolidation (`consolidateMemories`) for the durable `memories` table (S20/S21). |
+| `src/memoryOps.ts` | Applies `reviewConversation` `MemoryOp`s to the `memories` table — thin layer over `src/store/sqlite.ts` helpers (S20.3). |
+| `src/memoryRecall.ts` | Semantic recall over `memories` with cosine + category/recency boosting; marks hits `last_referenced` (S21.1). |
+| `src/recall.ts` | Unified recall/inline layer — checkpoint + memory merge, source-repo labels, cross-repo dedup against the machine-wide injected-set (S17/S21). |
+| `src/driftDetection.ts` | Cross-repo drift report over `repo_registry` — stale / compaction-lag / model-churn signals (R4). Read-only. |
+| `src/store/sqlite.ts` | Source-of-truth `node:sqlite` store; also hosts `markInjectedGlobal` / `wasInjectedGlobal` / `countInjectedGlobal` (the S18 machine-wide injected-set). |
+| `extensions/dashboard-server.ts` | Multi-repo dashboard HTTP server; `/api/index`, `/api/repos`, `/api/summary`, `/api/drift` (S19/R4). |
+| `extensions/mega-events.ts` | Event wiring: live context-trim (S16), resume cross-repo (S17), memory auto-review trigger (S20). |
+| `extensions/mega-pipeline.ts` | `doRecallAsync`, `doCompact` → `consolidateMemories` gate (S17/S21). |
