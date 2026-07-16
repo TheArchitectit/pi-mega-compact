@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { VectorStore } from "./vectorStore.js";
 import { compactSession } from "./engine.js";
-import { recallAndInline, formatRecallBlock } from "./recall.js";
+import { recallAndInline, recallAndInlineAsync, formatRecallBlock } from "./recall.js";
+import { markInjectedGlobal, wasInjectedGlobal, closeIndexStore } from "./store/sqlite.js";
 import type { EngineMessage } from "./types.js";
 
 const baseTmp = mkdtempSync(join(tmpdir(), "mc-recall-"));
@@ -116,6 +117,61 @@ test("Fix C: inline dedupe drops a hit already resident in the live window", () 
     rDedup.toInject.length < rNoDedup.toInject.length,
     "inline dedupe dropped a resident hit",
   );
+});
+
+test("S18: global injected-set skips a foreign checkpoint already injected machine-wide", async () => {
+  const indexDir = mkdtempSync(join(tmpdir(), "mc-gi-"));
+  try {
+    const sess = "sess_cross";
+    // A foreign checkpoint already marked injected globally (in this session).
+    markInjectedGlobal("chkpt_foreign", "/repo/other", sess, indexDir);
+    assert.equal(wasInjectedGlobal("chkpt_foreign", sess, indexDir), true);
+    // searchAsync returns the foreign hit; recallAndInlineAsync must skip it
+    // (globally injected) → toInject is empty.
+    const mockStore = {
+      searchAsync: async () => [{
+        checkpoint: { checkpointId: "chkpt_foreign", summary: "foreign work", filesModified: [], dedupStatus: "active" },
+        score: 0.92,
+        repoId: "/repo/other",
+      }],
+      wasInjected: () => false,
+      markInjected: () => {},
+    } as any;
+    const r = await recallAndInlineAsync(
+      { sessionId: sess, query: "foreign", limit: 3, source: "command", crossRepo: true, globalIndexDir: indexDir },
+      mockStore,
+    );
+    assert.equal(r.toInject.length, 0, "globally-injected foreign checkpoint skipped");
+  } finally {
+    closeIndexStore();
+    rmSync(indexDir, { recursive: true, force: true });
+  }
+});
+
+test("S18: a fresh foreign checkpoint is injected AND recorded globally", async () => {
+  const indexDir = mkdtempSync(join(tmpdir(), "mc-gi2-"));
+  try {
+    const sess = "sess_fresh";
+    assert.equal(wasInjectedGlobal("chkpt_new", sess, indexDir), false);
+    const mockStore = {
+      searchAsync: async () => [{
+        checkpoint: { checkpointId: "chkpt_new", summary: "brand new foreign work", filesModified: [], dedupStatus: "active" },
+        score: 0.93,
+        repoId: "/repo/alpha",
+      }],
+      wasInjected: () => false,
+      markInjected: () => {},
+    } as any;
+    const r = await recallAndInlineAsync(
+      { sessionId: sess, query: "foreign", limit: 3, source: "command", crossRepo: true, globalIndexDir: indexDir },
+      mockStore,
+    );
+    assert.equal(r.toInject.length, 1, "fresh foreign checkpoint injected");
+    assert.equal(wasInjectedGlobal("chkpt_new", sess, indexDir), true, "recorded machine-wide");
+  } finally {
+    closeIndexStore();
+    rmSync(indexDir, { recursive: true, force: true });
+  }
 });
 
 test("cleanup", () => {

@@ -9,7 +9,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
 import { normalizeSessionId } from "../src/store.js";
-import { listCheckpoints, latestModelSnapshot } from "../src/store/sqlite.js";
+import { listCheckpoints, latestModelSnapshot, countInjectedGlobal, listRepoRegistry } from "../src/store/sqlite.js";
 import { decompressSmart } from "../src/store/compression.js";
 import { loadMetrics, fpRate, p95 } from "../src/monitoring.js";
 import { MegaRuntime, C, recentUserQuery } from "./mega-runtime.js";
@@ -116,6 +116,15 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
       const p95L2 = p95(m.latency.L2 ?? []);
       const relPct = (st.dedupHitRate * 100).toFixed(0);
       const qualityStr = `recall ${relPct}% relevant · FP ${(fp * 100).toFixed(1)}% · L2 p95 ${p95L2.toFixed(0)}ms`;
+      // S18: cross-repo stats from the machine-wide index (best-effort; the
+      // index dir may be unset → 0/empty, never throws).
+      let crossRepoInjections = 0;
+      let repoCount = 0;
+      try {
+        crossRepoInjections = countInjectedGlobal(process.env.MEGACOMPACT_INDEX_DIR);
+        repoCount = listRepoRegistry(process.env.MEGACOMPACT_INDEX_DIR).length;
+      } catch { /* non-fatal */ }
+      const crossRepoStr = `${crossRepoInjections} cross-repo injections recorded · ${repoCount} repos indexed`;
       ctx.ui.notify(
         `[mega-compact] pct=${pct} tokens=${tokens} tier=${config.tier} fastGate=${config.fastGatePct}% ` +
           `threshold=${config.thresholdTokens} auto=${config.auto} autoInline=${config.autoInline}\n` +
@@ -131,6 +140,7 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
           `[mega-compact] 💰 ${costStr}\n` +
           `[mega-compact] 🤖 model: ${modelStr}\n` +
           `[mega-compact] 🎯 ${qualityStr}\n` +
+          `[mega-compact] 🌐 ${crossRepoStr}\n` +
           `[mega-compact] stateDir=${runtime.currentStateDir}`,
       );
     },

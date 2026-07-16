@@ -403,6 +403,7 @@ export async function doRecallAsync(
         sessionId: sid, query, limit: config.autoInlineK, source, skipInjected: true,
         recallMaxTokens: config.recallMaxTokens, windowDedupe: config.windowDedupe,
         liveWindow, dedupSim: config.crossRepoCosine, crossRepo: true,
+        globalIndexDir: process.env.MEGACOMPACT_INDEX_DIR,
       },
       runtime.store,
     );

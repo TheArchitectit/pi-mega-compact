@@ -38,6 +38,10 @@ export interface RecallInjectOptions {
   liveWindow?: string[];
   /** Similarity threshold for inline dedupe (defaults to 0.9). */
   dedupSim?: number;
+  /** S18: index dir of the machine-wide injected-set. When set on a cross-repo
+   *  recall, a foreign checkpoint already injected (in any session) is skipped
+   *  and a fresh injection is recorded globally. */
+  globalIndexDir?: string;
 }
 
 export interface RecallInjectResult {
@@ -184,6 +188,17 @@ export async function recallAndInlineAsync(
 
   for (const h of hits) {
     if (skip && store.wasInjected(opts.sessionId, h.checkpoint.checkpointId)) continue;
+    // S18: machine-wide injected-set — a foreign checkpoint already injected
+    // (in any session) is never re-injected. Only applies to cross-repo hits
+    // (same-repo hits have no repoId and are handled by the per-session set).
+    if (opts.globalIndexDir && h.repoId) {
+      try {
+        const { wasInjectedGlobal } = await import("./store/sqlite.js");
+        if (wasInjectedGlobal(h.checkpoint.checkpointId, opts.sessionId, opts.globalIndexDir)) continue;
+      } catch {
+        /* non-fatal: degrade to per-session injected-set only */
+      }
+    }
     if (doWindowDedupe && liveEmbeddings.length > 0) {
       const hitVec = defaultEmbedder().embed(h.checkpoint.summary);
       if (liveEmbeddings.some((v) => cosineSimilarity(v, hitVec) >= dedupSim)) continue;
@@ -195,6 +210,16 @@ export async function recallAndInlineAsync(
     toInject.push(h);
     blockTokens += partTokens;
     store.markInjected(opts.sessionId, h.checkpoint.checkpointId);
+    // S18: record the cross-repo injection machine-wide so it's not re-injected
+    // by a later recall (same or different session).
+    if (opts.globalIndexDir && h.repoId) {
+      try {
+        const { markInjectedGlobal } = await import("./store/sqlite.js");
+        markInjectedGlobal(h.checkpoint.checkpointId, h.repoId, opts.sessionId, opts.globalIndexDir);
+      } catch {
+        /* non-fatal */
+      }
+    }
   }
 
   const block = parts.join("\n");

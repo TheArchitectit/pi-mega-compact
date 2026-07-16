@@ -121,6 +121,19 @@ export function openIndexStore(indexDir: string = getIndexDir()): DatabaseSync {
       model_captured_at         INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_registry_last_seen ON repo_registry(last_seen DESC);
+    -- S18: machine-wide injected-set. A foreign checkpoint injected in repo A is
+    -- recorded here so repo B's recall never re-injects it. Keyed by checkpoint
+    -- + session (a checkpoint may be injected once per session); repo_id is the
+    -- source repo (the foreign repo's stateDir) for tracking/source labels.
+    -- PRAMETERIZED queries (PREVENT-002); local node:sqlite (PREVENT-PI-004).
+    CREATE TABLE IF NOT EXISTS injected_global (
+      checkpoint_id TEXT NOT NULL,
+      repo_id       TEXT NOT NULL,
+      session_id    TEXT NOT NULL,
+      injected_at   INTEGER NOT NULL,
+      PRIMARY KEY (checkpoint_id, session_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_injected_global_cid ON injected_global(checkpoint_id);
   `);
   indexCache = iddb;
   indexCacheDir = indexDir;
@@ -279,6 +292,51 @@ export function closeIndexStore(): void {
     indexCache = undefined;
     indexCacheDir = undefined;
   }
+}
+
+// ---------------------------------------------------------------------------
+// S18: machine-wide injected-set (cross-repo dedup markers)
+//
+// A foreign checkpoint injected in repo A is recorded here so repo B's recall
+// never re-injects it (a stronger, machine-wide version of the per-session
+// injected-set in the local store). Keyed by (checkpoint_id, session_id); the
+// session_id here is the RECEIVING session, so the same foreign checkpoint can
+// be injected into different sessions but never twice into the same one.
+// PRAMETERIZED queries (PREVENT-002); local node:sqlite + WAL (PREVENT-PI-004),
+// multi-process safe.
+// ---------------------------------------------------------------------------
+
+/** Record that a (foreign) checkpoint was injected into `sessionId`. Idempotent. */
+export function markInjectedGlobal(
+  checkpointId: string,
+  repoId: string,
+  sessionId: string,
+  indexDir: string = getIndexDir(),
+): void {
+  const db = openIndexStore(indexDir);
+  db.prepare(
+    "INSERT OR IGNORE INTO injected_global (checkpoint_id, repo_id, session_id, injected_at) VALUES ($cid, $rid, $sid, $ts)",
+  ).run({ $cid: checkpointId, $rid: repoId, $sid: sessionId, $ts: Date.now() });
+}
+
+/** True when a checkpoint was already injected into `sessionId` (machine-wide). */
+export function wasInjectedGlobal(
+  checkpointId: string,
+  sessionId: string,
+  indexDir: string = getIndexDir(),
+): boolean {
+  const db = openIndexStore(indexDir);
+  const row = db.prepare(
+    "SELECT 1 FROM injected_global WHERE checkpoint_id = $cid AND session_id = $sid LIMIT 1",
+  ).get({ $cid: checkpointId, $sid: sessionId }) as { "1": number } | undefined;
+  return row !== undefined;
+}
+
+/** Count of cross-repo injections recorded (for /mega-status stats). */
+export function countInjectedGlobal(indexDir: string = getIndexDir()): number {
+  const db = openIndexStore(indexDir);
+  const row = db.prepare("SELECT COUNT(*) AS n FROM injected_global").get() as { n: number } | undefined;
+  return row?.n ?? 0;
 }
 
 function initSchema(db: DatabaseSync): void {
