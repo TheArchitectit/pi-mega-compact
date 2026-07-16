@@ -42,7 +42,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "tsc --noEmit && node scripts/guardrails-scan.mjs",
-    "test": "npm run build && node --test --test-timeout=180000 \"dist/src/**/*.test.js\" \"dist/extensions/**/*.test.js\"",
+    "test": "npm run build && node scripts/run-tests.mjs",
     "guardrails": "python3 scripts/regression_check.py --all || node scripts/guardrails-scan.mjs",
     "precommit": "bash .claude/hooks/pre-commit.sh",
     "prepublishOnly": "npm run build",

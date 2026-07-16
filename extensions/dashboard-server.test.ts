@@ -125,6 +125,61 @@ describe("port.pid file", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Multi-repo dashboard (S19 / Phase 5b) — launch the real server subprocess,
+// seed the machine-wide repo_registry, and assert /api/index returns every repo
+// plus the aggregate summary the Summary + All-repos tabs render.
+// ---------------------------------------------------------------------------
+
+describe("multi-repo /api/index (S19)", () => {
+  test("lists all repos from the global index with an aggregate summary", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "dash-index-"));
+    const indexDir = mkdtempSync(join(tmpdir(), "index-"));
+    // The server reads MEGACOMPACT_INDEX_DIR for the machine-wide registry.
+    process.env.MEGACOMPACT_INDEX_DIR = indexDir;
+    process.env.MEGACOMPACT_DASHBOARD_PORT = "19321"; // private base, non-colliding
+
+    const { upsertRepoRegistry } = await import("../src/store/sqlite.js");
+    upsertRepoRegistry(
+      { repoRoot: "/home/u/repoA", displayName: "repoA", stateDir: dir, checkpointCount: 3, tokensSaved: 1000, compressedOriginalBytes: 0 },
+      indexDir,
+    );
+    upsertRepoRegistry(
+      { repoRoot: "/home/u/repoB", displayName: "repoB", stateDir: dir, checkpointCount: 5, tokensSaved: 2000, compressedOriginalBytes: 0 },
+      indexDir,
+    );
+
+    const child = spawn(process.execPath, [SERVER_ENTRY, dir], { stdio: "ignore" });
+    try {
+      await waitFor(async () => {
+        try {
+          const raw = JSON.parse(readFileSync(join(dir, "port.pid"), "utf-8"));
+          const res = await fetch(`http://localhost:${raw.port}/api/version`);
+          return res.ok;
+        } catch {
+          return false;
+        }
+      });
+      const raw = JSON.parse(readFileSync(join(dir, "port.pid"), "utf-8"));
+      const idx = (await fetch(`http://localhost:${raw.port}/api/index`).then((r) => r.json())) as {
+        summary: { totalRepos: number; totalCheckpoints: number; totalTokensSaved: number };
+        repos: { repoRoot: string; displayName: string; checkpointCount: number; tokensSaved: number }[];
+      };
+      const names = idx.repos.map((r) => r.displayName).sort();
+      assert.deepEqual(names, ["repoA", "repoB"], "both repos from the global index");
+      assert.equal(idx.summary.totalRepos, 2, "repo count");
+      assert.equal(idx.summary.totalCheckpoints, 8, "3 + 5 checkpoints");
+      assert.equal(idx.summary.totalTokensSaved, 3000, "1000 + 2000 tokens saved");
+    } finally {
+      child.kill("SIGTERM");
+      delete process.env.MEGACOMPACT_INDEX_DIR;
+      delete process.env.MEGACOMPACT_DASHBOARD_PORT;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(indexDir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Lifecycle integration — launch the compiled server as a real subprocess
 // (the same way the /dashboard command spawns it) and assert the two failure
 // modes that historically produced a silent "failed to start":

@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.5.0-unreleased — Sprint S19 (multi-repo dashboard)
+
+Surface every repo in one dashboard. Reads the machine-wide `repo_registry`
+table in `index.sqlite` (the single write path the extension upserts on
+repo-switch) as a read-only, single-shot connection, so one server shows all
+repos' checkpoints, tokens saved, compressed-originals, and active model.
+
+### Added
+- **`/api/index`** (Phase 5b) — returns `{ updatedAt, summary, repos }` from the
+  global registry: `summary` carries `totalRepos`, `totalCheckpoints`,
+  `totalTokensSaved`, `totalCompressedOriginalBytes`; `repos` is the per-repo
+  rows (display name, model, checkpoints, tokens saved, retained bytes, last
+  compacted). Read-only; opens its own SQLite connection per request so a
+  concurrent writer's WAL never blocks the request.
+- **Summary + All-repos tabs** in the dashboard SPA, both fed by `/api/index`
+  via `fetch` (5s poll). The Summary tab shows the aggregate cards; the All-repos
+  tab shows the full registry table (click a row → per-repo detail modal, same
+  source as the in-current table).
+- **Defensive display hygiene** — transient `/tmp`/`/var/folders` test paths are
+  dropped from the registry view, and duplicate display names collapse to the
+  most-recently-seen row, keeping the All-repos list readable.
+
+### Changed
+- `bindRepo()` in `extensions/mega-runtime.ts` already upserts the registry via
+  `upsertRepoRegistry` on repo-switch (S19.2 wiring), so the dashboard populates
+  without a separate write path.
+
+### Tests
+- New `dashboard-server.test.ts` integration test (S19): seeds two repos into
+  the global index, launches the real server subprocess on a private port, and
+  asserts `/api/index` returns both repos with the correct aggregate summary
+  (`totalCheckpoints` = 3 + 5, `totalTokensSaved` = 1000 + 2000).
+
 ## v0.5.0-unreleased — Sprint S17 (cross-repo recall)
 
 Wire the built-but-unused PGlite HNSW cross-repo index into the live recall path.

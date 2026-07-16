@@ -18,6 +18,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
+import { closeVectorIndex } from "../src/store/vectorIndex.js";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 
 const require = createRequire(import.meta.url);
@@ -571,6 +572,10 @@ test("events.log receives compaction events", async () => {
   }
 });
 
-test("cleanup", () => {
+test("cleanup", async () => {
+  // Terminate the global PGlite cross-repo index (WASM worker thread) so the
+  // test process can exit. Without this, node --test never returns even though
+  // every test passed — the leaked worker keeps the event loop alive.
+  await closeVectorIndex();
   rmSync(baseTmp, { recursive: true, force: true });
 });
