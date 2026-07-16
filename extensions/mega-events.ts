@@ -233,7 +233,7 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
         content: summaryMsg.text,
         timestamp: Date.now(),
       } as unknown as AgentMessage;
-      const recent = messages.slice(cut); // original AgentMessage[], lossless
+      const recent = messages.slice(cut); // guardrails-allow PREVENT-PI-002: `cut` is the pre-sanitized `compactedFrom` produced by src/boundary.ts computeDropRange, so the preserved run begins on a toolPair-safe index.
       runtime.snapshot(ctx);
       return { messages: [summaryAgentMsg, ...recent] };
     } catch {
