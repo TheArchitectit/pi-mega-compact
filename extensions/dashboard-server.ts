@@ -131,6 +131,9 @@ function readIndex(): { updatedAt: string; summary: unknown; repos: unknown[] } 
 // Types
 // ---------------------------------------------------------------------------
 
+/** Package version of this extension, surfaced in the dashboard header. */
+let dashboardServerVersion = "0.0.0";
+
 interface Snapshot {
   version: number;
   updatedAt: string | null;
@@ -253,6 +256,7 @@ function dashboardHtml(tierName: string): string {
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #0d1117; color: #c9d1d9; padding: 24px; line-height: 1.5; }
   h1 { font-size: 20px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; color: #f0f6fc; }
   h1 .tier { background: #1f6feb; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: .5px; }
+  h1 .version-pill { background: #30363d; color: #8b949e; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
   .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
   .card.safe { border-color: #238636; }
@@ -339,7 +343,7 @@ function dashboardHtml(tierName: string): string {
 
 <div class="offline-banner" id="offline-banner">Dashboard data unavailable — waiting for a pi session to write snapshot...</div>
 
-<h1><span>mega-compact</span><span class="tier">${tierName}</span><span class="model-pill" id="hdr-model">—</span></h1>
+<h1><span>mega-compact</span><span class="tier">${tierName}</span><span class="version-pill">v${dashboardServerVersion}</span><span class="model-pill" id="hdr-model">—</span></h1>
 
 <nav class="tabs">
   <button class="tab active" data-tab="current">Current repo</button>
@@ -772,7 +776,7 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
     for (const p of candidates) {
       if (!existsSync(p)) continue;
       const pkg = JSON.parse(readFileSync(p, "utf-8"));
-      if (pkg.version) { SERVER_VERSION = pkg.version; break; }
+      if (pkg.version) { SERVER_VERSION = pkg.version; dashboardServerVersion = pkg.version; break; }
     }
   } catch { /* non-fatal */ }
 

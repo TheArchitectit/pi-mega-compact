@@ -12,7 +12,9 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { VectorStore } from "../src/vectorStore.js";
 import { toEngineMessages } from "../src/adapt.js";
 import { normalizeSessionId } from "../src/store.js";
@@ -24,6 +26,22 @@ import { Dashboard, type DashboardSnapshot } from "./mega-dashboard.js";
 export const STATUS_KEY = "mega-compact";
 export const WIDGET_KEY = "mega-compact-stats";
 export const MARKER_TYPE = "mega-compact-marker";
+
+/** Cached npm version, read once from this extension's own package.json. */
+let CACHED_VERSION: string | null = null;
+function ownVersion(): string {
+  if (CACHED_VERSION !== null) return CACHED_VERSION;
+  let v = "?";
+  try {
+    const here = dirname(fileURLToPath(import.meta.url)); // .../extensions
+    const pkg = JSON.parse(readFileSync(join(here, "..", "package.json"), "utf-8"));
+    v = pkg.version ?? "?";
+  } catch {
+    v = "?";
+  }
+  CACHED_VERSION = v;
+  return v;
+}
 
 /** Per-session runtime state kept in the closure (mirrors neuralwatt-mcr). */
 interface SessionRuntime {
@@ -265,7 +283,7 @@ export class MegaRuntime {
       // Phase 3 — pulsing status glyph while a compaction is in flight.
       const pulse = this.pulsing ? `${C.cyan}${PULSE[Math.floor(Date.now() / 250) % PULSE.length]}${C.reset} ` : "";
       const lines = [
-        ` ${C.amber}⚡ ${this.config.tier}${C.reset} │ ${tokStr}/${maxStr} tokens (${C.bold}${pctStr}${C.reset}) │ ${st.checkpointCount} saved${agentStr}${turnStr}`,
+        ` ${C.amber}⚡ ${this.config.tier}${C.reset} v${C.bold}${ownVersion()}${C.reset} │ ${tokStr}/${maxStr} tokens (${C.bold}${pctStr}${C.reset}) │ ${st.checkpointCount} saved${agentStr}${turnStr}`,
         `   ${triggerLabel} │ ${C.magenta}repeat-skipped: ${dedupStr}${C.reset} │ ${C.gray}memory held:${C.reset} ${usedStr} │ ${C.gray}space freed:${C.reset} ${savedStr}`,
       ];
       // Phase 3 — compact progress bar: session tokens saved toward the rolling goal.
