@@ -6,10 +6,13 @@ sessions into a **local SQLite store** and offers **deduped inline recall** — 
 running **locally inside the extension**, with **no remote MCP server** and
 **zero network calls at runtime** (PREVENT-PI-004).
 
-> **v0.2.0** — storage backend is now **`better-sqlite3`** (a single,
-> in-process, FS-backed SQLite database) replacing the old per-session gzipped
-> JSON checkpoint files. The legacy `.checkpoints.json.gz` snapshots are
+> **v0.5.0** — storage backend is **`node:sqlite`** (`DatabaseSync`, a Node
+> ≥22.13 built-in), replacing the old `better-sqlite3` native addon and the
+> per-session gzipped JSON checkpoint files. **Zero native build step, fully
+> local, zero network at runtime.** Legacy `.checkpoints.json.gz` snapshots are
 > retained as disaster-recovery fallbacks and auto-imported on first run.
+> Cross-repo recall, durable memory, and a localhost dashboard round out the
+> continuity story.
 
 ---
 
@@ -110,9 +113,9 @@ OpenAI-style contract and the `MEGACOMPACT_EMBEDDING_KEY` / `MEGACOMPACT_EMBEDDI
 
 ### Requirements
 
-- **Node >= 18**
-- install builds the **`better-sqlite3`** native module (one-time, local
-  compile). No network call and no API key are needed at runtime.
+- **Node >= 22.13** (the synchronous `node:sqlite` backend requires it; see
+  `engines.node`). No native module is compiled — the store is a Node built-in.
+- No network call and no API key are needed at runtime (PREVENT-PI-004).
 - A pi coding agent install with package support (`pi install` / `pi update
   --extensions`). npm-installed packages are auto-discovered via the package's
   `pi` manifest entry; local checkouts load from `~/.pi/agent/extensions/`.
@@ -135,7 +138,7 @@ source (which pi loads directly) and the compiled `dist/`, so nothing else needs
 building.
 
 > **Tip — keep the spec unpinned.** Use `npm:pi-mega-compact`, not
-> `npm:pi-mega-compact@0.4.11`. Version-pinned specs are *skipped* by
+> `npm:pi-mega-compact@0.5.1`. Version-pinned specs are *skipped* by
 > `pi update --extensions`, so a pin would freeze you on that release.
 
 > **From a git checkout (development only).** To hack on the extension, clone and
@@ -178,7 +181,7 @@ pi-mega-compact auto-reviews the conversation every 10 turns and writes durable 
 ### Verify
 
 ```bash
-npm test          # all unit/integration tests pass (346 as of v0.5.0)
+npm test          # all unit/integration tests pass (346 as of v0.5.1)
 npm run lint      # tsc --noEmit + guardrails scan clean
 python3 scripts/regression_check.py --all   # spec/plan regression gate
 ```
@@ -211,11 +214,16 @@ The commands (slash commands inside pi):
 |---|---|
 | `/mega-compact [summary...]` | Manually compact the current session. A summary arg is used verbatim; otherwise the COLLAPSE heuristics build one. Persists a `chkpt_xxx`. |
 | `/mega-compact off` | Disable auto-compaction for this session. |
-| `/mega-status` | Show config + current context usage + store stats (checkpoint count, dedup rate, tokens saved). |
+| `/mega-status` | Show config + current context usage + store stats (checkpoint count, dedup rate, tokens saved). Also prints the **installed version** (`vX.Y.Z`). |
 | `/mega-recall [query]` | Semantic-search the local store, dedupe against the current window, and inline the top-K relevant checkpoints. No query → uses your latest message. `--cross-repo` searches all repos. |
 | `/mega-memory save <text>` / `save <category> <text>` / `list` / `search <query>` / `forget <text>` / `consolidate` | Manage durable memories (decisions, facts, preferences) written by auto-review and recalled as RAG context. Also `/m` shortform. |
+| `/mega-restore <chkpt\|recent>` | Re-inject a checkpoint's verbatim original region into context. |
+| `/mega-history` | List this session's checkpoints (id, date, files, tokens). |
+| `/mega-view <chkpt\|recent>` | Show a checkpoint's verbatim original region. |
+| `/mega-help` | Explain the toolbar widget terms (tier, gate, dedup, tokens saved). |
 | `/mega-tier [name]` | Set the compaction tier (`low` / `medium` / `high` / `ultra` / `mega`). Shows current tier with no arg. |
-| `/mega-dashboard` | Start the **localhost-only** live dashboard and open it in a browser (token gauge, store stats, live event stream). |
+| `/mega-compat-check` | Detect extension conflicts (duplicate commands / overlapping handlers) across installed pi extensions. |
+| `/mega-dashboard` | Start the **localhost-only** live dashboard and open it in a browser (token gauge, store stats, live event stream, per-repo + cross-repo drift). |
 | `/mega-dashboard-status` | Report dashboard server status. |
 | `/mega-dashboard-stop` | Stop the dashboard server. |
 
@@ -224,9 +232,13 @@ The commands (slash commands inside pi):
 Above the pi editor the extension shows a compact widget:
 
 ```
- ⚡ medium │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
+ ⚡ medium v0.5.1 │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
    ◐ armed │ dedup: 92% │ saved: 45k tok
 ```
+
+- **Version** — the installed npm version (read from `package.json` at runtime),
+  so the toolbar always reflects what `pi update --extensions` last pulled. If
+  this looks stale after an update, restart the dashboard server / pi session.
 
 - **Tier** — active compaction tier (low/medium/high/ultra/mega)
 - **Token usage** — current / max context window and %
@@ -294,7 +306,7 @@ checklist, MARK_ONLY degrade) and `docs/RETENTION_POLICY.md` for TTL / soft-dele
 | `MEGACOMPACT_CROSSREPO_COSINE` | `0.90` | Stricter cosine floor for cross-repo hits (vs `0.85` same-repo). |
 | `MEGACOMPACT_MEMORY_AUTO_REVIEW` | `true` | Auto-review the conversation every `MEGACOMPACT_MEMORY_REVIEW_INTERVAL` turns → durable memories. |
 | `MEGACOMPACT_MEMORY_REVIEW_INTERVAL` | `10` | Turns between auto-review cycles. |
-| `MEGACOMPACT_PGLITE_DISABLED` | `1` | Kill-switch for the PGlite/HNSW cross-repo index (falls back to sync per-session scan). |
+| `MEGACOMPACT_PGLITE_DISABLED` | _(unset — index on)_ | Kill-switch for the PGlite/HNSW cross-repo index; set `1`/`true` to disable (falls back to sync per-session scan). |
 
 #### Dashboard (v0.5.0)
 
@@ -361,23 +373,31 @@ Open issues at: https://github.com/TheArchitectit/pi-mega-compact/issues
 
 ```
 extensions/mega-compact.ts   pi extension entry; wires src/ into pi lifecycle
+extensions/mega-trim.ts      S16 live context-event trim (compact-and-continue, no abort)
+extensions/mega-conflict-cmds.ts  extension-conflict detector (/mega-compat-check)
+extensions/dashboard-server.ts     localhost dashboard (HTML + snapshot/version/drift APIs)
 src/adapt.ts                  the single pi↔engine message adapter (index-aligned)
 src/engine.ts                 Layer 4: compactSession() Trident pipeline + recall()
 src/vectorStore.ts            Layer 3: local vector DB (add/search/dedupe + near-dup)
 src/embedder.ts               default TrigramEmbedder (deterministic, 512-dim)
 src/httpEmbedder.ts           BYO localhost embedder seam (MEGACOMPACT_EMBEDDING_URL)
-src/store/sqlite.ts           the "one store" — better-sqlite3 context_chunks + session_state (FTS5 trigram)
+src/store/sqlite.ts           the "one store" — node:sqlite context_chunks + session_state (FTS5 trigram)
+src/store/vectorIndex.ts      async PGlite/HNSW cross-repo vector index (redundant, best-effort)
 src/store/migrate.ts          JSON → SQLite migration (legacy .checkpoints.json.gz retained)
 src/store/backfill.ts         resumable backfill orchestrator (L0/L1/L2/RAPTOR)
+src/memory.ts                 durable memories (decision/fact/preference) + auto-review
+src/memoryOps.ts              memory apply/consolidate ops
+src/memoryRecall.ts           memory recall + auto-inline (RAG context)
+src/driftDetection.ts         cross-repo drift report (stale/idle/compaction-lag/model-churn)
 src/monitoring.ts             local events.log + dashboard.json metrics + FP alerts
 src/canary.ts                 sequential L0→L1→L2→RAPTOR rollout, auto-disable on p95 breach
 src/config/dedup.ts           single source of truth for ALL dedup tier flags + thresholds
 src/store.ts                  state dir + JSON DR helpers + compression re-exports
-src/compact.ts               Layer 2: summarize / merge / autoCompactCheck
-src/supersede.ts             Layer 1: obsolete file-read pruning
-src/boundary.ts              drop-boundary guards (anchor floor + tool-pair)
-src/tokens.ts                deterministic token estimator
-src/types.ts                 engine-internal types
+src/compact.ts                Layer 2: summarize / merge / autoCompactCheck
+src/supersede.ts              Layer 1: obsolete file-read pruning
+src/boundary.ts               drop-boundary guards (anchor floor + tool-pair)
+src/tokens.ts                 deterministic token estimator
+src/types.ts                  engine-internal types
 ```
 
 The `src/` directory is **pi-agnostic** and fully unit-tested (`node --test`).
@@ -401,22 +421,24 @@ sprint.
 
 ## Status
 
-- ✅ Sprint 1 — core engine (Layers 1–2, pure functions)
-- ✅ Sprint 2 — local vector store (Layer 3)
-- ✅ Sprint 3 — pi extension wiring (Layer 4 persist + trigger)
-- ✅ Sprint 4 — unified recall layer (Layer 5: auto-inline + on-demand + sentinel)
-- ✅ Sprint 5 — commands / UX / config polish (status chip, store stats, debug log)
-- ✅ Sprint 6 — hardening, docs, release (`install.sh`, CHANGELOG, `v0.1.0`)
-- ✅ Sprint 8 — SQLite storage backbone (`better-sqlite3`, one store) + compression v2
-- ✅ Sprints 9–11 — L0 exact-hash + L1 MinHash/LSH near-dup dedup tiers
-- ✅ Sprint 12 — L2 semantic cosine + MMR; BYO localhost embedder (`HttpEmbedder`)
-- ✅ Sprint 13 — RAPTOR hierarchical pre-compression (shadow mode)
-- ✅ Sprint 14 — full pipeline: flags, backfill, monitoring, canary rollout
-- ✅ Sprint 15 — benchmarks, DR drill, docs, `v0.2.0`
+- ✅ Sprints 1–15 — core engine, local store, dedup tiers (L0/L1/L2/RAPTOR),
+  monitoring, canary rollout, benchmarks, DR drill (`v0.2.0`).
+- ✅ v0.4.23 (Slice 1) — `node:sqlite` (`DatabaseSync`) replaces the
+  `better-sqlite3` native addon as the synchronous source of truth (zero native
+  build, survives pi's install-scripts block).
+- ✅ v0.4.25 (Slice 2) — async PGlite/pgvector HNSW cross-repo index (WASM,
+  script-free, PREVENT-PI-004 OK), redundant to the sync store.
+- ✅ S16–S17 — live context-event trim (compact-and-continue, no abort) + wired
+  cross-repo recall into resume / `/mega-recall --cross-repo`.
+- ✅ S18 — machine-wide injected-set for cross-repo dedup.
+- ✅ S20–S23 — durable memory store (auto-review → decisions/facts/preferences),
+  recall + auto-inline (RAG), consolidation, cross-repo drift detection, global
+  index DR drill, benchmarks (`v0.5.0`).
+- ✅ v0.5.1 — version shown in the toolbar widget + dashboard header, read from
+  `package.json` at runtime so it tracks every npm publish.
 
-See `SPRINT_PLAN.md` for the full breakdown and `PLAN.md` for architecture,
-`RESEARCH.md` for the pi-API constraints that shaped it, `CHANGELOG.md` for
-release notes.
+See `CHANGELOG.md` for release notes and `docs/` for specs, runbooks, and the
+guardrails.
 
 ---
 
@@ -428,4 +450,4 @@ neuralwatt-mcr (pi-extension mechanics). Attribution as design sources only.
 
 ## License
 
-[MIT](./LICENSE)
+[BSD-2-Clause](./LICENSE)

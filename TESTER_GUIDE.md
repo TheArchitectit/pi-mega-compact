@@ -1,4 +1,4 @@
-# Tester Guide — pi-mega-compact v0.4.0
+# Tester Guide — pi-mega-compact v0.5.1
 
 This guide is for QA testers and contributors validating pi-mega-compact before
 a release or after a change. It covers environment setup, the automated test
@@ -9,67 +9,59 @@ limitations.
 
 ## Prerequisites
 
-- **Node >= 18** — check with `node -v`.
-- **npm** — ships with Node; used to install the `better-sqlite3` native module.
-- **A pi coding agent install** that loads extensions from
-  `~/.pi/agent/extensions/` — see the
+- **Node >= 22.13** — check with `node -v`. Required for the `node:sqlite`
+  (`DatabaseSync`) built-in store. **No native module is compiled** — there is
+  no `better-sqlite3` build step anymore.
+- **npm** — ships with Node.
+- **A pi coding agent install** with package support (`pi install` /
+  `pi update --extensions`) — see the
   [pi repo](https://github.com/earendil-works/pi).
-- **`jq`** — used by `install.sh` and useful for reading `events.log` and
-  `dashboard.json` during manual testing.
-- **`sqlite3` CLI** (optional) — handy for inspecting `sqlite.db` directly
-  during DR drills and debugging.
+- **`jq`** (optional) — useful for reading `events.log` and `dashboard.json`
+  during manual testing.
+- **`sqlite3` CLI** (optional) — handy for inspecting the store directly during
+  DR drills and debugging.
 
-### Install the extension
+### Install the extension (npm is the ONLY supported path)
 
-**From npm (recommended):**
+Distribution and updates go through `npm publish` + `pi update --extensions`
+**only** (PREVENT-DIST-001). Tarballs (`npm pack` / `.tgz`) and symlinks bypass
+pi's package manager and do NOT propagate to other devices — never use them to
+validate a real install.
 
 ```bash
-npm install pi-mega-compact
-ln -s "$(npm root)/pi-mega-compact" ~/.pi/agent/extensions/pi-mega-compact
+pi install npm:pi-mega-compact     # first time: adds to packages + installs
+pi update --extensions             # thereafter: pulls the latest published version
 ```
 
-**From a git checkout (development):**
+pi auto-discovers the extension from the package's own
+`"pi": { "extensions": [...] }` manifest entry — **no manual `settings.json` /
+`pi.extensions` edit is needed.**
+
+> **Confirm the version you're testing.** After `pi update --extensions`, the
+> toolbar widget shows `vX.Y.Z` (read from `package.json` at runtime), and
+> `/mega-status` prints the same version. This is the fastest way to verify the
+> update actually landed. Check the registry with
+> `npm view pi-mega-compact version`.
+
+### From a git checkout (development only — NOT a valid test target)
 
 ```bash
-git clone https://github.com/TheArchitectit/pi-mega-compact.git \
-  ~/.pi/agent/extensions/pi-mega-compact
-cd ~/.pi/agent/extensions/pi-mega-compact
-npm install      # builds the better-sqlite3 native module
+git clone https://github.com/TheArchitectit/pi-mega-compact.git
+cd pi-mega-compact
+npm install      # dev deps only; no native build
 npm run build    # tsc → dist/
 ```
 
-Or use the bundled helper:
-
-```bash
-./install.sh          # copy into ~/.pi/agent/extensions/pi-mega-compact
-./install.sh -s       # symlink instead of copy (dev mode)
-```
-
-### Register with pi
-
-Add the extension path to your pi config's `pi.extensions` list (npm path or the
-symlink from above — either works):
-
-```jsonc
-{
-  "pi": {
-    "extensions": ["pi-mega-compact/extensions/mega-compact.ts"]
-  }
-}
-```
+A local checkout can run the automated suite, but a **real** install/update must
+be validated via npm (bump version → `npm publish` → `pi update --extensions`).
 
 ---
 
 ## Test Environment Setup
 
-1. **Install and build** (npm or checkout):
+1. **Install and build** (checkout for development):
 
    ```bash
-   # npm
-   npm install pi-mega-compact
-   cd "$(npm root)/pi-mega-compact" && npm run build
-
-   # — or clone for development —
    git clone https://github.com/TheArchitectit/pi-mega-compact.git
    cd pi-mega-compact
    npm install && npm run build
@@ -81,7 +73,7 @@ symlink from above — either works):
    npm test
    ```
 
-   This runs `tsc` then `node --test` on `dist/**/*.test.js`. All 192 tests
+   This runs `tsc` then `node --test` on `dist/**/*.test.js`. All **346** tests
    should pass. If any fail, stop and file a bug (see
    [What to Include in a Bug Report](#what-to-include-in-a-bug-report)).
 
@@ -97,8 +89,10 @@ symlink from above — either works):
 
 4. **Confirm the extension loads in pi:**
 
-   Start pi and run `/mega-status`. You should see config output, current
-   context usage, and store stats (checkpoint count, dedup rate, tokens saved).
+   Install via `pi install npm:pi-mega-compact`, then start pi and run
+   `/mega-status`. You should see the installed **version** (`vX.Y.Z`), config
+   output, current context usage, and store stats (checkpoint count, dedup rate,
+   tokens saved).
 
 ---
 
@@ -108,7 +102,7 @@ symlink from above — either works):
 npm test
 ```
 
-This runs **192 tests** via `node --test` on the compiled `dist/` output.
+This runs **346 tests** via `node --test` on the compiled `dist/` output.
 
 ### Unit tests
 
@@ -123,12 +117,18 @@ Engine modules in isolation:
 - **`src/tokens.ts`** — deterministic token estimator.
 - **`src/config/dedup.ts`** — `DedupConfig` / `loadDedupConfig()` env-var
   resolution, tier flag defaults.
-- **`src/store/sqlite.ts`** — SQLite store CRUD, FTS5 trigram search,
-  parameterized queries.
+- **`src/store/sqlite.ts`** — `node:sqlite` (`DatabaseSync`) store CRUD, FTS5
+  trigram search, parameterized queries (no native addon).
+- **`src/store/vectorIndex.ts`** — async PGlite/HNSW cross-repo index, kill-switch
+  (`MEGACOMPACT_PGLITE_DISABLED`) graceful degrade to sync scan.
 - **`src/store/compression.ts`** — `compressSmart` / `decompressSmart`
   round-trip, zstd fallback.
 - **`src/store/backfill.ts`** — resumable backfill orchestrator (L0/L1/L2/
   RAPTOR), idempotent re-runs.
+- **`src/memory.ts` / `src/memoryOps.ts` / `src/memoryRecall.ts`** — durable
+  memory store, apply/consolidate ops, recall + auto-inline (RAG context).
+- **`src/driftDetection.ts`** — cross-repo drift report (stale/idle/compaction
+  lag/model churn).
 - **`src/monitoring.ts`** — `events.log` append, `dashboard.json` aggregation,
   FP-rate alert evaluation.
 - **`src/canary.ts`** — `CanaryController` sequential L0→L1→L2→RAPTOR
@@ -142,6 +142,8 @@ Engine modules in isolation:
   idempotent re-run, legacy `.checkpoints.json.gz` retained as DR snapshots.
 - **`src/httpEmbedder.ts`** — BYO localhost embedder contract, loopback-only
   enforcement (remote host rejected at config time, PREVENT-PI-004).
+- **`extensions/mega-trim.ts`** — S16 live context-event trim (compact-and-
+  continue, anchor floor + tool-pair boundary honored).
 
 ### Handler-level tests
 
@@ -193,7 +195,7 @@ configured threshold.
    - A `compact_end` event in `events.log` with `fromTokens` / `toTokens`.
 6. Verify the checkpoint persisted in the SQLite store:
    ```bash
-   sqlite3 ~/.pi/agent/extensions/pi-mega-compact/sqlite.db \
+   sqlite3 <repo>/.pi/mega-compact/sqlite.db \
      "SELECT checkpoint_id, session_id, timestamp, dedup_status FROM context_chunks ORDER BY timestamp DESC LIMIT 5;"
    ```
 
@@ -221,7 +223,7 @@ configured threshold.
 3. The extension's `session_start` handler fires `recallAndInline` with
    `source:"resume"`. Check `events.log`:
    ```bash
-   tail -f ~/.pi/agent/extensions/pi-mega-compact/events.log | jq .
+   tail -f <repo>/.pi/mega-compact/events.log | jq .
    ```
    Look for an event with `"type":"recall_inject"` — it should list the
    checkpoint IDs that were auto-inlined.
@@ -259,7 +261,7 @@ checkpoints.
    `MEGACOMPACT_AUTO_INLINE_K`).
 3. Check `events.log` for a `recall_inject` event:
    ```bash
-   grep recall_inject ~/.pi/agent/extensions/pi-mega-compact/events.log | jq .
+   grep recall_inject <repo>/.pi/mega-compact/events.log | jq .
    ```
 4. Run `/mega-recall` with no query — it should use your latest message
    as the query.
@@ -292,7 +294,7 @@ near-duplicate regions correctly.
 3. Inspect the dedup decisions in `events.log`:
    ```bash
    grep -E '"result":"(deduped|new|mark_only)"' \
-     ~/.pi/agent/extensions/pi-mega-compact/events.log | jq .
+     <repo>/.pi/mega-compact/events.log | jq .
    ```
    - `deduped` — region was collapsed (duplicate detected).
    - `new` — region was stored as a new checkpoint.
@@ -300,7 +302,7 @@ near-duplicate regions correctly.
      degrade mode).
 4. Verify the SQLite store has rows with `dedup_status` set:
    ```bash
-   sqlite3 ~/.pi/agent/extensions/pi-mega-compact/sqlite.db \
+   sqlite3 <repo>/.pi/mega-compact/sqlite.db \
      "SELECT dedup_status, COUNT(*) FROM context_chunks GROUP BY dedup_status;"
    ```
    You should see a mix of `active` and `removed` rows (removed = collapsed by
@@ -332,8 +334,9 @@ near-duplicate regions correctly.
    ```
    /mega-dashboard
    ```
-   This starts a local HTTP server on a random port (3000–3999) and writes the
-   URL to the terminal.
+   This starts a local HTTP server on a port in the 9320–9329 range
+   (configurable via `MEGACOMPACT_DASHBOARD_PORT`) and writes the URL to the
+   terminal.
 2. Open the URL in a browser. You should see:
    - **Status bar** — current tier, trigger state, context utilization.
    - **Token gauge** — live token usage vs. threshold.
@@ -372,7 +375,7 @@ rebuild from legacy JSON snapshots.
 
 1. Run the DR drill script:
    ```bash
-   scripts/dedup-restore-drill.sh ~/.pi/agent/extensions/pi-mega-compact
+   scripts/dedup-restore-drill.sh <repo>/.pi/mega-compact
    ```
 2. The script performs these checks:
    - `PRAGMA integrity_check` on `sqlite.db` — should return `ok`.
@@ -385,13 +388,13 @@ rebuild from legacy JSON snapshots.
 3. Verify the output shows all checks passing.
 4. Optional: Simulate corruption to test the rebuild path:
    ```bash
-   cp ~/.pi/agent/extensions/pi-mega-compact/sqlite.db \
-      ~/.pi/agent/extensions/pi-mega-compact/sqlite.db.bak
-   echo "corrupt" > ~/.pi/agent/extensions/pi-mega-compact/sqlite.db
-   scripts/dedup-restore-drill.sh ~/.pi/agent/extensions/pi-mega-compact
+   cp <repo>/.pi/mega-compact/sqlite.db \
+      <repo>/.pi/mega-compact/sqlite.db.bak
+   echo "corrupt" > <repo>/.pi/mega-compact/sqlite.db
+   scripts/dedup-restore-drill.sh <repo>/.pi/mega-compact
    # Should detect corruption and rebuild from JSON snapshots
-   cp ~/.pi/agent/extensions/pi-mega-compact/sqlite.db.bak \
-      ~/.pi/agent/extensions/pi-mega-compact/sqlite.db
+   cp <repo>/.pi/mega-compact/sqlite.db.bak \
+      <repo>/.pi/mega-compact/sqlite.db
    ```
 
 **Pass criteria:**
@@ -436,6 +439,109 @@ rebuild from legacy JSON snapshots.
 
 ---
 
+### 8. Version display
+
+**Goal:** Verify the installed npm version is visible and tracks updates.
+
+**Steps:**
+
+1. After `pi update --extensions`, read the toolbar widget above the editor —
+   the first line now shows `⚡ <tier> vX.Y.Z …`.
+2. Run `/mega-status` — the header prints the installed version.
+3. Open `/mega-dashboard` — the header pill shows `vX.Y.Z`.
+4. Bump `version` in `package.json`, `npm publish`, re-run `pi update
+   --extensions`, and confirm all three surfaces show the new number on next
+   repaint/restart (no code change required per release).
+
+**Pass criteria:**
+- Toolbar, `/mega-status`, and dashboard all report the same version.
+- The version updates after a publish+update without any source edit (it is read
+  from `package.json` at runtime).
+- `npm view pi-mega-compact version` matches what's displayed.
+
+---
+
+### 9. Cross-repo recall
+
+**Goal:** Verify recall augments from other repos' checkpoints.
+
+**Steps:**
+
+1. Work and compact in **repo A** (produces `chkpt_xxx` rows tagged with
+   `repoId`).
+2. Switch to **repo B** (thin/empty store) and resume a pi session, or run
+   `/mega-recall --cross-repo <topic>`.
+3. On resume, recall should augment from repo A's checkpoints when repo B's store
+   is thin. Cross-repo hits use a stricter cosine floor
+   (`MEGACOMPACT_CROSSREPO_COSINE`, default 0.90) and are labeled with their
+   source repo.
+4. Confirm a machine-wide injected-set (`~/.mega-compact-index/index.sqlite`)
+   prevents re-injecting the same foreign checkpoint.
+5. Disable with `MEGACOMPACT_CROSSREPO_ENABLED=false` and confirm recall stays
+   single-repo.
+
+**Pass criteria:**
+- Cross-repo hits appear on resume / `--cross-repo` and are repo-labeled.
+- No duplicate foreign injection across resumes.
+- Kill-switch confines recall to the current repo.
+
+---
+
+### 10. Durable memory (auto-review → RAG)
+
+**Goal:** Verify the conversation auto-reviews into durable memories that are
+recalled as RAG context.
+
+**Steps:**
+
+1. Work a session for `MEGACOMPACT_MEMORY_REVIEW_INTERVAL` (default 10) turns.
+   Auto-review should write `decision` / `fact` / `preference` memories to
+   SQLite (hallucination-guarded).
+2. Inspect memories:
+   ```
+   /mega-memory list
+   /mega-memory search <topic>
+   ```
+3. On a later resume/branch, relevant memories should be auto-inlined as RAG
+   context (capped + deduped). Confirm via `/mega-status` or the dashboard.
+4. Manual write + consolidate:
+   ```
+   /mega-memory save decision "We chose node:sqlite over better-sqlite3"
+   /mega-memory consolidate      # merges near-duplicate rows
+   /mega-memory forget <text>    # removes a memory
+   ```
+   (`/m` is the shortform for all of the above.)
+
+**Pass criteria:**
+- Auto-review produces durable memories after the interval.
+- Relevant memories are recalled on resume without manual action.
+- `save` / `consolidate` / `forget` mutate the store as described.
+
+---
+
+### 11. Cross-repo drift detection
+
+**Goal:** Verify the dashboard's drift report flags stale / lagging / churning
+repos.
+
+**Steps:**
+
+1. Start the dashboard (`/mega-dashboard`) and open the **All-repos** view.
+2. Query the drift API directly:
+   ```bash
+   curl -s http://127.0.0.1:<port>/api/drift | jq .
+   ```
+3. The report flags: repos idle >30d, an active repo >24h behind the
+   most-recently-active repo's last compaction, and model churn within 7d. It is
+   read-only — it never writes the index.
+
+**Pass criteria:**
+- `/api/drift` returns a structured report over `repo_registry`.
+- Stale / lagging / churning repos are surfaced.
+- The report performs no writes.
+
+---
+
 ## What to Include in a Bug Report
 
 When filing a bug at
@@ -443,30 +549,31 @@ When filing a bug at
 include:
 
 1. **`/mega-status` output** — config + current context usage + store
-   stats (checkpoint count, dedup rate, tokens saved).
+   stats (checkpoint count, dedup rate, tokens saved) + the **installed
+   version** (`vX.Y.Z`). Always include this so we know which build you're on.
 2. **`/mega-dashboard-status` output** — dashboard server status (if running).
 3. **pi version** — `pi --version` or the release tag you're running.
 4. **OS** — e.g., `Linux 6.12.94-1-MANJARO x86_64`, `macOS 15.3`, etc.
 5. **Node version** — `node -v` (must be >= 18).
 6. **`events.log` slice** — the relevant lines around the problem:
    ```bash
-   tail -100 ~/.pi/agent/extensions/pi-mega-compact/events.log | jq .
+   tail -100 <repo>/.pi/mega-compact/events.log | jq .
    ```
    Each line is `{ts, tier, result, latencyMs, falsePositive?}`. Include the
    lines around the timestamp of the issue.
 7. **`dashboard.json`** — aggregate metrics from the state dir:
    ```bash
-   cat ~/.pi/agent/extensions/pi-mega-compact/dashboard.json | jq .
+   cat <repo>/.pi/mega-compact/dashboard.json | jq .
    ```
    This contains hit rate, FP rate, per-tier p95, and storage bytes.
 8. **If you suspect data loss or duplication:**
    - `sqlite.db` file size + checkpoint count:
      ```bash
-     ls -lh ~/.pi/agent/extensions/pi-mega-compact/sqlite.db
-     sqlite3 ~/.pi/agent/extensions/pi-mega-compact/sqlite.db \
+     ls -lh <repo>/.pi/mega-compact/sqlite.db
+     sqlite3 <repo>/.pi/mega-compact/sqlite.db \
        "SELECT COUNT(*) FROM context_chunks;"
      ```
-   - DR drill output: `scripts/dedup-restore-drill.sh ~/.pi/agent/extensions/pi-mega-compact`
+   - DR drill output: `scripts/dedup-restore-drill.sh <repo>/.pi/mega-compact`
    - `dedup_status` breakdown: `SELECT dedup_status, COUNT(*) FROM context_chunks GROUP BY dedup_status;`
 
 ---
@@ -489,8 +596,8 @@ include:
   procedure (see `docs/RETENTION_POLICY.md`). `VACUUM` is exclusive/blocking —
   run off-peak when no session is active.
 
-- **GTX 1080 / older hardware.** The extension itself is CPU-only. If you use
-  a BYO GPU embedder, older GPUs (Pascal sm_61) may be slower.
+- **Requires Node >= 22.13.** The synchronous store uses the `node:sqlite`
+  built-in; older Node lacks it. There is no native build fallback.
 
 - **No remote monitoring.** All monitoring is local files (`events.log`,
   `dashboard.json`). No telemetry, no remote alertmanager (PREVENT-PI-004).
