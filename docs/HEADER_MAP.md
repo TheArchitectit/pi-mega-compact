@@ -270,3 +270,19 @@
 | `extensions/dashboard-server.ts` | Multi-repo dashboard HTTP server; `/api/index`, `/api/repos`, `/api/summary`, `/api/drift` (S19/R4). |
 | `extensions/mega-events.ts` | Event wiring: live context-trim (S16), resume cross-repo (S17), memory auto-review trigger (S20). |
 | `extensions/mega-pipeline.ts` | `doRecallAsync`, `doCompact` → `consolidateMemories` gate (S17/S21). |
+
+---
+
+## specs/s24-unified-pressure.md (docs/specs/s24-unified-pressure.md)
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 11 | 0 |
+| DECISIONS (locked with user) | 25 | 14 |
+| PROBLEM / MOTIVATION | 44 | 33 |
+| CORE CONCEPT: one `pressure` signal | 56 | 45 |
+| Pressure → tier band table | 70 | 59 |
+| EXECUTION (changes by file) | 90 | 79 |
+| Memory storage hardening | 130 | 119 |
+| ACCEPTANCE | 168 | 157 |
+| ROLLBACK | 178 | 167 |
