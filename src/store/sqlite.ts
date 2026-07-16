@@ -57,7 +57,17 @@ const cache = new Map<string, DatabaseSync>();
 /** Open (or reuse) the SQLite store for a state dir. */
 export function openStore(stateDir: string = getStateDir()): DatabaseSync {
   const existing = cache.get(stateDir);
-  if (existing) return existing;
+  if (existing) {
+    // A closed handle in the cache (e.g. a test calling db.close() directly
+    // instead of closeStore) would surface as "database is not open" on the
+    // next reuse. Detect and evict so callers never see a dead handle.
+    try {
+      existing.prepare("SELECT 1");
+      return existing;
+    } catch {
+      cache.delete(stateDir);
+    }
+  }
 
   if (!existsSync(stateDir)) mkdirSync(stateDir, { recursive: true });
   const db = new DatabaseSync(join(stateDir, "sqlite.db"));
@@ -173,6 +183,19 @@ export function upsertRepoRegistry(
     tokensSaved: number;
     compressedOriginalBytes: number;
     lastCompactedAt?: number | null;
+    // The fields below are optional passthroughs so test fixtures and the
+    // /api/repos active-window filter can seed them directly. They're also
+    // written by other paths (recordRepoModel, registry refresh) — passing
+    // them here is harmless because the ON CONFLICT clause keeps first_seen
+    // and the model columns from being clobbered.
+    firstSeen?: number;
+    lastSeen?: number;
+    provider?: string | null;
+    providerName?: string | null;
+    modelName?: string | null;
+    inputRate?: number | null;
+    outputRate?: number | null;
+    modelCapturedAt?: number | null;
   },
   indexDir: string = getIndexDir(),
 ): void {
@@ -181,26 +204,42 @@ export function upsertRepoRegistry(
   db.prepare(
     `INSERT INTO repo_registry
        (repo_root, display_name, state_dir, first_seen, last_seen, last_compacted_at,
-        checkpoint_count, tokens_saved, compressed_original_bytes)
-     VALUES (@repo_root, @display_name, @state_dir, @now, @now, @last_compacted_at,
-             @checkpoint_count, @tokens_saved, @compressed_original_bytes)
+        checkpoint_count, tokens_saved, compressed_original_bytes,
+        provider, provider_name, model_name, input_rate, output_rate, model_captured_at)
+     VALUES (@repo_root, @display_name, @state_dir, @first_seen, @last_seen, @last_compacted_at,
+             @checkpoint_count, @tokens_saved, @compressed_original_bytes,
+             @provider, @provider_name, @model_name, @input_rate, @output_rate, @model_captured_at)
      ON CONFLICT(repo_root) DO UPDATE SET
        display_name = excluded.display_name,
        state_dir = excluded.state_dir,
-       last_seen = excluded.last_seen,
+       last_seen = COALESCE(excluded.last_seen, @now),
        last_compacted_at = COALESCE(excluded.last_compacted_at, repo_registry.last_compacted_at),
        checkpoint_count = excluded.checkpoint_count,
        tokens_saved = excluded.tokens_saved,
-       compressed_original_bytes = excluded.compressed_original_bytes`,
+       compressed_original_bytes = excluded.compressed_original_bytes,
+       provider = COALESCE(excluded.provider, repo_registry.provider),
+       provider_name = COALESCE(excluded.provider_name, repo_registry.provider_name),
+       model_name = COALESCE(excluded.model_name, repo_registry.model_name),
+       input_rate = COALESCE(excluded.input_rate, repo_registry.input_rate),
+       output_rate = COALESCE(excluded.output_rate, repo_registry.output_rate),
+       model_captured_at = COALESCE(excluded.model_captured_at, repo_registry.model_captured_at)`,
   ).run({
     repo_root: row.repoRoot,
     display_name: row.displayName,
     state_dir: row.stateDir,
     now,
+    first_seen: row.firstSeen ?? null,
+    last_seen: row.lastSeen ?? null,
     last_compacted_at: row.lastCompactedAt ?? null,
     checkpoint_count: row.checkpointCount,
     tokens_saved: row.tokensSaved,
     compressed_original_bytes: row.compressedOriginalBytes,
+    provider: row.provider ?? null,
+    provider_name: row.providerName ?? null,
+    model_name: row.modelName ?? null,
+    input_rate: row.inputRate ?? null,
+    output_rate: row.outputRate ?? null,
+    model_captured_at: row.modelCapturedAt ?? null,
   });
 }
 

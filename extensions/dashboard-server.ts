@@ -16,6 +16,7 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, watch, writeFileSync, 
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import { DatabaseSync } from "node:sqlite";
 
 // ---------------------------------------------------------------------------
@@ -774,6 +775,13 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
       if (pkg.version) { SERVER_VERSION = pkg.version; break; }
     }
   } catch { /* non-fatal */ }
+
+  // Lazy-loaded via require so the dashboard stays cheap to boot and we don't
+  // need a top-level await in the handler.
+  const driftReq = createRequire(import.meta.url);
+  const detectCrossRepoDrift = (idxDir: string) =>
+    (driftReq("../src/driftDetection.js") as typeof import("../src/driftDetection.js"))
+      .detectCrossRepoDrift(idxDir);
   const portFile = join(stateDir, "port.pid");
   const snapshotPath = join(stateDir, "dashboard.json");
   const eventsPath = join(stateDir, "events.log");
@@ -855,6 +863,54 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
     if (req.url === "/api/index") {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(readIndex() ?? { updatedAt: null, summary: null, repos: [] }));
+      return;
+    }
+
+    // /api/repos — registry list. Optional `?active=24h` filters to repos
+    // seen within the last N hours (default: all). The dashboard uses this to
+    // drive its "active vs archived" badge without refetching /api/index.
+    if (req.url?.startsWith("/api/repos")) {
+      const url = new URL(req.url, "http://x");
+      const activeParam = url.searchParams.get("active");
+      const idx = readIndex() ?? { updatedAt: null, summary: null, repos: [] };
+      let repos = (idx.repos ?? []) as IndexRepo[];
+      if (activeParam) {
+        const m = /^(\d+)h$/.exec(activeParam);
+        if (m) {
+          const cutoffSec = Math.floor(Date.now() / 1000) - Number(m[1]) * 3600;
+          repos = repos.filter((r) => (r.lastSeen ?? 0) >= cutoffSec);
+        }
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ updatedAt: idx.updatedAt, repos, count: repos.length }));
+      return;
+    }
+
+    // /api/summary — header tiles without the full repo list (keeps payload
+    // small for embed scenarios). activeRepos mirrors the /api/repos?active=24h
+    // count so the dashboard can render the active badge alongside totals.
+    if (req.url?.startsWith("/api/summary")) {
+      const idx = readIndex() ?? { updatedAt: null, summary: null, repos: [] };
+      const repos = (idx.repos ?? []) as IndexRepo[];
+      const cutoffSec = Math.floor(Date.now() / 1000) - 24 * 3600;
+      const activeRepos = repos.filter((r) => (r.lastSeen ?? 0) >= cutoffSec).length;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        updatedAt: idx.updatedAt,
+        summary: idx.summary,
+        activeRepos,
+        totalRepos: repos.length,
+      }));
+      return;
+    }
+
+    // /api/drift — R4: cross-repo drift report over repo_registry. Flags stale
+    // repos (>30d idle), compaction lag (active but >24h since last
+    // compaction), and recent model churn. Read-only.
+    if (req.url?.startsWith("/api/drift")) {
+      const report = detectCrossRepoDrift(getIndexDir());
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(report));
       return;
     }
 

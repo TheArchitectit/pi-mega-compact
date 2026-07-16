@@ -49,6 +49,9 @@ export function normalizeSessionId(sessionId: string | undefined | null): string
 export interface StoredCheckpoint {
   checkpointId: string;
   sessionId: string;
+  /** Source repo id (foreign stateDir) when this checkpoint came from a global
+   *  cross-repo index entry. Undefined for same-repo checkpoints. Spec S17.1. */
+  repoId?: string;
   summary: string;
   /** Compressed topic summary (extractive, ~2K tokens vs ~70K raw). */
   topicSummary?: string;

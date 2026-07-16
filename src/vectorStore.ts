@@ -330,6 +330,7 @@ export class VectorStore {
     const checkpoint: StoredCheckpoint = {
       checkpointId,
       sessionId,
+      repoId: this.repoId,
       summary: input.summary,
       topicSummary: input.topicSummary,
       summaryHash,

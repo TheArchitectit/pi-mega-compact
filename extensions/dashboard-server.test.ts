@@ -177,6 +177,55 @@ describe("multi-repo /api/index (S19)", () => {
       rmSync(indexDir, { recursive: true, force: true });
     }
   });
+
+  test("/api/repos filters by ?active=Nh and /api/summary counts activeRepos", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "dash-active-"));
+    const indexDir = mkdtempSync(join(tmpdir(), "index-active-"));
+    process.env.MEGACOMPACT_INDEX_DIR = indexDir;
+    process.env.MEGACOMPACT_DASHBOARD_PORT = "19322";
+
+    const { upsertRepoRegistry } = await import("../src/store/sqlite.js");
+    // Fresh repo, last_seen = now
+    upsertRepoRegistry(
+      { repoRoot: "/home/u/fresh", displayName: "fresh", stateDir: dir, checkpointCount: 1, tokensSaved: 100, compressedOriginalBytes: 0, lastSeen: Math.floor(Date.now() / 1000) },
+      indexDir,
+    );
+    // Stale repo, last_seen = 90 days ago — must be filtered out by ?active=24h.
+    const longAgo = Math.floor(Date.now() / 1000) - 90 * 86_400;
+    upsertRepoRegistry(
+      { repoRoot: "/home/u/stale", displayName: "stale", stateDir: dir, checkpointCount: 2, tokensSaved: 200, compressedOriginalBytes: 0, lastSeen: longAgo },
+      indexDir,
+    );
+
+    const child = spawn(process.execPath, [SERVER_ENTRY, dir], { stdio: "ignore" });
+    try {
+      await waitFor(async () => {
+        try {
+          const raw = JSON.parse(readFileSync(join(dir, "port.pid"), "utf-8"));
+          const res = await fetch(`http://localhost:${raw.port}/api/version`);
+          return res.ok;
+        } catch { return false; }
+      });
+      const raw = JSON.parse(readFileSync(join(dir, "port.pid"), "utf-8"));
+
+      const allRepos = (await fetch(`http://localhost:${raw.port}/api/repos`).then((r) => r.json())) as { repos: { displayName: string }[]; count: number };
+      assert.equal(allRepos.count, 2, "unfiltered list has both repos");
+
+      const activeRepos = (await fetch(`http://localhost:${raw.port}/api/repos?active=24h`).then((r) => r.json())) as { repos: { displayName: string }[]; count: number };
+      assert.equal(activeRepos.count, 1, "active=24h drops the 90-day-old repo");
+      assert.equal(activeRepos.repos[0].displayName, "fresh");
+
+      const summary = (await fetch(`http://localhost:${raw.port}/api/summary`).then((r) => r.json())) as { activeRepos: number; totalRepos: number };
+      assert.equal(summary.activeRepos, 1, "summary counts only fresh repo as active");
+      assert.equal(summary.totalRepos, 2, "summary counts both repos total");
+    } finally {
+      child.kill("SIGTERM");
+      delete process.env.MEGACOMPACT_INDEX_DIR;
+      delete process.env.MEGACOMPACT_DASHBOARD_PORT;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(indexDir, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
