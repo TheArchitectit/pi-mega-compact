@@ -44,6 +44,11 @@ export interface MegaConfig {
   /** RAPTOR hierarchical recall enabled (Fix D). Drives both live recall and
    *  the durable-trim summary source (root summary). */
   raptorEnabled: boolean;
+  /** Legacy v0.4.28 behavior: auto-trigger calls ctx.compact() (which STOPS
+   *  the agent). Default false — the S16 redesign uses the live context-event
+   *  trim + pi native auto-compaction instead (compact and continue). Kept for
+   *  one release as rollback. */
+  legacyDurableTrim: boolean;
   /** Token ceiling for the re-injected recall block (Fix C). Recall stops
    *  adding checkpoints once the block would exceed this — bounds read-path
    *  token cost so it can never net-inflate the window. */
@@ -104,6 +109,7 @@ export function loadConfig(): MegaConfig {
     autoInlineK: envFlag("MEGACOMPACT_AUTO_INLINE_K", 3),
     dedupSim: Number(process.env.MEGACOMPACT_DEDUP_SIM ?? "0.9"),
     raptorEnabled: envBool("MEGACOMPACT_RAPTOR_ENABLED", true),
+    legacyDurableTrim: envBool("MEGACOMPACT_LEGACY_DURABLE_TRIM", false),
     recallMaxTokens: envFlag("MEGACOMPACT_RECALL_MAX_TOKENS", 1500),
     windowDedupe: envBool("MEGACOMPACT_WINDOW_DEDUPE", true),
     debug: envBool("MEGACOMPACT_DEBUG", false),

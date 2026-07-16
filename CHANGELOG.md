@@ -1,5 +1,43 @@
 # Changelog
 
+## v0.5.0-unreleased — Sprint S16 (compaction continuity)
+
+Fix the live bug where pi STOPPED after our auto-compact. `ctx.compact()` mapped
+to pi's manual compaction path, which aborts the in-flight turn and stops the
+agent. The auto-trigger now returns a trimmed message view from the `context`
+event (live trim every LLM call, no abort) and relies on pi's native
+auto-compaction for the durable disk trim (which continues). Compact-and-continue.
+
+### Changed
+- **Live context-event trim (S16).** `buildLiveTrimmedView()` /
+  `computeLiveTrimCut()` (new `extensions/mega-trim.ts`) collapse the compacted
+  region to a summary + recent anchor and return it from the `context` handler.
+  The model sees a compacted window every call; pi never aborts. Non-destructive
+  (the real transcript is untouched); an unsafe cut / below-anchor-floor returns
+  nothing so the next context event retries. The cut is computed on the engine
+  view then mapped back onto the original `AgentMessage[]` (lossless, like
+  `dropCompactedRange`), with a synthesized user-role summary message prepended.
+  Honors PREVENT-PI-001 (anchor floor) + PREVENT-PI-002 (no split tool pair).
+- **Removed `ctx.compact()` from the auto-trigger (default).** The durable disk
+  trim now comes from pi's native auto-compaction (agent-end, continues) via the
+  existing `session_before_compact` handler. The v0.4.28 `piCompactWouldNoop`
+  gate is kept behind the legacy flag only.
+- **`MEGACOMPACT_LEGACY_DURABLE_TRIM`** (default false) restores v0.4.28
+  (ctx.compact + no-op gate) as a one-release rollback. Read live from env so it
+  can be toggled without reloading the module.
+- **`MEGACOMPACT_ANCHOR_USER_MESSAGES`** is now also read live from env at the
+  context handler (config value is the cached default), so the anchor floor can
+  be tuned per-test / per-run.
+- **Guarded resume nudge.** `agent_end` sends one `sendUserMessage` continuation
+  nudge (debounced 30s via `runtime.resumeNudgeUntil`) only when truly idle +
+  queued, so a turn never stalls post-compact and never busy-loops.
+
+### Tests
+- New `mega-trim.test.ts` (4 unit tests) + 4 S16 integration tests in
+  `mega-compact.test.ts`: live trim fires (no `ctx.compact`), below-anchor-floor
+  skips, idle+queued nudge guarded, durable trim still supplied via native
+  auto-compaction. Legacy `ctx.compact` path preserved behind the flag.
+
 ## v0.4.28 (2026-07-15)
 
 Fix the user-facing `Compaction failed: Nothing to compact (session too small)`

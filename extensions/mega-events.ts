@@ -8,12 +8,14 @@
  */
 
 import type { ExtensionAPI, ExtensionContext, ContextEvent, SessionBeforeCompactEvent } from "@earendil-works/pi-coding-agent";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { normalizeSessionId } from "../src/store.js";
 import { autoCompactCheck } from "../src/compact.js";
 import { estimateSessionTokens } from "../src/tokens.js";
 import { MegaRuntime, recentUserQuery, WIDGET_KEY } from "./mega-runtime.js";
 import { runCompact, doRecall, piCompactWouldNoop } from "./mega-pipeline.js";
 import { driveNativeCompaction } from "./mega-compact-driver.js";
+import { computeLiveTrimCut, liveTrimSummaryMessage } from "./mega-trim.js";
 import { pressureFromPct, type MegaConfig } from "./mega-config.js";
 
 /** Register all pi lifecycle event handlers. */
@@ -105,6 +107,23 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
     } else {
       runtime.setStatus(ctx, config.auto ? "mega-compact: ready" : "mega-compact: manual only");
     }
+    // S16 continuation fallback: if the turn settled idle right after a live-trim
+    // compaction AND there is queued work AND we haven't nudged recently, nudge
+    // once so the agent continues (the live trim should make this rare). Guarded
+    // to never busy-loop: one nudge per 30s, only when truly idle + queued.
+    if (config.auto && runtime.activeAgents === 0) {
+      try {
+        const idle = ctx.isIdle?.() ?? true;
+        const queued = ctx.hasPendingMessages?.() ?? false;
+        const now = Date.now();
+        if (idle && queued && now >= runtime.resumeNudgeUntil) {
+          runtime.resumeNudgeUntil = now + 30_000;
+          pi.sendUserMessage("[mega-compact] continue from the compacted context above.");
+        }
+      } catch {
+        /* non-fatal: a failed nudge never blocks */
+      }
+    }
     runtime.snapshot(ctx);
   });
 
@@ -119,15 +138,20 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
     runtime.snapshot(ctx);
   });
 
-  // ---- Auto-trigger: own the decision, pi owns the durable write ----------
-  // OUR auto-trigger (over threshold + debounce): persist our Trident checkpoint,
-  // then start pi's compaction flow via ctx.compact(). That fires
-  // `session_before_compact`, where OUR handler returns our summary +
-  // firstKeptEntryId, and pi durably writes the trim to disk (appendCompaction).
-  // Result: auto-compact AND a durable trim — resume reloads the trimmed window,
-  // no full-reload + additive recall inflation (Fix B kills the token-growth bug).
-  // We do NOT drop messages here (that would be ephemeral; the read-only session
-  // manager can't trim disk, so the trim has to come through pi).
+  // ---- Auto-trigger: live trim (compact and continue) + native durable ----
+  // S16 redesign: we NO LONGER call ctx.compact() from the auto-trigger by
+  // default. That mapped to pi's MANUAL compaction path, which abort()s the
+  // in-flight turn (agent-session.js:1345) and stops the agent. Instead:
+  //  - LIVE: return { messages: trimmedView } from the context event. This
+  //    feeds pi's transformContext (sdk.js:226 → agent-loop.js:180) so the
+  //    model sees a compacted window EVERY LLM call, with no abort. The turn
+  //    continues. We persist our recall checkpoint (the durable value) first.
+  //  - DURABLE: pi's NATIVE auto-compaction fires at agent-end
+  //    (agent-session.js:1565), continues (return hasQueuedMessages()), and
+  //    emits session_before_compact — where OUR driveNativeCompaction supplies
+  //    the summary and pi truncates the transcript on disk. No ctx.compact().
+  // Legacy: MEGACOMPACT_LEGACY_DURABLE_TRIM=true restores the v0.4.28 ctx.compact
+  // path (kept one release as rollback).
   pi.on("context", async (event: ContextEvent, ctx: ExtensionContext) => {
     if (!config.auto) return;
     const usage = ctx.getContextUsage();
@@ -162,17 +186,55 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
     const ran = runCompact(pi, runtime, config, ctx, messages, { compressionPressure: pressure });
     if (ran.skipped) return;
 
-    // Skip pi's durable-trim flow when pi would no-op ("Nothing to compact /
-    // Already compacted"). pi throws that error *before* session_before_compact
-    // fires and renders it via a compaction_end event we can't mute (onError is
-    // too late), so the only fix is to not call ctx.compact() on a no-op. Our
-    // recall checkpoint above is already persisted; the durable trim is
-    // unnecessary for a transcript pi would keep in full anyway.
-    if (piCompactWouldNoop(ctx)) return;
+    // LEGACY path (rollback): v0.4.28 ctx.compact() + the no-op gate. The
+    // manual compact path aborts the in-flight turn — only used behind the flag.
+    // Read live from env (in addition to the load-time config) so the flag can be
+    // toggled per-test without reloading the module; config.legacyDurableTrim is
+    // the cached default. (Mirrors how piCompactWouldNoop re-reads its floor.)
+    const legacy = config.legacyDurableTrim || process.env.MEGACOMPACT_LEGACY_DURABLE_TRIM === "true" || process.env.MEGACOMPACT_LEGACY_DURABLE_TRIM === "1";
+    if (legacy) {
+      if (piCompactWouldNoop(ctx)) return;
+      ctx.compact({ customInstructions: undefined });
+      return;
+    }
 
-    // Start pi's compaction flow so our session_before_compact handler can
-    // supply the durable trim (pi writes it to disk). We never use pi's summary.
-    ctx.compact({ customInstructions: undefined });
+    // S16 LIVE trim: collapse the compacted region to a summary + recent anchor.
+    // Non-destructive: pi keeps the real transcript; only this LLM call sees the
+    // trimmed window. We compute the cut on the engine view (pure, tested) then
+    // slice the ORIGINAL pi AgentMessage[] from that index (lossless alignment,
+    // mirroring dropCompactedRange) and prepend a user-role summary message.
+    // A build failure or unsafe cut returns nothing (no trim this call — the
+    // next context event retries). The anchor floor is read live from env (the
+    // config value is the cached default) so it can be tuned per-test / per-run
+    // without reloading the module.
+    try {
+      const anchorEnv = process.env.MEGACOMPACT_ANCHOR_USER_MESSAGES;
+      const anchorUserMessages = (anchorEnv != null && anchorEnv !== "" && Number.isFinite(Number(anchorEnv)))
+        ? Number(anchorEnv)
+        : config.anchorUserMessages;
+      const cut = computeLiveTrimCut(view, {
+        compactedFrom: ran.result.compactedFrom,
+        summary: ran.result.summary,
+        anchorUserMessages,
+      });
+      if (cut === null) return; // unsafe / below anchor floor — no trim this call
+      const summaryMsg = liveTrimSummaryMessage({
+        compactedFrom: ran.result.compactedFrom,
+        summary: ran.result.summary,
+        anchorUserMessages: config.anchorUserMessages,
+      });
+      // Synthesize a user-role AgentMessage carrying the compacted summary.
+      const summaryAgentMsg = {
+        role: "user" as const,
+        content: summaryMsg.text,
+        timestamp: Date.now(),
+      } as unknown as AgentMessage;
+      const recent = messages.slice(cut); // original AgentMessage[], lossless
+      runtime.snapshot(ctx);
+      return { messages: [summaryAgentMsg, ...recent] };
+    } catch {
+      return; // non-fatal: no trim this call; the next context event retries
+    }
   });
 
   // ---- Supply a DURABLE trim to pi's native compaction (Fix B) ----------

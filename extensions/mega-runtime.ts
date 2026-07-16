@@ -79,6 +79,8 @@ export class MegaRuntime {
     tokensSaved: 0,
   };
   debounceUntil = 0;
+  // S16: debounce for the agent_end resume nudge (avoid busy-loops).
+  resumeNudgeUntil = 0;
   // Agent tracking for real-time widget updates
   activeAgents = 0;
   currentTurn = 0;
