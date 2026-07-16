@@ -158,6 +158,23 @@ building.
 > `pi update --extensions` on the device. (`.gitignore` rejects `*.tgz` so one can't
 > be committed by accident.)
 
+### Storage backend (v0.5.0+)
+
+pi-mega-compact uses a dual local backend — **zero network, no native build step**:
+
+- **`node:sqlite`** (`DatabaseSync`, Node ≥22.13 built-in) — the synchronous source of truth for checkpoints, session state, and the dedup index. No dependency, no install script, survives pi's `install-scripts` block.
+- **PGlite + `@electric-sql/pglite-pgvector`** (WASM Postgres + HNSW `vector_cosine_ops`) — an optional, best-effort async vector index for **cross-repo recall** at `~/.pi/mega-compact-vector`. The sync store stays authoritative; the index degrades to the sync per-session scan on any failure.
+
+Kill-switch: `MEGACOMPACT_PGLITE_DISABLED=1` fully disables the PGlite index (falls back to sync scan). Requires Node ≥22.13 (`engines.node`).
+
+### Cross-repo recall (v0.5.0+)
+
+On resume, recall augments from other repos' checkpoints when this repo's store is thin; `/mega-recall --cross-repo` searches all repos via the HNSW index. Cross-repo hits use a stricter cosine floor (`MEGACOMPACT_CROSSREPO_COSINE`, default 0.90) and are labeled with their source repo. A machine-wide injected-set (`~/.pi/mega-compact-index/global-index.db`) prevents re-injecting the same foreign checkpoint.
+
+### Memory (v0.5.0+)
+
+pi-mega-compact auto-reviews the conversation every 10 turns and writes durable `decision`/`fact`/`preference` memories to SQLite (local, hallucination-guarded). Relevant memories are injected as RAG context on recall (capped, deduped). Manual: `/mega-memory save|list|forget`.
+
 ### Verify
 
 ```bash
@@ -194,7 +211,8 @@ The commands (slash commands inside pi):
 | `/mega-compact [summary...]` | Manually compact the current session. A summary arg is used verbatim; otherwise the COLLAPSE heuristics build one. Persists a `chkpt_xxx`. |
 | `/mega-compact off` | Disable auto-compaction for this session. |
 | `/mega-status` | Show config + current context usage + store stats (checkpoint count, dedup rate, tokens saved). |
-| `/mega-recall [query]` | Semantic-search the local store, dedupe against the current window, and inline the top-K relevant checkpoints. No query → uses your latest message. |
+| `/mega-recall [query]` | Semantic-search the local store, dedupe against the current window, and inline the top-K relevant checkpoints. No query → uses your latest message. `--cross-repo` searches all repos. |
+| `/mega-memory save <text>` / `save <category> <text>` / `list` / `search <query>` / `forget <text>` / `consolidate` | Manage durable memories (decisions, facts, preferences) written by auto-review and recalled as RAG context. Also `/m` shortform. |
 | `/mega-tier [name]` | Set the compaction tier (`low` / `medium` / `high` / `ultra` / `mega`). Shows current tier with no arg. |
 | `/mega-dashboard` | Start the **localhost-only** live dashboard and open it in a browser (token gauge, store stats, live event stream). |
 | `/mega-dashboard-status` | Report dashboard server status. |

@@ -65,6 +65,18 @@
 
 ---
 
+## FEATURES (v0.5.0 — Slice 3)
+
+| Keyword | Document | Location |
+|---------|----------|----------|
+| dual-backend store (node:sqlite + PGlite), kill-switch, kill-switch env | [README.md#storage-backend-v050](../README.md#storage-backend-v050) | repo root |
+| cross-repo recall (HNSW, cosine floor, source labels, global injected-set) | [README.md#cross-repo-recall-v050](../README.md#cross-repo-recall-v050) | repo root |
+| durable memory RAG (auto-review, recall inclusion, dedup, consolidation) | [README.md#memory-v050](../README.md#memory-v050) + [src/memory.ts](../src/memory.ts) + [src/memoryRecall.ts](../src/memoryRecall.ts) + [src/memoryOps.ts](../src/memoryOps.ts) | repo root + src/ |
+| tier `-memory` flag on `/mega-recall` + recall dedup logic | [src/recall.ts](../src/recall.ts) + [extensions/mega-commands.ts](../extensions/mega-commands.ts) | src/ + extensions/ |
+| memory pipeline trigger (`turn_end` + `doCompact` consolidation gate) | [extensions/mega-events.ts](../extensions/mega-events.ts) + [extensions/mega-pipeline.ts](../extensions/mega-pipeline.ts) | extensions/ |
+
+---
+
 ## ARCHITECTURE / SOURCE
 
 | Keyword | Document | Location |
