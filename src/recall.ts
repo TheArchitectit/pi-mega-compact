@@ -56,8 +56,12 @@ export function formatRecallBlock(hits: SearchHit[]): string {
   if (hits.length === 0) return "";
   const parts = hits.map((h, i) => {
     const score = (h.score * 100).toFixed(0);
+    // S17: label a cross-repo hit with its source repo (the repoId doubles as
+    // that repo's stateDir, so the last path segment is the repo's display
+    // name). Same-repo hits (no repoId) stay unlabeled.
+    const repoName = h.repoId ? ` (from repo ${h.repoId.split("/").filter(Boolean).pop() ?? h.repoId})` : "";
     return (
-      `### Recalled context [${i + 1}] (relevance ${score}%)\n` +
+      `### Recalled context [${i + 1}] (relevance ${score}%)${repoName}\n` +
       `${h.checkpoint.summary.trim()}\n` +
       (h.checkpoint.filesModified.length
         ? `Key files: ${h.checkpoint.filesModified.join(", ")}.\n`

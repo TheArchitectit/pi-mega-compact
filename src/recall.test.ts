@@ -47,6 +47,26 @@ test("formatRecallBlock is empty for no hits", () => {
   assert.equal(formatRecallBlock([]), "");
 });
 
+test("formatRecallBlock (S17): labels a cross-repo hit with its source repo", () => {
+  const hit = {
+    checkpoint: { checkpointId: "chkpt_x", summary: "did thing Y", filesModified: ["a.ts"] },
+    score: 0.91,
+    repoId: "/home/u/rad-gateway",
+  } as any;
+  const block = formatRecallBlock([hit]);
+  assert.ok(block.includes("from repo"), "labels cross-repo source");
+  assert.ok(block.includes("rad-gateway"), "includes the repo display name");
+});
+
+test("formatRecallBlock (S17): omits the label for same-repo hits (no repoId)", () => {
+  const hit = {
+    checkpoint: { checkpointId: "c1", summary: "s", filesModified: [] },
+    score: 0.9,
+  } as any;
+  const block = formatRecallBlock([hit]);
+  assert.ok(!block.includes("from repo"), "no source label for same-repo hits");
+});
+
 test("recallAndInline empty when store has nothing for query", () => {
   const s = store();
   const r = recallAndInline({ sessionId: SESS, query: "no such topic exists here", limit: 5, source: "command" }, s as any);

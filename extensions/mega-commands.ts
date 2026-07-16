@@ -13,7 +13,7 @@ import { listCheckpoints, latestModelSnapshot } from "../src/store/sqlite.js";
 import { decompressSmart } from "../src/store/compression.js";
 import { loadMetrics, fpRate, p95 } from "../src/monitoring.js";
 import { MegaRuntime, C, recentUserQuery } from "./mega-runtime.js";
-import { runCompact, doRecall } from "./mega-pipeline.js";
+import { runCompact, doRecall, doRecallAsync } from "./mega-pipeline.js";
 import { setTier, COMPACT_TIERS, type MegaConfig, type CompactTier } from "./mega-config.js";
 
 /** Resolve a checkpoint by id (or "recent"/"last") from this session's store. */
@@ -47,16 +47,21 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
   });
 
   pi.registerCommand("mega-recall", {
-    description: "Recall relevant compacted context from the vector store and inline it.",
+    description: "Recall relevant compacted context from the vector store and inline it. Use --cross-repo to search all repos.",
     handler: async (args: string, ctx: ExtensionContext) => {
-      const query = args.trim() || recentUserQuery(ctx);
+      // S17: --cross-repo (or --cross repo) runs the async path over every repo's
+      // PGlite HNSW index (stricter cosine floor + source labels).
+      const crossRepo = /\-\-cross[\- ]repo\b/.test(args);
+      const query = args.replace(/--cross[\- ]repo\b/, "").trim() || recentUserQuery(ctx);
       if (!query) {
         ctx.ui.notify("[mega-compact] /mega-recall needs a query or a prior user message.");
         return;
       }
-      const r = doRecall(runtime, config, ctx, query, "command");
+      const r = crossRepo
+        ? await doRecallAsync(runtime, config, ctx, query, "command", { crossRepo: true })
+        : doRecall(runtime, config, ctx, query, "command");
       if (r.empty) {
-        runtime.logger.info("recall-empty", { query });
+        runtime.logger.info("recall-empty", { query, crossRepo });
         ctx.ui.notify(`[mega-compact] recall found nothing new for "${query}".`);
         return;
       }
@@ -64,10 +69,10 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
       // injection). Report what was selected now for immediate feedback.
       runtime.pendingRecallBlock = r.block;
       const list = r.report.map((l) => l).join("\n");
-      runtime.logger.info("recall", { query, injected: r.toInject.map((h) => h.checkpoint.checkpointId) });
-      runtime.setStatus(ctx, `mega-compact: recalled ${r.toInject.length} chkpt`);
+      runtime.logger.info("recall", { query, crossRepo, injected: r.toInject.map((h) => h.checkpoint.checkpointId) });
+      runtime.setStatus(ctx, `mega-compact: recalled ${r.toInject.length} chkpt${crossRepo ? " (cross-repo)" : ""}`);
       ctx.ui.notify(
-        `[mega-compact] recall staged ${r.toInject.length} checkpoint(s) for "${query}":\n${list}\n` +
+        `[mega-compact] recall staged ${r.toInject.length} checkpoint(s) for "${query}"${crossRepo ? " (cross-repo)" : ""}:\n${list}\n` +
           `(injected at the next turn via system prompt)`,
       );
     },

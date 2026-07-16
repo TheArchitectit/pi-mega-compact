@@ -49,6 +49,13 @@ export interface MegaConfig {
    *  trim + pi native auto-compaction instead (compact and continue). Kept for
    *  one release as rollback. */
   legacyDurableTrim: boolean;
+  /** Cross-repo recall enabled (S17). Resume + /mega-recall --cross-repo can
+   *  pull checkpoints from OTHER repos via the PGlite HNSW index. Default true. */
+  crossRepoEnabled: boolean;
+  /** Stricter cosine floor for cross-repo hits (S17). Default 0.90 (trigram) /
+   *  tighter than same-repo so only genuinely-relevant cross-repo context is
+   *  injected. */
+  crossRepoCosine: number;
   /** Token ceiling for the re-injected recall block (Fix C). Recall stops
    *  adding checkpoints once the block would exceed this — bounds read-path
    *  token cost so it can never net-inflate the window. */
@@ -110,6 +117,8 @@ export function loadConfig(): MegaConfig {
     dedupSim: Number(process.env.MEGACOMPACT_DEDUP_SIM ?? "0.9"),
     raptorEnabled: envBool("MEGACOMPACT_RAPTOR_ENABLED", true),
     legacyDurableTrim: envBool("MEGACOMPACT_LEGACY_DURABLE_TRIM", false),
+    crossRepoEnabled: envBool("MEGACOMPACT_CROSSREPO_ENABLED", true),
+    crossRepoCosine: Number(process.env.MEGACOMPACT_CROSSREPO_COSINE ?? "0.90"),
     recallMaxTokens: envFlag("MEGACOMPACT_RECALL_MAX_TOKENS", 1500),
     windowDedupe: envBool("MEGACOMPACT_WINDOW_DEDUPE", true),
     debug: envBool("MEGACOMPACT_DEBUG", false),

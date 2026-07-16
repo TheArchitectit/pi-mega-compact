@@ -51,6 +51,10 @@ import { migrateJsonToSqlite } from "./store/migrate.js";
 export interface SearchHit {
   checkpoint: StoredCheckpoint;
   score: number;
+  /** Source repo id (the foreign repo's stateDir) for cross-repo hits, set by
+   *  `searchAsync` so the recall block can label foreign checkpoints. Undefined
+   *  for same-repo hits (the default path). */
+  repoId?: string;
 }
 
 export interface AddInput {
@@ -525,11 +529,15 @@ export class VectorStore {
     }
     // Hydrate each index hit from the authoritative node:sqlite store. repoId is
     // that repo's stateDir, so cross-repo hits resolve against their own store.
+    // Tag cross-repo hits with their source repoId so the recall block can label
+    // them ("from repo <name>"); same-repo hits stay unlabeled.
+    const selfRepo = this.repoId;
     const hydrated: SearchHit[] = [];
     for (const h of indexHits) {
       const cp = getCheckpoint(h.sessionId, h.checkpointId, h.repoId);
       if (cp && cp.dedupStatus !== "removed") {
-        hydrated.push({ checkpoint: cp, score: h.score });
+        const crossRepo = opts.crossRepo && selfRepo && h.repoId && h.repoId !== selfRepo;
+        hydrated.push({ checkpoint: cp, score: h.score, repoId: crossRepo ? h.repoId : undefined });
       }
     }
     if (hydrated.length === 0) return this.search(sid, query, k);

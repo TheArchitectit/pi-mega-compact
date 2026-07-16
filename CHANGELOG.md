@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.5.0-unreleased — Sprint S17 (cross-repo recall)
+
+Wire the built-but-unused PGlite HNSW cross-repo index into the live recall path.
+
+### Added
+- **Cross-repo recall on resume.** `session_start` now uses the new
+  `doRecallAsync` (in `mega-pipeline.ts`): runs the sync same-repo scan first,
+  and when this repo's store is thin (`< autoInlineK` hits) AND cross-repo is
+  enabled, awaits the PGlite HNSW index over every repo and merges the results.
+  Cross-repo hits use a stricter cosine floor (`MEGACOMPACT_CROSSREPO_COSINE`,
+  default 0.90) and are labeled with their source repo in the recall block. The
+  `recallMaxTokens` cap + window-dedupe apply to the merged set, so cross-repo
+  can never net-inflate the window. `session_start` is an async-safe point; the
+  mid-turn `context` handler stays sync (no await).
+- **`/mega-recall --cross-repo`** searches all repos via the HNSW index.
+- **Source-repo labels.** `SearchHit` gains an optional `repoId` (the foreign
+  repo's stateDir), populated by `searchAsync` for cross-repo hits.
+  `formatRecallBlock` renders `(from repo <name>)` for foreign checkpoints;
+  same-repo hits stay unlabeled.
+- Config: `MEGACOMPACT_CROSSREPO_ENABLED` (default true),
+  `MEGACOMPACT_CROSSREPO_COSINE` (default 0.90).
+
+### Tests
+- 2 new `recall.test.ts` tests (source label present for cross-repo, absent for
+  same-repo). Full `mega-compact.test.ts` suite green (26/26).
+
 ## v0.5.0-unreleased — Sprint S16 (compaction continuity)
 
 Fix the live bug where pi STOPPED after our auto-compact. `ctx.compact()` mapped

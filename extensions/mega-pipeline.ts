@@ -12,7 +12,7 @@ import { sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { compactSession } from "../src/engine.js";
 import type { EngineMessage } from "../src/types.js";
-import { recallAndInline } from "../src/recall.js";
+import { recallAndInline, recallAndInlineAsync, formatRecallBlock, type RecallInjectResult } from "../src/recall.js";
 import { normalizeSessionId } from "../src/store.js";
 import { estimateBlockTokens } from "../src/tokens.js";
 import { touchSession, logDaily } from "../src/store/sqlite.js";
@@ -361,6 +361,71 @@ export function doRecall(
     runtime.lastWhy = `why: recalled@${scorePct}% (${result.toInject.length} chkpt)`;
   }
   return result;
+}
+
+/**
+ * S17: async recall with optional cross-repo augmentation. Used on resume
+ * (session_start) and /mega-recall --cross-repo — NEVER from the mid-turn
+ * context handler (that stays sync). Runs the sync same-repo scan first; if it
+ * returns < config.autoInlineK hits AND crossRepo is enabled, awaits the PGlite
+ * HNSW cross-repo path and merges (source-labeled, deduped by checkpointId). The
+ * recallMaxTokens cap + windowDedupe apply to the merged set so cross-repo can
+ * never net-inflate the window. Cross-repo uses a stricter cosine floor
+ * (config.crossRepoCosine) than same-repo. Non-fatal: any async failure returns
+ * the same-repo result unchanged.
+ */
+export async function doRecallAsync(
+  runtime: MegaRuntime,
+  config: MegaConfig,
+  ctx: ExtensionContext,
+  query: string,
+  source: "resume" | "command",
+  opts: { crossRepo?: boolean } = {},
+): Promise<RecallInjectResult> {
+  runtime.bindRepo(ctx.cwd);
+  const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
+  const liveWindow = config.windowDedupe ? extractLiveWindow(ctx) : undefined;
+  // Sync same-repo first (fast, never blocks).
+  const sameRepo = recallAndInline(
+    {
+      sessionId: sid, query, limit: config.autoInlineK, source, skipInjected: true,
+      recallMaxTokens: config.recallMaxTokens, windowDedupe: config.windowDedupe,
+      liveWindow, dedupSim: config.dedupSim,
+    },
+    runtime.store,
+  );
+  if (!config.crossRepoEnabled || !opts.crossRepo) return sameRepo;
+  if (sameRepo.toInject.length >= config.autoInlineK) return sameRepo; // same-repo satisfied
+  // Augment: cross-repo HNSW (async) with the stricter floor. Non-fatal.
+  try {
+    const x = await recallAndInlineAsync(
+      {
+        sessionId: sid, query, limit: config.autoInlineK, source, skipInjected: true,
+        recallMaxTokens: config.recallMaxTokens, windowDedupe: config.windowDedupe,
+        liveWindow, dedupSim: config.crossRepoCosine, crossRepo: true,
+      },
+      runtime.store,
+    );
+    runtime.dashboard.event("recall-crossrepo", {
+      source, query: query.slice(0, 120), injected: x.toInject.length,
+      sourceRepos: x.toInject.map((h) => h.repoId).filter(Boolean),
+    });
+    // Merge, dedup by checkpointId, respect the same token cap by reformatting.
+    const seen = new Set(sameRepo.toInject.map((h) => h.checkpoint.checkpointId));
+    const merged = [...sameRepo.toInject];
+    for (const h of x.toInject) {
+      if (!seen.has(h.checkpoint.checkpointId)) { merged.push(h); seen.add(h.checkpoint.checkpointId); }
+    }
+    const block = merged.length ? formatRecallBlock(merged) : "";
+    return {
+      toInject: merged,
+      report: merged.map((h) => `  • ${h.checkpoint.checkpointId}${h.repoId ? ` (from ${h.repoId.split("/").filter(Boolean).pop()})` : ""}`),
+      block,
+      empty: merged.length === 0,
+    };
+  } catch {
+    return sameRepo; // cross-repo failure → same-repo only (non-fatal)
+  }
 }
 
 /**

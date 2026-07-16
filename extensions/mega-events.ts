@@ -13,7 +13,7 @@ import { normalizeSessionId } from "../src/store.js";
 import { autoCompactCheck } from "../src/compact.js";
 import { estimateSessionTokens } from "../src/tokens.js";
 import { MegaRuntime, recentUserQuery, WIDGET_KEY } from "./mega-runtime.js";
-import { runCompact, doRecall, piCompactWouldNoop } from "./mega-pipeline.js";
+import { runCompact, doRecall, doRecallAsync, piCompactWouldNoop } from "./mega-pipeline.js";
 import { driveNativeCompaction } from "./mega-compact-driver.js";
 import { computeLiveTrimCut, liveTrimSummaryMessage } from "./mega-trim.js";
 import { pressureFromPct, type MegaConfig } from "./mega-config.js";
@@ -42,11 +42,15 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
       const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
       const query = recentUserQuery(ctx);
       if (query && runtime.store.stats(sid).checkpointCount > 0) {
-        const r = doRecall(runtime, config, ctx, query, "resume");
+        // S17: use the async variant on resume so cross-repo HNSW recall can
+        // augment when this repo's store is thin. session_start is an async-safe
+        // point (unlike the mid-turn context handler, which stays sync).
+        const r = await doRecallAsync(runtime, config, ctx, query, "resume", { crossRepo: config.crossRepoEnabled });
         if (!r.empty) {
           runtime.pendingRecallBlock = r.block;
-          runtime.setStatus(ctx, `mega-compact: recalled ${r.toInject.length} chkpt`);
-          runtime.logger.info("auto-inline", { reason: event.reason, query, injected: r.toInject.map((h) => h.checkpoint.checkpointId) });
+          const crossLabel = r.toInject.some((h) => h.repoId) ? " (cross-repo)" : "";
+          runtime.setStatus(ctx, `mega-compact: recalled ${r.toInject.length} chkpt${crossLabel}`);
+          runtime.logger.info("auto-inline", { reason: event.reason, query, injected: r.toInject.map((h) => h.checkpoint.checkpointId), crossRepo: r.toInject.some((h) => h.repoId) });
         }
       }
     }
