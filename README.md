@@ -169,7 +169,7 @@ Kill-switch: `MEGACOMPACT_PGLITE_DISABLED=1` fully disables the PGlite index (fa
 
 ### Cross-repo recall (v0.5.0+)
 
-On resume, recall augments from other repos' checkpoints when this repo's store is thin; `/mega-recall --cross-repo` searches all repos via the HNSW index. Cross-repo hits use a stricter cosine floor (`MEGACOMPACT_CROSSREPO_COSINE`, default 0.90) and are labeled with their source repo. A machine-wide injected-set (`~/.pi/mega-compact-index/global-index.db`) prevents re-injecting the same foreign checkpoint.
+On resume, recall augments from other repos' checkpoints when this repo's store is thin; `/mega-recall --cross-repo` searches all repos via the HNSW index. Cross-repo hits use a stricter cosine floor (`MEGACOMPACT_CROSSREPO_COSINE`, default 0.90) and are labeled with their source repo. A machine-wide injected-set (`~/.mega-compact-index/index.sqlite`) prevents re-injecting the same foreign checkpoint.
 
 ### Memory (v0.5.0+)
 

@@ -1,6 +1,16 @@
 # Changelog
 
-## v0.5.0-unreleased — Cross-repo drift detection (R4)
+## v0.5.0 (2026-07-16) — compaction continuity + cross-repo recall + memory-RAG
+
+The S16–S23 slice: pi now compacts **and continues** (no more stop-after-
+compact), cross-repo recall is wired into resume + `/mega-recall --cross-repo`
+over a machine-wide PGlite HNSW index, and the `memories` table is auto-
+reviewed + RAG-injected. Plus a multi-repo dashboard (Summary + All-repos
++ drift) and Slice-3 docs. Single `node:sqlite` source of truth + optional
+PGlite index; zero network (PREVENT-PI-004). See the design spec and the
+per-sprint sections below for full detail.
+
+### Cross-repo drift detection (R4)
 
 A read-only health report over the machine-wide `repo_registry`, surfaced on the
 dashboard, so multi-repo drift is visible at a glance.
@@ -19,7 +29,7 @@ dashboard, so multi-repo drift is visible at a glance.
 - `src/driftDetection.test.ts` (5): empty registry, stale flag, compaction-lag
   flag, all-ok, and recent model churn.
 
-## v0.5.0-unreleased — Sprint S21 (memory recall inclusion + auto-consolidate)
+### Sprint S21 (memory recall inclusion + auto-consolidate)
 
 ### Added
 - **`recallMemories()` wired into `recallAndInline`** (`src/recall.ts`,
@@ -50,7 +60,7 @@ dashboard, so multi-repo drift is visible at a glance.
   (pair-matches near-dups, leaves unrelated rows alone, empty/singleton
   fast-paths return 0).
 
-## v0.5.0-unreleased — Sprint S20 (memory auto-review)
+### Sprint S20 (memory auto-review)
 
 Auto-review the conversation and persist durable memories to SQLite, then
 recall them as RAG context. Local, hallucination-guarded, no LLM by default.
@@ -91,7 +101,7 @@ recall them as RAG context. Local, hallucination-guarded, no LLM by default.
   referenced hits (`last_referenced` updated), empty store returns `[]`,
   cleanup.
 
-## v0.5.0-unreleased — Sprint S19 (multi-repo dashboard)
+### Sprint S19 (multi-repo dashboard)
 
 Surface every repo in one dashboard. Reads the machine-wide `repo_registry`
 table in `index.sqlite` (the single write path the extension upserts on
@@ -124,7 +134,7 @@ repos' checkpoints, tokens saved, compressed-originals, and active model.
   asserts `/api/index` returns both repos with the correct aggregate summary
   (`totalCheckpoints` = 3 + 5, `totalTokensSaved` = 1000 + 2000).
 
-## v0.5.0-unreleased — Sprint S18 (cross-repo dedup markers + tracking)
+### Sprint S18 (cross-repo dedup markers + tracking)
 
 Machine-wide injected-set so a foreign checkpoint injected in repo A is never
 re-injected by repo B; cross-repo injections tracked in `events.log` + `/mega-status`.
@@ -153,7 +163,7 @@ re-injected by repo B; cross-repo injections tracked in `events.log` + `/mega-st
 - `dashboard-server.test.ts` (S19/S22): `/api/repos` honors `?active=Nh`
   and `/api/summary` reports the 24h `activeRepos` count from seeded fixtures.
 
-## v0.5.0-unreleased — Sprint S17 (cross-repo recall)
+### Sprint S17 (cross-repo recall)
 
 Wire the built-but-unused PGlite HNSW cross-repo index into the live recall path.
 
@@ -179,7 +189,7 @@ Wire the built-but-unused PGlite HNSW cross-repo index into the live recall path
 - 2 new `recall.test.ts` tests (source label present for cross-repo, absent for
   same-repo). Full `mega-compact.test.ts` suite green (26/26).
 
-## v0.5.0-unreleased — Sprint S16 (compaction continuity)
+### Sprint S16 (compaction continuity)
 
 Fix the live bug where pi STOPPED after our auto-compact. `ctx.compact()` mapped
 to pi's manual compaction path, which aborts the in-flight turn and stops the
