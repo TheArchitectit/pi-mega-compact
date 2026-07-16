@@ -14,6 +14,7 @@ import { autoCompactCheck } from "../src/compact.js";
 import { estimateSessionTokens } from "../src/tokens.js";
 import { MegaRuntime, recentUserQuery, WIDGET_KEY } from "./mega-runtime.js";
 import { runCompact, doRecall, doRecallAsync, piCompactWouldNoop } from "./mega-pipeline.js";
+import { recallMemoriesAndInline } from "../src/recall.js";
 import { driveNativeCompaction } from "./mega-compact-driver.js";
 import { computeLiveTrimCut, liveTrimSummaryMessage } from "./mega-trim.js";
 import { pressureFromPct, type MegaConfig } from "./mega-config.js";
@@ -31,6 +32,8 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
     runtime.resetRuntime(ctx.sessionManager.getSessionId());
     runtime.captureModel(ctx); // best-effort: ctx.model may be set by session start
     runtime.setStatus(ctx, config.auto ? "mega-compact: ready" : "mega-compact: manual only");
+    // S21: clear any stale memory block from a prior session.
+    runtime.pendingMemoryRecallBlock = undefined;
     // Auto-inline on resume/fork/continue: stage the most relevant checkpoints
     // so the next before_agent_start prepends them to the system prompt.
     // Triggered whenever this session already has persisted checkpoints AND a
@@ -53,6 +56,16 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
           runtime.logger.info("auto-inline", { reason: event.reason, query, injected: r.toInject.map((h) => h.checkpoint.checkpointId), crossRepo: r.toInject.some((h) => h.repoId) });
         }
       }
+      // S21: parallel memory recall. Same async context so we can await without
+      // breaking the handler contract. Best-effort — never throws.
+      try {
+        const mr = await recallMemoriesAndInline({
+          query, stateDir: runtime.getStateDir(), limit: 5,
+        });
+        if (!mr.empty) runtime.pendingMemoryRecallBlock = mr.block;
+      } catch (err) {
+        runtime.logger.warn("memory-recall skipped", { err: String(err) });
+      }
     }
     runtime.dashboard.event("session_start", { reason: event.reason, sessionId: runtime.rt.sessionId });
     runtime.snapshot(ctx);
@@ -71,6 +84,13 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
           runtime.pendingRecallBlock = r.block;
           runtime.logger.info("auto-inline", { reason: "session_tree", query, injected: r.toInject.map((h) => h.checkpoint.checkpointId) });
         }
+        // S21: parallel memory recall. Trigram embedder is sub-ms; await is fine.
+        try {
+          const mr = await recallMemoriesAndInline({ query, stateDir: runtime.getStateDir(), limit: 5 });
+          if (!mr.empty) runtime.pendingMemoryRecallBlock = mr.block;
+        } catch (err) {
+          runtime.logger.warn("memory-recall skipped", { err: String(err) });
+        }
       }
     }
     runtime.dashboard.event("session_tree", { sessionId: runtime.rt.sessionId });
@@ -80,10 +100,13 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
   // ---- Auto-inline injection point: prepend staged recall to systemPrompt ----
   pi.on("before_agent_start", async (event, ctx) => {
     runtime.captureModel(ctx); // most reliable point ctx.model is populated
-    if (!runtime.pendingRecallBlock) return;
-    const block = runtime.pendingRecallBlock;
-    runtime.pendingRecallBlock = undefined; // one-shot: consume so we never double-inject
-    return { systemPrompt: `${event.systemPrompt}\n\n${block}` };
+    const cpBlock = runtime.pendingRecallBlock;
+    const memBlock = runtime.pendingMemoryRecallBlock;
+    if (!cpBlock && !memBlock) return;
+    runtime.pendingRecallBlock = undefined;
+    runtime.pendingMemoryRecallBlock = undefined;
+    const composed = [cpBlock, memBlock].filter(Boolean).join("\n\n");
+    return { systemPrompt: `${event.systemPrompt}\n\n${composed}` };
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {

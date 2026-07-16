@@ -146,6 +146,70 @@ export function recallAndInline(
   };
 }
 
+// --- S21: memory recall ----------------------------------------------------
+// Durables (decisions, rules, user-saved facts) live in the `memories` table.
+// We mirror the checkpoint recall path: rank by cosine, format a block, respect
+// a token cap so it can never net-inflate the system prompt.
+
+export interface MemoryRecallInjectOptions {
+  query: string;
+  stateDir: string;
+  limit?: number;
+  /** Token ceiling; defaults to the same `recallMaxTokens` used for checkpoints. */
+  recallMaxTokens?: number;
+  /** Cosine threshold; default 0.2. */
+  minSimilarity?: number;
+}
+
+/** Format one memory hit for the recall block. Category + score for traceability. */
+export function formatMemoryRecallBlock(
+  hits: Array<{ content: string; category: string | null; score: number }>,
+): string {
+  if (hits.length === 0) return "";
+  const parts = hits.map((h, i) => {
+    const pct = (h.score * 100).toFixed(0);
+    const cat = h.category ? `[${h.category}] ` : "";
+    return `### Recalled memory [${i + 1}] (relevance ${pct}%)\n${cat}${h.content.trim()}`;
+  });
+  return (
+    "The following facts about this project were saved from earlier turns " +
+    "and are relevant to the current request. Treat them as established:\n\n" +
+    parts.join("\n")
+  );
+}
+
+/** Recall top-k durable memories, format into a token-capped block. */
+export async function recallMemoriesAndInline(
+  opts: MemoryRecallInjectOptions,
+): Promise<{ empty: boolean; block: string; report: string[] }> {
+  const limit = opts.limit ?? 5;
+  const maxTokens = opts.recallMaxTokens ?? 0;
+  const { recallMemories } = await import("./memoryRecall.js");
+  const hits = await recallMemories(opts.query, opts.stateDir, {
+    topK: limit,
+    minSimilarity: opts.minSimilarity ?? 0.2,
+  });
+  if (hits.length === 0) return { empty: true, block: "", report: [] };
+
+  // Same incremental token cap pattern as checkpoint recall.
+  const parts: string[] = [];
+  const report: string[] = [];
+  let blockTokens = 0;
+  for (const h of hits) {
+    const part = formatMemoryRecallBlock([
+      { content: h.memory.content, category: h.memory.category, score: h.score },
+    ]);
+    const partTokens = estimateBlockTokens(part);
+    if (maxTokens > 0 && blockTokens + partTokens > maxTokens) break;
+    parts.push(part);
+    report.push(
+      `  • memory#${h.memory.id} (${(h.score * 100).toFixed(0)}%): ${h.memory.content.slice(0, 60).replace(/\n/g, " ")}…`,
+    );
+    blockTokens += partTokens;
+  }
+  return { empty: parts.length === 0, block: parts.join("\n"), report };
+}
+
 /**
  * Slice 2 async cross-repo recall. Same dedup/bound/inline contract as
  * `recallAndInline`, but backed by `VectorStore.searchAsync` so it can recall

@@ -19,11 +19,27 @@ recall them as RAG context. Local, hallucination-guarded, no LLM by default.
   Best-effort, non-fatal.
 - `memories` table gains `category` / `target` / `last_referenced` / `source_turn`
   columns (S20.1, additive + idempotent `ensureColumn` migration).
+- **`recallMemories()`** (`src/memoryRecall.ts`) — cosine-ranked recall over the
+  durable `memories` table using the same local embedder used by RAPTOR. Marks
+  hits as `last_referenced` so memory drift can be measured; min-similarity
+  defaults to 0.2 (filters unrelated hits).
+- **`recallMemoriesAndInline()`** (`src/recall.ts`) — composes memory recall
+  into the same one-shot pending-block pipeline as checkpoint recall
+  (`pendingMemoryRecallBlock` in `MegaRuntime`), token-capped via the same
+  `recallMaxTokens` budget as checkpoints, and prepended to the system prompt
+  by `before_agent_start` alongside the existing checkpoint block.
+- **Resumed / branched sessions auto-recall memories** (`mega-events.ts`,
+  `openclaw-mega-compact.ts`) — the user's last query drives both checkpoint
+  and memory recall on resume so durable decisions and rules re-surface with
+  the rest of the prior context.
 
 ### Tests
 - `src/memory.test.ts` (3): add on decision, replace on contradiction,
   none on smalltalk. `src/memoryOps.test.ts`: add / idempotent-add / replace /
   remove.
+- `src/memoryRecall.test.ts` (4): ranks relevant memory above unrelated, marks
+  referenced hits (`last_referenced` updated), empty store returns `[]`,
+  cleanup.
 
 ## v0.5.0-unreleased — Sprint S19 (multi-repo dashboard)
 

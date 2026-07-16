@@ -21,7 +21,7 @@ import {
   type CompactInput,
   type CompactResult,
 } from "../src/engine.js";
-import { recallAndInline, type RecallInjectResult } from "../src/recall.js";
+import { recallAndInline, recallMemoriesAndInline, type RecallInjectResult } from "../src/recall.js";
 import { VectorStore } from "../src/vectorStore.js";
 import type { EngineMessage } from "../src/types.js";
 
@@ -333,19 +333,34 @@ export default definePluginEntry({
             store,
           );
 
-          if (result.toInject.length === 0) {
+          // S21: parallel memory recall for the slash command. Same query so the
+          // output combines checkpoint + memory context the user actually needs.
+          let memBlock = "";
+          let memReport: string[] = [];
+          try {
+            const mr = await recallMemoriesAndInline({ query, stateDir, limit: 5 });
+            if (!mr.empty) {
+              memBlock = mr.block;
+              memReport = mr.report;
+            }
+          } catch {
+            // best-effort — never break the command over memory recall
+          }
+
+          if (result.toInject.length === 0 && !memBlock) {
             return {
               content: [{ type: "text", text: "No relevant context found in the mega-compact store." }],
             };
           }
 
-          const parts: string[] = [
-            `**Recalled ${result.toInject.length} checkpoint(s):**`,
-            ...result.report,
-            "",
-            "---",
-            result.block,
-          ];
+          const parts: string[] = [];
+          if (result.toInject.length) {
+            parts.push(`**Recalled ${result.toInject.length} checkpoint(s):**`, ...result.report, "");
+          }
+          if (memBlock) {
+            parts.push(`**Recalled ${memReport.length} memory record(s):**`, ...memReport, "");
+          }
+          parts.push("---", result.block, memBlock);
 
           return { content: [{ type: "text", text: parts.join("\n") }] };
         } catch (err) {

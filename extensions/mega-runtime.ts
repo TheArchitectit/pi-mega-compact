@@ -87,6 +87,9 @@ export class MegaRuntime {
   // Recall block produced by auto-inline (resume/branch) that the next
   // before_agent_start should prepend to the system prompt. Unset after use.
   pendingRecallBlock: string | undefined;
+  // S21: memory recall block, parallel to pendingRecallBlock. Same one-shot
+  // semantics; composed with the checkpoint block in before_agent_start.
+  pendingMemoryRecallBlock: string | undefined;
   statusKey: string | undefined; // current status text for dashboard
   // Active model/provider (for real cost estimation). Captured from ctx.model
   // on model_select + session_start; persisted to SQL so cost + the dashboard
@@ -364,6 +367,11 @@ export class MegaRuntime {
         displayName: repo.split(/[\\/]/).filter(Boolean).pop() ?? repo,
       });
     } catch { /* non-fatal: cost estimation degrades to model-in-memory only */ }
+  }
+
+  /** S21: state dir of the currently bound repo (where memories live). */
+  getStateDir(): string {
+    return this.currentStateDir;
   }
 
   /** Build the sync onTier callback that paints the live per-tier trace. */
