@@ -59,6 +59,7 @@ function getIndexDir(): string {
 interface IndexRepo {
   repoRoot: string;
   displayName: string;
+  stateDir: string;
   checkpointCount: number;
   tokensSaved: number;
   compressedOriginalBytes: number;
@@ -71,8 +72,17 @@ interface IndexRepo {
   lastSeen: number;
 }
 
+interface IndexSummary {
+  totalRepos: number;
+  totalCheckpoints: number;
+  totalTokensSaved: number;
+  totalCompressedOriginalBytes: number;
+}
+
+type IndexIndex = { updatedAt: string; summary: IndexSummary | null; repos: IndexRepo[] };
+
 /** Read the machine-wide repo registry from SQLite (read-only, single shot). */
-function readIndex(): { updatedAt: string; summary: unknown; repos: unknown[] } | null {
+function readIndex(): IndexIndex | null {
   const indexPath = join(getIndexDir(), "index.sqlite");
   if (!existsSync(indexPath)) return null;
   let db: DatabaseSync | undefined;
@@ -86,6 +96,7 @@ function readIndex(): { updatedAt: string; summary: unknown; repos: unknown[] } 
     const mapped: IndexRepo[] = rows.map((r) => ({
       repoRoot: String(r.repo_root ?? ""),
       displayName: String(r.display_name ?? ""),
+      stateDir: String(r.state_dir ?? ""),
       checkpointCount: Number(r.checkpoint_count ?? 0),
       tokensSaved: Number(r.tokens_saved ?? 0),
       compressedOriginalBytes: Number(r.compressed_original_bytes ?? 0),
@@ -196,6 +207,10 @@ interface Snapshot {
     compressedOriginalBytes: number;
     duplicatesCollapsed: number;
     bytesPermanentlyDeleted: number;
+  };
+  compression: {
+    session: { tokensIn: number; tokensOut: number; tokensFreed: number; compressionPct: number; dedupPct: number };
+    repo: { tokensIn: number; tokensOut: number; tokensFreed: number; compressionPct: number; dedupPct: number };
   };
   model?: {
     name: string;
@@ -374,27 +389,31 @@ function dashboardHtml(tierName: string): string {
     <h2>Vector Store</h2>
     <div class="stat-grid">
       <span class="label" title="A saved summary of a chunk of your conversation that was compacted to free up space.">Checkpoints</span><span class="value" id="st-count">0</span>
-      <span class="label" title="How much conversation we are currently holding as compact summaries (the 'memory' this extension keeps). Smaller is better.">Tokens Stored</span><span class="value" id="st-tokens">0</span>
-      <span class="label" title="Total size of the original conversation text before it was compacted.">Original Tokens</span><span class="value" id="st-orig">0</span>
-      <span class="label" title="How much conversation space we have freed up for you (original size minus the compact summary we kept).">Tokens Saved</span><span class="value" id="st-saved">0</span>
+      <span class="label" title="Total size of the original conversation text dropped into compaction this session, including redundant regions skipped by dedup. This is the 'in'.">Original (dropped)</span><span class="value" id="st-in">0</span>
+      <span class="label" title="Compact summaries we are currently holding as 'memory' for this session (the 'out'). Smaller is better.">Kept (summaries)</span><span class="value" id="st-kept">0</span>
+      <span class="label" title="Conversation space freed = dropped − kept (the 'saved').">Freed (dropped − kept)</span><span class="value" id="st-freed">0</span>
       <span class="label" title="How many times old context was automatically brought back into the conversation because it was relevant to what you were doing.">Injected</span><span class="value" id="st-injected">0</span>
       <span class="label" title="Of the times we recalled old context, how often it was actually on-topic.">Recall Relevance</span><span class="value" id="st-dedup">0%</span>
       <span class="label" title="How often new content matched something we already had, so we skipped storing a duplicate copy. Higher = less wasted space.">Storage Dedup</span><span class="value" id="st-sdedup">0%</span>
       <span class="label" title="How many duplicate chunks we collapsed into one instead of storing separately.">Collapsed</span><span class="value" id="st-collapsed">0</span>
       <span class="label" title="The ID of the most recent saved checkpoint.">Last ID</span><span class="value" id="st-lastid">—</span>
     </div>
+    <div class="meter-track" style="margin-top:10px"><div class="meter-fill" id="st-compress-bar" style="width:0%"></div></div>
+    <div class="meter-sub" id="st-compress-sub">waiting for compaction…</div>
   </div>
   <div class="card">
     <h2>Repo (all sessions)</h2>
     <div class="stat-grid">
       <span class="label">Checkpoints</span><span class="value" id="rp-count">0</span>
-      <span class="label">Tokens Stored</span><span class="value" id="rp-tokens">0</span>
-      <span class="label">Original Tokens</span><span class="value" id="rp-orig">0</span>
-      <span class="label">Tokens Saved</span><span class="value" id="rp-saved">0</span>
+      <span class="label">Original (dropped)</span><span class="value" id="rp-in">0</span>
+      <span class="label">Kept (summaries)</span><span class="value" id="rp-kept">0</span>
+      <span class="label">Freed (dropped − kept)</span><span class="value" id="rp-freed">0</span>
       <span class="label">Sessions</span><span class="value" id="rp-sessions">0</span>
       <span class="label">Collapsed</span><span class="value" id="rp-collapsed">0</span>
       <span class="label">Storage Dedup</span><span class="value" id="rp-sdedup">0%</span>
     </div>
+    <div class="meter-track" style="margin-top:10px"><div class="meter-fill" id="rp-compress-bar" style="width:0%"></div></div>
+    <div class="meter-sub" id="rp-compress-sub">waiting for compaction…</div>
   </div>
   <div class="card safe">
     <h2>🛡 Data Safety</h2>
@@ -440,11 +459,11 @@ function dashboardHtml(tierName: string): string {
   <div class="card legend">
     <h2>What these numbers mean</h2>
     <ul class="legend-list">
-      <li><b>Tokens saved</b> — conversation space this extension has freed up for you (it compacted old text into short summaries).</li>
-      <li><b>Tokens stored</b> — how much "memory" (compact summaries) the extension is currently holding for this repo.</li>
-      <li><b>Injected</b> — times old context was automatically pasted back in because it was relevant to your current task.</li>
-      <li><b>Recall relevance</b> — of those, how often the recalled context was actually on-topic.</li>
-      <li><b>Storage dedup</b> — how often new content matched something already saved, so a duplicate copy was skipped (saves space).</li>
+      <li><b>Original (dropped)</b> — everything compacted away (including duplicates caught by dedup). The "in."</li>
+      <li><b>Kept (summaries)</b> — compact summaries still held as "memory" (the "out").</li>
+      <li><b>Freed</b> = dropped − kept — tokens saved so far (higher = better).</li>
+      <li><b>Compression %</b> — Freed ÷ Dropped — the headline efficiency number. Higher = more space reclaimed.</li>
+      <li><b>Storage dedup %</b> — how often new content matched something already saved, so no duplicate copy was written.</li>
       <li><b>Data safety</b> — every compacted region is kept verbatim (compressed). Nothing is permanently deleted; you can restore any of it.</li>
     </ul>
     <p class="legend-note">Hover any label above for a quick explanation.</p>
@@ -548,10 +567,20 @@ function dashboardHtml(tierName: string): string {
                 d.trigger.armed ? 'past fast gate — monitoring token count' : 'idle — below fast gate';
     document.getElementById('tr-state').textContent = state;
 
+    // ---- Vector Store — reconciled token accounting (same formula as widget) -
     document.getElementById('st-count').textContent = d.store.checkpointCount;
-    document.getElementById('st-tokens').textContent = d.store.totalTokenEstimate.toLocaleString();
-    document.getElementById('st-orig').textContent = (d.store.originalTokens || 0).toLocaleString();
-    document.getElementById('st-saved').textContent = (d.store.tokensSaved || 0).toLocaleString();
+    // Compression block from the snapshot (Freed = In − Out, single formula).
+    var c = d.compression || {};
+    var sess = c.session || { tokensIn:0, tokensOut:0, tokensFreed:0, compressionPct:0, dedupPct:0 };
+    var cRepo = c.repo || { tokensIn:0, tokensOut:0, tokensFreed:0, compressionPct:0, dedupPct:0 };
+    document.getElementById('st-in').textContent = sess.tokensIn.toLocaleString();
+    document.getElementById('st-kept').textContent = sess.tokensOut.toLocaleString();
+    document.getElementById('st-freed').textContent = sess.tokensFreed.toLocaleString();
+    var sp = sess.compressionPct || 0;
+    document.getElementById('st-compress-bar').style.width = Math.max(sp * 100, 0.5) + '%';
+    document.getElementById('st-compress-bar').className = 'meter-fill ' + (sp >= 0.9 ? 'meter-green' : sp >= 0.6 ? 'meter-yellow' : 'meter-red');
+    document.getElementById('st-compress-sub').textContent = (sp * 100 >= 10 ? Math.round(sp * 100) : (sp * 100).toFixed(1)) + '% tokens saved · dedup: ' + (sess.dedupPct * 100 >= 10 ? Math.round(sess.dedupPct * 100) : (sess.dedupPct * 100).toFixed(1)) + '%';
+    // ------
     document.getElementById('st-injected').textContent = d.store.injectedCount;
     document.getElementById('st-dedup').textContent = Math.round(d.store.dedupHitRate * 100) + '%';
     var sdr = d.store.storageDedupRate || 0;
@@ -559,16 +588,19 @@ function dashboardHtml(tierName: string): string {
     document.getElementById('st-collapsed').textContent = d.store.dedupCollapsed || 0;
     document.getElementById('st-lastid').textContent = d.session.lastCheckpointId || '—';
 
-    // Repo-wide (all sessions in this repo's SQLite store).
-    var repo = d.repo || { checkpointCount: 0, totalTokenEstimate: 0, originalTokens: 0, tokensSaved: 0, sessionCount: 0, dedupCollapsed: 0, storageDedupRate: 0 };
-    document.getElementById('rp-count').textContent = repo.checkpointCount;
-    document.getElementById('rp-tokens').textContent = repo.totalTokenEstimate.toLocaleString();
-    document.getElementById('rp-orig').textContent = (repo.originalTokens || 0).toLocaleString();
-    document.getElementById('rp-saved').textContent = (repo.tokensSaved || 0).toLocaleString();
-    document.getElementById('rp-sessions').textContent = repo.sessionCount || 0;
-    document.getElementById('rp-collapsed').textContent = repo.dedupCollapsed || 0;
-    var rsdr = repo.storageDedupRate || 0;
-    document.getElementById('rp-sdedup').textContent = (rsdr * 100 >= 10 ? Math.round(rsdr * 100) : (rsdr * 100).toFixed(1)) + '%';
+    // ---- Repo (all sessions) — same compression fields, repo scope ----------
+    document.getElementById('rp-count').textContent = (d.repo && d.repo.checkpointCount || 0).toLocaleString();
+    document.getElementById('rp-in').textContent = cRepo.tokensIn.toLocaleString();
+    document.getElementById('rp-kept').textContent = cRepo.tokensOut.toLocaleString();
+    document.getElementById('rp-freed').textContent = cRepo.tokensFreed.toLocaleString();
+    document.getElementById('rp-sessions').textContent = (d.repo && d.repo.sessionCount || 0).toLocaleString();
+    document.getElementById('rp-collapsed').textContent = (d.repo && d.repo.dedupCollapsed || 0).toLocaleString();
+    var rdr = d.repo && d.repo.storageDedupRate || 0;
+    document.getElementById('rp-sdedup').textContent = (rdr * 100 >= 10 ? Math.round(rdr * 100) : (rdr * 100).toFixed(1)) + '%';
+    var rp = cRepo.compressionPct || 0;
+    document.getElementById('rp-compress-bar').style.width = Math.max(rp * 100, 0.5) + '%';
+    document.getElementById('rp-compress-bar').className = 'meter-fill ' + (rp >= 0.9 ? 'meter-green' : rp >= 0.6 ? 'meter-yellow' : 'meter-red');
+    document.getElementById('rp-compress-sub').textContent = (rp * 100 >= 10 ? Math.round(rp * 100) : (rp * 100).toFixed(1)) + '% tokens saved · dedup: ' + (cRepo.dedupPct * 100 >= 10 ? Math.round(cRepo.dedupPct * 100) : (cRepo.dedupPct * 100).toFixed(1)) + '%';
 
     // Data-safety invariant (Phase 0 — trust foundation).
     var ig = d.integrity || { regionsRetained: 0, compressedOriginalBytes: 0, duplicatesCollapsed: 0, bytesPermanentlyDeleted: 0 };
@@ -608,10 +640,11 @@ function dashboardHtml(tierName: string): string {
     document.getElementById('md-provider').textContent = model && model.providerName ? model.providerName : (model && model.provider ? model.provider : '—');
     document.getElementById('md-input').textContent = model && model.inputRate ? '$' + (model.inputRate).toFixed(6) : '—';
     document.getElementById('md-output').textContent = model && model.outputRate ? '$' + (model.outputRate).toFixed(6) : '—';
-    if (model && model.inputRate && repo.tokensSaved > 0) {
-      var usd = (repo.tokensSaved * model.inputRate);
+    var repoSaved = cRepo.tokensFreed || 0;
+    if (model && model.inputRate && repoSaved > 0) {
+      var usd = (repoSaved * model.inputRate);
       var win = d.context.contextWindow || 0;
-      var windows = win > 0 ? (repo.tokensSaved / win).toFixed(1) : '0';
+      var windows = win > 0 ? (repoSaved / win).toFixed(1) : '0';
       document.getElementById('cost-usd').textContent = '≈ $' + usd.toFixed(4) + ' saved';
       document.getElementById('cost-windows').textContent = windows + ' context-windows extended';
     } else {
@@ -838,7 +871,40 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
 
   let eventOffset = 0;
 
+  // Overlay the live current-repo snapshot (snapshot.json, rewritten every
+  // context event) onto its registry row so the All-repos / Summary views stay
+  // in sync with the live menu bar + Current-repo card in real time. The
+  // registry (index.sqlite) is only written on repo-switch (bindRepo), so
+  // without this the current repo's row freezes between switches. Read-only —
+  // no extra writes to index.sqlite. Matched by stateDir, which equals the
+  // value this server was launched with (runtime.currentStateDir).
+  function overlayCurrentRepo(idx: IndexIndex | null): void {
+    if (!idx || !idx.repos.length) return;
+    let snap: Snapshot | null = null;
+    try { snap = readSnapshot(snapshotPath); } catch { return; }
+    if (!snap || !snap.repo) return;
+    const cur = idx.repos.find((r) => r.stateDir === stateDir);
+    if (!cur) return;
+    const prevSaved = cur.tokensSaved;
+    const prevCp = cur.checkpointCount;
+    const prevBytes = cur.compressedOriginalBytes;
+    const comp = snap.compression?.repo;
+    const liveSaved = comp ? comp.tokensFreed : (snap.repo.tokensSaved ?? prevSaved);
+    const liveCp = snap.repo.checkpointCount ?? prevCp;
+    const liveBytes = snap.integrity?.compressedOriginalBytes ?? prevBytes;
+    cur.tokensSaved = liveSaved;
+    cur.checkpointCount = liveCp;
+    cur.compressedOriginalBytes = liveBytes;
+    if (idx.summary) {
+      idx.summary.totalTokensSaved += liveSaved - prevSaved;
+      idx.summary.totalCheckpoints += liveCp - prevCp;
+      idx.summary.totalCompressedOriginalBytes += liveBytes - prevBytes;
+    }
+    idx.updatedAt = snap.updatedAt ?? idx.updatedAt;
+  }
+
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    // guardrails-allow PREVENT-PI-004: optional, user-triggered /dashboard localhost server (loopback-only) — CORS open for local browser access
     // CORS for local access
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -876,8 +942,10 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
     // directly from SQLite (index.sqlite). Lets one dashboard show every repo's
     // checkpoints, tokens saved, and active model. Read-only.
     if (req.url === "/api/index") {
+      const idx = readIndex();
+      if (idx) overlayCurrentRepo(idx);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(readIndex() ?? { updatedAt: null, summary: null, repos: [] }));
+      res.end(JSON.stringify(idx ?? { updatedAt: null, summary: null, repos: [] }));
       return;
     }
 
@@ -887,8 +955,9 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
     if (req.url?.startsWith("/api/repos")) {
       const url = new URL(req.url, "http://x");
       const activeParam = url.searchParams.get("active");
-      const idx = readIndex() ?? { updatedAt: null, summary: null, repos: [] };
-      let repos = (idx.repos ?? []) as IndexRepo[];
+      const idx = readIndex();
+      if (idx) overlayCurrentRepo(idx);
+      let repos = idx?.repos ?? [];
       if (activeParam) {
         const m = /^(\d+)h$/.exec(activeParam);
         if (m) {
@@ -897,7 +966,7 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
         }
       }
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ updatedAt: idx.updatedAt, repos, count: repos.length }));
+      res.end(JSON.stringify({ updatedAt: idx?.updatedAt ?? null, repos, count: repos.length }));
       return;
     }
 
@@ -905,14 +974,15 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
     // small for embed scenarios). activeRepos mirrors the /api/repos?active=24h
     // count so the dashboard can render the active badge alongside totals.
     if (req.url?.startsWith("/api/summary")) {
-      const idx = readIndex() ?? { updatedAt: null, summary: null, repos: [] };
-      const repos = (idx.repos ?? []) as IndexRepo[];
+      const idx = readIndex();
+      if (idx) overlayCurrentRepo(idx);
+      const repos = idx?.repos ?? [];
       const cutoffSec = Math.floor(Date.now() / 1000) - 24 * 3600;
       const activeRepos = repos.filter((r) => (r.lastSeen ?? 0) >= cutoffSec).length;
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
-        updatedAt: idx.updatedAt,
-        summary: idx.summary,
+        updatedAt: idx?.updatedAt ?? null,
+        summary: idx?.summary ?? null,
         activeRepos,
         totalRepos: repos.length,
       }));

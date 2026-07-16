@@ -282,6 +282,25 @@ export class MegaRuntime {
       trigger: { armed, ready, currentTokens: this.lastCtxTokens, thresholdTokens: this.config.thresholdTokens, fastGatePct: this.config.fastGatePct },
       crew: { activeAgents: this.activeAgents, currentTurn: this.currentTurn },
       store: { checkpointCount: st.checkpointCount, totalTokenEstimate: st.totalTokenEstimate, originalTokens: st.originalTokens, tokensSaved: this.rt.tokensSaved, injectedCount: st.injectedCount, dedupHitRate: st.dedupHitRate, storageDedupRate: st.storageDedupRate, dedupAttempts: st.dedupAttempts, dedupCollapsed: st.dedupCollapsed },
+      // Reconciled token accounting (single canonical formula, session + repo).
+      // Freed = In − Out; In = Freed + Out. session.Freed = rt.tokensSaved (incl.
+      // deduped-away originals); repo.Freed = repo.tokensSaved meta counter.
+      compression: {
+        session: {
+          tokensIn: this.rt.tokensSaved + st.totalTokenEstimate,
+          tokensOut: st.totalTokenEstimate,
+          tokensFreed: this.rt.tokensSaved,
+          compressionPct: (this.rt.tokensSaved + st.totalTokenEstimate) > 0 ? this.rt.tokensSaved / (this.rt.tokensSaved + st.totalTokenEstimate) : 0,
+          dedupPct: st.storageDedupRate,
+        },
+        repo: {
+          tokensIn: repo.tokensSaved + repo.totalTokenEstimate,
+          tokensOut: repo.totalTokenEstimate,
+          tokensFreed: repo.tokensSaved,
+          compressionPct: (repo.tokensSaved + repo.totalTokenEstimate) > 0 ? repo.tokensSaved / (repo.tokensSaved + repo.totalTokenEstimate) : 0,
+          dedupPct: repo.storageDedupRate,
+        },
+      },
       repo: {
         checkpointCount: repo.checkpointCount,
         totalTokenEstimate: repo.totalTokenEstimate,
@@ -319,33 +338,42 @@ export class MegaRuntime {
       const dedupStr = storageRate * 100 >= 10
         ? `${Math.round(storageRate * 100)}%`
         : `${(storageRate * 100).toFixed(1)}%`;
-      // saved = tokens removed from context (cumulative original − stored).
-      // Show BOTH this-session (rt.tokensSaved) and repo-wide-total
-      // (repo.tokensSaved) so the user sees per-session progress vs the running
-      // repo total. "used" = stored checkpoint tokens (repo.totalTokenEstimate
-      // vs st.totalTokenEstimate). Use "k" only at/above 1000 so small-but-real
-      // numbers stay visible (previously Math.round(x/1000) zeroed <1000).
-      const fmt = (x: number) => (x >= 1000 ? `${(x / 1000).toFixed(1)}k` : `${x}`);
-      const savedStr = `${C.green}${fmt(this.rt.tokensSaved)} sess${C.reset} / ${C.blue}${fmt(repo.tokensSaved)} repo${C.reset}`;
-      const usedStr = `${C.cyan}${fmt(st.totalTokenEstimate)} sess${C.reset} / ${C.blue}${fmt(repo.totalTokenEstimate)} repo${C.reset}`;
+      // Reconciled token accounting — ONE canonical formula for session + repo,
+      // matching the dashboard so the two never disagree. unit format: M at/above
+      // 1e6, k at/above 1e3, raw below — so 5,472,700 → "5.5M", 24,100 → "24.1k",
+      // 142 → "142". Dropped (in) = Freed + Kept; Freed = rt.tokensSaved (session)
+      // / repo.tokensSaved meta (repo); Kept = totalTokenEstimate (stored).
+      const fmt = (x: number) =>
+        x >= 1_000_000 ? `${(x / 1_000_000).toFixed(1)}M`
+        : x >= 1000 ? `${(x / 1000).toFixed(1)}k`
+        : `${Math.round(x)}`;
       const agentStr = this.activeAgents > 0 ? ` │ 🤖 ${this.activeAgents} agent${this.activeAgents === 1 ? "" : "s"}` : "";
       const turnStr = this.currentTurn > 0 ? ` │ turn ${this.currentTurn}` : "";
       // Phase 3 — pulsing status glyph while a compaction is in flight.
       const pulse = this.pulsing ? `${C.cyan}${PULSE[Math.floor(Date.now() / 250) % PULSE.length]}${C.reset} ` : "";
+      // --- reconciled in/out view (session + repo) ---------------------------
+      const sessIn = this.rt.tokensSaved + st.totalTokenEstimate;
+      const sessKept = st.totalTokenEstimate;
+      const sessFreed = this.rt.tokensSaved;
+      const sessPct = sessIn > 0 ? sessFreed / sessIn : 0;
+      const repoIn = repo.tokensSaved + repo.totalTokenEstimate;
+      const repoKept = repo.totalTokenEstimate;
+      const repoFreed = repo.tokensSaved;
+      const repoPct = repoIn > 0 ? repoFreed / repoIn : 0;
       const lines = [
         ` ${C.amber}⚡ ${tierLabel}${C.reset} v${C.bold}${ownVersion()}${C.reset} │ ${tokStr}/${maxStr} tokens (${C.bold}${pctStr}${C.reset}) │ ${st.checkpointCount} saved${agentStr}${turnStr}`,
-        `   ${triggerLabel} │ ${C.magenta}repeat-skipped: ${dedupStr}${C.reset} │ ${C.gray}memory held:${C.reset} ${usedStr} │ ${C.gray}space freed:${C.reset} ${savedStr}`,
+        `   ${triggerLabel} │ ${C.magenta}repeat-skipped: ${dedupStr}${C.reset}`,
+        `   ${C.gray}dropped ${fmt(sessIn)} → kept ${fmt(sessKept)} sess / ${fmt(repoKept)} repo · freed ${fmt(sessFreed)} sess / ${fmt(repoFreed)} repo${C.reset}`,
       ];
-      // Phase 3 — compact progress bar: session tokens saved toward the rolling goal.
-      if (this.rt.tokensSaved > 0) {
-        const goal = Math.max(this.savedGoal, 1);
-        const pct = Math.min(100, Math.round((this.rt.tokensSaved / goal) * 100));
-        const filled = Math.round((pct / 100) * 10);
-        const bar = "▓".repeat(filled) + "░".repeat(10 - filled);
-        // Session tokens saved, with the repo-wide total held alongside so the
-        // bar reads "saved X of goal" and the right side shows saved vs total.
-        const totalHeld = st.totalTokenEstimate > 0 ? st.totalTokenEstimate : repo.totalTokenEstimate;
-        lines.push(`   ${C.green}saved ${fmt(this.rt.tokensSaved)} ${bar}${C.reset} ${pct}% of ${fmt(goal)} ${C.gray}│${C.reset} ${C.blue}${fmt(this.rt.tokensSaved)}${C.reset}/${C.blue}${fmt(totalHeld)}${C.reset} tok held`);
+      // Compression meter — the single headline "% tokens saved" (Freed / In),
+      // same formula as the dashboard. Higher = better, so it reads green.
+      {
+        const w = 10;
+        const filled = Math.max(0, Math.min(w, Math.round(sessPct * w)));
+        const cbar = C.green + "▓".repeat(filled) + C.dim + "░".repeat(w - filled) + C.reset;
+        const sTxt = (sessPct * 100).toFixed(sessPct * 100 >= 10 ? 0 : 1);
+        const rTxt = (repoPct * 100).toFixed(repoPct * 100 >= 10 ? 0 : 1);
+        lines.push(`   ${cbar} ${sTxt}% tokens saved (sess) · ${rTxt}% repo${C.reset}`);
       }
       // Live "now processing" line + why + recent deduped/compacted events,
       // collapsed to ONE rotating line (fresh only). The ticker ring buffer

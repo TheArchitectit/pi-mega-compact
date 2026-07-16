@@ -80,6 +80,22 @@ export interface DashboardSnapshot {
     dedupCollapsed: number;      // cumulative deduped collapses (store-wide)
     storageDedupRate: number;    // deduped / attempts, 0..1
   };
+  /**
+   * Reconciled token accounting — ONE canonical formula for both session + repo
+   * so the dashboard and widget tell the same story:
+   *   tokensIn   = original conversation dropped into compaction (incl. the
+   *                redundant regions skipped by dedup) — the "in".
+   *   tokensOut  = compact summaries currently held (stored) — the "out".
+   *   tokensFreed= tokensIn − tokensOut (the "saved").
+   *   compressionPct = tokensFreed / tokensIn (0..1) — the headline "% saved".
+   *   dedupPct   = storageDedupRate (0..1) — share of adds that collapsed.
+   * session.Freed = rt.tokensSaved (honest net freed this session, incl. deduped-away);
+   * repo.Freed   = repo.tokensSaved meta (honest net freed repo-wide).
+   */
+  compression: {
+    session: { tokensIn: number; tokensOut: number; tokensFreed: number; compressionPct: number; dedupPct: number };
+    repo: { tokensIn: number; tokensOut: number; tokensFreed: number; compressionPct: number; dedupPct: number };
+  };
   /** Phase 0 data-safety invariant (trust foundation). */
   integrity: {
     regionsRetained: number;         // checkpoints with a recoverable compressed-original
