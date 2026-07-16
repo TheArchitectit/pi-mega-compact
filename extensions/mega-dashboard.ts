@@ -19,7 +19,12 @@ import { existsSync, mkdirSync, writeFileSync, appendFileSync } from "node:fs";
 export interface DashboardSnapshot {
   version: 1;
   updatedAt: string;
+  /** Live pressure band (low/medium/high/ultra/mega) — climbs as context fills. */
   tier: string;
+  /** Base compaction preset from env (the S24-removed /mega-tier style selector). */
+  presetTier: string;
+  /** Live 0–1 pressure ratio (currentTokens / thresholdTokens). */
+  pressure: number;
   config: {
     fastGatePct: number;
     thresholdTokens: number;

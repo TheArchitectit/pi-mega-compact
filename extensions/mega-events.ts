@@ -17,7 +17,7 @@ import { runCompact, doRecall, doRecallAsync, piCompactWouldNoop } from "./mega-
 import { recallMemoriesAndInline } from "../src/recall.js";
 import { driveNativeCompaction } from "./mega-compact-driver.js";
 import { computeLiveTrimCut, liveTrimSummaryMessage } from "./mega-trim.js";
-import { pressureFromPct, type MegaConfig } from "./mega-config.js";
+import { pressureFromPct, memoryReviewCadence, type MegaConfig } from "./mega-config.js";
 
 /** Register all pi lifecycle event handlers. */
 export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, config: MegaConfig): void {
@@ -164,25 +164,30 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
     runtime.dashboard.event("turn_end", { turnIndex: event.turnIndex });
     runtime.snapshot(ctx);
 
-    // S20: auto-review the conversation every N turns and persist durable
-    // memories. Best-effort + non-fatal: a review failure must never break the
-    // agent loop. Debounced by memoryReviewInterval turns.
-    if (config.memoryAutoReview && runtime.currentTurn > 0 && runtime.currentTurn % config.memoryReviewInterval === 0) {
-      try {
-        const { reviewConversation } = await import("../src/memory.js");
-        const { applyMemoryOps } = await import("../src/memoryOps.js");
-        const entries = ctx.sessionManager.getEntries();
-        const view = runtime.engineView(entries.flatMap((e: any) => (e.message ? [e.message] : [])));
-        const ops = reviewConversation(view, []);
-        if (ops.length) {
-          await applyMemoryOps(ops, runtime.currentStateDir);
-          // S21.2: a memory op landed in this turn window. The pipeline reads
-          // this counter after a successful compaction and fires
-          // `consolidateMemories` only when it's > 0.
-          runtime.memoriesTouchedThisCompaction += ops.length;
+    // S20+S24: auto-review the conversation and persist durable memories. The
+    // review cadence scales with pressure (memoryReviewCadence): as context
+    // fills, the conversation is reviewed more often so memories keep pace with
+    // faster churn. Best-effort + non-fatal: a review failure must never break
+    // the agent loop. Debounced by the pressure-adjusted interval.
+    if (config.memoryAutoReview && runtime.currentTurn > 0) {
+      const cadence = memoryReviewCadence(runtime.pressureBand, config.memoryReviewInterval);
+      if (runtime.currentTurn % cadence === 0) {
+        try {
+          const { reviewConversation } = await import("../src/memory.js");
+          const { applyMemoryOps } = await import("../src/memoryOps.js");
+          const entries = ctx.sessionManager.getEntries();
+          const view = runtime.engineView(entries.flatMap((e: any) => (e.message ? [e.message] : [])));
+          const ops = reviewConversation(view, []);
+          if (ops.length) {
+            await applyMemoryOps(ops, runtime.currentStateDir);
+            // S21.2: a memory op landed in this turn window. The pipeline reads
+            // this counter after a successful compaction and fires
+            // `consolidateMemories` only when it's > 0.
+            runtime.memoriesTouchedThisCompaction += ops.length;
+          }
+        } catch {
+          /* non-fatal — auto-review must not break the turn loop */
         }
-      } catch {
-        /* non-fatal — auto-review must not break the turn loop */
       }
     }
   });

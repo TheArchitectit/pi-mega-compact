@@ -20,7 +20,7 @@ import { toEngineMessages } from "../src/adapt.js";
 import { normalizeSessionId } from "../src/store.js";
 import { Logger } from "../src/log.js";
 import { recordModelSnapshot, latestModelSnapshot, upsertRepoRegistry, recordRepoModel, type ModelSnapshot } from "../src/store/sqlite.js";
-import { repoStateDir, resolveRepoRoot, type MegaConfig } from "./mega-config.js";
+import { repoStateDir, resolveRepoRoot, pressureRatio, pressureFromPct, pressureBand, type MegaConfig, type PressureBand } from "./mega-config.js";
 import { Dashboard, type DashboardSnapshot } from "./mega-dashboard.js";
 
 export const STATUS_KEY = "mega-compact";
@@ -143,6 +143,26 @@ export class MegaRuntime {
   lastCtxPercent: number | null = null;
   lastCtxWindow = 0;
 
+  /**
+   * Live 0–1 pressure: how full the context window is relative to the compaction
+   * threshold. Computed from the most recent context event the runtime already
+   * tracks (token count when available — the direct signal — otherwise the usage
+   * percentage). This is the single "how full" number every subsystem reads; the
+   * toolbar/dashboard tier label is `pressureBand` over this, so it climbs
+   * low→mega as context rises (S24). Always finite + in [0,1].
+   */
+  get pressure(): number {
+    if (this.lastCtxTokens != null && this.lastCtxTokens > 0 && this.config.thresholdTokens > 0) {
+      return pressureRatio(this.lastCtxTokens, this.config.thresholdTokens);
+    }
+    return pressureFromPct(this.lastCtxPercent);
+  }
+
+  /** Live discrete pressure band (low/medium/high/ultra/mega) over `pressure`. */
+  get pressureBand(): PressureBand {
+    return pressureBand(this.pressure);
+  }
+
   constructor(config: MegaConfig) {
     this.config = config;
     this.store = new VectorStore({ dedupSim: config.dedupSim, stateDir: config.stateDir });
@@ -214,7 +234,11 @@ export class MegaRuntime {
     this.dashboard.snapshot({
       version: 1,
       updatedAt: new Date().toISOString(),
-      tier: this.config.tier,
+      // S24: the headline tier is the LIVE pressure band; the env preset is kept
+      // alongside as presetTier so the dashboard can show both.
+      tier: this.pressureBand,
+      presetTier: this.config.tier,
+      pressure: this.pressure,
       config: {
         fastGatePct: this.config.fastGatePct,
         thresholdTokens: this.config.thresholdTokens,
@@ -261,6 +285,11 @@ export class MegaRuntime {
       const tokStr = this.lastCtxTokens != null ? `${Math.round(this.lastCtxTokens / 1000)}k` : "?";
       const maxStr = this.lastCtxWindow > 0 ? `${Math.round(this.lastCtxWindow / 1000)}k` : "?";
       const pctStr = this.lastCtxPercent != null ? `${Math.round(this.lastCtxPercent * 10) / 10}%` : "?%";
+      // S24: the tier label is the LIVE pressure band (low/medium/high/ultra/
+      // mega), not the static env preset. It climbs as context fills, so the
+      // user can see the system react. The base preset is shown as a dim suffix.
+      const liveBand = this.pressureBand;
+      const tierLabel = `${C.bold}${liveBand}${C.reset}${C.gray}·${this.config.tier}${C.reset}`;
       const triggerLabel = ready ? `${C.green}● ready${C.reset}` : armed ? `${C.amber}◐ armed${C.reset}` : `${C.gray}○ idle${C.reset}`;
       // Storage dedup rate is cumulative (store-wide, per-repo) and survives
       // session resets. Always show a number: 0% before any compaction, a
@@ -283,7 +312,7 @@ export class MegaRuntime {
       // Phase 3 — pulsing status glyph while a compaction is in flight.
       const pulse = this.pulsing ? `${C.cyan}${PULSE[Math.floor(Date.now() / 250) % PULSE.length]}${C.reset} ` : "";
       const lines = [
-        ` ${C.amber}⚡ ${this.config.tier}${C.reset} v${C.bold}${ownVersion()}${C.reset} │ ${tokStr}/${maxStr} tokens (${C.bold}${pctStr}${C.reset}) │ ${st.checkpointCount} saved${agentStr}${turnStr}`,
+        ` ${C.amber}⚡ ${tierLabel}${C.reset} v${C.bold}${ownVersion()}${C.reset} │ ${tokStr}/${maxStr} tokens (${C.bold}${pctStr}${C.reset}) │ ${st.checkpointCount} saved${agentStr}${turnStr}`,
         `   ${triggerLabel} │ ${C.magenta}repeat-skipped: ${dedupStr}${C.reset} │ ${C.gray}memory held:${C.reset} ${usedStr} │ ${C.gray}space freed:${C.reset} ${savedStr}`,
       ];
       // Phase 3 — compact progress bar: session tokens saved toward the rolling goal.

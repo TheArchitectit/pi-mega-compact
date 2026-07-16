@@ -416,19 +416,22 @@ const TIER_CASES: Array<[string, number]> = [
   ["mega", 10_000_000],
 ];
 for (const [tier, threshold] of TIER_CASES) {
-  test(`tier "${tier}" resolves to a ${threshold}-token threshold`, async () => {
+  test(`tier "${tier}" resolves to a ${threshold}-token threshold (preset; live band shown separately)`, async () => {
     // Keep tier + keep threshold UNSET so the tier (not an explicit number)
     // drives the threshold. harness() would otherwise reset the threshold.
     delete process.env.MEGACOMPACT_THRESHOLD_TOKENS;
     process.env.MEGACOMPACT_TIER = tier;
     const h = harness({ keepTier: true, keepThreshold: true });
+    // tokens=1 against a 2M window → near-zero pressure → live band "low".
     const ctx = h.ctx({ getContextUsage: () => ({ tokens: 1, contextWindow: 2_000_000, percent: 0.01 }) });
     await h.commands["mega-status"].handler("", ctx);
     delete process.env.MEGACOMPACT_TIER;
     assert.ok(
-      h.notifies.some((n) => n.includes(`tier=${tier}`) && n.includes(`threshold=${threshold}`)),
-      `status should report tier=${tier} threshold=${threshold}`,
+      h.notifies.some((n) => n.includes(`preset=${tier}`) && n.includes(`threshold=${threshold}`)),
+      `status should report preset=${tier} threshold=${threshold}`,
     );
+    // S24: the headline tier is the LIVE pressure band, shown as "tier=low (live)".
+    assert.ok(h.notifies.some((n) => n.includes("tier=low (live)")), "live band reported (low at near-zero pressure)");
   });
 }
 
@@ -440,8 +443,8 @@ test("explicit MEGACOMPACT_THRESHOLD_TOKENS overrides the tier", async () => {
   await h.commands["mega-status"].handler("", ctx);
   delete process.env.MEGACOMPACT_TIER;
   assert.ok(
-    h.notifies.some((n) => n.includes("tier=custom") && n.includes("threshold=777")),
-    "explicit threshold wins over tier (tier=custom)",
+    h.notifies.some((n) => n.includes("preset=custom") && n.includes("threshold=777")),
+    "explicit threshold wins over tier (preset=custom)",
   );
 });
 

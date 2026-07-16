@@ -138,6 +138,8 @@ interface Snapshot {
   version: number;
   updatedAt: string | null;
   tier: string;
+  presetTier: string;
+  pressure: number;
   config: {
     fastGatePct: number;
     thresholdTokens: number;
@@ -217,6 +219,8 @@ function readSnapshot(snapshotPath: string) {
       version: 1,
       updatedAt: null,
       tier: "unknown",
+      presetTier: "unknown",
+      pressure: 0,
       config: { fastGatePct: 80, thresholdTokens: 100_000, anchorUserMessages: 1, preserveRecent: 2, auto: true, autoInlineK: 3 },
       session: { id: null, state: null, persistedThisSession: false, lastCheckpointId: null, lastCompactedFrom: 0 },
       context: { tokens: null, percent: null, contextWindow: 0 },
@@ -343,7 +347,7 @@ function dashboardHtml(tierName: string): string {
 
 <div class="offline-banner" id="offline-banner">Dashboard data unavailable — waiting for a pi session to write snapshot...</div>
 
-<h1><span>mega-compact</span><span class="tier">${tierName}</span><span class="version-pill">v${dashboardServerVersion}</span><span class="model-pill" id="hdr-model">—</span></h1>
+<h1><span>mega-compact</span><span class="tier" id="hdr-tier">${tierName}</span><span class="version-pill">v${dashboardServerVersion}</span><span class="model-pill" id="hdr-model">—</span></h1>
 
 <nav class="tabs">
   <button class="tab active" data-tab="current">Current repo</button>
@@ -405,7 +409,9 @@ function dashboardHtml(tierName: string): string {
   <div class="card">
     <h2>Configuration</h2>
     <div class="conf-grid">
-      <span class="label">Tier</span><span class="value" id="cf-tier">${tierName}</span>
+      <span class="label" title="Live pressure band — climbs low→mega as context fills the window.">Tier (live)</span><span class="value" id="cf-tier">${tierName}</span>
+      <span class="label" title="The env-resolved base compaction preset (low/medium/high/ultra/mega) that set the token threshold.">Preset</span><span class="value" id="cf-preset">—</span>
+      <span class="label" title="Live pressure = currentTokens / thresholdTokens (0–100%).">Pressure</span><span class="value" id="cf-pressure">—</span>
       <span class="label">Threshold</span><span class="value" id="cf-threshold">—</span>
       <span class="label">Fast Gate</span><span class="value" id="cf-gate">—</span>
       <span class="label">Auto</span><span class="value" id="cf-auto">—</span>
@@ -584,7 +590,12 @@ function dashboardHtml(tierName: string): string {
     document.getElementById('cr-status').textContent = (crew.activeAgents > 0)
       ? ('▶ ' + crew.activeAgents + ' running') : 'idle';
 
-    document.getElementById('cf-tier').textContent = d.tier;
+    // S24: headline tier is the LIVE pressure band; the config card shows the
+    // env preset + live pressure ratio so the user sees the system react.
+    document.getElementById('hdr-tier').textContent = d.tier;
+    document.getElementById('cf-tier').textContent = d.tier + ' (live)';
+    document.getElementById('cf-preset').textContent = d.presetTier;
+    document.getElementById('cf-pressure').textContent = Math.round((d.pressure || 0) * 100) + '%';
     document.getElementById('cf-threshold').textContent = d.config.thresholdTokens.toLocaleString();
     document.getElementById('cf-gate').textContent = d.config.fastGatePct + '%';
     document.getElementById('cf-auto').textContent = d.config.auto ? 'enabled' : 'disabled';

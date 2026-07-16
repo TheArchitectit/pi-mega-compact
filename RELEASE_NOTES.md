@@ -1,5 +1,36 @@
 # Release Notes — pi-mega-compact
 
+## v0.6.0 (2026-07-16)
+
+S24 — **unified pressure signal**: auto-compact, the tier label, trim depth, and
+memory review now all read one live `pressure = currentTokens / thresholdTokens`
+signal, so the system reacts as a single coherent whole instead of four
+independent triggers.
+
+### Added
+- **Live tier band.** The toolbar widget + dashboard headline now show the live
+  pressure band (`low` → `medium` → `high` → `ultra` → `mega`) that climbs as the
+  context window fills and falls back as it's relieved. `/mega-status` reports the
+  live band, the `MEGACOMPACT_TIER` preset, and the live pressure %. The base
+  compaction *threshold* is still set by `MEGACOMPACT_TIER` at startup.
+- **Pressure-scaled memory review.** The auto-review cadence shortens as pressure
+  climbs (`memoryReviewCadence`), and a successful compaction now triggers an
+  immediate review when pressure is `high`+ (review-on-compact) so durable memory
+  keeps pace with faster churn.
+- **Memory storage hardening (4808/5000 fix).** Durable memories are written to the
+  SQLite `memories` table only (never pi's file-backed buffer). Each entry is
+  truncated at `MEMORY_MAX_CHARS` (4000, with a `…[truncated]` marker) and the
+  per-repo store is bounded at `MEMORY_MAX_ROWS` (200) via LRU eviction on the
+  least-recently-referenced rows — so a too-large memory can never overflow a
+  downstream consumer's per-entry cap.
+
+### Changed
+- **`/mega-tier` removed.** The tier is no longer a manual runtime setting; the
+  live pressure band replaced it. `setTier` is gone from `mega-config.ts`.
+
+### Notes
+- Behavior change (0.5.2 → 0.6.0). Full suite: 350 passing.
+
 ## v0.5.1 (2026-07-16)
 
 feat: show the installed npm version in the toolbar widget and dashboard header.

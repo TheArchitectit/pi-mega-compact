@@ -175,6 +175,28 @@ function doCompact(
     }
   }
 
+  // S24 review-on-compact: when pressure is high, the just-compacted region is
+  // exactly the context worth remembering, so review it immediately rather than
+  // waiting for the next turn-cadence tick. Fire-and-forget (doCompact is sync):
+  // best-effort + non-fatal, paralleling the consolidate pass above. Only fires
+  // above the `high` band so low-pressure compactions don't pay the review cost.
+  if (!result.deduped && config.memoryAutoReview && runtime.pressureBand !== "low" && runtime.pressureBand !== "medium") {
+    void (async () => {
+      try {
+        const { reviewConversation } = await import("../src/memory.js");
+        const { applyMemoryOps } = await import("../src/memoryOps.js");
+        const ops = reviewConversation(view, []);
+        if (ops.length) {
+          await applyMemoryOps(ops, runtime.currentStateDir);
+          runtime.memoriesTouchedThisCompaction += ops.length;
+          runtime.pushTicker(`${C.green}🧠${C.reset} reviewed ${ops.length} memory op${ops.length === 1 ? "" : "s"} (pressure)`);
+        }
+      } catch {
+        /* non-fatal — review-on-compact must never break the compaction */
+      }
+    })();
+  }
+
   // Sentinel marker: a non-LLM bookkeeping entry so subsequent triggers can
   // skip re-vectorizing an already-compacted region (zero token cost).
   pi.appendEntry(MARKER_TYPE, {

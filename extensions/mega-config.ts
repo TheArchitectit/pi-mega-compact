@@ -25,8 +25,13 @@ export const COMPACT_TIERS = {
 } as const;
 export type CompactTier = keyof typeof COMPACT_TIERS;
 
-/** Resolved, frozen-at-load config. tier/thresholdTokens are mutated at
- *  runtime by /mega-tier via `setTier`. */
+/**
+ * Resolved, frozen-at-load config. `tier` is the base compaction PRESET chosen
+ * by env (low/medium/high/ultra/mega) — it sets the threshold token budget and
+ * is NOT changed at runtime (the /mega-tier command was removed in S24). The
+ * *displayed* tier the user sees in the toolbar/dashboard is the LIVE pressure
+ * band (see MegaRuntime.pressureBand), which climbs low→mega as context fills.
+ */
 export interface MegaConfig {
   tier: CompactTier | "custom";
   thresholdTokens: number;
@@ -97,11 +102,20 @@ function resolveThreshold(): { tier: CompactTier | "custom"; thresholdTokens: nu
 }
 
 /**
- * Pressure helpers for adaptive compression (Fix E) live in src/config.ts
- * (pi-agnostic) so unit tests can import them without the pi runtime. Re-export
- * here so the extension has one import surface.
+ * Pressure helpers for adaptive compression live in src/config.ts (pi-agnostic)
+ * so unit tests can import them without the pi runtime. Re-export here so the
+ * extension has one import surface. (S24 unified the previously percentage-only
+ * signal into pressureRatio/pressureBand, which the runtime uses as the single
+ * "how full" signal that drives the tier label, trim depth, and memory cadence.)
  */
-export { pressureFromPct, preserveRecentForPressure } from "../src/config.js";
+export {
+  pressureFromPct,
+  preserveRecentForPressure,
+  pressureRatio,
+  pressureBand,
+  memoryReviewCadence,
+  type PressureBand,
+} from "../src/config.js";
 
 /** Build the resolved config from env + defaults. */
 export function loadConfig(): MegaConfig {
@@ -132,11 +146,12 @@ export function loadConfig(): MegaConfig {
   };
 }
 
-/** Mutate tier + threshold in place (used by /mega-tier at runtime). */
-export function setTier(config: MegaConfig, tier: CompactTier): void {
-  config.tier = tier;
-  config.thresholdTokens = COMPACT_TIERS[tier];
-}
+/**
+ * Remove a cached tier mutation helper here — the live tier the user sees is the
+ * pressure band (MegaRuntime.pressureBand), and the base preset is env-resolved
+ * at load (loadConfig). The /mega-tier command was removed in S24 so there is no
+ * runtime tier mutation; see the S24 spec (docs/specs/s24-unified-pressure.md).
+ */
 
 /**
  * Resolve the current repo's git root from a cwd. Returns undefined for a

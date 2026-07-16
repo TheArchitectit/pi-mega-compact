@@ -6,7 +6,7 @@ sessions into a **local SQLite store** and offers **deduped inline recall** — 
 running **locally inside the extension**, with **no remote MCP server** and
 **zero network calls at runtime** (PREVENT-PI-004).
 
-> **Current version:** `v0.5.1` — storage backend is **`node:sqlite`**
+> **Current version:** `v0.6.0` — storage backend is **`node:sqlite`**
 > (`DatabaseSync`, a Node ≥22.13 built-in), replacing the old `better-sqlite3`
 > native addon and the per-session gzipped JSON checkpoint files. **Zero native
 > build step, fully local, zero network at runtime.** Legacy
@@ -214,9 +214,10 @@ The commands (slash commands inside pi):
 | `/mega-restore <chkpt\|recent>` | Re-inject a checkpoint's verbatim original region into context. |
 | `/mega-history` | List this session's checkpoints (id, date, files, tokens). |
 | `/mega-view <chkpt\|recent>` | Show a checkpoint's verbatim original region. |
-| `/mega-help` | Explain the toolbar widget terms (tier, gate, dedup, tokens saved). |
-| `/mega-tier [name]` | Set the compaction tier (`low` / `medium` / `high` / `ultra` / `mega`). Shows current tier with no arg. |
+| `/mega-help` | Explain the toolbar widget terms (live tier, gate, dedup, tokens saved). |
 | `/mega-compat-check` | Detect extension conflicts (duplicate commands / overlapping handlers) across installed pi extensions. |
+
+The **tier** you see in the toolbar and dashboard is a *live pressure band* (`low` → `medium` → `high` → `ultra` → `mega`) that climbs automatically as your context window fills and falls back as it's relieved — it is driven by `currentTokens / thresholdTokens`, not a manual setting. The base compaction *threshold* (token budget) is still chosen by the `MEGACOMPACT_TIER` env var at startup (`low`/`medium`/`high`/`ultra`/`mega`, default `low`); `/mega-tier` was removed in v0.6.0. Higher pressure also deepens the live trim and reviews durable memory more often — the whole system reacts as one.
 | `/mega-dashboard` | Start the **localhost-only** live dashboard and open it in a browser (token gauge, store stats, live event stream, per-repo + cross-repo drift). |
 | `/mega-dashboard-status` | Report dashboard server status. |
 | `/mega-dashboard-stop` | Stop the dashboard server. |
@@ -226,7 +227,7 @@ The commands (slash commands inside pi):
 Above the pi editor the extension shows a compact widget:
 
 ```
- ⚡ medium v0.5.1 │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
+ ⚡ high·low v0.6.0 │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
    ◐ armed │ dedup: 92% │ saved: 45k tok
 ```
 

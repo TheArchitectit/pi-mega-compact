@@ -139,3 +139,30 @@ test("pressureFromPct + preserveRecentForPressure scale with context (Fix E)", a
   assert.equal(preserveRecentForPressure(0.5, 4, 2), 3, "p=0.5 → interpolates");
   assert.ok(preserveRecentForPressure(1, 4, 2) >= 2, "never below floor");
 });
+
+test("S24: pressureRatio + pressureBand + memoryReviewCadence unify the signal", async () => {
+  const { pressureRatio, pressureBand, memoryReviewCadence } = await import("../config.js");
+  // pressureRatio: current/threshold, clamped to [0,1].
+  assert.equal(pressureRatio(50_000, 100_000), 0.5, "half threshold → 0.5");
+  assert.equal(pressureRatio(0, 100_000), 0, "no tokens → 0");
+  assert.equal(pressureRatio(10_000_000, 100_000), 1, "over threshold → clamped 1");
+  assert.equal(pressureRatio(50_000, 0), 0, "zero threshold → 0");
+  assert.equal(pressureRatio(NaN, 100_000), 0, "NaN current → 0");
+
+  // pressureBand: discrete bands drive the toolbar/dashboard tier label.
+  assert.equal(pressureBand(0.2), "low");
+  assert.equal(pressureBand(0.5), "medium");
+  assert.equal(pressureBand(0.75), "high");
+  assert.equal(pressureBand(0.9), "ultra");
+  assert.equal(pressureBand(1.0), "mega");
+  assert.equal(pressureBand(2.0), "mega", "over 1 → mega");
+  assert.equal(pressureBand(-1), "low", "below 0 → low");
+
+  // memoryReviewCadence: higher pressure → smaller (more frequent) divisor.
+  assert.equal(memoryReviewCadence("low", 10), 10, "low keeps base interval");
+  assert.equal(memoryReviewCadence("medium", 10), 7, "medium shortens");
+  assert.equal(memoryReviewCadence("high", 10), 5, "high halves");
+  assert.equal(memoryReviewCadence("ultra", 10), 3, "ultra shortens more");
+  assert.equal(memoryReviewCadence("mega", 10), 2, "mega near base/5");
+  assert.equal(memoryReviewCadence("high", 0), 1, "never below 1");
+});

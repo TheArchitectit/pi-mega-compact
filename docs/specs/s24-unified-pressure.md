@@ -4,7 +4,7 @@
 **Parent plan:** `.claude/plans/unified-pressure.md`
 **Depends on:** S16 (live trim), S20–S23 (memory store + recall + drift) ✅ committed
 **Priority:** P1 (the four subsystems currently run as independent triggers that only coincidentally coexist — they must become one coherent pressure-driven system)
-**Status:** PLANNED
+**Status:** IMPLEMENTED (2026-07-16, v0.6.0)
 **Target version:** 0.6.0 (behavior change)
 
 ---
