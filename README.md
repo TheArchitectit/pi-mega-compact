@@ -6,7 +6,7 @@ sessions into a **local SQLite store** and offers **deduped inline recall** — 
 running **locally inside the extension**, with **no remote MCP server** and
 **zero network calls at runtime** (PREVENT-PI-004).
 
-> **Current version:** `v0.6.0` — storage backend is **`node:sqlite`**
+> **Current version:** `v0.6.1` — storage backend is **`node:sqlite`**
 > (`DatabaseSync`, a Node ≥22.13 built-in), replacing the old `better-sqlite3`
 > native addon and the per-session gzipped JSON checkpoint files. **Zero native
 > build step, fully local, zero network at runtime.** Legacy

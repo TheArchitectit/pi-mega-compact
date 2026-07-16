@@ -1,5 +1,23 @@
 # Release Notes — pi-mega-compact
 
+## v0.6.1 (2026-07-16)
+
+Follow-up to v0.6.0 closing the remaining S24 spec items (no behavior change to
+the user-visible pressure signal — all shipped in 0.6.0).
+
+### Changed
+- Memory caps are now env-tunable: `MEGACOMPACT_MEMORY_MAX_CHARS` (default 4000)
+  and `MEGACOMPACT_MEMORY_MAX_ROWS` (default 500). Previously hardcoded.
+- Extracted the shared `runMemoryReview` helper so the pressure-scaled turn-end
+  cadence and review-on-compact use one review body.
+
+### Docs
+- TESTER_GUIDE updated for the live pressure band (no `/mega-tier`), dashboard
+  status bar, and the memory-cadence + overflow (truncate + LRU) checks.
+
+### Notes
+- Patch bump (0.6.0 → 0.6.1). Full suite: 353 passing.
+
 ## v0.6.0 (2026-07-16)
 
 S24 — **unified pressure signal**: auto-compact, the tier label, trim depth, and
