@@ -210,6 +210,31 @@ configured threshold.
 - `events.log` has `compact_start` and `compact_end` entries.
 - Widget shows updated checkpoint count and tokens saved.
 
+### 1b. Auto-Compaction during a Team Run (sub-agents)
+
+**Goal:** Verify context is relieved **during** a long team/sub-agent run, not
+only at the very end. Regression: previously the durable trim fired only when
+the parent agent settled, so a team run ballooned to ~150k and "compacted but
+didn't resume."
+
+**Steps:**
+
+1. Start a team run (multiple sub-agents, or a long `/mega-*` sequence that
+   spawns agents). Set `MEGACOMPACT_TIER=low` so the gate fires early.
+2. Watch the live stats widget token count while sub-agents settle one by one.
+3. After each sub-agent's `agent_end`, confirm context drops to a relieved level
+   (the mid-run durable trim fires at `agent_end` when idle + over threshold).
+4. Confirm the model is fed a compacted view per call (live trim) — the widget
+   token count should not sit pinned at the ceiling throughout the run.
+5. At the end of the run, context should be at a comfortable level and the next
+   turn should resume cleanly (no 150k reload).
+
+**Pass criteria:**
+- Context drops between sub-agents (not only at parent settle).
+- `events.log` shows `agent-end-durable-trigger` + `native-compact` entries
+  during the run (set `MEGACOMPACT_DEBUG=true` to see them).
+- The run resumes/continues without a context-ceiling stall.
+
 ---
 
 ### 2. Resume / Auto-Inline

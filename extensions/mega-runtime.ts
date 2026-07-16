@@ -144,6 +144,27 @@ export class MegaRuntime {
   lastCtxWindow = 0;
 
   /**
+   * DIAG counters for the "team run doesn't relieve context" investigation.
+   * Plain integers, incremented at the three compaction decision points. They
+   * let a headless test drive the real event handlers and assert the firing
+   * cadence without scraping log files. Inert in production (the live-trim and
+   * before-compact probes also emit logger.info, but these counters are always
+   * updated and cost nothing).
+   */
+  diagLiveTrimFires = 0;     // context handler returned a trimmed view
+  diagBeforeCompactFires = 0; // session_before_compact handler entered
+  diagBeforeCompactSupplied = 0; // session_before_compact supplied our trim
+  diagAgentEndIdle = 0;       // agent_end with activeAgents===0
+  diagAgentEndDurable = 0;    // agent_end fired ctx.compact() (mid-run durable trim)
+  // Per-skip-path counters for the team-run diagnosis.
+  diagCtxFastGate = 0;        // returned at token fast-gate (below threshold)
+  diagCtxNoCompact = 0;       // autoCompactCheck().shouldCompact === false
+  diagCtxDebounce = 0;        // debounceUntil not yet elapsed
+  diagCtxRunSkipped = 0;      // runCompact() returned skipped
+  diagCtxCutNull = 0;         // computeLiveTrimCut returned null (anchor/boundary)
+  diagCtxThrown = 0;          // live-trim try threw (caught)
+
+  /**
    * Live 0–1 pressure: how full the context window is relative to the compaction
    * threshold. Computed from the most recent context event the runtime already
    * tracks (token count when available — the direct signal — otherwise the usage

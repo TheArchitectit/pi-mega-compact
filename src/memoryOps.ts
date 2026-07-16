@@ -12,11 +12,46 @@ import {
   removeMemory,
   type MemoryRecord,
 } from "./store/sqlite.js";
+import { defaultEmbedder } from "./embedder.js";
+import { upsertMemoryEmbedding } from "./store/memoryIndex.js";
+import { execSync } from "node:child_process"; // guardrails-allow PREVENT-PI-004: read-only `git rev-parse` to scope the memory index per-repo
+
+/** Resolve the current repo's git root (mirrors extensions/mega-config.ts but
+ *  kept local so src/ stays pi-agnostic — no extension-layer import). */
+function resolveRepoRootLocal(cwd: string): string | undefined {
+  try {
+    const out = execSync("git rev-parse --show-toplevel", {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    return out || undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /** Find a memory row whose content exactly matches (case-insensitive). */
 function findByContent(memories: MemoryRecord[], content: string): MemoryRecord | undefined {
   const norm = content.trim().toLowerCase();
   return memories.find((m) => m.content.trim().toLowerCase() === norm);
+}
+
+/**
+ * Fire-and-forget mirror of a memory write into the cross-repo PGlite index
+ * (S24 optional memory-RAG mirror). Best-effort + non-fatal: never blocks the
+ * SQLite write and degrades to the same-repo scan if the index is disabled or
+ * fails. `repoId` is the resolved git root so the memory is findable from other
+ * repos; falls back to the state dir when outside git.
+ */
+function indexMemoryWrite(stateDir: string, memoryId: number, content: string): void {
+  const repoId = resolveRepoRootLocal(stateDir) ?? stateDir;
+  try {
+    const vec = defaultEmbedder().embed(content);
+    void upsertMemoryEmbedding(repoId, memoryId, content, vec);
+  } catch {
+    /* non-fatal — embedding/index failure must never break the SQLite write */
+  }
 }
 
 /**
@@ -32,7 +67,7 @@ export async function applyMemoryOps(ops: MemoryOp[], stateDir: string): Promise
     if (op.op === "add") {
       // Skip if an identical memory already exists.
       if (findByContent(existing, op.memory.content)) continue;
-      addMemory(
+      const id = addMemory(
         {
           kind: op.memory.category,
           content: op.memory.content,
@@ -44,6 +79,8 @@ export async function applyMemoryOps(ops: MemoryOp[], stateDir: string): Promise
         repo,
         stateDir,
       );
+      // S24: mirror into the cross-repo index (fire-and-forget; non-fatal).
+      indexMemoryWrite(stateDir, id, op.memory.content);
     } else if (op.op === "replace") {
       const match = findByContent(existing, op.targetContent);
       if (match) {
@@ -53,9 +90,11 @@ export async function applyMemoryOps(ops: MemoryOp[], stateDir: string): Promise
           category: op.memory.category,
           sourceTurn: op.memory.sourceTurn,
         }, stateDir);
+        // S24: re-mirror under the same memory id (fire-and-forget; non-fatal).
+        indexMemoryWrite(stateDir, match.id, op.memory.content);
       } else {
         // Target missing (e.g. earlier in-conversation contradiction) → add.
-        addMemory(
+        const id = addMemory(
           {
             kind: op.memory.category,
             content: op.memory.content,
@@ -66,6 +105,7 @@ export async function applyMemoryOps(ops: MemoryOp[], stateDir: string): Promise
           repo,
           stateDir,
         );
+        indexMemoryWrite(stateDir, id, op.memory.content);
       }
     } else {
       const match = findByContent(existing, op.content);

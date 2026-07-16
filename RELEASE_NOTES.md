@@ -1,5 +1,40 @@
 # Release Notes — pi-mega-compact
 
+## v0.6.2 (2026-07-16)
+
+S24 follow-up: cross-repo memory-RAG index + fix "auto-compact doesn't relieve
+during a team run." No user-visible change to the pressure signal itself.
+
+### Added
+- **Cross-repo memory index (S24 memory-RAG).** A redundant, additive, ASYNC
+  PGlite/HNSW index (`src/store/memoryIndex.ts`) mirrors durable memory writes
+  (`applyMemoryOps`, `/mega-memory`, `/m`) and augments recall with real
+  cross-repo nearest-neighbor memory lookup. A decision saved in repo A is now
+  inlined as RAG context when you start a session in repo B. The same-repo
+  linear cosine scan stays the DEFAULT recall path; the index is best-effort and
+  non-fatal (any init/write failure degrades to the same-repo scan). PREVENT-PI-004
+  OK — PGlite is WASM Postgres, fully local. Toggle `MEGACOMPACT_CROSSREPO_ENABLED`
+  (default true) and the stricter `MEGACOMPACT_CROSSREPO_COSINE` floor (default
+  0.90).
+- **Mid-run durable trim during team runs.** The durable compaction now fires at
+  `agent_end` (when idle + over threshold + no active agents), not only at parent
+  settle — so a long sub-agent run is trimmed between agents instead of ballooning
+  to the context ceiling and only relieving at the very end. Guarded by
+  `piCompactWouldNoop` (no user-facing throw) and the 2s debounce (no thrash).
+
+### Fixed
+- **Live trim was silently dead during team runs.** `computeLiveTrimCut` returned
+  `null` when the recent anchor window had too few user messages (anchor floor),
+  so the model was never fed a compacted view per call. It now walks the cut
+  backward to capture the anchor floor instead of skipping — the per-call live
+  trim fires again.
+- Regression test `extensions/mega-teamrun.test.ts` + fast repro
+  `scripts/diag-teamrun.mjs` drive the real extension through a mock pi and assert
+  the live trim + mid-run durable trim fire during a simulated team run.
+
+### Notes
+- Patch bump (0.6.1 → 0.6.2). Full suite: 353 passing.
+
 ## v0.6.1 (2026-07-16)
 
 Follow-up to v0.6.0 closing the remaining S24 spec items (no behavior change to

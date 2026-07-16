@@ -19,8 +19,18 @@ import { driveNativeCompaction } from "./mega-compact-driver.js";
 import { computeLiveTrimCut, liveTrimSummaryMessage } from "./mega-trim.js";
 import { pressureFromPct, memoryReviewCadence, type MegaConfig } from "./mega-config.js";
 
+/**
+ * DIAG accessor for the headless test harness: the most recently constructed
+ * MegaRuntime, so a test that loads the compiled extension via its default
+ * export can read diag counters (diagLiveTrimFires / diagBeforeCompactFires /
+ * diagBeforeCompactSupplied / diagAgentEndIdle) after firing synthetic events.
+ * No-op in production — nothing reads this outside tests.
+ */
+export let lastRuntime: MegaRuntime | undefined;
+
 /** Register all pi lifecycle event handlers. */
 export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, config: MegaConfig): void {
+  lastRuntime = runtime;
   // ---- Session lifecycle (state reset points) -------------------------------
   // Capture model/provider whenever it changes (drives real cost estimation).
   pi.on("model_select", async (_event, ctx) => {
@@ -61,6 +71,8 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
       try {
         const mr = await recallMemoriesAndInline({
           query, stateDir: runtime.getStateDir(), limit: 5,
+          crossRepo: config.crossRepoEnabled,
+          crossRepoCosine: config.crossRepoCosine,
         });
         if (!mr.empty) runtime.pendingMemoryRecallBlock = mr.block;
       } catch (err) {
@@ -86,7 +98,7 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
         }
         // S21: parallel memory recall. Trigram embedder is sub-ms; await is fine.
         try {
-          const mr = await recallMemoriesAndInline({ query, stateDir: runtime.getStateDir(), limit: 5 });
+          const mr = await recallMemoriesAndInline({ query, stateDir: runtime.getStateDir(), limit: 5, crossRepo: config.crossRepoEnabled, crossRepoCosine: config.crossRepoCosine });
           if (!mr.empty) runtime.pendingMemoryRecallBlock = mr.block;
         } catch (err) {
           runtime.logger.warn("memory-recall skipped", { err: String(err) });
@@ -143,6 +155,46 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
         const idle = ctx.isIdle?.() ?? true;
         const queued = ctx.hasPendingMessages?.() ?? false;
         const now = Date.now();
+        // DIAG (team-run relief): surface whether the agent is idle + over
+        // threshold at agent_end so we can see if a mid-run durable-trim trigger
+        // *should* have fired but didn't.
+        const overThreshold = (runtime.lastCtxTokens ?? 0) >= config.thresholdTokens;
+        runtime.diagAgentEndIdle++;
+        runtime.logger.info("agent-end-idle", {
+          sessionId: runtime.rt.sessionId,
+          idle,
+          queued,
+          overThreshold,
+          ctxPct: runtime.lastCtxPercent,
+          ctxTokens: runtime.lastCtxTokens,
+          thresholdTokens: config.thresholdTokens,
+          wouldNudge: idle && queued && now >= runtime.resumeNudgeUntil,
+        });
+        // S16+S24: MID-RUN DURABLE TRIM. During a long team run (sub-agents),
+        // pi's native durable compaction only fires from _checkCompaction at
+        // PARENT settle (agent-session.js:760/844), so the on-disk transcript +
+        // context meter balloon to ~150k and never relieve until the very end
+        // ("compacts but doesn't resume"). agent_end with activeAgents===0 is a
+        // SAFE, settled point: calling ctx.compact() here does NOT abort an
+        // in-flight turn (the S16 danger is only mid-turn). ctx.compact() runs
+        // pi's flow, which fires our session_before_compact handler to supply
+        // the durable trim (truncates the transcript from firstKeptEntryId).
+        // Guarded three ways: only when truly idle + over threshold, only when
+        // pi would actually compact (piCompactWouldNoop skips the user-facing
+        // no-op throw), and debounced (one durable trim per 2s) to avoid
+        // thrashing the transcript while sub-agents keep settling.
+        if (idle && overThreshold && now >= runtime.debounceUntil) {
+          if (!piCompactWouldNoop(ctx)) {
+            runtime.debounceUntil = now + 2000;
+            runtime.diagAgentEndDurable++;
+            runtime.logger.info("agent-end-durable-trigger", {
+              sessionId: runtime.rt.sessionId,
+              ctxTokens: runtime.lastCtxTokens,
+              thresholdTokens: config.thresholdTokens,
+            });
+            ctx.compact({ customInstructions: undefined }); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; agent settled so no in-flight abort
+          }
+        }
         if (idle && queued && now >= runtime.resumeNudgeUntil) {
           runtime.resumeNudgeUntil = now + 30_000;
           pi.sendUserMessage("[mega-compact] continue from the compacted context above.");
@@ -215,21 +267,21 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
       Math.round((pct / 100) * (usage?.contextWindow ?? 0));
 
     // FAST GATE: token-based (tier threshold), not percentage-based.
-    if (currentTokens < config.thresholdTokens) return;
+    if (currentTokens < config.thresholdTokens) { runtime.diagCtxFastGate++; return; }
 
     const check = autoCompactCheck(currentTokens, config.thresholdTokens); // SERVER-STYLE CONFIRM (local)
-    if (!check.shouldCompact) return;
+    if (!check.shouldCompact) { runtime.diagCtxNoCompact++; return; }
 
     // Debounce so we don't fire on every context event past threshold.
     const now = Date.now();
-    if (now < runtime.debounceUntil) return;
+    if (now < runtime.debounceUntil) { runtime.diagCtxDebounce++; return; }
     runtime.debounceUntil = now + 2000;
 
     // Adaptive compression (Fix E): scale compression strength + keepFrom depth
     // with how close we are to the model context limit.
     const pressure = pressureFromPct(pct);
     const ran = runCompact(pi, runtime, config, ctx, messages, { compressionPressure: pressure });
-    if (ran.skipped) return;
+    if (ran.skipped) { runtime.diagCtxRunSkipped++; return; }
 
     // LEGACY path (rollback): v0.4.28 ctx.compact() + the no-op gate. The
     // manual compact path aborts the in-flight turn — only used behind the flag.
@@ -262,7 +314,16 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
         summary: ran.result.summary,
         anchorUserMessages,
       });
-      if (cut === null) return; // unsafe / below anchor floor — no trim this call
+      if (cut === null) {
+        runtime.diagCtxCutNull++;
+        runtime.logger.info("live-trim-skip", {
+          sessionId: runtime.rt.sessionId,
+          compactedFrom: ran.result.compactedFrom,
+          viewLen: view.length,
+          anchorUserMessages,
+        });
+        return; // unsafe / below anchor floor — no trim this call
+      }
       const summaryMsg = liveTrimSummaryMessage({
         compactedFrom: ran.result.compactedFrom,
         summary: ran.result.summary,
@@ -276,8 +337,22 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
       } as unknown as AgentMessage;
       const recent = messages.slice(cut); // guardrails-allow PREVENT-PI-002: `cut` is the pre-sanitized `compactedFrom` produced by src/boundary.ts computeDropRange, so the preserved run begins on a toolPair-safe index.
       runtime.snapshot(ctx);
+      // DIAG (team-run relief): confirm the live trim actually fires + how big
+      // the window still is. The return is non-durable (per-LLM-call only), so
+      // this is the signal that the model is being fed a compacted view while
+      // the on-disk transcript + context meter keep growing.
+      runtime.diagLiveTrimFires++;
+      runtime.logger.info("live-trim", {
+        sessionId: runtime.rt.sessionId,
+        inputMsgs: messages.length,
+        outputMsgs: recent.length + 1,
+        compactedFrom: cut,
+        ctxPct: pct,
+        ctxTokens: usage?.tokens ?? null,
+      });
       return { messages: [summaryAgentMsg, ...recent] };
     } catch {
+      runtime.diagCtxThrown++;
       return; // non-fatal: no trim this call; the next context event retries
     }
   });
@@ -290,10 +365,25 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
   // there is no full-reload + additive recall inflation.
   pi.on("session_before_compact", async (event: SessionBeforeCompactEvent, ctx: ExtensionContext) => {
     runtime.resetRuntime(ctx.sessionManager.getSessionId());
+    // DIAG (team-run relief): this is the ONLY durable-trim entry point. Log
+    // every fire + whether we supplied a compaction (truncates transcript) or
+    // fell through to {} (pi runs its own). If this is sparse during a team
+    // run, the durable trim is firing too late (only at parent settle).
+    const prep = event.preparation;
+    runtime.diagBeforeCompactFires++;
+    runtime.logger.info("before-compact-entry", {
+      sessionId: runtime.rt.sessionId,
+      reason: event.reason,
+      hasPrep: !!prep,
+      msgsToSummarize: prep?.messagesToSummarize?.length ?? 0,
+      firstKeptEntryId: prep?.firstKeptEntryId ?? null,
+      activeAgents: runtime.activeAgents,
+    });
     if (!config.auto) return {}; // let pi run its own native compaction
     try {
       const result = driveNativeCompaction(event, runtime, config);
       if (result) {
+        runtime.diagBeforeCompactSupplied++;
         runtime.logger.info("native-compact", {
           sessionId: runtime.rt.sessionId,
           firstKeptEntryId: result.compaction.firstKeptEntryId,

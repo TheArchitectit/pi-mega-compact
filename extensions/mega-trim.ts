@@ -46,7 +46,34 @@ export function computeLiveTrimCut(view: EngineMessage[], opts: BuildLiveTrimVie
   if (cut <= 0) return null; // nothing safe to cut — keep everything this call
   const recent = view.slice(cut);
   const userCount = recent.filter((m) => m.role === "user").length;
-  if (userCount < opts.anchorUserMessages) return null;
+  // ANCHOR FLOOR (PREVENT-PI-001): the recent window must keep at least
+  // `anchorUserMessages` user messages. The original compactedFrom can land on a
+  // run that starts with fewer than that (e.g. the preserved region begins on a
+  // tool pair, or the session's tail is tool-heavy). Instead of bailing out and
+  // skipping the live trim entirely this call (which left the model fed a
+  // 150k-context window during long team runs), walk `cut` backward until the
+  // preserved run contains enough user messages — bounded by the boundary-safe
+  // constraint so we never split a tool pair. Falls back to null only when the
+  // whole view can't satisfy the floor (tiny sessions) — the next context event
+  // retries.
+  if (userCount < opts.anchorUserMessages) {
+    let c = cut;
+    while (c > 1) {
+      c--;
+      if (!isBoundarySafe(view, c)) continue;
+      const recentNow = view.slice(c);
+      const usersNow = recentNow.filter((m) => m.role === "user").length;
+      if (usersNow >= opts.anchorUserMessages) { cut = c; break; }
+    }
+    if (cut > 1) {
+      const finalRecent = view.slice(cut);
+      if (finalRecent.filter((m) => m.role === "user").length < opts.anchorUserMessages) {
+        return null; // cannot satisfy the floor without dropping too much — retry next call
+      }
+    } else {
+      return null;
+    }
+  }
   return cut;
 }
 
