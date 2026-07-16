@@ -30,6 +30,7 @@
 | compaction redesign notes | [compaction-redesign.md](compaction-redesign.md) | docs/ |
 | fix plan: zstd load crash + tokens-grow-on-read + RAPTOR promotion (durable trim, Fix A–E) | [specs/fix-durable-trim.md](specs/fix-durable-trim.md) | docs/ |
 | slice 2: PGlite/pgvector async HNSW index (cross-repo recall) | [specs/slice2-pglite-vector-index.md](specs/slice2-pglite-vector-index.md) | docs/ |
+| **S24: unified pressure signal — auto-compact + tier + memory tied to one `pressure` (removes `/mega-tier`, memory storage hardening)** | [specs/s24-unified-pressure.md](specs/s24-unified-pressure.md) | docs/ |
 | **v0.5.0 branch roadmap: continuity + cross-repo + memory-RAG (S16–S23)** | [superpowers/CONTINUITY-BRANCH-ROADMAP.md](superpowers/CONTINUITY-BRANCH-ROADMAP.md) | docs/ |
 | v0.5.0 design spec (compaction continuity + cross-repo + memory-RAG) | [superpowers/specs/2026-07-15-compaction-continuity-cross-repo-memory-design.md](superpowers/specs/2026-07-15-compaction-continuity-cross-repo-memory-design.md) | docs/ |
 | v0.5.0 implementation plan (S16–S23, TDD task-by-task) | [superpowers/plans/2026-07-15-compaction-continuity-cross-repo-memory.md](superpowers/plans/2026-07-15-compaction-continuity-cross-repo-memory.md) | docs/ |
@@ -48,6 +49,7 @@
 | sprint 13 spec (RAPTOR) | [specs/sprint-13.md](specs/sprint-13.md) | docs/ |
 | sprint 14 spec (full pipeline + flags) | [specs/sprint-14.md](specs/sprint-14.md) | docs/ |
 | sprint 15 spec (benchmarks, DR, release) | [specs/sprint-15.md](specs/sprint-15.md) | docs/ |
+| S24 spec (unified pressure signal: auto-compact + tier + memory; memory storage hardening) | [specs/s24-unified-pressure.md](specs/s24-unified-pressure.md) | docs/ |
 | retention policy (TTL 90d, soft-delete, VACUUM, DR snapshots) | [RETENTION_POLICY.md](RETENTION_POLICY.md) | docs/ |
 | dedup runbook (SEV tiers, first-15-min, MARK_ONLY degrade) | [DEDUP_RUNBOOK.md](DEDUP_RUNBOOK.md) | docs/ |
 

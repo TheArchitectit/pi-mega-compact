@@ -11,6 +11,8 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { detectConflicts, type ConflictReport } from "./conflict-scan.js";
 import { addMemory, listMemories, searchMemories, recallMemory, type MemoryRecord } from "../src/store/sqlite.js";
 import { resolveRepoRoot } from "./mega-config.js";
+import { defaultEmbedder } from "../src/embedder.js";
+import { upsertMemoryEmbedding } from "../src/store/memoryIndex.js";
 import { MegaRuntime } from "./mega-runtime.js";
 
 /** Run the conflict scan and format a human-readable report. */
@@ -82,6 +84,13 @@ export function registerConflictCommands(pi: ExtensionAPI, runtime: MegaRuntime)
         const tagMatches = [...text.matchAll(/#([\w-]+)/g)].map((m) => m[1]);
         const content = text.replace(/#[\w-]+/g, "").trim();
         const id = addMemory({ content, tags: tagMatches }, repo, runtime.currentStateDir);
+        // S24: mirror into the cross-repo memory index (fire-and-forget).
+        try {
+          const vec = defaultEmbedder().embed(content);
+          void upsertMemoryEmbedding(repo, id, content, vec);
+        } catch {
+          /* non-fatal */
+        }
         ctx.ui.notify(`[mega-memory] saved #${id} to ${repo.split(/[\\/]/).pop()}`);
         return;
       }
@@ -151,6 +160,12 @@ export function registerConflictCommands(pi: ExtensionAPI, runtime: MegaRuntime)
         const tagMatches = [...text.matchAll(/#([\w-]+)/g)].map((m) => m[1]);
         const content = text.replace(/#[\w-]+/g, "").trim();
         const id = addMemory({ content, tags: tagMatches }, repo, runtime.currentStateDir);
+        try {
+          const vec = defaultEmbedder().embed(content);
+          void upsertMemoryEmbedding(repo, id, content, vec);
+        } catch {
+          /* non-fatal */
+        }
         ctx.ui.notify(`[/m] saved #${id} to ${repo.split(/[\\/]/).pop()}`);
         return;
       }

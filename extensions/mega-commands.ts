@@ -14,7 +14,7 @@ import { decompressSmart } from "../src/store/compression.js";
 import { loadMetrics, fpRate, p95 } from "../src/monitoring.js";
 import { MegaRuntime, C, recentUserQuery } from "./mega-runtime.js";
 import { runCompact, doRecall, doRecallAsync } from "./mega-pipeline.js";
-import { setTier, COMPACT_TIERS, type MegaConfig, type CompactTier } from "./mega-config.js";
+import { type MegaConfig } from "./mega-config.js";
 
 /** Resolve a checkpoint by id (or "recent"/"last") from this session's store. */
 export function findCheckpoint(runtime: MegaRuntime, sid: string, ref: string) {
@@ -126,7 +126,8 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
       } catch { /* non-fatal */ }
       const crossRepoStr = `${crossRepoInjections} cross-repo injections recorded · ${repoCount} repos indexed`;
       ctx.ui.notify(
-        `[mega-compact] pct=${pct} tokens=${tokens} tier=${config.tier} fastGate=${config.fastGatePct}% ` +
+        `[mega-compact] pct=${pct} tokens=${tokens} tier=${runtime.pressureBand} (live) preset=${config.tier} ` +
+          `pressure=${Math.round(runtime.pressure * 100)}% fastGate=${config.fastGatePct}% ` +
           `threshold=${config.thresholdTokens} auto=${config.auto} autoInline=${config.autoInline}\n` +
           `[mega-compact] store: ${st.checkpointCount} chkpt · ` +
           `${st.totalTokenEstimate} tok · last=${st.lastCheckpointId ?? "—"} · ` +
@@ -239,27 +240,7 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
     },
   });
 
-  pi.registerCommand("mega-tier", {
-    description: "Show or change the compaction tier at runtime. Usage: /mega-tier [low|medium|high|ultra|mega]",
-    handler: async (args: string, ctx: ExtensionContext) => {
-      const arg = args.trim().toLowerCase();
-      if (!arg) {
-        // Show current tier and available options.
-        ctx.ui.notify(
-          `[mega-compact] current tier: ${config.tier} (${config.thresholdTokens} tok)\n` +
-          `[mega-compact] available tiers: ${Object.entries(COMPACT_TIERS).map(([k, v]) => `${k}=${v}`).join(", ")}`,
-        );
-        return;
-      }
-      if (!(arg in COMPACT_TIERS)) {
-        ctx.ui.notify(`[mega-compact] unknown tier "${arg}". Available: ${Object.keys(COMPACT_TIERS).join(", ")}`);
-        return;
-      }
-      const newTier = arg as CompactTier;
-      setTier(config, newTier);
-      runtime.setStatus(ctx, `mega-compact: tier → ${newTier} (${config.thresholdTokens} tok)`);
-      ctx.ui.notify(`[mega-compact] tier changed to ${newTier} (threshold: ${config.thresholdTokens} tokens)`);
-      runtime.snapshot(ctx);
-    },
-  });
+  // NOTE: /mega-tier was removed in S24. The tier the user sees is now the LIVE
+  // pressure band (low/medium/high/ultra/mega), which climbs automatically as
+  // context fills — there is no manual tier to set. See docs/specs/s24-unified-pressure.md.
 }

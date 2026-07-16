@@ -1,5 +1,89 @@
 # Release Notes — pi-mega-compact
 
+## v0.6.2 (2026-07-16)
+
+S24 follow-up: cross-repo memory-RAG index + fix "auto-compact doesn't relieve
+during a team run." No user-visible change to the pressure signal itself.
+
+### Added
+- **Cross-repo memory index (S24 memory-RAG).** A redundant, additive, ASYNC
+  PGlite/HNSW index (`src/store/memoryIndex.ts`) mirrors durable memory writes
+  (`applyMemoryOps`, `/mega-memory`, `/m`) and augments recall with real
+  cross-repo nearest-neighbor memory lookup. A decision saved in repo A is now
+  inlined as RAG context when you start a session in repo B. The same-repo
+  linear cosine scan stays the DEFAULT recall path; the index is best-effort and
+  non-fatal (any init/write failure degrades to the same-repo scan). PREVENT-PI-004
+  OK — PGlite is WASM Postgres, fully local. Toggle `MEGACOMPACT_CROSSREPO_ENABLED`
+  (default true) and the stricter `MEGACOMPACT_CROSSREPO_COSINE` floor (default
+  0.90).
+- **Mid-run durable trim during team runs.** The durable compaction now fires at
+  `agent_end` (when idle + over threshold + no active agents), not only at parent
+  settle — so a long sub-agent run is trimmed between agents instead of ballooning
+  to the context ceiling and only relieving at the very end. Guarded by
+  `piCompactWouldNoop` (no user-facing throw) and the 2s debounce (no thrash).
+
+### Fixed
+- **Live trim was silently dead during team runs.** `computeLiveTrimCut` returned
+  `null` when the recent anchor window had too few user messages (anchor floor),
+  so the model was never fed a compacted view per call. It now walks the cut
+  backward to capture the anchor floor instead of skipping — the per-call live
+  trim fires again.
+- Regression test `extensions/mega-teamrun.test.ts` + fast repro
+  `scripts/diag-teamrun.mjs` drive the real extension through a mock pi and assert
+  the live trim + mid-run durable trim fire during a simulated team run.
+
+### Notes
+- Patch bump (0.6.1 → 0.6.2). Full suite: 353 passing.
+
+## v0.6.1 (2026-07-16)
+
+Follow-up to v0.6.0 closing the remaining S24 spec items (no behavior change to
+the user-visible pressure signal — all shipped in 0.6.0).
+
+### Changed
+- Memory caps are now env-tunable: `MEGACOMPACT_MEMORY_MAX_CHARS` (default 4000)
+  and `MEGACOMPACT_MEMORY_MAX_ROWS` (default 500). Previously hardcoded.
+- Extracted the shared `runMemoryReview` helper so the pressure-scaled turn-end
+  cadence and review-on-compact use one review body.
+
+### Docs
+- TESTER_GUIDE updated for the live pressure band (no `/mega-tier`), dashboard
+  status bar, and the memory-cadence + overflow (truncate + LRU) checks.
+
+### Notes
+- Patch bump (0.6.0 → 0.6.1). Full suite: 353 passing.
+
+## v0.6.0 (2026-07-16)
+
+S24 — **unified pressure signal**: auto-compact, the tier label, trim depth, and
+memory review now all read one live `pressure = currentTokens / thresholdTokens`
+signal, so the system reacts as a single coherent whole instead of four
+independent triggers.
+
+### Added
+- **Live tier band.** The toolbar widget + dashboard headline now show the live
+  pressure band (`low` → `medium` → `high` → `ultra` → `mega`) that climbs as the
+  context window fills and falls back as it's relieved. `/mega-status` reports the
+  live band, the `MEGACOMPACT_TIER` preset, and the live pressure %. The base
+  compaction *threshold* is still set by `MEGACOMPACT_TIER` at startup.
+- **Pressure-scaled memory review.** The auto-review cadence shortens as pressure
+  climbs (`memoryReviewCadence`), and a successful compaction now triggers an
+  immediate review when pressure is `high`+ (review-on-compact) so durable memory
+  keeps pace with faster churn.
+- **Memory storage hardening (4808/5000 fix).** Durable memories are written to the
+  SQLite `memories` table only (never pi's file-backed buffer). Each entry is
+  truncated at `MEMORY_MAX_CHARS` (4000, with a `…[truncated]` marker) and the
+  per-repo store is bounded at `MEMORY_MAX_ROWS` (200) via LRU eviction on the
+  least-recently-referenced rows — so a too-large memory can never overflow a
+  downstream consumer's per-entry cap.
+
+### Changed
+- **`/mega-tier` removed.** The tier is no longer a manual runtime setting; the
+  live pressure band replaced it. `setTier` is gone from `mega-config.ts`.
+
+### Notes
+- Behavior change (0.5.2 → 0.6.0). Full suite: 350 passing.
+
 ## v0.5.1 (2026-07-16)
 
 feat: show the installed npm version in the toolbar widget and dashboard header.

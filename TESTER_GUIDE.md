@@ -170,12 +170,14 @@ configured threshold.
 **Steps:**
 
 1. Start pi with the extension loaded. Confirm with `/mega-status`.
-2. Note your current tier and threshold:
+2. Note your current **preset** and threshold:
    ```
    /mega-status
    ```
-   The status output shows `MEGACOMPACT_TIER` (default `low` = 50k tokens) and
-   `MEGACOMPACT_FAST_GATE_PCT` (default 70%).
+   The status output shows `preset` (the `MEGACOMPACT_TIER` base preset, default
+   `low` = 50k tokens) and `MEGACOMPACT_FAST_GATE_PCT` (default 70%). The headline
+   `tier` is the **live pressure band** (`low`/`medium`/`high`/`ultra`/`mega`), not
+   a manual setting — there is no `/mega-tier` command (removed in v0.6.0).
 3. Work a session until context fills past the gate percentage (70%+ of the
    tier threshold). You can speed this up by:
    - Reading large files repeatedly.
@@ -183,11 +185,13 @@ configured threshold.
    - Setting `MEGACOMPACT_TIER=low` (50k threshold) so the gate fires sooner.
 4. Watch the live stats widget above the pi editor:
    ```
-    ⚡ low │ 35k/50k tokens (70%) │ 0 chkpts │ turn 12
+    ⚡ low·low v0.6.0 │ 35k/50k tokens (70%) │ 0 chkpts │ turn 12
       ◐ armed │ dedup: 0% │ saved: 0 tok
    ```
-   The trigger state should transition: `○ idle` → `◐ armed` (≥ gate %) →
-   `● ready` (≥ threshold).
+   The headline band **auto-climbs** as context fills: `low → medium → high →
+   ultra → mega` (driven by `currentTokens / thresholdTokens`), then falls back
+   as a compaction relieves pressure. The trigger state should transition:
+   `○ idle` → `◐ armed` (≥ gate %) → `● ready` (≥ threshold).
 5. When the trigger fires, you should see:
    - A `compact_start` event in `events.log`.
    - Context visibly drops (token count decreases).
@@ -205,6 +209,31 @@ configured threshold.
 - Checkpoint appears in the store.
 - `events.log` has `compact_start` and `compact_end` entries.
 - Widget shows updated checkpoint count and tokens saved.
+
+### 1b. Auto-Compaction during a Team Run (sub-agents)
+
+**Goal:** Verify context is relieved **during** a long team/sub-agent run, not
+only at the very end. Regression: previously the durable trim fired only when
+the parent agent settled, so a team run ballooned to ~150k and "compacted but
+didn't resume."
+
+**Steps:**
+
+1. Start a team run (multiple sub-agents, or a long `/mega-*` sequence that
+   spawns agents). Set `MEGACOMPACT_TIER=low` so the gate fires early.
+2. Watch the live stats widget token count while sub-agents settle one by one.
+3. After each sub-agent's `agent_end`, confirm context drops to a relieved level
+   (the mid-run durable trim fires at `agent_end` when idle + over threshold).
+4. Confirm the model is fed a compacted view per call (live trim) — the widget
+   token count should not sit pinned at the ceiling throughout the run.
+5. At the end of the run, context should be at a comfortable level and the next
+   turn should resume cleanly (no 150k reload).
+
+**Pass criteria:**
+- Context drops between sub-agents (not only at parent settle).
+- `events.log` shows `agent-end-durable-trigger` + `native-compact` entries
+  during the run (set `MEGACOMPACT_DEBUG=true` to see them).
+- The run resumes/continues without a context-ceiling stall.
 
 ---
 
@@ -338,7 +367,7 @@ near-duplicate regions correctly.
    (configurable via `MEGACOMPACT_DASHBOARD_PORT`) and writes the URL to the
    terminal.
 2. Open the URL in a browser. You should see:
-   - **Status bar** — current tier, trigger state, context utilization.
+   - **Status bar** — live pressure band (auto-climbing tier), trigger state, context utilization.
    - **Token gauge** — live token usage vs. threshold.
    - **Compaction graph** — timeline of compaction events with token counts.
    - **Checkpoint list** — recent checkpoints with timestamps.
@@ -446,7 +475,8 @@ rebuild from legacy JSON snapshots.
 **Steps:**
 
 1. After `pi update --extensions`, read the toolbar widget above the editor —
-   the first line now shows `⚡ <tier> vX.Y.Z …`.
+   the first line now shows `⚡ <live-band>·<preset> vX.Y.Z …` (e.g.
+   `⚡ low·low v0.6.0 …`); the live band climbs with context pressure.
 2. Run `/mega-status` — the header prints the installed version.
 3. Open `/mega-dashboard` — the header pill shows `vX.Y.Z`.
 4. Bump `version` in `package.json`, `npm publish`, re-run `pi update
@@ -512,10 +542,33 @@ recalled as RAG context.
    ```
    (`/m` is the shortform for all of the above.)
 
+**S24 — pressure-tied cadence + storage hardening:**
+
+5. **Cadence scales with pressure.** Compare review frequency at calm vs hot
+   context: under high pressure the effective review interval shrinks (see
+   `memoryReviewCadence`), and a successful compaction also triggers an immediate
+   review when pressure is `high`+ (`review-on-compact`). To observe: run a long
+   session and watch `/mega-memory list` grow more often as context fills.
+6. **Overflow cannot recur (the `4868/5000` client-cap fix).** Memories are
+   written to SQLite **only** (never pi's file-backed buffer). Each entry is
+   truncated at `MEGACOMPACT_MEMORY_MAX_CHARS` (default 4000 chars, with a
+   `…[truncated]` marker) and the per-repo store is bounded at
+   `MEGACOMPACT_MEMORY_MAX_ROWS` (default 500) via LRU eviction of the
+   least-recently-referenced rows. Verify:
+   ```
+   # force small caps, write a huge memory, confirm it is truncated on read-back
+   MEGACOMPACT_MEMORY_MAX_CHARS=50 /mega-memory save note "<500-char string>"
+   /mega-memory search "<first 40 chars>"   # returned row ends with …[truncated]
+   # push past the row cap; oldest un-referenced rows should evict, referenced survive
+   ```
+   No write should ever fail on size, and the store must stay bounded.
+
 **Pass criteria:**
 - Auto-review produces durable memories after the interval.
 - Relevant memories are recalled on resume without manual action.
 - `save` / `consolidate` / `forget` mutate the store as described.
+- Review cadence tightens under pressure and fires on high-pressure compaction.
+- Memory writes are SQLite-only, size-capped, and the store is LRU-bounded.
 
 ---
 

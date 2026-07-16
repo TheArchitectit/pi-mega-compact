@@ -98,3 +98,61 @@ test("recallMemories: fresher reference beats older at equal similarity", async 
 test("cleanup memrec", () => {
   rmSync(baseTmp, { recursive: true, force: true });
 });
+
+// ---- S24: cross-repo memory recall (PGlite mirror) ---------------------------
+test("recallMemoriesAndInline: surfaces a memory saved in ANOTHER repo via cross-repo index", async () => {
+  // Isolate the global PGlite index to a temp dir shared by both "repos".
+  process.env.MEGACOMPACT_INDEX_DIR = join(baseTmp, "xrepo-index");
+  const repoA = join(baseTmp, "repo-a");
+  const repoB = join(baseTmp, "repo-b");
+  try {
+    // repoA owns a decision about the store backend.
+    const { applyMemoryOps } = await import("./memoryOps.js");
+    await applyMemoryOps(
+      [{ op: "add", memory: { content: "we standardized on node:sqlite for the store backend", category: "decision", sourceTurn: 0 } }],
+      repoA,
+    );
+    // repoB is a fresh session with NO local memory about the store backend.
+    const { recallMemoriesAndInline } = await import("./recall.js");
+    const res = await recallMemoriesAndInline({
+      query: "what store backend do we use?",
+      stateDir: repoB,
+      limit: 5,
+      crossRepo: true,
+      crossRepoCosine: 0.3,
+    });
+    assert.ok(!res.empty, "cross-repo recall found the other repo's memory");
+    assert.ok(/node:sqlite/.test(res.block), "the node:sqlite decision was recalled from repo A");
+    assert.ok(res.report.some((r) => /from /.test(r)), "report labels the memory as cross-repo");
+  } finally {
+    const { closeMemoryIndex } = await import("./store/memoryIndex.js");
+    await closeMemoryIndex();
+    delete process.env.MEGACOMPACT_INDEX_DIR;
+  }
+});
+
+test("recallMemoriesAndInline: cross-repo disabled when MEGACOMPACT_PGLITE_DISABLED", async () => {
+  process.env.MEGACOMPACT_INDEX_DIR = join(baseTmp, "xrepo-index-off");
+  process.env.MEGACOMPACT_PGLITE_DISABLED = "true";
+  const repoA = join(baseTmp, "repo-a2");
+  const repoB = join(baseTmp, "repo-b2");
+  try {
+    const { applyMemoryOps } = await import("./memoryOps.js");
+    await applyMemoryOps(
+      [{ op: "add", memory: { content: "we standardized on node:sqlite for the store backend", category: "decision", sourceTurn: 0 } }],
+      repoA,
+    );
+    const { recallMemoriesAndInline } = await import("./recall.js");
+    const res = await recallMemoriesAndInline({
+      query: "what store backend do we use?",
+      stateDir: repoB,
+      limit: 5,
+      crossRepo: true,
+    });
+    // Index disabled → no cross-repo hit; repoB has no local memory → empty.
+    assert.equal(res.empty, true, "cross-repo recall degrades to empty when disabled");
+  } finally {
+    delete process.env.MEGACOMPACT_PGLITE_DISABLED;
+    delete process.env.MEGACOMPACT_INDEX_DIR;
+  }
+});

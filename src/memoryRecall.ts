@@ -81,3 +81,55 @@ export async function recallMemories(
   }
   return top;
 }
+
+/**
+ * Cross-repo memory recall (S24): augments the same-repo `recallMemories` with
+ * HNSW NN over the global PGlite `memory_index` (other repos' memories). Content
+ * is read inline from the index hit (the recall process can't open other repos'
+ * SQLite dirs), so no other-repo db access is required. Returns hits sorted by
+ * descending cosine, above `crossRepoCosine`. De-duped by content against
+ * `sameRepoContent` so we never surface a memory the same-repo scan already has.
+ * Non-fatal: any index failure returns []. Best-effort + PREVENT-PI-004 (local
+ * WASM only).
+ */
+export async function recallMemoriesCrossRepo(
+  query: string,
+  stateDir: string,
+  opts: RecallMemoriesOptions & { crossRepoCosine?: number; limit?: number } = {},
+): Promise<Array<{ memory: MemoryRecord; score: number; repoId: string }>> {
+  const embedder = opts.embedder ?? defaultEmbedder();
+  const queryVec = embedder.embed(query);
+  const { searchMemoriesAsync } = await import("./store/memoryIndex.js");
+  const k = opts.limit ?? 5;
+  const floor = opts.crossRepoCosine ?? 0.3;
+  const hits = await searchMemoriesAsync(queryVec, { k });
+  if (!hits.length) return [];
+  // Mark same-repo content as already-covered so we don't duplicate it.
+  const sameRepo = new Set(
+    listMemories(opts.repo ?? null, 1000, stateDir).map((m) => m.content.trim().toLowerCase()),
+  );
+  const out: Array<{ memory: MemoryRecord; score: number; repoId: string }> = [];
+  for (const h of hits) {
+    if (h.score < floor) continue;
+    if (sameRepo.has(h.content.trim().toLowerCase())) continue;
+    out.push({
+      memory: {
+        id: h.memoryId,
+        repo: h.repoId,
+        kind: "note",
+        content: h.content,
+        tags: [],
+        createdAt: 0,
+        lastRecalledAt: null,
+        category: null,
+        target: null,
+        lastReferenced: null,
+        sourceTurn: null,
+      } as MemoryRecord,
+      score: h.score,
+      repoId: h.repoId,
+    });
+  }
+  out.sort((a, b) => b.score - a.score);
+  return out;
+}

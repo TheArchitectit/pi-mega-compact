@@ -416,19 +416,22 @@ const TIER_CASES: Array<[string, number]> = [
   ["mega", 10_000_000],
 ];
 for (const [tier, threshold] of TIER_CASES) {
-  test(`tier "${tier}" resolves to a ${threshold}-token threshold`, async () => {
+  test(`tier "${tier}" resolves to a ${threshold}-token threshold (preset; live band shown separately)`, async () => {
     // Keep tier + keep threshold UNSET so the tier (not an explicit number)
     // drives the threshold. harness() would otherwise reset the threshold.
     delete process.env.MEGACOMPACT_THRESHOLD_TOKENS;
     process.env.MEGACOMPACT_TIER = tier;
     const h = harness({ keepTier: true, keepThreshold: true });
+    // tokens=1 against a 2M window → near-zero pressure → live band "low".
     const ctx = h.ctx({ getContextUsage: () => ({ tokens: 1, contextWindow: 2_000_000, percent: 0.01 }) });
     await h.commands["mega-status"].handler("", ctx);
     delete process.env.MEGACOMPACT_TIER;
     assert.ok(
-      h.notifies.some((n) => n.includes(`tier=${tier}`) && n.includes(`threshold=${threshold}`)),
-      `status should report tier=${tier} threshold=${threshold}`,
+      h.notifies.some((n) => n.includes(`preset=${tier}`) && n.includes(`threshold=${threshold}`)),
+      `status should report preset=${tier} threshold=${threshold}`,
     );
+    // S24: the headline tier is the LIVE pressure band, shown as "tier=low (live)".
+    assert.ok(h.notifies.some((n) => n.includes("tier=low (live)")), "live band reported (low at near-zero pressure)");
   });
 }
 
@@ -440,9 +443,59 @@ test("explicit MEGACOMPACT_THRESHOLD_TOKENS overrides the tier", async () => {
   await h.commands["mega-status"].handler("", ctx);
   delete process.env.MEGACOMPACT_TIER;
   assert.ok(
-    h.notifies.some((n) => n.includes("tier=custom") && n.includes("threshold=777")),
-    "explicit threshold wins over tier (tier=custom)",
+    h.notifies.some((n) => n.includes("preset=custom") && n.includes("threshold=777")),
+    "explicit threshold wins over tier (preset=custom)",
   );
+});
+
+// ---- S24: memory review tied to pressure / compaction -----------------------
+// Build a decision-bearing session large enough to guarantee a real (non-skipped,
+// non-deduped) compaction. Each user turn contains a decision phrase
+// (/\bactually\b/i, /\bwe (?:use|decided)\b/i) so reviewConversation yields ops.
+function decisionSession(): AgentMessage[] {
+  const out: AgentMessage[] = [];
+  for (let i = 0; i < 14; i++) {
+    out.push({ role: "user", content: `actually we decided to use approach ${i} for module ${i}`, timestamp: i } as unknown as AgentMessage);
+    out.push({ role: "assistant", content: [{ type: "toolCall", name: "Edit", id: `c${i}`, arguments: {} }], api: "anthropic-messages", provider: "anthropic", model: "m", usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 }, stopReason: "tool_use", timestamp: i } as unknown as AgentMessage);
+    out.push({ role: "toolResult", content: [{ type: "text", text: `edited module ${i}` }], toolCallId: `c${i}`, toolName: "Edit", isError: false, timestamp: i } as unknown as AgentMessage);
+  }
+  return out;
+}
+
+test("S24: high pressure triggers a memory review on compaction", async () => {
+  const h = harness();
+  // Force a real (non-legacy) compaction at full pressure → pressureBand "mega",
+  // which must fire the shared runMemoryReview on compact (review-on-compact).
+  process.env.MEGACOMPACT_LEGACY_DURABLE_TRIM = "false";
+  try {
+    const messages = decisionSession();
+    const ctx = h.ctx({ getContextUsage: () => ({ tokens: 200000, contextWindow: 200000, percent: 100 }) });
+    await h.fire("context", { type: "context", messages }, ctx);
+    // review-on-compact runs as a fire-and-forget async (doCompact is sync), so
+    // let the microtask/macrotask queue drain before asserting the side effect.
+    await new Promise((r) => setTimeout(r, 20));
+    const { listMemories, listCheckpoints } = await import("../src/store/sqlite.js");
+    // A checkpoint must have been persisted (proves compaction ran, not skipped).
+    assert.ok(listCheckpoints("sess_ext_001", h.stateDir).length > 0, "checkpoint persisted to local vector db");
+    // The just-compacted region is worth remembering, so durable memories must
+    // have been written to the SQLite store (review-on-compact path).
+    const mem = listMemories(null, 50, h.stateDir);
+    assert.ok(mem.length > 0, "memory review wrote durable memories on compact");
+  } finally {
+    delete process.env.MEGACOMPACT_LEGACY_DURABLE_TRIM;
+  }
+});
+
+test("S24: /mega-status reports the live pressure band + %", async () => {
+  const h = harness();
+  // Populate the runtime's live context first (a context event sets
+  // lastCtxTokens/lastCtxPercent), then read /mega-status. At 100% usage the live
+  // band must read "mega" and pressure must report 100%.
+  const ctx = h.ctx({ getContextUsage: () => ({ tokens: 200000, contextWindow: 200000, percent: 100 }) });
+  await h.fire("context", { type: "context", messages: h.session }, ctx);
+  await h.commands["mega-status"].handler("", ctx);
+  assert.ok(h.notifies.some((n) => n.includes("tier=mega (live)")), "live band reported as mega at 100% pressure");
+  assert.ok(h.notifies.some((n) => n.includes("pressure=100%")), "live pressure % reported");
 });
 
 // ---- /dashboard commands ----------------------------------------------------
