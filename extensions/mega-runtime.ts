@@ -292,7 +292,10 @@ export class MegaRuntime {
         const pct = Math.min(100, Math.round((this.rt.tokensSaved / goal) * 100));
         const filled = Math.round((pct / 100) * 10);
         const bar = "▓".repeat(filled) + "░".repeat(10 - filled);
-        lines.push(`   ${C.green}saved ${fmt(this.rt.tokensSaved)} ${bar}${C.reset} ${pct}% of ${fmt(goal)}`);
+        // Session tokens saved, with the repo-wide total held alongside so the
+        // bar reads "saved X of goal" and the right side shows saved vs total.
+        const totalHeld = st.totalTokenEstimate > 0 ? st.totalTokenEstimate : repo.totalTokenEstimate;
+        lines.push(`   ${C.green}saved ${fmt(this.rt.tokensSaved)} ${bar}${C.reset} ${pct}% of ${fmt(goal)} ${C.gray}│${C.reset} ${C.blue}${fmt(this.rt.tokensSaved)}${C.reset}/${C.blue}${fmt(totalHeld)}${C.reset} tok held`);
       }
       // Live "now processing" line + why + recent deduped/compacted events,
       // collapsed to ONE rotating line (fresh only). The ticker ring buffer
