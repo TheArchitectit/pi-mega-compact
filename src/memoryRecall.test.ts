@@ -56,6 +56,45 @@ test("recallMemories: empty store returns []", async () => {
   assert.deepEqual(hits, []);
 });
 
+test("recallMemories: decision category beats fact category at equal similarity", async () => {
+  const dir = join(baseTmp, "category");
+  // Two memories that share many bigrams with the query — both will have very
+  // similar cosine. The decision category should win because of categoryWeight.
+  addMemory({ content: "we use redis for cache" }, null, dir);
+  const aId = addMemory({ content: "we use redis as primary cache key", category: "fact" }, null, dir);
+  const dId = addMemory({ content: "we use redis as primary cache layer", category: "decision" }, null, dir);
+  const hits = await recallMemories("redis cache layer", dir, {
+    embedder: biGramEmbedder(),
+    topK: 3,
+    minSimilarity: 0.0,
+  });
+  assert.ok(hits.length >= 2);
+  assert.equal(hits[0].memory.id, dId, "decision-tagged memory outranks fact-tagged");
+  assert.notEqual(hits[0].memory.id, aId, "top is the decision row, not the unknown-category row");
+});
+
+test("recallMemories: fresher reference beats older at equal similarity", async () => {
+  const dir = join(baseTmp, "recency");
+  const aId = addMemory({ content: "we use redis for cache", category: "fact" }, null, dir);
+  const bId = addMemory({ content: "we use redis for cache layer", category: "fact" }, null, dir);
+  // Backdate aId so its last_referenced is older; bId stays fresh.
+  const { openStore, closeStore } = await import("./store/sqlite.js");
+  const db = openStore(dir);
+  const longAgo = Math.floor(Date.now() / 1000) - 30 * 86_400; // 30d
+  db.prepare("UPDATE memories SET last_referenced = ? WHERE id = ?").run(longAgo, aId);
+  // closeStore evicts the cached handle — calling db.close() directly would
+  // leave a stale closed DB in the openStore cache and break subsequent
+  // callers (the "database is not open" failure under parallel runs).
+  closeStore(dir);
+  const hits = await recallMemories("redis cache layer", dir, {
+    embedder: biGramEmbedder(),
+    topK: 3,
+    minSimilarity: 0.0,
+  });
+  assert.ok(hits.length >= 2);
+  assert.equal(hits[0].memory.id, bId, "freshly-referenced memory outranks 30-day-old one");
+});
+
 test("cleanup memrec", () => {
   rmSync(baseTmp, { recursive: true, force: true });
 });

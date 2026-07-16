@@ -22,6 +22,12 @@ const DECISION_PATTERNS = [
   /\bactually\b/i, /\braise (?:the )?|lower (?:the )?|switch (?:to )?\b/i,
 ];
 
+// Patterns that signal an explicit memory drop. Grounded only when the user
+// references an existing memory's content (handled in reviewConversation).
+const DROP_PATTERNS = [
+  /\b(?:stop using|don't use|dont use|drop(?:ping)?|forget|remove from memory|no longer)\b/i,
+];
+
 /** Heuristic, extractive review. No LLM. Downgrades un-grounded claims to none. */
 export function reviewConversation(messages: EngineMessage[], existing: { content: string }[] = []): MemoryOp[] {
   const ops: MemoryOp[] = [];
@@ -29,6 +35,21 @@ export function reviewConversation(messages: EngineMessage[], existing: { conten
   for (let i = 0; i < requests.length; i++) {
     const r = requests[i];
     const isDecision = DECISION_PATTERNS.some((p) => p.test(r));
+    const isDrop = DROP_PATTERNS.some((p) => p.test(r));
+    // A "stop using/drop/forget" signal takes precedence over a decision — the
+    // user asking to forget a memory supersedes any "switch to" phrasing it
+    // happens to contain (which would otherwise route into REPLACE).
+    if (isDrop && existing.some((e) => sharesTopic(e.content, r))) {
+      const target = existing.find((e) => sharesTopic(e.content, r));
+      if (target) ops.push({ op: "remove", content: target.content });
+      continue;
+    }
+    if (isDrop) {
+      // Drop pattern matched but no existing topic-overlapping memory — nothing
+      // to remove. Don't fall through to the decision branch (the request might
+      // also contain 'switch to' phrasing).
+      continue;
+    }
     if (!isDecision) continue;
     // Treat earlier in-conversation decisions as "existing" too, so later messages
     // that contradict them emit a REPLACE instead of an ADD.
@@ -42,8 +63,15 @@ export function reviewConversation(messages: EngineMessage[], existing: { conten
       ops.push({ op: "add", memory: { content: r, category: "decision", sourceTurn: i } });
     }
   }
-  // Guardrail: drop any op whose memory content isn't grounded in a real message.
-  return ops.filter((o) => messages.some((m) => String(m.text ?? "").includes(o.op === "remove" ? o.content : o.memory.content)));
+  // Guardrail: drop any add/replace op whose memory content isn't grounded in a
+  // real message (hallucination prevention). REMOVE ops are exempt — their
+  // `content` is an EXISTING memory (matched by topic overlap), so it predates
+  // the current conversation and won't appear verbatim in any message.
+  return ops.filter((o) =>
+    o.op === "remove"
+      ? true
+      : messages.some((m) => String(m.text ?? "").includes(o.memory.content)),
+  );
 }
 
 function sharesTopic(a: string, b: string): boolean {

@@ -25,3 +25,22 @@ test("reviewConversation: no ops on pure smalltalk (no durable fact)", () => {
   const msgs = [{ role: "user", text: "hi" }, { role: "assistant", text: "hey" }] as any;
   assert.equal(reviewConversation(msgs).length, 0);
 });
+
+test("reviewConversation: emits REMOVE when a user asks to drop an existing memory", () => {
+  const existing = [{ content: "we use node:sqlite as the store" }];
+  // Plain drop statement — no "switch to …" phrasing so we don't accidentally
+  // match DECISION_PATTERNS and route into the replace branch instead.
+  const msgs = [
+    { role: "user", text: "stop using node:sqlite for the store — drop it from memory" },
+    { role: "assistant", text: "ok dropped" },
+  ] as any;
+  const ops = reviewConversation(msgs, existing);
+  assert.ok(ops.some((o) => o.op === "remove" && /sqlite/i.test(o.content)), "emits a remove op targeting the old memory");
+});
+
+test("reviewConversation: REMOVE requires topic overlap (no accidental drop)", () => {
+  const existing = [{ content: "the timezone is America/Los_Angeles" }];
+  const msgs = [{ role: "user", text: "drop it" }] as any;
+  const ops = reviewConversation(msgs, existing);
+  assert.equal(ops.filter((o) => o.op === "remove").length, 0, "vague 'drop it' with no topic overlap does not remove anything");
+});
