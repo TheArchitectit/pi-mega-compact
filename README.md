@@ -6,13 +6,13 @@ sessions into a **local SQLite store** and offers **deduped inline recall** — 
 running **locally inside the extension**, with **no remote MCP server** and
 **zero network calls at runtime** (PREVENT-PI-004).
 
-> **v0.5.0** — storage backend is **`node:sqlite`** (`DatabaseSync`, a Node
-> ≥22.13 built-in), replacing the old `better-sqlite3` native addon and the
-> per-session gzipped JSON checkpoint files. **Zero native build step, fully
-> local, zero network at runtime.** Legacy `.checkpoints.json.gz` snapshots are
-> retained as disaster-recovery fallbacks and auto-imported on first run.
-> Cross-repo recall, durable memory, and a localhost dashboard round out the
-> continuity story.
+> **Current version:** `v0.5.1` — storage backend is **`node:sqlite`**
+> (`DatabaseSync`, a Node ≥22.13 built-in), replacing the old `better-sqlite3`
+> native addon and the per-session gzipped JSON checkpoint files. **Zero native
+> build step, fully local, zero network at runtime.** Legacy
+> `.checkpoints.json.gz` snapshots are retained as disaster-recovery fallbacks
+> and auto-imported on first run. Cross-repo recall, durable memory, and a
+> localhost dashboard round out the continuity story.
 
 ---
 
@@ -139,7 +139,9 @@ building.
 
 > **Tip — keep the spec unpinned.** Use `npm:pi-mega-compact`, not
 > `npm:pi-mega-compact@0.5.1`. Version-pinned specs are *skipped* by
-> `pi update --extensions`, so a pin would freeze you on that release.
+> `pi update --extensions`, so a pin would freeze you on that release. The
+> installed version is always visible in the toolbar widget (`⚡ <tier> vX.Y.Z`)
+> and via `/mega-status`.
 
 > **From a git checkout (development only).** To hack on the extension, clone and
 > build locally, then symlink it into pi's extensions dir — but this bypasses the
@@ -161,7 +163,7 @@ building.
 > `pi update --extensions` on the device. (`.gitignore` rejects `*.tgz` so one can't
 > be committed by accident.)
 
-### Storage backend (v0.5.0+)
+### Storage
 
 pi-mega-compact uses a dual local backend — **zero network, no native build step**:
 
@@ -170,21 +172,13 @@ pi-mega-compact uses a dual local backend — **zero network, no native build st
 
 Kill-switch: `MEGACOMPACT_PGLITE_DISABLED=1` fully disables the PGlite index (falls back to sync scan). Requires Node ≥22.13 (`engines.node`).
 
-### Cross-repo recall (v0.5.0+)
+### Cross-repo recall
 
 On resume, recall augments from other repos' checkpoints when this repo's store is thin; `/mega-recall --cross-repo` searches all repos via the HNSW index. Cross-repo hits use a stricter cosine floor (`MEGACOMPACT_CROSSREPO_COSINE`, default 0.90) and are labeled with their source repo. A machine-wide injected-set (`~/.mega-compact-index/index.sqlite`) prevents re-injecting the same foreign checkpoint.
 
-### Memory (v0.5.0+)
+### Memory
 
 pi-mega-compact auto-reviews the conversation every 10 turns and writes durable `decision`/`fact`/`preference` memories to SQLite (local, hallucination-guarded). Relevant memories are injected as RAG context on recall (capped, deduped). Manual: `/mega-memory save|list|forget`.
-
-### Verify
-
-```bash
-npm test          # all unit/integration tests pass (346 as of v0.5.1)
-npm run lint      # tsc --noEmit + guardrails scan clean
-python3 scripts/regression_check.py --all   # spec/plan regression gate
-```
 
 ### Uninstall
 
@@ -214,7 +208,7 @@ The commands (slash commands inside pi):
 |---|---|
 | `/mega-compact [summary...]` | Manually compact the current session. A summary arg is used verbatim; otherwise the COLLAPSE heuristics build one. Persists a `chkpt_xxx`. |
 | `/mega-compact off` | Disable auto-compaction for this session. |
-| `/mega-status` | Show config + current context usage + store stats (checkpoint count, dedup rate, tokens saved). Also prints the **installed version** (`vX.Y.Z`). |
+| `/mega-status` | Show config + current context usage + store stats (checkpoint count, dedup rate, tokens saved) + the **installed version**. |
 | `/mega-recall [query]` | Semantic-search the local store, dedupe against the current window, and inline the top-K relevant checkpoints. No query → uses your latest message. `--cross-repo` searches all repos. |
 | `/mega-memory save <text>` / `save <category> <text>` / `list` / `search <query>` / `forget <text>` / `consolidate` | Manage durable memories (decisions, facts, preferences) written by auto-review and recalled as RAG context. Also `/m` shortform. |
 | `/mega-restore <chkpt\|recent>` | Re-inject a checkpoint's verbatim original region into context. |
@@ -237,9 +231,8 @@ Above the pi editor the extension shows a compact widget:
 ```
 
 - **Version** — the installed npm version (read from `package.json` at runtime),
-  so the toolbar always reflects what `pi update --extensions` last pulled. If
+  so the widget always reflects what `pi update --extensions` last pulled. If
   this looks stale after an update, restart the dashboard server / pi session.
-
 - **Tier** — active compaction tier (low/medium/high/ultra/mega)
 - **Token usage** — current / max context window and %
 - **Checkpoints** — persisted checkpoints for the session
@@ -267,10 +260,10 @@ before starting pi.
 | `MEGACOMPACT_DEDUP_SIM` | `0.90` | Cosine threshold to collapse near-dupes. |
 | `MEGACOMPACT_STATE_DIR` | _(none — per-repo default)_ | Override the store location. By default state is per-repo at `<repo>/.pi/mega-compact/`; this env var forces a single explicit dir (used as the fallback for non-git cwds). |
 
-#### Dedup pipeline flags (v0.2.0 — single source: `src/config/dedup.ts`)
+#### Dedup pipeline flags (single source: `src/config/dedup.ts`)
 
 These gate the L0/L1/L2/RAPTOR dedup tiers. Defaults reproduce the all-active
-Sprint 13 behavior. `MARK_ONLY_*` tiers run + record their decision but never
+behavior. `MARK_ONLY_*` tiers run + record their decision but never
 collapse (safe partial-rollout / auto-degrade state).
 
 | Variable | Default | Meaning |
@@ -297,18 +290,18 @@ See `docs/DEDUP_RUNBOOK.md` for incident response (SEV tiers, first-15-min
 checklist, MARK_ONLY degrade) and `docs/RETENTION_POLICY.md` for TTL / soft-delete
 / VACUUM.
 
-#### Continuity + memory knobs (v0.5.0)
+#### Continuity + memory knobs
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `MEGACOMPACT_LEGACY_DURABLE_TRIM` | `false` | Restore the v0.4.28 auto-trigger (`ctx.compact()` stops the agent). One-release rollback; default uses live context-event trim + pi native auto-compaction (compact-and-continue). |
+| `MEGACOMPACT_LEGACY_DURABLE_TRIM` | `false` | Restore the legacy auto-trigger (`ctx.compact()` stops the agent). One-release rollback; default uses live context-event trim + pi native auto-compaction (compact-and-continue). |
 | `MEGACOMPACT_CROSSREPO_ENABLED` | `true` | Cross-repo recall on resume + `/mega-recall --cross-repo` (HNSW index over every repo). |
 | `MEGACOMPACT_CROSSREPO_COSINE` | `0.90` | Stricter cosine floor for cross-repo hits (vs `0.85` same-repo). |
 | `MEGACOMPACT_MEMORY_AUTO_REVIEW` | `true` | Auto-review the conversation every `MEGACOMPACT_MEMORY_REVIEW_INTERVAL` turns → durable memories. |
 | `MEGACOMPACT_MEMORY_REVIEW_INTERVAL` | `10` | Turns between auto-review cycles. |
 | `MEGACOMPACT_PGLITE_DISABLED` | _(unset — index on)_ | Kill-switch for the PGlite/HNSW cross-repo index; set `1`/`true` to disable (falls back to sync per-session scan). |
 
-#### Dashboard (v0.5.0)
+#### Dashboard
 
 The localhost-only dashboard adds a **Summary** + **All-repos** view over the
 machine-wide `repo_registry`, plus a **cross-repo drift** report (`GET /api/drift`)
@@ -318,62 +311,11 @@ All read-only — the report never writes the index.
 
 ---
 
-## Reporting for testers (what to capture)
-
-If you're testing pi-mega-compact, the maintainers need **local evidence**, not
-guesswork. The store and logs are plain local files — never a network port.
-
-1. **Install + run it** (see [Installation](#install)).
-2. **Work a real session** until context fills past the gate (80%+) — you should
-   see the status chip flip to `● ready`, then `◐ armed`, a checkpoint persist,
-   and context visibly drop.
-3. **Resume and confirm recall:** restart pi, ask about something you worked on
-   earlier; relevant checkpoints should auto-inline (or use
-   `/mega-recall <topic>`).
-4. **Watch the live signal** while testing:
-   ```bash
-   tail -f ~/.pi/agent/extensions/pi-mega-compact/events.log | jq .
-   ```
-   Each line is `{ts, tier, result, latencyMs, falsePositive?}`.
-5. **Run the dashboard** (`/mega-dashboard`) and check the token gauge, store
-   stats, and live event stream.
-6. **Try `/mega-tier`** to see and switch compaction tiers.
-
-### What to include in a bug report
-
-- Output of `/mega-status` (config + store stats).
-- Output of `/mega-dashboard-status`.
-- Your pi version + OS + Node version (`node -v`).
-- A slice of `events.log` around the problem (the `result`/`tier` lines).
-- `dashboard.json` from the state dir (aggregate metrics: hit rate, FP rate,
-  per-tier p95, storage bytes).
-- If you suspect data loss or duplication: the checkpoint count and the
-  `sqlite.db` size, plus the output of the DR drill (below).
-
-**Disaster-recovery drill** (validates the store against its JSON snapshots and
-rebuilds if corrupt — see `docs/RETENTION_POLICY.md` §5):
-
-```bash
-scripts/dedup-restore-drill.sh ~/.pi/agent/extensions/pi-mega-compact
-```
-
-**Benchmark** (dedup hit rate, compression ratio, per-tier p95, storage at
-100 / 1K / 10K checkpoints):
-
-```bash
-npm run build
-node scripts/dedup-benchmark.mjs 100 1000 10000
-```
-
-Open issues at: https://github.com/TheArchitectit/pi-mega-compact/issues
-
----
-
 ## Architecture & layout
 
 ```
 extensions/mega-compact.ts   pi extension entry; wires src/ into pi lifecycle
-extensions/mega-trim.ts      S16 live context-event trim (compact-and-continue, no abort)
+extensions/mega-trim.ts      live context-event trim (compact-and-continue, no abort)
 extensions/mega-conflict-cmds.ts  extension-conflict detector (/mega-compat-check)
 extensions/dashboard-server.ts     localhost dashboard (HTML + snapshot/version/drift APIs)
 src/adapt.ts                  the single pi↔engine message adapter (index-aligned)
@@ -409,36 +351,22 @@ The extension entry adapts between the engine and pi's runtime types.
 
 ```bash
 npm run build      # tsc
-npm test           # build + node --test on dist/**/*.test.js
+npm test           # build + node --test on dist/**/*.test.js (346 tests)
 npm run lint       # tsc --noEmit + guardrails-scan
 npm run guardrails # regression_check + guardrails-scan
 ```
 
 The agent-guardrails suite (Four Laws, scope, secrets, regression) gates every
-sprint.
+change.
 
 ---
 
-## Status
+## Testing & bug reports
 
-- ✅ Sprints 1–15 — core engine, local store, dedup tiers (L0/L1/L2/RAPTOR),
-  monitoring, canary rollout, benchmarks, DR drill (`v0.2.0`).
-- ✅ v0.4.23 (Slice 1) — `node:sqlite` (`DatabaseSync`) replaces the
-  `better-sqlite3` native addon as the synchronous source of truth (zero native
-  build, survives pi's install-scripts block).
-- ✅ v0.4.25 (Slice 2) — async PGlite/pgvector HNSW cross-repo index (WASM,
-  script-free, PREVENT-PI-004 OK), redundant to the sync store.
-- ✅ S16–S17 — live context-event trim (compact-and-continue, no abort) + wired
-  cross-repo recall into resume / `/mega-recall --cross-repo`.
-- ✅ S18 — machine-wide injected-set for cross-repo dedup.
-- ✅ S20–S23 — durable memory store (auto-review → decisions/facts/preferences),
-  recall + auto-inline (RAG), consolidation, cross-repo drift detection, global
-  index DR drill, benchmarks (`v0.5.0`).
-- ✅ v0.5.1 — version shown in the toolbar widget + dashboard header, read from
-  `package.json` at runtime so it tracks every npm publish.
-
-See `CHANGELOG.md` for release notes and `docs/` for specs, runbooks, and the
-guardrails.
+Full QA instructions — environment setup, the manual test checklist, what to
+include in a bug report, and known limitations — live in
+[`TESTER_GUIDE.md`](TESTER_GUIDE.md). Open issues at
+[github.com/TheArchitectit/pi-mega-compact/issues](https://github.com/TheArchitectit/pi-mega-compact/issues).
 
 ---
 
