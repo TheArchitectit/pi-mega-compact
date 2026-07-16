@@ -23,11 +23,13 @@ export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime
   // the shipped compiled dist/extensions/dashboard-server.js).
   let dashboardNeedsStrip = false;
 
-  // The dashboard server binds 9320–9329 (TARGET_PORT..TARGET_PORT+PORT_RANGE-1
-  // in dashboard-server.js). Probe each for a live /api/snapshot so we can detect
-  // readiness even when port.pid landed in a different state dir than we poll.
+  // The dashboard server binds a 10-port range starting at MEGACOMPACT_DASHBOARD_PORT
+  // (default 9320) — see TARGET_PORT/PORT_RANGE in dashboard-server.js. Probe each for
+  // a live /api/snapshot so we detect readiness even when port.pid landed in a different
+  // state dir than we poll. Configurable so tests can use a private, non-colliding range.
+  const DASH_BASE = Number(process.env.MEGACOMPACT_DASHBOARD_PORT ?? "9320");
   async function findLivePort(): Promise<number | null> {
-    for (let port = 9320; port <= 9329; port++) {
+    for (let port = DASH_BASE; port <= DASH_BASE + 9; port++) {
       try {
         const res = await fetch(`http://localhost:${port}/api/snapshot`, { signal: AbortSignal.timeout(800) }); // guardrails-allow PREVENT-PI-004: localhost liveness probe of the dashboard server this extension spawned
         if (res.ok) return port;

@@ -446,10 +446,17 @@ test("explicit MEGACOMPACT_THRESHOLD_TOKENS overrides the tier", async () => {
 
 // ---- /dashboard commands ----------------------------------------------------
 test("/dashboard-status reports no server when pid file missing", async () => {
-  const h = harness();
-  const ctx = h.ctx();
-  await h.commands["mega-dashboard-status"].handler("", ctx);
-  assert.ok(h.notifies.some((n) => n.includes("not running")), "reports no server running");
+  // Private base so this asserts "no server" on a range nothing else uses,
+  // not the machine-global 9320 family (which may hold a leftover/production server).
+  process.env.MEGACOMPACT_DASHBOARD_PORT = "49320";
+  try {
+    const h = harness();
+    const ctx = h.ctx();
+    await h.commands["mega-dashboard-status"].handler("", ctx);
+    assert.ok(h.notifies.some((n) => n.includes("not running")), "reports no server running");
+  } finally {
+    delete process.env.MEGACOMPACT_DASHBOARD_PORT;
+  }
 });
 
 test("/dashboard-stop reports no server when pid file missing", async () => {
@@ -460,20 +467,23 @@ test("/dashboard-stop reports no server when pid file missing", async () => {
 });
 
 test("/dashboard skips server spawn when already running", async () => {
+  // Use a private dashboard port base for THIS test's harness + fake server so
+  // it never races the (parallel, hard-coded-9320) dashboard-server.test.js or
+  // a leftover production server. Set BEFORE harness() so registerDashboardCommands
+  // reads our base for findLivePort().
+  process.env.MEGACOMPACT_DASHBOARD_PORT = "29320";
   const h = harness();
   const confirms: boolean[] = [];
-  // Set up a fake HTTP server on a port inside the dashboard's scan range
-  // (9320–9329) — isServerRunning() probes those ports, not the port.pid value.
+  const livPort = 29320; // inside the harness's private scan range (29320–29329)
   const { createServer } = await import("node:http");
   const server = createServer((_req, res) => {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ updatedAt: new Date().toISOString(), tier: "test", version: 1, config: {}, session: {}, context: {}, trigger: {}, store: {} }));
   });
-  await new Promise<void>((r) => server.listen(9320, "127.0.0.1", r));
-  const addr = server.address() as any;
+  await new Promise<void>((r) => server.listen(livPort, "127.0.0.1", r));
   const { join: j } = await import("node:path");
   const { writeFileSync: wf } = await import("node:fs");
-  wf(j(h.stateDir, "port.pid"), JSON.stringify({ port: addr.port, pid: process.pid }));
+  wf(j(h.stateDir, "port.pid"), JSON.stringify({ port: livPort, pid: process.pid }));
 
   const ctx = h.ctx({
     ui: {
@@ -490,12 +500,15 @@ test("/dashboard skips server spawn when already running", async () => {
   assert.ok(confirms.length > 0, "confirm dialog was shown");
 
   await new Promise<void>((r) => server.close(() => r()));
+  delete process.env.MEGACOMPACT_DASHBOARD_PORT;
 });
 
 test("/dashboard-status reports running after dashboard start", async () => {
+  // Private dashboard port base for this harness — never collides with the
+  // parallel dashboard-server.test.js (9320 family) or a leftover server.
+  process.env.MEGACOMPACT_DASHBOARD_PORT = "39320";
   const h = harness();
-  // Write a fake port.pid; the server must listen inside the scan range
-  // (9320–9329) or isServerRunning() won't detect it.
+  const livPort = 39320;
   const { createServer } = await import("node:http");
   const { join: j } = await import("node:path");
   const { writeFileSync: wf } = await import("node:fs");
@@ -503,15 +516,15 @@ test("/dashboard-status reports running after dashboard start", async () => {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ updatedAt: new Date().toISOString(), tier: "test" }));
   });
-  await new Promise<void>((r) => server.listen(9321, "127.0.0.1", r));
-  const addr = server.address() as any;
-  wf(j(h.stateDir, "port.pid"), JSON.stringify({ port: addr.port, pid: process.pid }));
+  await new Promise<void>((r) => server.listen(livPort, "127.0.0.1", r));
+  wf(j(h.stateDir, "port.pid"), JSON.stringify({ port: livPort, pid: process.pid }));
 
   const ctx = h.ctx();
   await h.commands["mega-dashboard-status"].handler("", ctx);
-  assert.ok(h.notifies.some((n) => n.includes("running") && n.includes(String(addr.port))), "reports running with port");
+  assert.ok(h.notifies.some((n) => n.includes("running") && n.includes(String(livPort))), "reports running with port");
 
   await new Promise<void>((r) => server.close(() => r()));
+  delete process.env.MEGACOMPACT_DASHBOARD_PORT;
 });
 
 test("state snapshot writes dashboard.json after compaction", async () => {

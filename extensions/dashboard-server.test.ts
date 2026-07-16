@@ -136,6 +136,12 @@ describe("port.pid file", () => {
 
 const SERVER_ENTRY = new URL("./dashboard-server.js", import.meta.url).pathname;
 
+// Tests run in parallel across files and a killed run can leave a server bound
+// to 9320. Use a private, non-colliding base so this file never races the
+// mega-compact.test.js dashboard tests (which scan a DIFFERENT base) and never
+// collides with a leftover production server on 9320.
+process.env.MEGACOMPACT_DASHBOARD_PORT = "19320";
+
 function waitFor(cond: () => boolean | Promise<boolean>, timeoutMs = 6000): Promise<void> {
   const start = Date.now();
   return new Promise((resolve, reject) => {
@@ -151,8 +157,10 @@ function waitFor(cond: () => boolean | Promise<boolean>, timeoutMs = 6000): Prom
 describe("server lifecycle", () => {
   test("drops a stale port.pid and binds a fresh port", async () => {
     const dir = mkdtempSync(join(tmpdir(), "dash-stale-"));
-    // A marker claiming a port where nothing is listening.
-    writeFileSync(join(dir, "port.pid"), JSON.stringify({ port: 9325, pid: 999999 }));
+    // A marker claiming a port where nothing is listening — use the test's own
+    // private base + 5 so the dead port is inside the server's scan range.
+    const deadPort = 19325;
+    writeFileSync(join(dir, "port.pid"), JSON.stringify({ port: deadPort, pid: 999999 }));
 
     const child = spawn(process.execPath, [SERVER_ENTRY, dir], { stdio: "ignore" });
     try {
@@ -169,7 +177,7 @@ describe("server lifecycle", () => {
       });
       const raw = JSON.parse(readFileSync(join(dir, "port.pid"), "utf-8"));
       assert.equal(typeof raw.port, "number");
-      assert.notEqual(raw.port, 9325, "should not reuse the dead port from the stale marker");
+      assert.notEqual(raw.port, deadPort, "should not reuse the dead port from the stale marker");
       // And a real server must answer on it.
       const res = await fetch(`http://localhost:${raw.port}/api/version`);
       assert.equal(res.ok, true);

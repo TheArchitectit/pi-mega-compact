@@ -924,8 +924,13 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
     res.end(dashboardHtml(tier));
   });
 
-  const TARGET_PORT = 9320;
-  const PORT_RANGE = 10; // 9320–9329
+  // Bind base + range are env-configurable so tests can use a private,
+  // non-colliding range (parallel runs / leftover servers from killed runs
+  // would otherwise EADDRINUSE on the machine-global 9320 range). Default
+  // MEGACOMPACT_DASHBOARD_PORT=9320 (10-port range 9320–9329) preserves the
+  // production behavior.
+  const TARGET_PORT = Number(process.env.MEGACOMPACT_DASHBOARD_PORT ?? "9320");
+  const PORT_RANGE = 10; // TARGET_PORT..TARGET_PORT+9
 
   return new Promise((resolve, reject) => {
     function tryPort(port: number) {
