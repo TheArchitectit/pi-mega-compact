@@ -1,5 +1,69 @@
 # Release Notes — pi-mega-compact
 
+## v0.5.1 (2026-07-16)
+
+feat: show the installed npm version in the toolbar widget and dashboard header.
+
+### Added
+- **Version visible everywhere.** The toolbar widget's first line now renders
+  `⚡ <tier> vX.Y.Z …`, `/mega-status` prints the installed version, and the
+  dashboard header carries a `vX.Y.Z` pill. All three read `package.json` at
+  runtime, so they track every `npm publish` automatically — after
+  `pi update --extensions`, you can confirm the new build landed without digging
+  through logs. No source edit is needed per release.
+
+### Notes
+- Patch bump (0.5.0 → 0.5.1). Full suite: 346 passing.
+
+## v0.5.0 (2026-07-16)
+
+The **continuity + cross-repo + memory-RAG** release (sprints S16–S23): the
+extension keeps long sessions going without aborting the turn, recalls across
+repos, and accumulates durable memory it auto-inlines as RAG context. Plus the
+storage backend moved to `node:sqlite`.
+
+### Added
+- **Live context-event trim (S16).** `extensions/mega-trim.ts` collapses the
+  compacted region to a single summary message on every LLM call via the
+  `context` event — compact-and-continue instead of `ctx.compact()`'s
+  stop-the-agent behavior. Honors PREVENT-PI-001 (anchor floor) and PREVENT-PI-002
+  (never splits a toolCall/toolResult pair). `MEGACOMPACT_LEGACY_DURABLE_TRIM`
+  restores the old behavior for one release.
+- **Cross-repo recall (S17/S18).** `/mega-recall --cross-repo` and auto-inline on
+  resume augment from other repos' checkpoints (HNSW index over every repo) when
+  the current repo's store is thin. Cross-repo hits use a stricter cosine floor
+  (`MEGACOMPACT_CROSSREPO_COSINE`, default 0.90) and are repo-labeled. A
+  machine-wide injected-set (`~/.mega-compact-index/index.sqlite`) prevents
+  re-injecting the same foreign checkpoint.
+- **Durable memory + RAG (S20–S22).** `src/memory.ts` auto-reviews the
+  conversation every `MEGACOMPACT_MEMORY_REVIEW_INTERVAL` (default 10) turns into
+  `decision`/`fact`/`preference` memories (hallucination-guarded, scoped per repo).
+  `src/memoryRecall.ts` injects relevant memories as RAG context on resume/branch
+  (capped + deduped). Manual: `/mega-memory save|list|search|forget|consolidate`
+  (also `/m` shortform); `src/memoryOps.ts` does apply/consolidate.
+- **Cross-repo drift detection (S/R4).** The dashboard's **All-repos** view plus
+  `GET /api/drift` flag stale repos (>30d idle), compaction lag (an active repo
+  >24h behind the most-recently-active repo's last compaction), and recent model
+  churn (within 7d). Read-only — never writes the index.
+- **`node:sqlite` storage backend (Slice 1, supersedes the `better-sqlite3`
+  addon).** `src/store/sqlite.ts` now uses `DatabaseSync` (Node ≥22.13 built-in)
+  as the synchronous source of truth — no native module to compile, survives pi's
+  install-scripts block. FTS5 trigram tokenizer + parameterized queries
+  unchanged.
+- **Async PGlite/pgvector HNSW index (Slice 2).** `src/store/vectorIndex.ts` adds
+  a redundant, best-effort WASM Postgres + `vector_cosine_ops` index at
+  `~/.pi/mega-compact-vector` for cross-repo NN recall. The sync node:sqlite store
+  stays authoritative; the index degrades to the sync scan on any failure
+  (`MEGACOMPACT_PGLITE_DISABLED` kill-switch).
+- **New commands:** `mega-restore`, `mega-history`, `mega-view`, `mega-help`,
+  `mega-compat-check`, `/m` (memory shortform), `/mega-recall --cross-repo`.
+- **Benchmarks + DR drills:** `scripts/crossrepo-benchmark.mjs`,
+  `scripts/global-index-drill.sh`, `scripts/run-s20-s23.mjs`.
+
+### Notes
+- Engines bumped to `node >= 22.13` (required for `node:sqlite`).
+- Full suite: 346 passing (up from 280 at v0.4.x).
+
 ## v0.4.24 (2026-07-15)
 
 fix: make the dashboard server start failures diagnosable instead of silent.
@@ -536,7 +600,10 @@ canary rollout ship behind feature flags.
 
 - **SQLite storage backbone** — `better-sqlite3` in-process database replaces
   gzipped JSON checkpoint files. Single source of truth with FTS5 trigram
-  tokenizer, WAL journaling, and parameterized queries.
+  tokenizer, WAL journaling, and parameterized queries. *(Note: the storage
+  backend later migrated to the built-in `node:sqlite` `DatabaseSync` at
+  v0.5.0 — see that entry. The migration path and DR-snapshot behavior below
+  still apply.)*
 - **Full dedup pipeline** — L0 exact-hash, L1 MinHash/LSH near-dup, L2 semantic
   cosine + MMR, and RAPTOR hierarchical pre-compression (shadow mode).
 - **BYO localhost embedder** — `MEGACOMPACT_EMBEDDING_URL` lets you plug in a
