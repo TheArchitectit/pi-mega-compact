@@ -718,14 +718,34 @@ export function addLesson(
 // file-backed memory caps a single entry at ~5k chars). We truncate content at
 // MEMORY_MAX_CHARS and evict the least-recently-referenced rows past
 // MEMORY_MAX_ROWS per repo via LRU. Both are SQLite-only (PREVENT-PI-004): no
-// file-backed memory is written anywhere.
+// file-backed memory is written anywhere. Defaults are overridable via env
+// (MEGACOMPACT_MEMORY_MAX_CHARS / MEGACOMPACT_MEMORY_MAX_ROWS).
 export const MEMORY_MAX_CHARS = 4000;
-export const MEMORY_MAX_ROWS = 200;
+export const MEMORY_MAX_ROWS = 500;
+
+/** Read an env override as a positive int, falling back to `fallback`. */
+function envInt(name: string, fallback: number): number {
+  const v = process.env[name];
+  if (v == null || v === "") return fallback;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+
+/** Effective per-entry char cap (env-overridable, default MEMORY_MAX_CHARS). */
+export function memoryMaxChars(): number {
+  return envInt("MEGACOMPACT_MEMORY_MAX_CHARS", MEMORY_MAX_CHARS);
+}
+
+/** Effective per-repo row cap (env-overridable, default MEMORY_MAX_ROWS). */
+export function memoryMaxRows(): number {
+  return envInt("MEGACOMPACT_MEMORY_MAX_ROWS", MEMORY_MAX_ROWS);
+}
 
 /** Truncate memory content to the per-entry cap, preserving a trailing marker. */
 function capMemoryContent(content: string): string {
-  if (content.length <= MEMORY_MAX_CHARS) return content;
-  return content.slice(0, MEMORY_MAX_CHARS) + "…[truncated]";
+  const cap = memoryMaxChars();
+  if (content.length <= cap) return content;
+  return content.slice(0, cap) + "…[truncated]";
 }
 
 /**
@@ -736,6 +756,7 @@ function capMemoryContent(content: string): string {
  */
 function evictMemoryLru(repo: string | null, stateDir: string): void {
   const db = openStore(stateDir);
+  const maxRows = memoryMaxRows();
   // SQLite `= NULL` is never true, so the null-repo scope (memories are
   // stateDir-scoped when repo is null — the applyMemoryOps path) needs `IS NULL`.
   const where = repo == null ? "repo IS NULL" : "repo = ?";
@@ -743,7 +764,7 @@ function evictMemoryLru(repo: string | null, stateDir: string): void {
     ? db.prepare(`SELECT COUNT(*) AS n FROM memories WHERE ${where}`).get()
     : db.prepare(`SELECT COUNT(*) AS n FROM memories WHERE ${where}`).get(repo);
   const count = (countRow as { n: number }).n;
-  const over = count - MEMORY_MAX_ROWS;
+  const over = count - maxRows;
   if (over <= 0) return;
   // Delete the `over` least-recently-used rows. ORDER BY the LRU key ASC, id ASC
   // (id ASC breaks ties deterministically — oldest created first). The `where`

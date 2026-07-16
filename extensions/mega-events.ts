@@ -13,7 +13,7 @@ import { normalizeSessionId } from "../src/store.js";
 import { autoCompactCheck } from "../src/compact.js";
 import { estimateSessionTokens } from "../src/tokens.js";
 import { MegaRuntime, recentUserQuery, WIDGET_KEY } from "./mega-runtime.js";
-import { runCompact, doRecall, doRecallAsync, piCompactWouldNoop } from "./mega-pipeline.js";
+import { runCompact, doRecall, doRecallAsync, piCompactWouldNoop, runMemoryReview } from "./mega-pipeline.js";
 import { recallMemoriesAndInline } from "../src/recall.js";
 import { driveNativeCompaction } from "./mega-compact-driver.js";
 import { computeLiveTrimCut, liveTrimSummaryMessage } from "./mega-trim.js";
@@ -172,22 +172,13 @@ export function registerEventHandlers(pi: ExtensionAPI, runtime: MegaRuntime, co
     if (config.memoryAutoReview && runtime.currentTurn > 0) {
       const cadence = memoryReviewCadence(runtime.pressureBand, config.memoryReviewInterval);
       if (runtime.currentTurn % cadence === 0) {
-        try {
-          const { reviewConversation } = await import("../src/memory.js");
-          const { applyMemoryOps } = await import("../src/memoryOps.js");
-          const entries = ctx.sessionManager.getEntries();
-          const view = runtime.engineView(entries.flatMap((e: any) => (e.message ? [e.message] : [])));
-          const ops = reviewConversation(view, []);
-          if (ops.length) {
-            await applyMemoryOps(ops, runtime.currentStateDir);
-            // S21.2: a memory op landed in this turn window. The pipeline reads
-            // this counter after a successful compaction and fires
-            // `consolidateMemories` only when it's > 0.
-            runtime.memoriesTouchedThisCompaction += ops.length;
-          }
-        } catch {
-          /* non-fatal — auto-review must not break the turn loop */
-        }
+        // S20+S24: review the conversation and persist durable memories. The
+        // cadence scales with pressure (memoryReviewCadence): as context fills,
+        // the conversation is reviewed more often so memories keep pace with
+        // faster churn. Shared runMemoryReview body (also used on compact).
+        const entries = ctx.sessionManager.getEntries();
+        const view = runtime.engineView(entries.flatMap((e: any) => (e.message ? [e.message] : [])));
+        await runMemoryReview(runtime, view, "turn");
       }
     }
   });

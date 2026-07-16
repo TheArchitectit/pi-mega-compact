@@ -31,6 +31,39 @@ export type RunCompactResult =
   | { skipped: true }
   | { skipped: false; result: ReturnType<typeof compactSession>; keepFrom: number; saved: number };
 
+/**
+ * Review the live conversation and persist durable memories (S20+S24). Shared by
+ * the pressure-scaled turn-end cadence (mega-events.ts) AND review-on-compact
+ * (below) so both paths run the identical review body. Best-effort + non-fatal:
+ * a review failure is swallowed and never breaks the caller. On success, the
+ * number of applied ops is returned so callers can feed the consolidation gate.
+ *
+ * @param view the engine message view to review (caller builds it)
+ * @param label a short source tag for the ticker line (e.g. "pressure" / "turn")
+ */
+export async function runMemoryReview(
+  runtime: MegaRuntime,
+  view: ReturnType<MegaRuntime["engineView"]>,
+  label: string,
+): Promise<number> {
+  try {
+    const { reviewConversation } = await import("../src/memory.js");
+    const { applyMemoryOps } = await import("../src/memoryOps.js");
+    const ops = reviewConversation(view, []);
+    if (ops.length) {
+      await applyMemoryOps(ops, runtime.currentStateDir);
+      // S21.2: ops landed — the compaction path reads this counter and fires
+      // `consolidateMemories` only when > 0.
+      runtime.memoriesTouchedThisCompaction += ops.length;
+      runtime.pushTicker(`${C.green}🧠${C.reset} reviewed ${ops.length} memory op${ops.length === 1 ? "" : "s"} (${label})`);
+    }
+    return ops.length;
+  } catch {
+    /* non-fatal — auto-review must never break the turn loop / compaction */
+    return 0;
+  }
+}
+
 /** Run the full compaction pipeline and persist a checkpoint. Returns the result. */
 export function runCompact(
   pi: ExtensionAPI,
@@ -177,24 +210,11 @@ function doCompact(
 
   // S24 review-on-compact: when pressure is high, the just-compacted region is
   // exactly the context worth remembering, so review it immediately rather than
-  // waiting for the next turn-cadence tick. Fire-and-forget (doCompact is sync):
-  // best-effort + non-fatal, paralleling the consolidate pass above. Only fires
-  // above the `high` band so low-pressure compactions don't pay the review cost.
+  // waiting for the next turn-cadence tick. Uses the shared runMemoryReview
+  // helper (fire-and-forget; doCompact is sync). Best-effort + non-fatal. Only
+  // fires above the `high` band so low-pressure compactions don't pay the cost.
   if (!result.deduped && config.memoryAutoReview && runtime.pressureBand !== "low" && runtime.pressureBand !== "medium") {
-    void (async () => {
-      try {
-        const { reviewConversation } = await import("../src/memory.js");
-        const { applyMemoryOps } = await import("../src/memoryOps.js");
-        const ops = reviewConversation(view, []);
-        if (ops.length) {
-          await applyMemoryOps(ops, runtime.currentStateDir);
-          runtime.memoriesTouchedThisCompaction += ops.length;
-          runtime.pushTicker(`${C.green}🧠${C.reset} reviewed ${ops.length} memory op${ops.length === 1 ? "" : "s"} (pressure)`);
-        }
-      } catch {
-        /* non-fatal — review-on-compact must never break the compaction */
-      }
-    })();
+    void runMemoryReview(runtime, view, "pressure");
   }
 
   // Sentinel marker: a non-LLM bookkeeping entry so subsequent triggers can
