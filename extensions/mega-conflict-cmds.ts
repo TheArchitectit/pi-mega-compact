@@ -126,4 +126,85 @@ export function registerConflictCommands(pi: ExtensionAPI, runtime: MegaRuntime)
       for (const m of all) ctx.ui.notify(memoryLine(m));
     },
   });
+
+  // Shortform aliases — `m save "..."`, `m status`, `m list`, `m search <q>`,
+  // `m recall <id>`. Delegates to the same SQLite store so there's one source
+  // of truth. The /mega-memory command remains the canonical form.
+  pi.registerCommand("m", {
+    description: "Shortform alias for /mega-memory. Usage: /m save <text> | list | search <q> | recall <id> | status",
+    handler: async (args: string, ctx: ExtensionContext) => {
+      const repo = resolveRepoRoot(ctx.cwd) ?? runtime.currentStateDir;
+      const parts = args.trim().split(/\s+/);
+      const sub = parts[0]?.toLowerCase() ?? "list";
+
+      if (sub === "save") {
+        // Strip leading "save" so /m save "#foo bar" works the same as the
+        // canonical form. Then strip a balanced outer quote pair if the user
+        // wrote /m save "..." — common when the text contains spaces.
+        let text = args.trim().slice(4).trim();
+        const mq = text.match(/^["“](.*)["”]$/s);
+        if (mq) text = mq[1].trim();
+        if (!text) {
+          ctx.ui.notify('[/m] usage: /m save "<text>" or /m save <text>');
+          return;
+        }
+        const tagMatches = [...text.matchAll(/#([\w-]+)/g)].map((m) => m[1]);
+        const content = text.replace(/#[\w-]+/g, "").trim();
+        const id = addMemory({ content, tags: tagMatches }, repo, runtime.currentStateDir);
+        ctx.ui.notify(`[/m] saved #${id} to ${repo.split(/[\\/]/).pop()}`);
+        return;
+      }
+
+      if (sub === "search") {
+        const q = parts.slice(1).join(" ").trim();
+        if (!q) {
+          ctx.ui.notify("[/m] usage: /m search <query>");
+          return;
+        }
+        const hits = searchMemories(q, repo, 50, runtime.currentStateDir);
+        if (!hits.length) {
+          ctx.ui.notify("[/m] no memories match.");
+          return;
+        }
+        for (const mem of hits) ctx.ui.notify(memoryLine(mem));
+        return;
+      }
+
+      if (sub === "recall") {
+        const id = Number(parts[1]);
+        if (!Number.isFinite(id) || parts[1] === undefined) {
+          ctx.ui.notify("[/m] usage: /m recall <id>");
+          return;
+        }
+        if (recallMemory(id, runtime.currentStateDir)) {
+          const found = listMemories(repo, 1000, runtime.currentStateDir).find((mem) => mem.id === id);
+          ctx.ui.notify(found ? `[/m] ${memoryLine(found)}` : `[/m] recalled #${id}`);
+        } else {
+          ctx.ui.notify(`[/m] #${id} not found.`);
+        }
+        return;
+      }
+
+      if (sub === "status") {
+        const all = listMemories(repo, 1000, runtime.currentStateDir);
+        const byKind = all.reduce<Record<string, number>>((acc, m) => {
+          acc[m.kind] = (acc[m.kind] ?? 0) + 1;
+          return acc;
+        }, {});
+        const kinds = Object.entries(byKind).map(([k, n]) => `${k}=${n}`).join(", ");
+        const head = `[/m] ${all.length} memory record(s) in ${repo.split(/[\\/]/).pop() ?? repo}`;
+        ctx.ui.notify(kinds ? `${head} (${kinds})` : head);
+        return;
+      }
+
+      // default: list
+      const all = listMemories(repo, 50, runtime.currentStateDir);
+      if (!all.length) {
+        ctx.ui.notify("[/m] no saved memories yet. Use /m save <text>.");
+        return;
+      }
+      ctx.ui.notify(`[/m] ${all.length} memory record(s):`);
+      for (const mem of all) ctx.ui.notify(memoryLine(mem));
+    },
+  });
 }
