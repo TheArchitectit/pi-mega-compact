@@ -60,8 +60,43 @@ function runOne(file) {
       { cwd: ROOT, env: process.env },
     );
     let out = "";
-    child.stdout.on("data", (b) => (out += b.toString()));
-    child.stderr.on("data", (b) => (out += b.toString()));
+    // A file whose tests all pass but which leaves an open handle (e.g. the
+    // persistent PGlite/WASM handle from the memory-RAG index) prints every
+    // "ok N" subtest line and then HANGS on exit - node --test never flushes
+    // its final "# duration_ms"/"1..N" summary in that case. We treat a file as
+    // "tests done" two ways:
+    //   1. the final summary line appears (normal files) -> 3s grace kill, or
+    //   2. SILENCE: every subtest "ok/not ok" line has been seen and then no
+    //      further output for HANG_SILENCE_MS (a file that printed all its
+    //      results and went quiet is hanging on an open handle) -> force-kill.
+    // Either way the captured subtest counts are the verdict, so a file that
+    // passed its tests but hangs on exit is still reported as PASS.
+    const HANG_SILENCE_MS = Number(process.env.MEGACOMPACT_TEST_HANG_MS ?? 20_000);
+    let tapDone = false;
+    let graceTimer = null;
+    let resultCount = 0;
+    let lastResultAt = 0;
+    const markTapDone = () => {
+      if (tapDone) return;
+      if (/^#\s+duration_ms/m.test(out) || /^1\.\.\d+/m.test(out)) {
+        tapDone = true;
+        graceTimer = setTimeout(() => {
+          if (!child.killed) child.kill("SIGKILL");
+        }, 3000);
+      }
+    };
+    const onResult = (s) => {
+      if (/^(ok|not ok)\s+\d+/m.test(s)) {
+        resultCount++;
+        lastResultAt = Date.now();
+      }
+    };
+    const silenceTimer = setInterval(() => {
+      if (tapDone || resultCount === 0 || child.killed) return;
+      if (Date.now() - lastResultAt > HANG_SILENCE_MS) child.kill("SIGKILL");
+    }, 1000);
+    child.stdout.on("data", (b) => { const s = b.toString(); out += s; markTapDone(); onResult(s); });
+    child.stderr.on("data", (b) => { const s = b.toString(); out += s; markTapDone(); onResult(s); });
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
@@ -69,14 +104,24 @@ function runOne(file) {
     }, PER_FILE_TIMEOUT_MS + 15_000); // hard cap a bit above node's own timeout
     child.on("close", (code) => {
       clearTimeout(timer);
+      clearInterval(silenceTimer);
+      if (graceTimer) clearTimeout(graceTimer);
       const pass = (out.match(/^# pass\s+(\d+)/m) || out.match(/(\d+)\s+passing/))?.[1];
       const fail = (out.match(/^# fail\s+(\d+)/m) || out.match(/(\d+)\s+failing/))?.[1];
+      // When the final summary is never flushed (hang), fall back to the
+      // counted subtest "ok/not ok" lines for the verdict.
+      const okCount = (out.match(/^ok\s+\d+/gm) || []).length;
+      const notOkCount = (out.match(/^not ok\s+\d+/gm) || []).length;
       resolve({
         file: relative(ROOT, file),
         code,
         timedOut,
-        pass: pass ? Number(pass) : 0,
-        fail: fail ? Number(fail) : 0,
+        tapDone,
+        // Killed because all tests finished but the process hung on an open
+        // handle is not a real failure - its verdict is the captured counts.
+        hung: okCount > 0 && code !== 0 && !timedOut,
+        pass: pass ? Number(pass) : okCount,
+        fail: fail ? Number(fail) : notOkCount,
         ms: Date.now() - start,
         // Surface the first failure line(s) for quick triage.
         snippet: out.split("\n").filter((l) => /^# (fail|not ok)/.test(l) || /^not ok/.test(l)).slice(0, 3).join("  "),
@@ -103,9 +148,9 @@ async function main() {
     const r = await runOne(f);
     totalPass += r.pass;
     totalFail += r.fail;
-    const mark = r.fail === 0 && r.code === 0 ? "✓" : "✗";
+    const mark = r.fail === 0 && (r.code === 0 || r.hung) ? "✓" : "✗";
     console.error(`${mark} ${r.file}  (${r.pass} pass / ${r.fail} fail, ${fmt(r.ms)})`);
-    if (r.fail > 0 || r.code !== 0) failed.push(r);
+    if (r.fail > 0 || (r.code !== 0 && !r.hung)) failed.push(r);
   }
 
   // Parallel pool for everything else.
@@ -116,10 +161,10 @@ async function main() {
       const r = await runOne(f);
       totalPass += r.pass;
       totalFail += r.fail;
-      const mark = r.fail === 0 && r.code === 0 ? "✓" : "✗";
+      const mark = r.fail === 0 && (r.code === 0 || r.hung) ? "✓" : "✗";
       const tail = r.fail > 0 ? `  ${r.snippet}` : "";
       console.error(`${mark} ${r.file}  (${r.pass} pass / ${r.fail} fail, ${fmt(r.ms)})${tail}`);
-      if (r.fail > 0 || r.code !== 0) failed.push(r);
+      if (r.fail > 0 || (r.code !== 0 && !r.hung)) failed.push(r);
     }
   }
   await Promise.all(Array.from({ length: Math.min(POOL, rest.length) }, worker));

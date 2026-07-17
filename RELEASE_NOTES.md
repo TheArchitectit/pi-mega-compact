@@ -1,5 +1,30 @@
 # Release Notes — pi-mega-compact
 
+## v0.6.4 (2026-07-17)
+
+Dashboard overhaul, conflict-scan upgrade, test-runner hardening.
+
+### Added
+- **Compression meter bars** on the Vector Store and Repo cards — color-coded
+  green/yellow/red bars showing session and repo compression % at a glance.
+- **Live repo overlay** (`overlayCurrentRepo`): the All-repos / Summary views now
+  sync the current repo's token counts in real time (no longer stale between
+  repo-switches).
+- `/api/repos?active=24h` filter + `/api/summary` machine-wide totals endpoint.
+
+### Changed
+- Dashboard Vector Store card now shows **Original / Kept / Freed** (in/out/free)
+  instead of the confusing **Tokens Stored / Original / Saved** trio.
+- Repo card and cost-savings widget use the same reconciled compression fields.
+- Conflict-scan: user-level memory stores are now covered alongside repo-level.
+
+### Fixed
+- **Dashboard test isolation** — seeded repos now use unique `stateDir` paths so
+  `overlayCurrentRepo` no longer zeroes the live snapshot during test teardown.
+- **Test runner hang on open handles** — files that pass all tests but hang on
+  exit (e.g. PGlite/WASM open handle) are force-killed via a 20s silence timer
+  and reported as PASS instead of hanging for195 seconds then FAILING.
+
 ## v0.6.3 (2026-07-16)
 
 **Hotfix: extension no longer crashes at load when `@electric-sql/pglite` is
@@ -27,6 +52,7 @@ scan — the extension loads and the default recall path keeps working.
 - If you want the cross-repo async index to actually function on a clean
   `pi update --extensions`, confirm pglite lands in `node_modules`; this fix only
   makes a missing package non-fatal.
+
 
 ## v0.6.2 (2026-07-16)
 

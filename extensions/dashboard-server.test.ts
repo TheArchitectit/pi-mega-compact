@@ -140,11 +140,11 @@ describe("multi-repo /api/index (S19)", () => {
 
     const { upsertRepoRegistry } = await import("../src/store/sqlite.js");
     upsertRepoRegistry(
-      { repoRoot: "/home/u/repoA", displayName: "repoA", stateDir: dir, checkpointCount: 3, tokensSaved: 1000, compressedOriginalBytes: 0 },
+      { repoRoot: "/home/u/repoA", displayName: "repoA", stateDir: join(dir, "a"), checkpointCount: 3, tokensSaved: 1000, compressedOriginalBytes: 0 },
       indexDir,
     );
     upsertRepoRegistry(
-      { repoRoot: "/home/u/repoB", displayName: "repoB", stateDir: dir, checkpointCount: 5, tokensSaved: 2000, compressedOriginalBytes: 0 },
+      { repoRoot: "/home/u/repoB", displayName: "repoB", stateDir: join(dir, "b"), checkpointCount: 5, tokensSaved: 2000, compressedOriginalBytes: 0 },
       indexDir,
     );
 
