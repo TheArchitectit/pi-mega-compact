@@ -1,10 +1,51 @@
 # Release Notes — pi-mega-compact
 
+## v0.7.1 (2026-07-17)
+
+Widget auto-fit + new groups (model/provider, memory, drift, agents) + tiered % threshold + Savings by Model enrichment + crash fixes.
+
+### Added
+
+- **Widget auto-fit toolbar.** The toolbar widget now auto-sizes to fit the terminal width, with responsive layout that adjusts group placement dynamically. New display groups:
+  - **Model/provider group** — shows current model name and provider badge
+  - **Memory group** — compact memory-usage indicator
+  - **Drift group** — context-drift warning when conversation is diverging
+  - **Agent telemetry group** — active agent count and status
+- **Tiered % compaction threshold (S27).** The live + durable trim now fire at
+  `tierPct × contextWindow` — a **% of the model's context window** — instead
+  of a static token amount. Presets: `low` 50% · `medium` 60% · `high` 70% ·
+  `ultra` 70% · `mega` 75%. Scales with model size so trim always fires below
+  pi's native ~80% auto-compaction. `MEGACOMPACT_TIER` selects the %; the old
+  static token amounts are now only the boot fallback before the first context
+  event reports a window. See `docs/specs/s27-tiered-percent-threshold.md`.
+- **Savings by Model dashboard enrichment (v0.6.9).** Dashboard card now shows
+  per-model savings breakdown with token counts and compression ratios.
+- **`session_before_compact` durable-trim handler.** Fixes the resume gap where
+  the durable trim pass was skipped on session resumption.
+
+### Fixed
+
+- **🔴 Crash on undefined message text in summarize/supersede paths (v0.6.8).**
+  pi tool/custom messages can arrive with `text: undefined`; guard added at
+  the content-extraction choke point. Regression test included.
+- **Pressure band no longer flickers.** Single percentage basis eliminates the
+  dual-basis switch that caused 30%↔70s% band oscillation.
+
+### Changed
+
+- `/mega-status` now reports `threshold=<eff> (<pct>% of <win> window) tierPct=<…>`.
+- Dashboard **Threshold** card shows `thresholdTokens (NN% of <window>)`.
+
+Full suite: 372 passed, 0 failed across 37 files.
+
+---
+
 ## v0.6.9 (2026-07-17)
 
 Tiered % compaction threshold — the fire point now scales with the model context window.
 
 ### Added (S27)
+
 - **Percentage-based compaction threshold.** The live + durable trim now fire at
   `tierPct × contextWindow` — a **% of the model's context window** — instead of
   a static token amount frozen at boot. Presets are now percents:
@@ -24,10 +65,12 @@ Tiered % compaction threshold — the fire point now scales with the model conte
   "thresholdTokens fixed at boot" finding — see `docs/specs/s27-tiered-percent-threshold.md`.
 
 ### Changed (display)
+
 - `/mega-status` now reports `threshold=<eff> (<pct>% of <win> window) tierPct=<…>`.
 - Dashboard **Threshold** card shows `thresholdTokens (NN% of <window>)`.
 
 ### Fixed
+
 - **Live + durable trim were dead code for 200k-window models.** With a static
   `high`=200k threshold, `high`(200k) == 100% of a 200k window, so pi's
   native auto-compaction (~80% = 160k) always fired first and our trim never
@@ -38,6 +81,7 @@ Tiered % compaction threshold — the fire point now scales with the model conte
 Crash fix + RAPTOR recall hardening + widget readability.
 
 ### Fixed
+
 - **🔴 Compaction crash on undefined message text** — the highest-impact fix.
   pi tool/custom messages can arrive with `text: undefined` (only `input`/
   `output` set); `extractFilePaths` called `text.matchAll` and threw `Cannot
@@ -48,6 +92,7 @@ Crash fix + RAPTOR recall hardening + widget readability.
   entry. Regression test added.
 
 ### Added (S25 RAPTOR hardening)
+
 - **Shadow SERVE gate** — `RAPTOR_SHADOW_MODE=false` now actually disables
   RAPTOR serving in `VectorStore.search` (was logging-only; the tree was always
   merged). Honors the Sprint-13 transition contract at serve time.
@@ -64,6 +109,7 @@ Crash fix + RAPTOR recall hardening + widget readability.
   query), not in-memory — per the "all data in SQL/PGlite" invariant.
 
 ### Changed (widget)
+
 - L1 header widened: the context-fill bar is now 20 cells (green=room → red=
   full) and carries the status glyph + checkpoints, using more of the terminal.
 - L2 savings: replaced the two saturated `freed/(freed+kept)` bars (which peg
@@ -76,6 +122,7 @@ Crash fix + RAPTOR recall hardening + widget readability.
 Toolbar widget redesign — compact retro block with gradient bars.
 
 ### Changed
+
 - Toolbar widget collapsed from 6 lines to 4:
   - L1: tier + context-fill gradient bar + tokens + checkpoints
   - L2: status + dedup + session-savings bar + all-time-savings bar
@@ -93,6 +140,7 @@ Toolbar widget redesign — compact retro block with gradient bars.
 Bugfix release: widget token summary, crash guard, dashboard Savings-by-Model.
 
 ### Added
+
 - **Savings by Model** on the dashboard Summary tab — groups the machine-wide
   repo registry by model so you can see how much context + cost mega-compact
   has reclaimed, broken down by which model you were running. Columns: model,
@@ -101,11 +149,13 @@ Bugfix release: widget token summary, crash guard, dashboard Savings-by-Model.
   quality (the engine is model-agnostic).
 
 ### Changed
+
 - Toolbar widget last line replaced the static "/mega-help" hint with a live
   token accounting summary: `session ↑in ↓out · saved X session / Y all-time`
   (M at ≥1M, k at ≥1k).
 
 ### Fixed
+
 - **Compaction crash on undefined message text** (`src/compact.ts`).
   `extractFileCandidates` called `.split` on `content` without a null guard,
   so a pure tool-call/tool-result message with `text === undefined` threw
@@ -118,6 +168,7 @@ Bugfix release: widget token summary, crash guard, dashboard Savings-by-Model.
 Dashboard overhaul, conflict-scan upgrade, test-runner hardening.
 
 ### Added
+
 - **Compression meter bars** on the Vector Store and Repo cards — color-coded
   green/yellow/red bars showing session and repo compression % at a glance.
 - **Live repo overlay** (`overlayCurrentRepo`): the All-repos / Summary views now
@@ -126,12 +177,14 @@ Dashboard overhaul, conflict-scan upgrade, test-runner hardening.
 - `/api/repos?active=24h` filter + `/api/summary` machine-wide totals endpoint.
 
 ### Changed
+
 - Dashboard Vector Store card now shows **Original / Kept / Freed** (in/out/free)
   instead of the confusing **Tokens Stored / Original / Saved** trio.
 - Repo card and cost-savings widget use the same reconciled compression fields.
 - Conflict-scan: user-level memory stores are now covered alongside repo-level.
 
 ### Fixed
+
 - **Dashboard test isolation** — seeded repos now use unique `stateDir` paths so
   `overlayCurrentRepo` no longer zeroes the live snapshot during test teardown.
 - **Test runner hang on open handles** — files that pass all tests but hang on
@@ -151,6 +204,7 @@ index is only best-effort. The package is now **lazily imported** inside
 scan — the extension loads and the default recall path keeps working.
 
 ### Fixed
+
 - **Load crash on missing `@electric-sql/pglite`** (`src/store/vectorIndex.ts`,
   `src/store/memoryIndex.ts`). Static value import → dynamic `import()` inside a
   new `loadPgLite()` helper; the `import type` (erased at compile, no load cost)
@@ -161,11 +215,11 @@ scan — the extension loads and the default recall path keeps working.
   degraded paths.
 
 ### Notes
+
 - Patch bump (0.6.2 → 0.6.3). Full suite: 353 passing. No schema/config change.
 - If you want the cross-repo async index to actually function on a clean
   `pi update --extensions`, confirm pglite lands in `node_modules`; this fix only
   makes a missing package non-fatal.
-
 
 ## v0.6.2 (2026-07-16)
 
@@ -173,6 +227,7 @@ S24 follow-up: cross-repo memory-RAG index + fix "auto-compact doesn't relieve
 during a team run." No user-visible change to the pressure signal itself.
 
 ### Added
+
 - **Cross-repo memory index (S24 memory-RAG).** A redundant, additive, ASYNC
   PGlite/HNSW index (`src/store/memoryIndex.ts`) mirrors durable memory writes
   (`applyMemoryOps`, `/mega-memory`, `/m`) and augments recall with real
@@ -190,6 +245,7 @@ during a team run." No user-visible change to the pressure signal itself.
   `piCompactWouldNoop` (no user-facing throw) and the 2s debounce (no thrash).
 
 ### Fixed
+
 - **Live trim was silently dead during team runs.** `computeLiveTrimCut` returned
   `null` when the recent anchor window had too few user messages (anchor floor),
   so the model was never fed a compacted view per call. It now walks the cut
@@ -200,6 +256,7 @@ during a team run." No user-visible change to the pressure signal itself.
   the live trim + mid-run durable trim fire during a simulated team run.
 
 ### Notes
+
 - Patch bump (0.6.1 → 0.6.2). Full suite: 353 passing.
 
 ## v0.6.1 (2026-07-16)
@@ -208,16 +265,19 @@ Follow-up to v0.6.0 closing the remaining S24 spec items (no behavior change to
 the user-visible pressure signal — all shipped in 0.6.0).
 
 ### Changed
+
 - Memory caps are now env-tunable: `MEGACOMPACT_MEMORY_MAX_CHARS` (default 4000)
   and `MEGACOMPACT_MEMORY_MAX_ROWS` (default 500). Previously hardcoded.
 - Extracted the shared `runMemoryReview` helper so the pressure-scaled turn-end
   cadence and review-on-compact use one review body.
 
 ### Docs
+
 - TESTER_GUIDE updated for the live pressure band (no `/mega-tier`), dashboard
   status bar, and the memory-cadence + overflow (truncate + LRU) checks.
 
 ### Notes
+
 - Patch bump (0.6.0 → 0.6.1). Full suite: 353 passing.
 
 ## v0.6.0 (2026-07-16)
@@ -228,6 +288,7 @@ signal, so the system reacts as a single coherent whole instead of four
 independent triggers.
 
 ### Added
+
 - **Live tier band.** The toolbar widget + dashboard headline now show the live
   pressure band (`low` → `medium` → `high` → `ultra` → `mega`) that climbs as the
   context window fills and falls back as it's relieved. `/mega-status` reports the
@@ -245,10 +306,12 @@ independent triggers.
   downstream consumer's per-entry cap.
 
 ### Changed
+
 - **`/mega-tier` removed.** The tier is no longer a manual runtime setting; the
   live pressure band replaced it. `setTier` is gone from `mega-config.ts`.
 
 ### Notes
+
 - Behavior change (0.5.2 → 0.6.0). Full suite: 350 passing.
 
 ## v0.5.1 (2026-07-16)
@@ -256,6 +319,7 @@ independent triggers.
 feat: show the installed npm version in the toolbar widget and dashboard header.
 
 ### Added
+
 - **Version visible everywhere.** The toolbar widget's first line now renders
   `⚡ <tier> vX.Y.Z …`, `/mega-status` prints the installed version, and the
   dashboard header carries a `vX.Y.Z` pill. All three read `package.json` at
@@ -264,6 +328,7 @@ feat: show the installed npm version in the toolbar widget and dashboard header.
   through logs. No source edit is needed per release.
 
 ### Notes
+
 - Patch bump (0.5.0 → 0.5.1). Full suite: 346 passing.
 
 ## v0.5.0 (2026-07-16)
@@ -274,6 +339,7 @@ repos, and accumulates durable memory it auto-inlines as RAG context. Plus the
 storage backend moved to `node:sqlite`.
 
 ### Added
+
 - **Live context-event trim (S16).** `extensions/mega-trim.ts` collapses the
   compacted region to a single summary message on every LLM call via the
   `context` event — compact-and-continue instead of `ctx.compact()`'s
@@ -312,6 +378,7 @@ storage backend moved to `node:sqlite`.
   `scripts/global-index-drill.sh`, `scripts/run-s20-s23.mjs`.
 
 ### Notes
+
 - Engines bumped to `node >= 22.13` (required for `node:sqlite`).
 - Full suite: 346 passing (up from 280 at v0.4.x).
 
@@ -320,6 +387,7 @@ storage backend moved to `node:sqlite`.
 fix: make the dashboard server start failures diagnosable instead of silent.
 
 ### Fixed
+
 - `/dashboard` reported "dashboard server failed to start — check logs." with an
   **empty** log. Root causes:
   - The detached child ran with `stdio: "ignore"`, swallowing every crash that
@@ -334,6 +402,7 @@ fix: make the dashboard server start failures diagnosable instead of silent.
   so `/dashboard` failures are always inspectable.
 
 ### Notes
+
 - New integration tests cover the stale-`port.pid` rebind and the new log file.
   Full suite: 303 passing.
 
