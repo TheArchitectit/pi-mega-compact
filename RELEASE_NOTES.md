@@ -1,5 +1,19 @@
 # Release Notes — pi-mega-compact
 
+## v0.7.3 (2026-07-17)
+
+Widget content now wraps to fill terminal width — one long line that adapts to screen size.
+
+### Fixed
+
+- **Widget weird spacing.** Content is now one long string that wraps at `│` boundaries
+  to fill the terminal width. Narrow screens get more lines, wide screens get fewer.
+  No more massive gaps between groups.
+
+Full suite: 372 passed, 0 failed across 37 files.
+
+---
+
 ## v0.7.2 (2026-07-17)
 
 Widget groups now spread across the full terminal width instead of being left-aligned.
