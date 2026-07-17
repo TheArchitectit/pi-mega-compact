@@ -125,10 +125,21 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
         repoCount = listRepoRegistry(process.env.MEGACOMPACT_INDEX_DIR).length;
       } catch { /* non-fatal */ }
       const crossRepoStr = `${crossRepoInjections} cross-repo injections recorded · ${repoCount} repos indexed`;
+      // Effective compaction threshold = tierPct × model context window (kept
+      // BELOW pi's native ~80% auto-compact for any model size). Falls back to
+      // the boot token value when the window is unknown (custom tier / pre-
+      // model-select). Display matches the dashboard's percentage-based view.
+      const effThreshold = config.tierPct != null && ctxWindow > 0
+        ? Math.round(config.tierPct * ctxWindow)
+        : config.thresholdTokens;
+      const winStr = ctxWindow > 0
+        ? (ctxWindow >= 1_000_000 ? `${Math.round(ctxWindow / 1_000_000)}M` : `${Math.round(ctxWindow / 1_000)}k`)
+        : "?";
+      const tierPctStr = config.tierPct != null ? `${Math.round(config.tierPct * 100)}%` : "n/a";
       ctx.ui.notify(
         `[mega-compact] pct=${pct} tokens=${tokens} tier=${runtime.pressureBand} (live) preset=${config.tier} ` +
           `pressure=${Math.round(runtime.pressure * 100)}% fastGate=${config.fastGatePct}% ` +
-          `threshold=${config.thresholdTokens} auto=${config.auto} autoInline=${config.autoInline}\n` +
+          `threshold=${effThreshold.toLocaleString()} (${tierPctStr} of ${winStr} window) tierPct=${config.tierPct != null ? config.tierPct.toFixed(2) : "n/a"} auto=${config.auto} autoInline=${config.autoInline}\n` +
           `[mega-compact] store: ${st.checkpointCount} chkpt · ` +
           `${st.totalTokenEstimate} tok · last=${st.lastCheckpointId ?? "—"} · ` +
           `injected=${st.injectedCount} · dedup=${(st.dedupHitRate * 100).toFixed(0)}%\n` +

@@ -26,6 +26,21 @@ export const COMPACT_TIERS = {
 export type CompactTier = keyof typeof COMPACT_TIERS;
 
 /**
+ * Compaction thresholds as a FRACTION of the model's context window (NOT a
+ * static token amount). The live + durable trim fire at tier% of the window,
+ * so they always fire BELOW pi's native auto-compaction (~80% of window) for
+ * any model size (200k or 1M). `custom` (explicit MEGACOMPACT_THRESHOLD_TOKENS)
+ * is NOT scaled by this map — it stays an absolute token count.
+ */
+export const TIER_PCT: Record<CompactTier, number> = {
+  low: 0.5,
+  medium: 0.6,
+  high: 0.7,
+  ultra: 0.7,
+  mega: 0.75,
+};
+
+/**
  * Resolved, frozen-at-load config. `tier` is the base compaction PRESET chosen
  * by env (low/medium/high/ultra/mega) — it sets the threshold token budget and
  * is NOT changed at runtime (the /mega-tier command was removed in S24). The
@@ -34,6 +49,12 @@ export type CompactTier = keyof typeof COMPACT_TIERS;
  */
 export interface MegaConfig {
   tier: CompactTier | "custom";
+  /**
+   * Compaction threshold as a fraction of the model context window (e.g. 0.70
+   * for "high"). null for `custom` (explicit MEGACOMPACT_THRESHOLD_TOKENS, which
+   * stays an ABSOLUTE token count, never percent-scaled).
+   */
+  tierPct: number | null;
   thresholdTokens: number;
   stateDir: string;
   fastGatePct: number;
@@ -96,16 +117,72 @@ function envBool(name: string, fallback: boolean): boolean {
   return v === "true" || v === "1";
 }
 
-/** Resolve the effective token threshold from TIER (or explicit) env vars. */
-function resolveThreshold(): { tier: CompactTier | "custom"; thresholdTokens: number } {
+/**
+ * Resolve the effective token threshold from TIER (or explicit) env vars.
+ *
+ * For a named tier the returned `thresholdTokens` is a BOOT FALLBACK
+ * (`round(tierPct * 200_000)`) — sane before any context event reaches the
+ * runtime. The true fire point is computed per-window at runtime via
+ * `effectiveThresholdTokens(...)`. `custom` (explicit MEGACOMPACT_THRESHOLD_TOKENS)
+ * keeps `tierPct: null` and an ABSOLUTE `thresholdTokens` (never percent-scaled).
+ */
+function resolveThreshold(): {
+  tier: CompactTier | "custom";
+  tierPct: number | null;
+  thresholdTokens: number;
+} {
   const explicit = process.env.MEGACOMPACT_THRESHOLD_TOKENS;
   if (explicit != null && explicit !== "") {
     const n = Number(explicit);
-    if (Number.isFinite(n)) return { tier: "custom", thresholdTokens: n };
+    if (Number.isFinite(n)) return { tier: "custom", tierPct: null, thresholdTokens: n };
   }
   const raw = (process.env.MEGACOMPACT_TIER ?? "low").toLowerCase();
   const tier = (raw in COMPACT_TIERS ? raw : "low") as CompactTier;
-  return { tier, thresholdTokens: COMPACT_TIERS[tier] };
+  const tierPct = TIER_PCT[tier];
+  // Boot fallback: sane gate before the first context event provides a window.
+  const thresholdTokens = Math.round(tierPct * 200_000);
+  return { tier, tierPct, thresholdTokens };
+}
+
+/**
+ * Pure helper: the real compaction fire point, given the model context window.
+ *
+ *   custom           -> explicitThreshold (ABSOLUTE, never percent-scaled)
+ *   tiered+window>0  -> round(tierPct * window)
+ *   tiered+window<=0 -> fallbackThreshold (boot fallback; no window known yet)
+ *
+ * This is the single source of truth consumed by the runtime gates
+ * (FAST GATE / autoCompactCheck / agent_end durable trigger) and the
+ * pressure/armed/ready computations. Keeping it pure makes it trivially
+ * unit-testable without the pi runtime.
+ */
+export function effectiveThresholdTokens(opts: {
+  tierPct: number | null;
+  fallbackThreshold: number;
+  window: number;
+  explicitThreshold?: number;
+}): number {
+  if (opts.tierPct == null) {
+    // custom: absolute threshold, never percent-scaled
+    return opts.explicitThreshold ?? opts.fallbackThreshold;
+  }
+  if (opts.window > 0) return Math.round(opts.tierPct * opts.window);
+  return opts.fallbackThreshold;
+}
+
+/**
+ * Resolve the optional manual arming-floor override (MEGACOMPACT_FAST_GATE_PCT).
+ * Kept for backward-compat: when unset, the default arming floor equals the
+ * tier's percent threshold (tierPct*100) so the dashboard stays consistent;
+ * `custom` (tierPct null) falls back to the legacy 70% default.
+ */
+function resolveFastGatePct(tierPct: number | null): number {
+  const raw = process.env.MEGACOMPACT_FAST_GATE_PCT;
+  if (raw != null && raw !== "") {
+    const n = Number(raw);
+    if (Number.isFinite(n)) return n;
+  }
+  return tierPct != null ? Math.round(tierPct * 100) : 70;
 }
 
 /**
@@ -126,13 +203,14 @@ export {
 
 /** Build the resolved config from env + defaults. */
 export function loadConfig(): MegaConfig {
-  const { tier, thresholdTokens } = resolveThreshold();
+  const { tier, tierPct, thresholdTokens } = resolveThreshold();
   return {
     tier,
+    tierPct,
     // Global default; the live store/dashboard are rebound per-repo at runtime
     // via MegaRuntime.bindRepo() so each git repo gets its own isolated state dir.
     stateDir: process.env.MEGACOMPACT_STATE_DIR ?? STATE_DIR_DEFAULT,
-    fastGatePct: envFlag("MEGACOMPACT_FAST_GATE_PCT", 70),
+    fastGatePct: resolveFastGatePct(tierPct),
     thresholdTokens,
     anchorUserMessages: envFlag("MEGACOMPACT_ANCHOR_USER_MESSAGES", 3),
     preserveRecent: envFlag("MEGACOMPACT_PRESERVE_RECENT", 4),

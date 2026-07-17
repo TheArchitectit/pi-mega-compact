@@ -92,6 +92,7 @@ export function driveNativeCompaction(
   runtime.rt.lastCompactedFrom = keepFrom;
   runtime.rt.lastCompactedTokens = tokensBefore;
   runtime.rt.tokensSaved += savedTokens;
+  runtime.rt.lastCompactAt = Date.now();
   runtime.rt.persistedThisSession = true;
 
   return {

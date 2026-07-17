@@ -37,10 +37,12 @@ Today's dashboard `💰 Model & Cost Savings` card (delivered in `RELEASE_NOTES 
 ## SCOPE BOUNDARY
 
 **IN SCOPE (may modify):**
+
 - `extensions/dashboard-server.ts` — `dashboardHtml()` template (HTML + CSS + JS) for the cost card section; `readSnapshot()`/`Snapshot` interface if new fields needed; JS render logic in the `refreshUI()` or `renderByModel()` path.
 - `src/store/sqlite.ts` — new read-only query: `listModelSnapshots(stateDir)` returns ALL snapshots for a repo (not just latest); `costTimeline(stateDir)` computes checkpoints-bucketed-by-model for the timeline.
 
 **OUT OF SCOPE:**
+
 - Any change to the `model_snapshots` schema or write path.
 - New CLI commands (`/mega-cost` etc.) — dashboard-only.
 - Charts library / npm dependency — all rendering is vanilla HTML/CSS/JS.
@@ -60,8 +62,18 @@ Today's dashboard `💰 Model & Cost Savings` card (delivered in `RELEASE_NOTES 
 2. TEMPLATE  extensions/dashboard-server.ts: redesign the cost card HTML in
              dashboardHtml() — add three sub-sections within the card.
 3. RENDER    refreshUI() populates the new sub-sections from snapshot + SQL.
-4. TEST      Add a dashboard handler test: mock model_snapshots rows, verify
-             cost card renders all sub-sections; verify "No history" fallback.
+4. TEST      Add a dashboard handler test (handler-level, like the existing
+             dashboard tests) covering these scenarios — see **Test Scenarios**
+             below for the full matrix:
+             (a) >=2 model_snapshots + non-empty context_chunks -> all 3 sub-sections
+                 render with correct date ranges;
+             (b) model_snapshots present but context_chunks.token_estimate all 0/NULL
+                 -> Model History shows `0 tok` / `-`, no divide-by-zero;
+             (c) empty model_snapshots -> "No model history captured yet" fallback;
+             (d) input/output split percentages sum to 100% (+-1% rounding);
+             (e) Rate Comparison marks the active model with `<- now` (match on
+                 model_id+provider, not name);
+             (f) dedupe collapses repeated (model_id, provider) captures to one row.
 5. REGRESSION Existing model info + cost-usd elements must still render
              identically to current production.
 ```
@@ -99,16 +111,19 @@ Today's dashboard `💰 Model & Cost Savings` card (delivered in `RELEASE_NOTES 
 ### Sub-section details
 
 **1. Active Model** (already exists, keep but refresh):
+
 - Model name, provider, input/output rates, context window, reasoning badge.
 - Already rendered at `#md-name`, `#md-provider`, `#md-input`, `#md-output` — no changes needed here beyond visual polish (compact layout).
 
 **2. Savings Breakdown** (new):
+
 - Total saved = `tokensSaved × inputRate` (existing calc).
 - Context-windows extended = `tokensSaved / contextWindow` (existing calc).
 - **Input vs Output split**: estimate output tokens saved as `tokensSaved × 0.15` (15% heuristic — models produce far fewer output tokens in the context being compacted) and input tokens as `tokensSaved × 0.85`. Then `inputCost = inputTokens × inputRate`, `outputCost = outputTokens × outputRate`. Show as a stacked bar + percentages.
 - If `outputRate` is zero or missing, omit the output row.
 
 **3. Model History** (new):
+
 - Reads `listModelSnapshots(stateDir)` — all snapshots for this repo, sorted by `captured_at` ASC.
 - For each snapshot, computes the **window of checkpoints** that fell within its active period (from `captured_at` to next snapshot's `captured_at`, or `now` for the latest).
 - Aggregates `SUM(token_estimate)` from `context_chunks` whose `timestamp` falls in that window.
@@ -116,9 +131,10 @@ Today's dashboard `💰 Model & Cost Savings` card (delivered in `RELEASE_NOTES 
 - If zero snapshots exist (no model captured yet), show "(none recorded)" row.
 
 **4. Rate Comparison** (new):
-- From `listModelSnapshots(stateDir)`, dedupe by `(modelId, provider)` showing the latest rate for each.
-- Highlight the currently-active model with a `◀ now` marker.
-- Show effective savings rate: `savingsRate = tokensSaved / elapsedDays` for each model.
+
+- From `listModelSnapshots(stateDir)`, dedupe by the **stable** key **`(model_id, provider)`** — NOT the display strings `model_name` / `provider_name`, which can differ across captures (e.g., display-name renames, alias swaps). `recordModelSnapshot()` records `model_id` + `provider` as the canonical identity (sqlite.ts:496–505); use those for grouping. Show the latest rate for each `(model_id, provider)` pair.
+- Highlight the currently-active model with a `◀ now` marker (match on `model_id` + `provider`, not name).
+- Show effective savings rate: `savingsRate = tokensSaved / elapsedDays` for each model (per `(model_id, provider)`).
 
 ### SQL query design (read-only)
 
@@ -137,16 +153,32 @@ No schema changes. The windowing logic is JS — SQL just does the aggregate que
 
 ### Key details
 
-- **Input/output split heuristic (15% output)**: The context being compacted is dominated by LLM input (tool results, file reads, agent logs). Output tokens are mostly the assistant's own messages which are shorter. 15% matches observed ratios in mega-compact traces. Make the ratio a named constant `OUTPUT_TOKEN_FRACTION = 0.15` so it's easy to adjust.
+- **Input/output split heuristic (15% output)**: The context being compacted is dominated by LLM input (tool results, file reads, agent logs). Output tokens are mostly the assistant's own messages which are shorter. 15% matches observed ratios in mega-compact traces. Make the ratio a named constant `OUTPUT_TOKEN_FRACTION = 0.15` so it's easy to adjust. **Future-proofing**: read it from `process.env.MEGACOMPACT_OUTPUT_TOKEN_FRACTION` (parsed as float, clamped to 0–1, default 0.15) so operators can recalibrate without a code change; validate the parsed value and fall back to the default on NaN.
 - **Zero state**: if no `model_snapshots` rows exist for a repo, collapse the Model History and Rate Comparison sections into a single line "No model history captured yet — run a compaction to record it."
+- **Empty token timeline**: `context_chunks.token_estimate` is populated only by compactions (Sprint 8+). A repo with zero (or only pre-token-estimate) compactions yields windows of 0 tokens. The Model History table MUST render `0 tok` / `—` for such windows and MUST NOT divide by a missing `contextWindow`. Wrap the aggregate in `COALESCE(SUM(token_estimate), 0)` so NULL windows read as 0, not NULL.
+- **`repo_root` resolution mismatch**: `recordModelSnapshot()` stores `repo_root = resolveRepoRoot(ctx.cwd) ?? this.currentStateDir` (sqlite.ts:1346). A repo first seen *without* a git root falls back to the state-dir path, which may differ from what the dashboard later `resolveRepoRoot()`s. `listModelSnapshots()` and `costTimeline()` must query by the dashboard-resolved `repo_root` **and** fall back to a `repo_root LIKE '%' || <basename>` match (or memoize the originally-stored root) so snapshots are not silently dropped.
 - **Dashboard server reads index.sqlite read-only** — already uses `{ readOnly: true }`. Per-repo reads also read-only.
 - **No new HTML templates** — all rendering is inline JS string construction (consistent with existing dashboard style).
 
 ---
 
+### Test Scenarios (handler-level, mock the SQLite store)
+
+Add a dashboard handler test that constructs a fake `DashboardSnapshot` + mocked `listModelSnapshots`/`costTimeline` and asserts the rendered cost-card HTML:
+
+| ID | Setup | Assert |
+|----|-------|--------|
+| (a) | ≥2 `model_snapshots` rows (different `model_id`/`provider`, distinct `captured_at`) + non-empty `context_chunks.token_estimate` | All 3 sub-sections render: Savings Breakdown, Model History (correct `captured_at` windows → date ranges), Rate Comparison (all models listed). |
+| (b) | `model_snapshots` present, but every `context_chunks.token_estimate` = 0 or NULL | Model History shows `0 tok` / `—`; no divide-by-zero / NaN; card still renders. |
+| (c) | Zero `model_snapshots` rows | Card collapses to "No model history captured yet — run a compaction to record it." |
+| (d) | Any active model with non-zero `inputRate`/`outputRate` | Input % + Output % sum to 100% (±1% rounding); `OUTPUT_TOKEN_FRACTION` is applied. |
+| (e) | ≥2 models, one flagged active | Rate Comparison renders `◀ now` next to the active model, matched on `model_id`+`provider` (not display name). |
+| (f) | Same `(model_id, provider)` captured twice with different rates | Rate Comparison shows ONE row (latest rate) — dedupe works. |
+
 ## ACCEPTANCE CRITERIA
 
-- [ ] `npm test` green (existing tests pass; new dashboard handler test added).
+- [ ] Full gate green: `npm run build && npm test && npm run lint && python3 scripts/regression_check.py --all` (matches SAFETY PROTOCOLS).
+- [ ] `npm test` green (existing tests pass; new dashboard handler test added — see **Test Scenarios** (a)–(f)).
 - [ ] `npm run lint` green.
 - [ ] `guardrails-scan` clean (no new network calls, no schema changes).
 - [ ] Dashboard cost card renders three sub-sections when model data exists: Savings Breakdown, Model History, Rate Comparison.

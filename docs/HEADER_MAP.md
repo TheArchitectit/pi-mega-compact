@@ -251,6 +251,18 @@
 | Rollback | 10 | 0 |
 | Optional split | 11 | 0 |
 
+## docs/specs/s27-tiered-percent-threshold.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Safety Protocols | 12 | 0 |
+| Problem Statement | 22 | 0 |
+| Scope Boundary | 37 | 0 |
+| Execution | 57 | 0 |
+| Files To Change | 100 | 0 |
+| Acceptance | 113 | 0 |
+| Rollback | 124 | 0 |
+
 ## docs/superpowers/plans/2026-07-15-compaction-continuity-cross-repo-memory.md
 
 | Section | Line | Offset |

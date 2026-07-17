@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.6.9 (2026-07-17) — tiered % compaction threshold (scales with model window)
+
+- **Percentage-based fire point.** The compaction threshold is now `tierPct ×
+  contextWindow` (low 50% · medium 60% · high 70% · ultra 70% · mega 75%)
+  instead of a static token amount frozen at boot, so live + durable trim fire
+  **below** pi's native ~80% auto-compaction for any model size. See
+  `docs/specs/s27-tiered-percent-threshold.md`.
+  - `extensions/mega-config.ts` — `TIER_PCT` (fraction map) + `MegaConfig.tierPct`
+    + pure `effectiveThresholdTokens({ tierPct, fallbackThreshold, window,
+    explicitThreshold? })`; `resolveFastGatePct` defaults to `tierPct*100`; boot
+    `thresholdTokens` is now `round(tierPct * 200_000)`.
+  - `extensions/mega-runtime.ts` — `effectiveThreshold` getter; `pressure` getter
+    reconciled to the single percentage basis when the window is known; snapshot
+    `armed`/`ready`/`config`/`trigger` emit `tierPct` + `effectiveThresholdPct`.
+  - `extensions/mega-events.ts` — FAST GATE / `autoCompactCheck` / `agent_end`
+    durable-trigger compare against `runtime.effectiveThreshold`.
+  - `extensions/mega-dashboard.ts` — `config`/`trigger` gain `tierPct` +
+    `effectiveThresholdPct`.
+- **Custom stays absolute.** `MEGACOMPACT_THRESHOLD_TOKENS` (the `custom` tier)
+  is never percent-scaled.
+- **Display.** `/mega-status` reports `threshold=<eff> (<pct>% of <win> window)
+  tierPct=<…>`; dashboard Threshold card shows `thresholdTokens (NN% of <window>)`.
+- **Fixed:** for a 200k-window model the old static `high`(200k) == 100% of the
+  window, so pi's native auto-compaction (~80%) always fired first and our trim
+  never triggered; the tiered % fixes it (high = 70% = 140k < 160k).
+
 ## v0.6.3 (2026-07-16) — hotfix: lazy-load PGlite (no load crash when missing)
 
 - **Bug fix:** `src/store/vectorIndex.ts` + `src/store/memoryIndex.ts` used a

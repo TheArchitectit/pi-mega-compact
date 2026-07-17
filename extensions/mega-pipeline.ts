@@ -18,7 +18,7 @@ import { estimateBlockTokens } from "../src/tokens.js";
 import { touchSession, logDaily } from "../src/store/sqlite.js";
 import { consolidateMemories } from "../src/memory.js";
 import {
-  MegaRuntime,
+  type MegaRuntime,
   C,
   MARKER_TYPE,
 } from "./mega-runtime.js";
@@ -146,6 +146,7 @@ function doCompact(
     ? result.originalTokenEstimate
     : Math.max(0, result.originalTokenEstimate - result.tokenEstimate);
   runtime.rt.tokensSaved += saved;
+  runtime.rt.lastCompactAt = Date.now();
   if (result.deduped) runtime.rt.dedupSkips++;
   // Grow the rolling "saved" goal so the progress bar always has a fresh
   // denominator (we don't want it pinned at 100% once we pass an old target).

@@ -28,6 +28,12 @@ export interface DashboardSnapshot {
   config: {
     fastGatePct: number;
     thresholdTokens: number;
+    /** Compaction threshold as a fraction of the model context window (e.g.
+     *  0.70 for "high"); null for `custom` (absolute token threshold). */
+    tierPct: number | null;
+    /** Effective threshold as a % of the window (tierPct*100), or null for
+     *  `custom`; reflects the live window when known. */
+    effectiveThresholdPct: number | null;
     anchorUserMessages: number;
     preserveRecent: number;
     auto: boolean;
@@ -54,6 +60,11 @@ export interface DashboardSnapshot {
     currentTokens: number | null;
     thresholdTokens: number;
     fastGatePct: number;
+    /** Compaction threshold as a fraction of the model context window; null
+     *  for `custom`. */
+    tierPct: number | null;
+    /** Effective threshold as a % of the window; null for `custom`. */
+    effectiveThresholdPct: number | null;
   };
   store: {
     checkpointCount: number;

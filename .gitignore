@@ -32,3 +32,10 @@ sqlite.db
 # PGlite vector index (Slice 2) + stray :memory: pgdata artifact from bad dataDir
 mega-compact-vector/
 :memory:/
+
+/.crew/
+/.crew
+!.crew/artifacts/
+!.crew/graphs/
+!.crew/artifacts/.gitkeep
+!.crew/graphs/.gitkeep

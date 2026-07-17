@@ -6,7 +6,7 @@ sessions into a **local SQLite store** and offers **deduped inline recall** — 
 running **locally inside the extension**, with **no remote MCP server** and
 **zero network calls at runtime** (PREVENT-PI-004).
 
-> **Current version:** `v0.6.2` — storage backend is **`node:sqlite`**
+> **Current version:** `v0.6.9` — storage backend is **`node:sqlite`**
 > (`DatabaseSync`, a Node ≥22.13 built-in), replacing the old `better-sqlite3`
 > native addon and the per-session gzipped JSON checkpoint files. **Zero native
 > build step, fully local, zero network at runtime.** Legacy
@@ -23,10 +23,12 @@ running **locally inside the extension**, with **no remote MCP server** and
 pi's context window is finite. When a session gets long — especially a team run
 with sub-agents — pi-mega-compact keeps it going without overflowing:
 
-1. **Watches one signal.** A single live `pressure = currentTokens / thresholdTokens`
+1. **Watches one signal.** A single live `pressure = currentTokens / effectiveThreshold`
    drives everything — the tier label, how aggressively the live trim drops
-   context, and how often durable memory is reviewed. As context fills, the whole
-   system reacts together; as it's relieved, it backs off.
+   context, and how often durable memory is reviewed. `effectiveThreshold` is
+   `tierPct × contextWindow` (a **% of the model's context window**), so the
+   trim fires below pi's native ~80% auto-compaction for any model size. As
+   context fills, the whole system reacts together; as it's relieved, it backs off.
 2. **Compacts in two layers.** On every LLM call it returns a **live, compacted
    view** (the model sees a summary + recent anchor, non-destructively). And it
    persists a durable **checkpoint** — and, at each agent settle during a team
@@ -233,7 +235,7 @@ The commands (slash commands inside pi):
 | `/mega-help` | Explain the toolbar widget terms (live tier, gate, dedup, tokens saved). |
 | `/mega-compat-check` | Detect extension conflicts (duplicate commands / overlapping handlers) across installed pi extensions. |
 
-The **tier** you see in the toolbar and dashboard is a *live pressure band* (`low` → `medium` → `high` → `ultra` → `mega`) that climbs automatically as your context window fills and falls back as it's relieved — it is driven by `currentTokens / thresholdTokens`, not a manual setting. The base compaction *threshold* (token budget) is still chosen by the `MEGACOMPACT_TIER` env var at startup (`low`/`medium`/`high`/`ultra`/`mega`, default `low`); `/mega-tier` was removed in v0.6.0. Higher pressure also deepens the live trim and reviews durable memory more often — the whole system reacts as one.
+The **tier** you see in the toolbar and dashboard is a *live pressure band* (`low` → `medium` → `high` → `ultra` → `mega`) that climbs automatically as your context window fills and falls back as it's relieved — it is driven by `currentTokens / effectiveThreshold`, not a manual setting. The base compaction *threshold* is set by `MEGACOMPACT_TIER` at startup as a **% of the model context window** (`low` 50% · `medium` 60% · `high` 70% · `ultra` 70% · `mega` 75%; default `low`) — the fire point is `tierPct × contextWindow`, so it always lands below pi's native ~80% auto-compaction (any model size). The old static token amounts (50k/100k/200k/1M/10M) are now only the boot fallback used before the first context event reports a window. `/mega-tier` was removed in v0.6.0. Higher pressure also deepens the live trim and reviews durable memory more often — the whole system reacts as one.
 | `/mega-dashboard` | Start the **localhost-only** live dashboard and open it in a browser (token gauge, store stats, live event stream, per-repo + cross-repo drift). |
 | `/mega-dashboard-status` | Report dashboard server status. |
 | `/mega-dashboard-stop` | Stop the dashboard server. |
@@ -266,9 +268,9 @@ before starting pi.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `MEGACOMPACT_FAST_GATE_PCT` | `70` | Context-usage % that arms the auto-trigger. |
-| `MEGACOMPACT_TIER` | `low` | Named trigger preset — sets the token threshold. `low`(50k) `medium`(100k) `high`(200k) `ultra`(1M) `mega`(10M). |
-| `MEGACOMPACT_THRESHOLD_TOKENS` | _(tier default)_ | Explicit token budget confirming compaction. Overrides `MEGACOMPACT_TIER` when set. |
+| `MEGACOMPACT_FAST_GATE_PCT` | `70` | Context-usage % that arms the auto-trigger. Defaults to the tier's % of window (`tierPct*100`): low 50 · med 60 · high 70 · ultra 70 · mega 75. Override raises the arming floor. |
+| `MEGACOMPACT_TIER` | `low` | Named trigger preset — sets the compaction threshold as a **% of the model context window**: `low`(50%) `medium`(60%) `high`(70%) `ultra`(70%) `mega`(75%). Fire point = `tierPct × contextWindow`, so it always fires below pi's native ~80% auto-compaction (any model size). The old static token amounts (50k/100k/200k/1M/10M) are now only the **boot fallback** used before the first context event reports a window. Default `low`. |
+| `MEGACOMPACT_THRESHOLD_TOKENS` | _(tier default)_ | Explicit **absolute** token budget (the `custom` tier). Overrides `MEGACOMPACT_TIER` when set and is **never percent-scaled** — use this to pin an exact token fire point regardless of model window. |
 | `MEGACOMPACT_ANCHOR_USER_MESSAGES` | `3` | Never drop the most recent N user messages (anchor floor). |
 | `MEGACOMPACT_PRESERVE_RECENT` | `4` | Preserve the most recent N messages verbatim. |
 | `MEGACOMPACT_AUTO` | `true` | Enable the auto-trigger. |

@@ -294,14 +294,15 @@ function readSnapshot(snapshotPath: string) {
       tier: "unknown",
       presetTier: "unknown",
       pressure: 0,
-      config: { fastGatePct: 80, thresholdTokens: 100_000, anchorUserMessages: 1, preserveRecent: 2, auto: true, autoInlineK: 3 },
+      config: { fastGatePct: 80, thresholdTokens: 100_000, tierPct: null, effectiveThresholdPct: null, anchorUserMessages: 1, preserveRecent: 2, auto: true, autoInlineK: 3 },
       session: { id: null, state: null, persistedThisSession: false, lastCheckpointId: null, lastCompactedFrom: 0 },
       context: { tokens: null, percent: null, contextWindow: 0 },
-      trigger: { armed: false, ready: false, currentTokens: null, thresholdTokens: 100_000, fastGatePct: 80 },
+      trigger: { armed: false, ready: false, currentTokens: null, thresholdTokens: 100_000, fastGatePct: 80, tierPct: null, effectiveThresholdPct: null },
       store: { checkpointCount: 0, totalTokenEstimate: 0, originalTokens: 0, tokensSaved: 0, injectedCount: 0, dedupHitRate: 0, storageDedupRate: 0, dedupCollapsed: 0 },
       crew: { activeAgents: 0, currentTurn: 0 },
       repo: { checkpointCount: 0, totalTokenEstimate: 0, originalTokens: 0, tokensSaved: 0, sessionCount: 0, dedupAttempts: 0, dedupCollapsed: 0, storageDedupRate: 0 },
       integrity: { regionsRetained: 0, compressedOriginalBytes: 0, duplicatesCollapsed: 0, bytesPermanentlyDeleted: 0 },
+      compression: { session: { tokensIn: 0, tokensOut: 0, tokensFreed: 0, compressionPct: 0, dedupPct: 0 }, repo: { tokensIn: 0, tokensOut: 0, tokensFreed: 0, compressionPct: 0, dedupPct: 0 } },
       model: undefined,
     } as Snapshot;
   }
@@ -488,9 +489,9 @@ function dashboardHtml(tierName: string): string {
     <div class="conf-grid">
       <span class="label" title="Live pressure band — climbs low→mega as context fills the window.">Tier (live)</span><span class="value" id="cf-tier">${tierName}</span>
       <span class="label" title="The env-resolved base compaction preset (low/medium/high/ultra/mega) that set the token threshold.">Preset</span><span class="value" id="cf-preset">—</span>
-      <span class="label" title="Live pressure = currentTokens / thresholdTokens (0–100%).">Pressure</span><span class="value" id="cf-pressure">—</span>
-      <span class="label">Threshold</span><span class="value" id="cf-threshold">—</span>
-      <span class="label">Fast Gate</span><span class="value" id="cf-gate">—</span>
+      <span class="label" title="Live pressure = currentTokens / threshold — % of the model context window (threshold fires at the tier's % of window).">Pressure</span><span class="value" id="cf-pressure">—</span>
+      <span class="label" title="Compaction threshold = tierPct × model context window — mega-compact trims BELOW pi's native ~80% auto-compact for any model size.">Threshold</span><span class="value" id="cf-threshold">—</span>
+      <span class="label" title="Fast-gate arming floor — the live trim arms once context passes this % of the window.">Fast Gate</span><span class="value" id="cf-gate">—</span>
       <span class="label">Auto</span><span class="value" id="cf-auto">—</span>
       <span class="label">Anchor</span><span class="value" id="cf-anchor">—</span>
     </div>
@@ -711,7 +712,17 @@ function dashboardHtml(tierName: string): string {
     document.getElementById('cf-tier').textContent = d.tier + ' (live)';
     document.getElementById('cf-preset').textContent = d.presetTier;
     document.getElementById('cf-pressure').textContent = Math.round((d.pressure || 0) * 100) + '%';
-    document.getElementById('cf-threshold').textContent = d.config.thresholdTokens.toLocaleString();
+    // (b) Threshold: show the effective token threshold AND the % of the model
+    // context window it represents (percentage-based tiers). d.config.tierPct
+    // is present on the live snapshot written by the runtime (Phase-1/2a).
+    var cfgPct = d.config.tierPct;
+    var cw = d.context.contextWindow || 0;
+    var thresholdTxt = d.config.thresholdTokens.toLocaleString();
+    if (cfgPct != null && cw > 0) {
+      thresholdTxt += ' (' + Math.round(cfgPct * 100) + '% of ' + cw.toLocaleString() + ')';
+    }
+    document.getElementById('cf-threshold').textContent = thresholdTxt;
+    // (c) Fast Gate: arming floor — live trim arms once context passes this %.
     document.getElementById('cf-gate').textContent = d.config.fastGatePct + '%';
     document.getElementById('cf-auto').textContent = d.config.auto ? 'enabled' : 'disabled';
     document.getElementById('cf-anchor').textContent = d.config.anchorUserMessages;
