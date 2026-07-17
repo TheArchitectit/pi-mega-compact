@@ -20,6 +20,7 @@ import { toEngineMessages } from "../src/adapt.js";
 import { normalizeSessionId } from "../src/store.js";
 import { Logger } from "../src/log.js";
 import { recordModelSnapshot, latestModelSnapshot, upsertRepoRegistry, recordRepoModel, type ModelSnapshot } from "../src/store/sqlite.js";
+import { detectCrossRepoDrift } from "../src/driftDetection.js";
 import { repoStateDir, resolveRepoRoot, pressureRatio, pressureFromPct, pressureBand, effectiveThresholdTokens, type MegaConfig, type PressureBand } from "./mega-config.js";
 import { Dashboard, type DashboardSnapshot } from "./mega-dashboard.js";
 
@@ -53,6 +54,7 @@ interface SessionRuntime {
   dedupSkips: number;       // compactions skipped because regionHash already stored
   dedupAttempts: number;    // total compaction attempts (for hit-rate denominator)
   tokensSaved: number;      // this session-instance only: reset on session_start
+  lastCompactAt: number | null; // wall-clock ms of the last compaction this session
 }
 
 /** ANSI palette for the toolbar. The pi TUI's Text component preserves ANSI
@@ -118,7 +120,74 @@ function panelBar(width: number, ch = "─"): string {
   return PANEL_BG + ch.repeat(Math.max(0, width)) + "\x1b[0m";
 }
 
+/** Token-count formatter: M at/above 1e6, k at/above 1e3, raw below.
+ *  5,472,700 → "5.5mil", 24,100 → "24.1k", 142 → "142". */
+function fmtTokens(x: number): string {
+  return x >= 1_000_000 ? `${(x / 1_000_000).toFixed(1)}mil`
+    : x >= 1000 ? `${(x / 1000).toFixed(1)}k`
+    : `${Math.round(x)}`;
+}
+
+/** Retro gradient bar — `w` cells shaded by fill position (green→amber→red).
+ *  Used for CONTEXT fill where low=green (room) and high=red (near the limit). */
+function ramp(pct: number, w = 12): string {
+  const cells = ["▏","▎","▍","▌","▋","▊","▉","█"];
+  const scaled = Math.max(0, Math.min(w, pct * w));
+  const full = Math.floor(scaled);
+  const frac = scaled - full;
+  const fracCell = frac > 0 ? cells[Math.round(frac * (cells.length - 1))] : "";
+  let out = "";
+  for (let i = 0; i < full; i++) out += (i / w < 0.6 ? C.green : i / w < 0.85 ? C.amber : C.red) + "█";
+  if (fracCell) out += (full / w < 0.6 ? C.green : full / w < 0.85 ? C.amber : C.red) + fracCell;
+  out += C.dim + "░".repeat(Math.max(0, w - full - (fracCell ? 1 : 0))) + C.reset;
+  return out;
+}
+
+/** Human "time since" string from a millisecond delta (or null → "never"). */
+function sinceCompactStr(ms: number | null): string {
+  if (ms == null) return "never";
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
 interface TickerEntry { text: string; at: number; }
+
+/** Immutable snapshot of everything the above-editor widget needs to render.
+ *  Computed once per `snapshot()` (event-driven) and read by `buildWidgetLines`
+ *  on every TUI render frame, so frame rendering stays allocation-cheap and the
+ *  panel auto-fits whatever width pi passes to the setWidget factory. */
+interface WidgetData {
+  version: string;
+  tierLabel: string;
+  triggerLabel: string;
+  pctStr: string;
+  tokStr: string;
+  maxStr: string;
+  ctxPct: number;
+  chk: number;
+  agentStr: string;
+  turnStr: string;
+  dedupStr: string;
+  sessIn: number; sessKept: number; sTxt: string;
+  repoIn: number; repoKept: number; rTxt: string;
+  repoChk: number; repoSess: number;
+  modelStr: string;
+  sinceCompact: number | null;
+  embedderName: string;
+  compStr: string;
+  driftStatus: "ok" | "warn";
+  agentsActive: boolean;
+  fresh: boolean;
+  ticker: TickerEntry[];
+  lastWhy: string | undefined;
+  tierTrace: string | undefined;
+  pulsing: boolean;
+}
 
 export class MegaRuntime {
   config: MegaConfig;
@@ -140,6 +209,7 @@ export class MegaRuntime {
     dedupSkips: 0,
     dedupAttempts: 0,
     tokensSaved: 0,
+    lastCompactAt: null,
   };
   debounceUntil = 0;
   // S16: debounce for the agent_end resume nudge (avoid busy-loops).
@@ -187,6 +257,12 @@ export class MegaRuntime {
   lastCtxTokens: number | null = null;
   lastCtxPercent: number | null = null;
   lastCtxWindow = 0;
+
+  // Latest computed widget payload (recomputed per snapshot, rendered per frame).
+  widgetData: WidgetData | null = null;
+  // Cached cross-repo drift status (recomputed at most every 30s — it opens the
+  // machine-wide registry DB, so we don't want to do it on every render frame).
+  private driftCache: { at: number; status: "ok" | "warn" } | null = null;
 
   /**
    * DIAG counters for the "team run doesn't relieve context" investigation.
@@ -413,109 +489,151 @@ export class MegaRuntime {
 
     // Live stats widget above the editor
     if (ctx) {
+      // ── gather widget data (computed per snapshot, rendered per frame) ────
       const tokStr = this.lastCtxTokens != null ? `${Math.round(this.lastCtxTokens / 1000)}k` : "?";
       const maxStr = this.lastCtxWindow > 0 ? `${Math.round(this.lastCtxWindow / 1000)}k` : "?";
       const pctStr = this.lastCtxPercent != null ? `${Math.round(this.lastCtxPercent * 10) / 10}%` : "?%";
       // S24: the tier label is the LIVE pressure band (low/medium/high/ultra/
-      // mega), not the static env preset. It climbs as context fills, so the
-      // user can see the system react. The base preset is shown as a dim suffix.
+      // mega), not the static env preset. It climbs as context fills.
       const liveBand = this.pressureBand;
       const tierLabel = `${C.bold}${liveBand}${C.reset}${C.gray}·${this.config.tier}${C.reset}`;
       const triggerLabel = ready ? `${C.green}● ready${C.reset}` : armed ? `${C.amber}◐ armed${C.reset}` : `${C.gray}○ idle${C.reset}`;
       // Storage dedup rate is cumulative (store-wide, per-repo) and survives
-      // session resets. Always show a number: 0% before any compaction, a
-      // decimal for sub-10% rates so small-but-real dedup isn't rounded away.
+      // session resets. Always show a number (decimal for sub-10%).
       const storageRate = st.storageDedupRate; // 0..1
       const dedupStr = storageRate * 100 >= 10
         ? `${Math.round(storageRate * 100)}%`
         : `${(storageRate * 100).toFixed(1)}%`;
-      // Reconciled token accounting — ONE canonical formula for session + repo,
-      // matching the dashboard so the two never disagree. unit format: M at/above
-      // 1e6, k at/above 1e3, raw below — so 5,472,700 → "5.5M", 24,100 → "24.1k",
-      // 142 → "142". Dropped (in) = Freed + Kept; Freed = rt.tokensSaved (session)
-      // / repo.tokensSaved meta (repo); Kept = totalTokenEstimate (stored).
-      const fmt = (x: number) =>
-        x >= 1_000_000 ? `${(x / 1_000_000).toFixed(1)}mil`
-        : x >= 1000 ? `${(x / 1000).toFixed(1)}k`
-        : `${Math.round(x)}`;
-      // Agents view: ALWAYS show the agent line so status is visible even when
-      // idle (previously hidden at 0). 🤖 N agents when active, dimmed 🤖 idle
-      // when none — this is the restored "agents view" (count + status). Real
-      // per-agent/sub-agent token usage is scoped in Sprint 27.
+      // Agents view: count + status (S27 per-agent tokens are gated on P0).
       const agentLabel = this.activeAgents > 0
         ? `🤖 ${this.activeAgents} agent${this.activeAgents === 1 ? "" : "s"}`
         : `${C.dim}🤖 idle${C.reset}`;
       const agentStr = ` │ ${agentLabel}`;
       const turnStr = this.currentTurn > 0 ? ` │ turn ${this.currentTurn}` : "";
-      // Phase 3 — pulsing status glyph while a compaction is in flight.
-      const pulse = this.pulsing ? `${C.cyan}${PULSE[Math.floor(Date.now() / 250) % PULSE.length]}${C.reset} ` : "";
-      // --- reconciled in/out view (session + repo) ---------------------------
+      // Reconciled in/out view (session + repo) — ONE canonical formula.
       const sessIn = this.rt.tokensSaved + st.totalTokenEstimate;
       const sessKept = st.totalTokenEstimate;
-      const sessFreed = this.rt.tokensSaved;
-      const sessPct = sessIn > 0 ? sessFreed / sessIn : 0;
+      const sessPct = sessIn > 0 ? this.rt.tokensSaved / sessIn : 0;
       const repoIn = repo.tokensSaved + repo.totalTokenEstimate;
       const repoKept = repo.totalTokenEstimate;
-      const repoFreed = repo.tokensSaved;
-      const repoPct = repoIn > 0 ? repoFreed / repoIn : 0;
-      // Retro gradient bar — `w` cells, each shaded by fill position so it
-      // reads as a smooth green→amber→red ramp. Used for CONTEXT fill where
-      // low=green (room to spare) and high=red (near the limit) — the only
-      // live-moving metric worth a bar. Savings ratios saturate near 100% and
-      // are shown as explanatory numbers instead (see L2).
-      const ramp = (pct: number, w = 12): string => {
-        const cells = ["▏","▎","▍","▌","▋","▊","▉","█"];
-        const scaled = Math.max(0, Math.min(w, pct * w));
-        const full = Math.floor(scaled);
-        const frac = scaled - full;
-        const fracCell = frac > 0 ? cells[Math.round(frac * (cells.length - 1))] : "";
-        let out = "";
-        for (let i = 0; i < full; i++) out += (i / w < 0.6 ? C.green : i / w < 0.85 ? C.amber : C.red) + "█";
-        if (fracCell) out += (full / w < 0.6 ? C.green : full / w < 0.85 ? C.amber : C.red) + fracCell;
-        out += C.dim + "░".repeat(Math.max(0, w - full - (fracCell ? 1 : 0))) + C.reset;
-        return out;
-      };
-      const ctxPct = this.lastCtxPercent != null ? this.lastCtxPercent / 100 : 0;
+      const repoPct = repoIn > 0 ? repo.tokensSaved / repoIn : 0;
       const sTxt = (sessPct * 100).toFixed(sessPct * 100 >= 10 ? 0 : 1);
       const rTxt = (repoPct * 100).toFixed(repoPct * 100 >= 10 ? 0 : 1);
-      // Full-width panel: read the real terminal width and pad each line with a
-      // panel background so the above-editor widget reads as a full-width status
-      // bar. pi's widget renderer does not pass width to setWidget(), so we pad
-      // ourselves. Falls back to 200 cols when stdout.columns is unavailable.
-      const W = process.stdout?.columns ?? 200;
-      const lines = [
-        // top border — full-width hairline
-        panelBar(W, "─"),
-        // L1 — header: tier + ctx-fill bar (20-cell, green=room→red=full) +
-        // tokens + status glyph + checkpoints + agents/turn. The context bar is
-        // the only live-moving bar; the whole block is padded to full width.
-        panelLine(` ${C.amber}⚡ ${tierLabel}${C.reset} v${C.bold}${ownVersion()}${C.reset} ${ramp(ctxPct, 20)} ${C.bold}${pctStr}${C.reset} ${tokStr}/${maxStr} │ ${triggerLabel} │ ${st.checkpointCount} chk${agentStr}${turnStr}`, W),
-        // L2 — savings EXPLAINED, not bar'd. The freed/(freed+kept) ratio
-        // saturates near 100% once cumulative freed dwarfs live kept, so a bar
-        // is visually useless; show the compaction story instead.
-        panelLine(`   ${C.magenta}dup ${dedupStr}${C.reset} │ ${C.gray}sess${C.reset} ${fmt(sessIn)}→${fmt(sessKept)} kept ${C.green}(${sTxt}% freed)${C.reset} · ${C.gray}all-time${C.reset} ${fmt(repoIn)}→${fmt(repoKept)} kept ${C.blue}(${rTxt}% freed)${C.reset} │ ${repo.checkpointCount} chk/${repo.sessionCount} sess`, W),
-      ];
-      // Live "now processing" line + why + recent deduped/compacted events,
-      // collapsed to ONE rotating line (fresh only); padded to full width.
-      const fresh = Date.now() - this.lastActivityAt < 4000;
-      if (this.tierTrace && fresh) {
-        lines.push(panelLine(`   ${pulse}${this.tierTrace}`, W));
-      } else if (this.ticker.length > 0) {
-        const step = Math.floor(Date.now() / 250);
-        const idx = this.ticker.length - 1 - (step % this.ticker.length);
-        const head = this.ticker[idx].text;
-        const why = this.lastWhy ? ` ${C.gray}· ${this.lastWhy}${C.reset}` : "";
-        const more = this.ticker.length > 1 ? ` ${C.dim}(+${this.ticker.length - 1} more)${C.reset}` : "";
-        lines.push(panelLine(`   ${fresh ? C.teal : C.dim}${head}${why}${more}${C.reset}`, W));
-      } else if (this.pulsing) {
-        lines.push(panelLine(`   ${pulse}${C.teal}compacting…${C.reset}`, W));
-      }
-      // bottom border — full-width hairline closes the panel
-      lines.push(panelBar(W, "─"));
-      // (Accounting folded into L2's "in→kept (X% freed)" framing — freed =
-      //  in − kept is implied, and the saturated-ratio bars are gone.)
-      ctx.ui.setWidget(WIDGET_KEY, lines, { placement: "aboveEditor" });
+      const ctxPct = this.lastCtxPercent != null ? this.lastCtxPercent / 100 : 0;
+      // Model + provider (S26 capture) for the header.
+      const modelName = modelSnap?.modelName ?? modelSnap?.modelId ?? "?";
+      const modelStr = modelSnap?.provider ? `${modelName}·${modelSnap.provider}` : modelName;
+      // Since-last-compact (ms; null until first compaction this session).
+      const sinceCompact = this.rt.lastCompactAt != null ? Date.now() - this.rt.lastCompactAt : null;
+      // Memory store: embedder + compression ratio (original / stored).
+      const embedderName = this.embedderName();
+      const compRatio = st.originalTokens > 0 && st.totalTokenEstimate > 0
+        ? st.originalTokens / st.totalTokenEstimate
+        : (st.originalTokens > 0 ? 1 : 0);
+      const compStr = compRatio >= 1 ? `${compRatio.toFixed(1)}x` : "—";
+      // Cross-repo drift status (cached, read-only).
+      const driftStatus = this.driftStatus();
+      const agentsActive = this.activeAgents > 0;
+
+      this.widgetData = {
+        version: ownVersion(),
+        tierLabel, triggerLabel, pctStr, tokStr, maxStr, ctxPct,
+        chk: st.checkpointCount, agentStr, turnStr, dedupStr,
+        sessIn, sessKept, sTxt, repoIn, repoKept, rTxt,
+        repoChk: repo.checkpointCount, repoSess: repo.sessionCount,
+        modelStr, sinceCompact, embedderName, compStr, driftStatus, agentsActive,
+        fresh: Date.now() - this.lastActivityAt < 4000,
+        ticker: this.ticker, lastWhy: this.lastWhy, tierTrace: this.tierTrace, pulsing: this.pulsing,
+      };
+      // Auto-fit: register a factory so pi re-renders the panel at the REAL
+      // terminal width every frame (tui.columns), instead of guessing with
+      // process.stdout.columns. buildWidgetLines reads this.widgetData live.
+      this.renderWidget(ctx);
     }
+  }
+
+  /** Register the above-editor widget as a width-aware factory so pi re-renders
+   *  it at the REAL terminal width every frame (auto-fit wide/narrow). The
+   *  factory returns a minimal Component whose render() reads this.widgetData.
+   */
+  private renderWidget(ctx: ExtensionContext): void {
+    ctx.ui.setWidget(WIDGET_KEY, (_tui, _theme) => ({
+      render: (width: number) => this.buildWidgetLines(width > 0 ? width : 200),
+      invalidate: () => {},
+    }), { placement: "aboveEditor" });
+  }
+
+  /** Build the full-width panel lines from the latest snapshot. Cheap: reads
+   *  only this.widgetData + a couple of live counters; no DB/IO. */
+  private buildWidgetLines(width: number): string[] {
+    const wd = this.widgetData;
+    if (!wd) {
+      return [panelBar(width, "─"), panelLine(" mega-compact: warming up…", width), panelBar(width, "─")];
+    }
+    const pulse = wd.pulsing ? `${C.cyan}${PULSE[Math.floor(Date.now() / 250) % PULSE.length]}${C.reset} ` : "";
+    const lines: string[] = [
+      // top border
+      panelBar(width, "─"),
+      // L1 — header: tier + ctx bar + pct/tokens + status + model + chk + agents/turn
+      panelLine(
+        ` ${C.amber}⚡ ${wd.tierLabel}${C.reset} v${C.bold}${wd.version}${C.reset} ${ramp(wd.ctxPct, 20)} ${C.bold}${wd.pctStr}${C.reset} ${wd.tokStr}/${wd.maxStr} │ ${wd.triggerLabel} │ ${C.cyan}${wd.modelStr}${C.reset} │ ${wd.chk} chk${wd.agentStr}${wd.turnStr}`,
+        width,
+      ),
+      // L2 — savings reconciled (session + all-time)
+      panelLine(
+        `   ${C.magenta}dup ${wd.dedupStr}${C.reset} │ ${C.gray}sess${C.reset} ${fmtTokens(wd.sessIn)}→${fmtTokens(wd.sessKept)} kept ${C.green}(${wd.sTxt}% freed)${C.reset} · ${C.gray}all-time${C.reset} ${fmtTokens(wd.repoIn)}→${fmtTokens(wd.repoKept)} kept ${C.blue}(${wd.rTxt}% freed)${C.reset} │ ${wd.repoChk} chk/${wd.repoSess} sess`,
+        width,
+      ),
+      // L3 — memory store + compression + drift + since-compact (NEW)
+      panelLine(
+        `   ${C.gray}mem${C.reset} ${wd.embedderName} · ${wd.chk} chunks · ${C.blue}comp ${wd.compStr}${C.reset} │ ${C.gray}drift${C.reset} ${wd.driftStatus === "ok" ? C.green : C.amber}${wd.driftStatus}${C.reset} │ ${C.gray}compact${C.reset} ${sinceCompactStr(wd.sinceCompact)}`,
+        width,
+      ),
+    ];
+    // L4 — agents block (S27, count + status; per-agent tokens gated on P0)
+    if (wd.agentsActive) {
+      lines.push(panelLine(`   ${C.cyan}🤖 ${this.activeAgents} active${wd.turnStr}${C.reset}`, width));
+    }
+    // L5 — live ticker / activity (♻ deduped … why, or tier trace, or pulsing)
+    if (wd.tierTrace && wd.fresh) {
+      lines.push(panelLine(`   ${pulse}${wd.tierTrace}`, width));
+    } else if (wd.ticker.length > 0) {
+      const step = Math.floor(Date.now() / 250);
+      const idx = wd.ticker.length - 1 - (step % wd.ticker.length);
+      const head = wd.ticker[idx].text;
+      const why = wd.lastWhy ? ` ${C.gray}· ${wd.lastWhy}${C.reset}` : "";
+      const more = wd.ticker.length > 1 ? ` ${C.dim}(+${wd.ticker.length - 1} more)${C.reset}` : "";
+      lines.push(panelLine(`   ${wd.fresh ? C.teal : C.dim}${head}${why}${more}${C.reset}`, width));
+    } else if (wd.pulsing) {
+      lines.push(panelLine(`   ${pulse}${C.teal}compacting…${C.reset}`, width));
+    }
+    // bottom border
+    lines.push(panelBar(width, "─"));
+    return lines;
+  }
+
+  /** Active embedder name for the memory-store line (Trigram default / MiniLM). */
+  private embedderName(): string {
+    // MINILM_EMBEDDER flag lives in src/config/dedup.ts; read the same env var
+    // the embedder factory uses so the label matches what's actually running.
+    return process.env.MEGACOMPACT_MINILM === "true" || process.env.MEGACOMPACT_MINILM === "1"
+      ? "MiniLM"
+      : "Trigram";
+  }
+
+  /** Cross-repo drift status (ok | warn), cached for 30s (opens the registry DB). */
+  private driftStatus(): "ok" | "warn" {
+    const now = Date.now();
+    if (this.driftCache && now - this.driftCache.at < 30_000) return this.driftCache.status;
+    let status: "ok" | "warn" = "ok";
+    try {
+      const report = detectCrossRepoDrift();
+      status = report.totals.warn > 0 ? "warn" : "ok";
+    } catch {
+      status = "ok";
+    }
+    this.driftCache = { at: now, status };
+    return status;
   }
 
   setStatus(ctx: ExtensionContext, text: string | undefined): void {
@@ -535,6 +653,7 @@ export class MegaRuntime {
       dedupSkips: 0,
       dedupAttempts: 0,
       tokensSaved: 0,
+      lastCompactAt: null,
     };
     this.statusKey = undefined;
     this.activeAgents = 0;
