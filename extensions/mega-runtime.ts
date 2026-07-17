@@ -109,6 +109,29 @@ function visibleWidth(s: string): number {
 }
 
 /** Pad a content string (with ANSI colors) to `width` cells using panel bg. */
+function spreadGroups(width: number, groups: string[], indent = 0): string {
+  if (groups.length === 0) return panelLine('', width);
+  // Calculate visible width of each group
+  const groupWidths = groups.map(g => visibleWidth(PANEL_BG + g.replace(/\x1b\[0m/g, PANEL_RST)));
+  const totalContent = groupWidths.reduce((a, b) => a + b, 0);
+  const separator = ` ${C.dim}│${C.reset} `;
+  const sepWidth = visibleWidth(PANEL_BG + separator.replace(/\x1b\[0m/g, PANEL_RST));
+  const totalSep = sepWidth * (groups.length - 1);
+  const available = width - indent - totalContent - totalSep;
+  const gapSize = groups.length > 1 ? Math.max(1, Math.floor(available / (groups.length - 1))) : 0;
+  const extra = groups.length > 1 ? available - gapSize * (groups.length - 1) : 0;
+  
+  let line = ' '.repeat(indent);
+  for (let i = 0; i < groups.length; i++) {
+    line += groups[i];
+    if (i < groups.length - 1) {
+      const gap = gapSize + (i < extra ? 1 : 0);
+      line += separator + ' '.repeat(Math.max(0, gap));
+    }
+  }
+  return panelLine(line, width);
+}
+
 function panelLine(content: string, width: number): string {
   const withBg = PANEL_BG + content.replace(/\x1b\[0m/g, PANEL_RST);
   const pad = Math.max(0, width - visibleWidth(withBg));
@@ -575,20 +598,24 @@ export class MegaRuntime {
       // top border
       panelBar(width, "─"),
       // L1 — header: tier + ctx bar + pct/tokens + status + model + chk + agents/turn
-      panelLine(
-        ` ${C.amber}⚡ ${wd.tierLabel}${C.reset} v${C.bold}${wd.version}${C.reset} ${ramp(wd.ctxPct, 20)} ${C.bold}${wd.pctStr}${C.reset} ${wd.tokStr}/${wd.maxStr} │ ${wd.triggerLabel} │ ${C.cyan}${wd.modelStr}${C.reset} │ ${wd.chk} chk${wd.agentStr}${wd.turnStr}`,
-        width,
-      ),
+      spreadGroups(width, [
+        `${C.amber}⚡ ${wd.tierLabel}${C.reset} v${C.bold}${wd.version}${C.reset} ${ramp(wd.ctxPct, 20)} ${C.bold}${wd.pctStr}${C.reset} ${wd.tokStr}/${wd.maxStr}`,
+        wd.triggerLabel,
+        `${C.cyan}${wd.modelStr}${C.reset}`,
+        `${wd.chk} chk${wd.agentStr}${wd.turnStr}`,
+      ]),
       // L2 — savings reconciled (session + all-time)
-      panelLine(
-        `   ${C.magenta}dup ${wd.dedupStr}${C.reset} │ ${C.gray}sess${C.reset} ${fmtTokens(wd.sessIn)}→${fmtTokens(wd.sessKept)} kept ${C.green}(${wd.sTxt}% freed)${C.reset} · ${C.gray}all-time${C.reset} ${fmtTokens(wd.repoIn)}→${fmtTokens(wd.repoKept)} kept ${C.blue}(${wd.rTxt}% freed)${C.reset} │ ${wd.repoChk} chk/${wd.repoSess} sess`,
-        width,
-      ),
+      spreadGroups(width, [
+        `${C.magenta}dup ${wd.dedupStr}${C.reset}`,
+        `${C.gray}sess${C.reset} ${fmtTokens(wd.sessIn)}→${fmtTokens(wd.sessKept)} kept ${C.green}(${wd.sTxt}% freed)${C.reset} · ${C.gray}all-time${C.reset} ${fmtTokens(wd.repoIn)}→${fmtTokens(wd.repoKept)} kept ${C.blue}(${wd.rTxt}% freed)${C.reset}`,
+        `${wd.repoChk} chk/${wd.repoSess} sess`,
+      ]),
       // L3 — memory store + compression + drift + since-compact (NEW)
-      panelLine(
-        `   ${C.gray}mem${C.reset} ${wd.embedderName} · ${wd.chk} chunks · ${C.blue}comp ${wd.compStr}${C.reset} │ ${C.gray}drift${C.reset} ${wd.driftStatus === "ok" ? C.green : C.amber}${wd.driftStatus}${C.reset} │ ${C.gray}compact${C.reset} ${sinceCompactStr(wd.sinceCompact)}`,
-        width,
-      ),
+      spreadGroups(width, [
+        `${C.gray}mem${C.reset} ${wd.embedderName} · ${wd.chk} chunks · ${C.blue}comp ${wd.compStr}${C.reset}`,
+        `${C.gray}drift${C.reset} ${wd.driftStatus === "ok" ? C.green : C.amber}${wd.driftStatus}${C.reset}`,
+        `${C.gray}compact${C.reset} ${sinceCompactStr(wd.sinceCompact)}`,
+      ]),
     ];
     // L4 — agents block (S27, count + status; per-agent tokens gated on P0)
     if (wd.agentsActive) {
