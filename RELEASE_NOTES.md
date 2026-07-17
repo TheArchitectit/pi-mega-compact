@@ -1,5 +1,30 @@
 # Release Notes — pi-mega-compact
 
+## v0.6.5 (2026-07-17)
+
+Bugfix release: widget token summary, crash guard, dashboard Savings-by-Model.
+
+### Added
+- **Savings by Model** on the dashboard Summary tab — groups the machine-wide
+  repo registry by model so you can see how much context + cost mega-compact
+  has reclaimed, broken down by which model you were running. Columns: model,
+  provider, repos, checkpoints, tokens saved, $ saved (Σ tokensSaved × inputRate),
+  last used. Sorted by tokens saved. Honestly framed as savings, not compression
+  quality (the engine is model-agnostic).
+
+### Changed
+- Toolbar widget last line replaced the static "/mega-help" hint with a live
+  token accounting summary: `session ↑in ↓out · saved X session / Y all-time`
+  (M at ≥1M, k at ≥1k).
+
+### Fixed
+- **Compaction crash on undefined message text** (`src/compact.ts`).
+  `extractFileCandidates` called `.split` on `content` without a null guard,
+  so a pure tool-call/tool-result message with `text === undefined` threw
+  `Cannot read properties of undefined (reading 'split')` and took down the
+  whole compaction pass. Now widened to `string | undefined | null` with an
+  early `if (!content) return [];` — every caller is safe at the source.
+
 ## v0.6.4 (2026-07-17)
 
 Dashboard overhaul, conflict-scan upgrade, test-runner hardening.

@@ -394,10 +394,11 @@ export class MegaRuntime {
       } else if (this.pulsing) {
         lines.push(`   ${pulse}${C.teal}compacting…${C.reset}`);
       }
-      // Plain-language hint so first-time users understand the widget. Always
-      // last, dimmed. "/mega-help explains these terms."
+      // Token accounting summary, always last + dimmed. Shows the total
+      // tokens dropped (in) + kept (out) for this session, then the freed
+      // (saved) tokens for both this session and all-time across the repo.
       if (lines.length < 10) {
-        lines.push(`   ${C.dim}auto-compresses old context to free space · nothing deleted · /mega-help${C.reset}`);
+        lines.push(`   ${C.dim}session ↑${fmt(sessIn)} in ↓${fmt(sessKept)} out · saved ${fmt(sessFreed)} session / ${fmt(repoFreed)} all-time${C.reset}`);
       }
       ctx.ui.setWidget(WIDGET_KEY, lines, { placement: "aboveEditor" });
     }

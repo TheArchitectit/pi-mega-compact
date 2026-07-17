@@ -12,6 +12,9 @@ import { extractFileCandidates } from "./compact.js";
 
 /** Classify a message's relationship to a file path. */
 function fileOps(msg: EngineMessage): { path: string; op: "read" | "write" }[] {
+  // msg.text may be undefined for pure tool-call/result messages; the guard
+  // lives in extractFileCandidates, but the early return short-circuits the
+  // write-detection regex too so we never classify an empty message.
   const paths = extractFileCandidates(msg.text);
   if (paths.length === 0) return [];
   const low = msg.text.toLowerCase();

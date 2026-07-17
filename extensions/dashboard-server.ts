@@ -534,6 +534,23 @@ function dashboardHtml(tierName: string): string {
     <div class="summary-card"><div class="num" id="sm-saved">0</div><div class="lbl">Total Tokens Saved</div></div>
     <div class="summary-card"><div class="num" id="sm-bytes">0 B</div><div class="lbl">Compressed-Original</div></div>
   </div>
+
+  <h2 style="margin-top:24px;font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px">Savings by Model</h2>
+  <p class="legend-note" style="margin-bottom:10px">How much context &amp; cost mega-compact has reclaimed, grouped by the model you were running. Compression ratio reflects workload/content, not model quality.</p>
+  <table class="repos">
+    <thead>
+      <tr>
+        <th>Model</th><th>Provider</th>
+        <th style="text-align:right">Repos</th>
+        <th style="text-align:right">Checkpoints</th>
+        <th style="text-align:right">Tokens Saved</th>
+        <th style="text-align:right">$ Saved</th>
+        <th style="text-align:right">Last Used</th>
+      </tr>
+    </thead>
+    <tbody id="bm-rows"><tr><td colspan="7" class="repo-none">loading…</td></tr></tbody>
+  </table>
+
   <div class="updated" id="sm-updated"></div>
 </div>
 
@@ -742,6 +759,49 @@ function dashboardHtml(tierName: string): string {
     document.getElementById('cur-updated').textContent = stamp;
     document.getElementById('all-updated').textContent = stamp;
     document.getElementById('sm-updated').textContent = stamp;
+    renderByModel(repos);
+  }
+
+  // Savings-by-model aggregation for the Summary tab — groups the machine-
+  // wide repo registry by (modelName || '(unknown)') so the user can see how
+  // much context + cost mega-compact has reclaimed, broken down by which model
+  // they were running. $ Saved = Σ(tokensSaved × inputRate) per model. Sorted
+  // by tokens saved descending so the biggest-reclaim model wins the top row.
+  function renderByModel(repos) {
+    var rows = document.getElementById('bm-rows');
+    if (!rows) return;
+    if (!repos || !repos.length) {
+      rows.innerHTML = '<tr><td colspan="7" class="repo-none">No repositories registered yet.</td></tr>';
+      return;
+    }
+    var groups = {};
+    for (var i = 0; i < repos.length; i++) {
+      var r = repos[i];
+      var key = (r.modelName && String(r.modelName).trim()) || '(unknown)';
+      if (!groups[key]) groups[key] = { model: key, provider: r.providerName || r.provider || '—', repos: 0, checkpoints: 0, tokensSaved: 0, usd: 0, lastAt: 0, rates: [] };
+      var g = groups[key];
+      g.repos++;
+      g.checkpoints += (r.checkpointCount || 0);
+      g.tokensSaved += (r.tokensSaved || 0);
+      if (r.inputRate) { g.usd += (r.tokensSaved || 0) * r.inputRate; g.rates.push(r.inputRate); }
+      if (r.lastCompactedAt && r.lastCompactedAt > g.lastAt) g.lastAt = r.lastCompactedAt;
+    }
+    var arr = [];
+    for (var k in groups) { if (Object.prototype.hasOwnProperty.call(groups, k)) arr.push(groups[k]); }
+    arr.sort(function(a, b) { return b.tokensSaved - a.tokensSaved; });
+    rows.innerHTML = arr.map(function(g) {
+      var usd = g.usd > 0 ? '$' + g.usd.toFixed(4) : '—';
+      var when = g.lastAt ? new Date(g.lastAt).toLocaleString() : '—';
+      return '<tr>' +
+        '<td><span class="repo-model">' + sanitize(g.model) + '</span></td>' +
+        '<td>' + sanitize(g.provider) + '</td>' +
+        '<td class="num">' + g.repos.toLocaleString() + '</td>' +
+        '<td class="num">' + g.checkpoints.toLocaleString() + '</td>' +
+        '<td class="num">' + g.tokensSaved.toLocaleString() + '</td>' +
+        '<td class="num">' + sanitize(usd) + '</td>' +
+        '<td class="num">' + sanitize(when) + '</td>' +
+      '</tr>';
+    }).join('');
   }
 
   // Per-repo detail modal ---------------------------------------------------

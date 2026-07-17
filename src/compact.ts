@@ -36,8 +36,13 @@ export function isChatty(text: string): boolean {
   return text.length < 40 && !/(\/|\.|\{|import |def |function )/.test(text);
 }
 
-/** Extract plausible file paths (contain '/' + an interesting extension). */
-export function extractFileCandidates(content: string): string[] {
+/** Extract plausible file paths (contain '/' + an interesting extension).
+ * Defensive against a missing/empty payload: pi's adapter can hand the engine
+ * a message whose `text`/`input`/`output` is undefined (e.g. a pure tool-call
+ * or tool-result message), and `.split` on undefined throws and takes down the
+ * whole compaction. Guard once at the source so every caller is safe. */
+export function extractFileCandidates(content: string | undefined | null): string[] {
+  if (!content) return [];
   const out: string[] = [];
   for (const raw of content.split(/\s+/)) {
     // Trim surrounding punctuation only — do NOT strip internal dots, or we
