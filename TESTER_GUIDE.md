@@ -1,4 +1,4 @@
-# Tester Guide — pi-mega-compact v0.6.9
+# Tester Guide — pi-mega-compact v0.7.2
 
 This guide is for QA testers and contributors validating pi-mega-compact before
 a release or after a change. It covers environment setup, the automated test
@@ -53,6 +53,7 @@ pi auto-discovers the extension from the package's own
 > `npm view pi-mega-compact version` shows the new version. Fix: `pi uninstall npm:pi-mega-compact`,
 > then `rm -rf ~/.pi/agent/extensions/pi-mega-compact`, then reinstall. Always
 > verify the loaded path + version:
+>
 > ```bash
 > pi list | grep pi-mega-compact        # path must be .../npm/node_modules/... , NOT .../extensions/...
 > cat ~/.pi/agent/npm/node_modules/pi-mega-compact/package.json | grep '"version"'   # must equal the published version
@@ -186,9 +187,11 @@ configured threshold.
 
 1. Start pi with the extension loaded. Confirm with `/mega-status`.
 2. Note your current **preset** and threshold:
+
    ```
    /mega-status
    ```
+
    The status output shows `preset` (the `MEGACOMPACT_TIER` base preset, default
    `low` = 50% of the model context window) and `MEGACOMPACT_FAST_GATE_PCT` (default 70%). The headline
    `tier` is the **live pressure band** (`low`/`medium`/`high`/`ultra`/`mega`), not
@@ -199,10 +202,12 @@ configured threshold.
    - Having long conversations.
    - Setting `MEGACOMPACT_TIER=low` (50% of the context window) so the gate fires sooner.
 4. Watch the live stats widget above the pi editor:
+
    ```
     ⚡ low·low v0.6.0 │ 35k/50k tokens (70%) │ 0 chkpts │ turn 12
       ◐ armed │ dedup: 0% │ saved: 0 tok
    ```
+
    The headline band **auto-climbs** as context fills: `low → medium → high →
    ultra → mega` (driven by `currentTokens / effectiveThreshold`, where
    `effectiveThreshold = tierPct × contextWindow`), then falls back
@@ -214,12 +219,14 @@ configured threshold.
    - A checkpoint persisted (`chkpt_xxx` appears in status and store).
    - A `compact_end` event in `events.log` with `fromTokens` / `toTokens`.
 6. Verify the checkpoint persisted in the SQLite store:
+
    ```bash
    sqlite3 <repo>/.pi/mega-compact/sqlite.db \
      "SELECT checkpoint_id, session_id, timestamp, dedup_status FROM context_chunks ORDER BY timestamp DESC LIMIT 5;"
    ```
 
 **Pass criteria:**
+
 - Auto-trigger fires at the configured threshold.
 - Context drops after compaction.
 - Checkpoint appears in the store.
@@ -246,6 +253,7 @@ didn't resume."
    turn should resume cleanly (no 150k reload).
 
 **Pass criteria:**
+
 - Context drops between sub-agents (not only at parent settle).
 - `events.log` shows `agent-end-durable-trigger` + `native-compact` entries
   during the run (set `MEGACOMPACT_DEBUG=true` to see them).
@@ -262,14 +270,18 @@ didn't resume."
 
 1. End the session from Scenario 1 (or any session with persisted checkpoints).
 2. Restart pi with the continue flag:
+
    ```bash
    pi --continue
    ```
+
 3. The extension's `session_start` handler fires `recallAndInline` with
    `source:"resume"`. Check `events.log`:
+
    ```bash
    tail -f <repo>/.pi/mega-compact/events.log | jq .
    ```
+
    Look for an event with `"type":"recall_inject"` — it should list the
    checkpoint IDs that were auto-inlined.
 4. In the pi session, ask about something you worked on earlier. The relevant
@@ -277,6 +289,7 @@ didn't resume."
 5. Verify with `/mega-status` — the "injected" count should be > 0.
 
 **Pass criteria:**
+
 - `pi --continue` triggers auto-inline.
 - `events.log` shows `recall_inject` with checkpoint IDs.
 - Relevant context is available in the resumed session.
@@ -297,23 +310,28 @@ checkpoints.
 **Steps:**
 
 1. In a session with persisted checkpoints, run:
+
    ```
    /mega-recall file reading optimization
    ```
+
    (Replace the query with something relevant to your session history.)
 2. The command semantic-searches the local store, dedupes against the current
    context window, and inlines the top-K checkpoints (default K = 3, set by
    `MEGACOMPACT_AUTO_INLINE_K`).
 3. Check `events.log` for a `recall_inject` event:
+
    ```bash
    grep recall_inject <repo>/.pi/mega-compact/events.log | jq .
    ```
+
 4. Run `/mega-recall` with no query — it should use your latest message
    as the query.
 5. Run `/mega-recall` with a nonsense query that matches nothing — it
    should return gracefully without injecting irrelevant content.
 
 **Pass criteria:**
+
 - Relevant checkpoints are inlined for a matching query.
 - No-query variant uses the latest message.
 - Non-matching query does not inject garbage.
@@ -331,37 +349,46 @@ near-duplicate regions correctly.
 1. Work a session that produces similar content multiple times (e.g., read the
    same file twice, or ask similar questions).
 2. After several compactions, check the dedup hit rate:
+
    ```
    /mega-status
    ```
+
    The status output includes `dedup rate` — the percentage of compacted
    regions that were already stored (collapsed as duplicates).
 3. Inspect the dedup decisions in `events.log`:
+
    ```bash
    grep -E '"result":"(deduped|new|mark_only)"' \
      <repo>/.pi/mega-compact/events.log | jq .
    ```
+
    - `deduped` — region was collapsed (duplicate detected).
    - `new` — region was stored as a new checkpoint.
    - `mark_only` — tier recorded its decision but did not collapse (safe
      degrade mode).
 4. Verify the SQLite store has rows with `dedup_status` set:
+
    ```bash
    sqlite3 <repo>/.pi/mega-compact/sqlite.db \
      "SELECT dedup_status, COUNT(*) FROM context_chunks GROUP BY dedup_status;"
    ```
+
    You should see a mix of `active` and `removed` rows (removed = collapsed by
    SemDeDup, kept for audit but excluded from retrieval).
 5. Optional: Toggle a tier to `MARK_ONLY` and verify it records but does not
    collapse:
+
    ```bash
    MEGACOMPACT_MARK_ONLY_L1=true pi --continue
    ```
+
    Work a session, then check that L1 decisions in `events.log` show
    `result:"mark_only"` and the corresponding rows in the store are `active`
    (not `removed`).
 
 **Pass criteria:**
+
 - Dedup hit rate > 0% after repeated similar content.
 - `events.log` shows `deduped` results for duplicates.
 - `dedup_status` column in SQLite has `removed` entries for collapsed rows.
@@ -376,9 +403,11 @@ near-duplicate regions correctly.
 **Steps:**
 
 1. Start the dashboard from a pi session:
+
    ```
    /mega-dashboard
    ```
+
    This starts a local HTTP server on a port in the 9320–9329 range
    (configurable via `MEGACOMPACT_DASHBOARD_PORT`) and writes the URL to the
    terminal.
@@ -392,17 +421,21 @@ near-duplicate regions correctly.
 3. Work a session to trigger a compaction. The dashboard should update in real
    time via SSE (Server-Sent Events).
 4. Check the API endpoints directly:
+
    ```bash
    curl -s http://127.0.0.1:<port>/api/snapshot | jq .
    curl -s http://127.0.0.1:<port>/api/events   # SSE stream
    ```
+
 5. Verify dashboard status and stop:
+
    ```
    /mega-dashboard-status
    /mega-dashboard-stop
    ```
 
 **Pass criteria:**
+
 - Dashboard starts and opens in a browser.
 - Token gauge and store stats reflect current session state.
 - SSE stream updates in real time on compaction/recall events.
@@ -444,9 +477,11 @@ rebuild from legacy JSON snapshots.
 **Steps:**
 
 1. Run the DR drill script:
+
    ```bash
    scripts/dedup-restore-drill.sh <repo>/.pi/mega-compact
    ```
+
 2. The script performs these checks:
    - `PRAGMA integrity_check` on `sqlite.db` — should return `ok`.
    - Counts `context_chunks` rows and compares to the legacy
@@ -457,6 +492,7 @@ rebuild from legacy JSON snapshots.
      `<sessionId>.checkpoints.json.gz` via `migrateJsonToSqlite()`.
 3. Verify the output shows all checks passing.
 4. Optional: Simulate corruption to test the rebuild path:
+
    ```bash
    cp <repo>/.pi/mega-compact/sqlite.db \
       <repo>/.pi/mega-compact/sqlite.db.bak
@@ -468,6 +504,7 @@ rebuild from legacy JSON snapshots.
    ```
 
 **Pass criteria:**
+
 - `PRAGMA integrity_check` returns `ok`.
 - Row count matches JSON snapshot count (or is higher if new checkpoints were
   added post-migration).
@@ -484,13 +521,17 @@ rebuild from legacy JSON snapshots.
 **Steps:**
 
 1. Build the project (benchmarks run on compiled output):
+
    ```bash
    npm run build
    ```
+
 2. Run the benchmark at three scales:
+
    ```bash
    node scripts/dedup-benchmark.mjs 100 1000 10000
    ```
+
    This generates 100, 1,000, and 10,000 synthetic checkpoints and runs them
    through the full dedup pipeline.
 3. The benchmark outputs:
@@ -502,6 +543,7 @@ rebuild from legacy JSON snapshots.
    - **Storage bytes** — total SQLite database size at each scale.
 
 **Pass criteria:**
+
 - Benchmark completes without errors at all three scales.
 - p95 latency per tier is within the 100 ms budget.
 - Dedup hit rate increases with scale (more duplicates at higher counts).
@@ -525,6 +567,7 @@ rebuild from legacy JSON snapshots.
    repaint/restart (no code change required per release).
 
 **Pass criteria:**
+
 - Toolbar, `/mega-status`, and dashboard all report the same version.
 - The version updates after a publish+update without any source edit (it is read
   from `package.json` at runtime).
@@ -552,6 +595,7 @@ rebuild from legacy JSON snapshots.
    single-repo.
 
 **Pass criteria:**
+
 - Cross-repo hits appear on resume / `--cross-repo` and are repo-labeled.
 - No duplicate foreign injection across resumes.
 - Kill-switch confines recall to the current repo.
@@ -569,42 +613,49 @@ recalled as RAG context.
    Auto-review should write `decision` / `fact` / `preference` memories to
    SQLite (hallucination-guarded).
 2. Inspect memories:
+
    ```
    /mega-memory list
    /mega-memory search <topic>
    ```
+
 3. On a later resume/branch, relevant memories should be auto-inlined as RAG
    context (capped + deduped). Confirm via `/mega-status` or the dashboard.
 4. Manual write + consolidate:
+
    ```
    /mega-memory save decision "We chose node:sqlite over better-sqlite3"
    /mega-memory consolidate      # merges near-duplicate rows
    /mega-memory forget <text>    # removes a memory
    ```
+
    (`/m` is the shortform for all of the above.)
 
 **S24 — pressure-tied cadence + storage hardening:**
 
-5. **Cadence scales with pressure.** Compare review frequency at calm vs hot
+1. **Cadence scales with pressure.** Compare review frequency at calm vs hot
    context: under high pressure the effective review interval shrinks (see
    `memoryReviewCadence`), and a successful compaction also triggers an immediate
    review when pressure is `high`+ (`review-on-compact`). To observe: run a long
    session and watch `/mega-memory list` grow more often as context fills.
-6. **Overflow cannot recur (the `4868/5000` client-cap fix).** Memories are
+2. **Overflow cannot recur (the `4868/5000` client-cap fix).** Memories are
    written to SQLite **only** (never pi's file-backed buffer). Each entry is
    truncated at `MEGACOMPACT_MEMORY_MAX_CHARS` (default 4000 chars, with a
    `…[truncated]` marker) and the per-repo store is bounded at
    `MEGACOMPACT_MEMORY_MAX_ROWS` (default 500) via LRU eviction of the
    least-recently-referenced rows. Verify:
+
    ```
    # force small caps, write a huge memory, confirm it is truncated on read-back
    MEGACOMPACT_MEMORY_MAX_CHARS=50 /mega-memory save note "<500-char string>"
    /mega-memory search "<first 40 chars>"   # returned row ends with …[truncated]
    # push past the row cap; oldest un-referenced rows should evict, referenced survive
    ```
+
    No write should ever fail on size, and the store must stay bounded.
 
 **Pass criteria:**
+
 - Auto-review produces durable memories after the interval.
 - Relevant memories are recalled on resume without manual action.
 - `save` / `consolidate` / `forget` mutate the store as described.
@@ -622,14 +673,17 @@ repos.
 
 1. Start the dashboard (`/mega-dashboard`) and open the **All-repos** view.
 2. Query the drift API directly:
+
    ```bash
    curl -s http://127.0.0.1:<port>/api/drift | jq .
    ```
+
 3. The report flags: repos idle >30d, an active repo >24h behind the
    most-recently-active repo's last compaction, and model churn within 7d. It is
    read-only — it never writes the index.
 
 **Pass criteria:**
+
 - `/api/drift` returns a structured report over `repo_registry`.
 - Stale / lagging / churning repos are surfaced.
 - The report performs no writes.
@@ -650,23 +704,29 @@ include:
 4. **OS** — e.g., `Linux 6.12.94-1-MANJARO x86_64`, `macOS 15.3`, etc.
 5. **Node version** — `node -v` (must be >= 18).
 6. **`events.log` slice** — the relevant lines around the problem:
+
    ```bash
    tail -100 <repo>/.pi/mega-compact/events.log | jq .
    ```
+
    Each line is `{ts, tier, result, latencyMs, falsePositive?}`. Include the
    lines around the timestamp of the issue.
 7. **`dashboard.json`** — aggregate metrics from the state dir:
+
    ```bash
    cat <repo>/.pi/mega-compact/dashboard.json | jq .
    ```
+
    This contains hit rate, FP rate, per-tier p95, and storage bytes.
 8. **If you suspect data loss or duplication:**
    - `sqlite.db` file size + checkpoint count:
+
      ```bash
      ls -lh <repo>/.pi/mega-compact/sqlite.db
      sqlite3 <repo>/.pi/mega-compact/sqlite.db \
        "SELECT COUNT(*) FROM context_chunks;"
      ```
+
    - DR drill output: `scripts/dedup-restore-drill.sh <repo>/.pi/mega-compact`
    - `dedup_status` breakdown: `SELECT dedup_status, COUNT(*) FROM context_chunks GROUP BY dedup_status;`
 

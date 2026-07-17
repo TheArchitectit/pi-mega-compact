@@ -1,5 +1,19 @@
 # Release Notes — pi-mega-compact
 
+## v0.7.2 (2026-07-17)
+
+Widget groups now spread across the full terminal width instead of being left-aligned.
+
+### Fixed
+
+- **Widget right-side blank.** Groups are now distributed evenly across the terminal width
+  using calculated gaps between groups, instead of being left-aligned with fixed `│` separators.
+  The widget now fills the entire panel width with proper spacing.
+
+Full suite: 372 passed, 0 failed across 37 files.
+
+---
+
 ## v0.7.1 (2026-07-17)
 
 Widget auto-fit + new groups (model/provider, memory, drift, agents) + tiered % threshold + Savings by Model enrichment + crash fixes.
