@@ -688,6 +688,73 @@ repos.
 - Stale / lagging / churning repos are surfaced.
 - The report performs no writes.
 
+### 12. DB maintenance /commands (v0.7.5+)
+
+**Goal:** Verify the `/mega-db-*` commands inspect and maintain the SQLite
+store correctly, and that auto-maintenance runs on session start without
+blocking.
+
+**Steps:**
+
+1. **`/mega-db-stats`** — run it on a session with some history. Verify:
+   - Per-table row counts are non-negative and the `raw_transcript` /
+     `checkpoint_epochs` / `dedup_mirror` counts match what `/mega-status`
+     implies.
+   - `main` / `wal` / `shm` byte sizes are present (WAL may be 0 right after
+     a checkpoint).
+   - `pages`, `freelist`, and `wal frames` are non-negative integers.
+   - It is read-only — running it twice in a row yields identical counts.
+
+2. **`/mega-db-prune [days]`** — with a store containing old rows:
+   - Run `/mega-db-prune 30` (default). Verify it reports `pruned X
+     raw_transcript + Y epochs + Z dedup_mirror rows older than 30d`.
+   - Run `/mega-db-stats` before and after — the row counts should drop by the
+     reported deleted counts.
+   - Run `/mega-db-prune 9999` (future-proof: nothing should delete) — it
+     should report 0 affected.
+   - Duplicate-content `dedup_mirror` rows whose `ref_count` dropped to 0 after
+     the prune are deleted too.
+
+3. **`/mega-db-vacuum`** — run it after a prune. Verify:
+   - It reports `VACUUM: db X→Y bytes (reclaimed Z)`.
+   - The main DB file size is <= its pre-prune size (freelist reclaimed).
+   - `/mega-db-stats` still returns sane counts (VACUUM doesn't lose rows).
+
+4. **`/mega-db-check`** — verify:
+   - `integrity_check` reports `ok` on a healthy DB (lines: `["ok"]`).
+   - The WAL checkpoint folds the `-wal` sidecar into the main file (the WAL
+     size drops to near-0 immediately after).
+   - On a deliberately corrupted DB (e.g. delete a table row mid-write) it
+     surfaces the issue lines.
+
+5. **`/mega-db-reconcile`** — set up drift and reconcile:
+   - Insert a `dedup_mirror` row with a stale `ref_count` (e.g. `UPDATE
+     dedup_mirror SET ref_count = 5 WHERE content_hash = …`) with no matching
+     `raw_transcript` ref, then run `/mega-db-reconcile`.
+   - Verify `ref_count` is corrected to the actual count of referencing
+     `raw_transcript` rows.
+   - Orphan `dedup_mirror` rows (0 refs) are deleted.
+   - `raw_transcript` rows with a NULL `content_ref` matching an existing
+     `dedup_mirror` row get backfilled.
+
+6. **Auto-maintenance on `session_start`:**
+   - Start a fresh pi session. Check the diagnostic log (`events.log`) for a
+     `db-auto-maintain` line.
+   - With a small, recent DB it should read `auto-maintain: nothing to do`.
+   - With a DB that has a >10 MB WAL, verify the WAL is checkpointed on startup.
+   - Kill pi mid-write (simulate a crash) and restart. The session must still
+     start (`/mega-db-check` should still report `ok`), proving auto-maintenance
+     never blocks session load.
+
+**Pass criteria:**
+
+- All five commands run without throwing and report sensible numbers.
+- `/mega-db-stats` is idempotent (read-only).
+- `/mega-db-prune` + `/mega-db-vacuum` actually reclaim disk space.
+- `/mega-db-check` reports `ok` on a healthy DB and folds the WAL.
+- `/mega-db-reconcile` makes `ref_count` match the actual reference count.
+- Auto-maintenance runs on `session_start` and never blocks it.
+
 ---
 
 ## What to Include in a Bug Report
