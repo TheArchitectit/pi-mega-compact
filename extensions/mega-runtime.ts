@@ -72,6 +72,7 @@ interface SessionRuntime {
 	dedupAttempts: number; // total compaction attempts (for hit-rate denominator)
 	tokensSaved: number; // this session-instance only: reset on session_start
 	lastCompactAt: number | null; // wall-clock ms of the last compaction this session
+	lastNativeCompactAt: number | null; // COMPACT-RACE FIX: wall-clock ms of the last NATIVE pi compaction (session_compact event) — used by the agent_end/legacy guards to skip a redundant ctx.compact() that would throw "Already compacted".
 }
 
 /** ANSI palette for the toolbar. The pi TUI's Text component preserves ANSI
@@ -272,6 +273,7 @@ export class MegaRuntime {
 		dedupAttempts: 0,
 		tokensSaved: 0,
 		lastCompactAt: null,
+		lastNativeCompactAt: null,
 	};
 	debounceUntil = 0;
 	// S16: debounce for the agent_end resume nudge (avoid busy-loops).
@@ -339,6 +341,7 @@ export class MegaRuntime {
 	diagBeforeCompactSupplied = 0; // session_before_compact supplied our trim
 	diagAgentEndIdle = 0; // agent_end with activeAgents===0
 	diagAgentEndDurable = 0; // agent_end fired ctx.compact() (mid-run durable trim)
+	diagAgentEndDurableSkipRecent = 0; // agent_end skipped ctx.compact() — native compaction in last 10s (race guard)
 	// Per-skip-path counters for the team-run diagnosis.
 	diagCtxFastGate = 0; // returned at token fast-gate (below threshold)
 	diagCtxNoCompact = 0; // autoCompactCheck().shouldCompact === false
@@ -845,6 +848,7 @@ export class MegaRuntime {
 			dedupAttempts: 0,
 			tokensSaved: 0,
 			lastCompactAt: null,
+			lastNativeCompactAt: null,
 		};
 		this.statusKey = undefined;
 		this.activeAgents = 0;

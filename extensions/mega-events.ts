@@ -12,6 +12,7 @@ import type {
 	ExtensionContext,
 	ContextEvent,
 	SessionBeforeCompactEvent,
+	SessionCompactEvent,
 } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { normalizeSessionId } from "../src/store.js";
@@ -271,7 +272,20 @@ export function registerEventHandlers(
 				// trim we ALWAYS nudge so the agent reliably restarts. Debounced 30s.
 				let didDurableTrim = false;
 				if (idle && overThreshold && now >= runtime.debounceUntil) {
-					if (!piCompactWouldNoop(ctx)) {
+					// COMPACT-RACE FIX: skip the manual durable-trim trigger when pi's
+					// NATIVE auto-compaction just fired (or is in-flight). pi emits
+					// agent_end BEFORE its own _checkCompaction (per its docstring:
+					// "Called after agent_end and before prompt submission"), so a
+					// synchronous `piCompactWouldNoop` branch check misses a native
+					// compaction that hasn't appended its entry yet — calling
+					// ctx.compact() then races with pi and throws "Already compacted"
+					// to the user. The `lastNativeCompactAt` cooldown (updated by the
+					// session_compact listener for EVERY native compaction) closes
+					// that race window.
+					const sinceCompact = now - (runtime.rt.lastNativeCompactAt ?? 0);
+					if (sinceCompact < 10_000) {
+						runtime.diagAgentEndDurableSkipRecent++;
+					} else if (!piCompactWouldNoop(ctx)) {
 						runtime.debounceUntil = now + 2000;
 						runtime.diagAgentEndDurable++;
 						runtime.logger.info("agent-end-durable-trigger", {
@@ -280,7 +294,7 @@ export function registerEventHandlers(
 							thresholdTokens: config.thresholdTokens,
 							queued,
 						});
-						ctx.compact({ customInstructions: undefined }); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; agent settled so no in-flight abort
+						ctx.compact({ customInstructions: undefined }); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; agent settled so no in-flight abort. Race-guarded by lastNativeCompactAt cooldown above (ctx.compact returns void → a throw is surfaced by pi as compaction_end; the cooldown prevents the call entirely).
 						didDurableTrim = true;
 					}
 				}
@@ -411,8 +425,14 @@ export function registerEventHandlers(
 			process.env.MEGACOMPACT_LEGACY_DURABLE_TRIM === "true" ||
 			process.env.MEGACOMPACT_LEGACY_DURABLE_TRIM === "1";
 		if (legacy) {
-			if (piCompactWouldNoop(ctx)) return;
-			ctx.compact({ customInstructions: undefined });
+			// COMPACT-RACE FIX: same race guard as the agent_end path. Skip when a
+			// NATIVE compaction just fired (avoids racing pi and surfacing a
+			// spurious "Already compacted" / "Nothing to compact" toast). Uses
+			// lastNativeCompactAt (NOT lastCompactAt, which runCompact also stamps
+			// for our own checkpoint persistence, which would falsely skip here).
+			const sinceCompact = Date.now() - (runtime.rt.lastNativeCompactAt ?? 0);
+			if (sinceCompact < 10_000 || piCompactWouldNoop(ctx)) return;
+			ctx.compact({ customInstructions: undefined }); // race-guarded by lastNativeCompactAt cooldown (ctx.compact returns void → not catchable; the cooldown prevents the call)
 			return;
 		}
 
@@ -550,6 +570,23 @@ export function registerEventHandlers(
 			return {};
 		},
 	);
+
+	// COMPACT-RACE FIX: track EVERY native compaction so the agent_end /
+	// legacy durable-trim guard can skip a redundant ctx.compact() when pi just
+	// compacted. Without this, agent_end fires ctx.compact() synchronously
+	// AFTER pi's native auto-compaction appended a compaction entry but BEFORE
+	// our branch read sees it on the next tick — racing into a user-facing
+	// "Already compacted" throw. `lastNativeCompactAt` is the race-closing
+	// signal: any compaction (manual/threshold/overflow, ours or pi's own)
+	// stamps it, and the guards skip for 10s.
+	pi.on("session_compact", async (_event: SessionCompactEvent, _ctx: ExtensionContext) => {
+		runtime.rt.lastNativeCompactAt = Date.now();
+		runtime.rt.lastCompactAt = Date.now();
+		runtime.logger.info("session-compacted", {
+			sessionId: runtime.rt.sessionId,
+			at: runtime.rt.lastCompactAt,
+		});
+	});
 
 	/**
 	 * Build a minimal fallback compaction so pi never runs its throwing compact().
