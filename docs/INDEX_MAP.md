@@ -96,6 +96,10 @@
 | embedder interface | [src/embedder.ts](../src/embedder.ts) | src/ |
 | extractive summary | [src/extractive.ts](../src/extractive.ts) | src/ |
 | pi extension entry, slash commands | [extensions/mega-compact.ts](../extensions/mega-compact.ts) | extensions/ |
+| **S27: raw_transcript (byte-stable message mirror), append-only log, seq ordering** | [src/store/sqlite.ts](../src/store/sqlite.ts) | src/store/ |
+| **S27: dedup_mirror (space-efficient dedup storage), ref_count, content_hash** | [src/mirror/dedup.ts](../src/mirror/dedup.ts) | src/mirror/ |
+| **S27: epoch.ts (deterministic epoch-id derivation, FNV-1a nonce, checkpoint_epochs)** | [src/mirror/epoch.ts](../src/mirror/epoch.ts) | src/mirror/ |
+| **S27: DB-mirror sprint plan (tasks 5–9: context hook, dedup pipeline, recall demotion, tests, DB maintenance)** | [specs/sprint-27-db-mirror-implementation.md](specs/sprint-27-db-mirror-implementation.md) | docs/specs/ |
 
 ---
 

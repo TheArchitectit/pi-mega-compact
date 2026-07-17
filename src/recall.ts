@@ -84,10 +84,48 @@ export function formatRecallBlock(hits: SearchHit[]): string {
  * it records injections via `markInjected` so the next call dedupes. The
  * `store` is passed by the extension (defaults to the engine's default store).
  */
+/**
+ * Recall and inline context from the checkpoint store.
+ *
+ * S27 contract — DB-Mirror demotion:
+ *
+ * When `MEGACOMPACT_DB_MIRROR` is ON, the `raw_transcript` table is the
+ * canonical, byte-stable source of truth for message reconstruction. The
+ * `dedup_mirror` provides space-efficient storage with ref_count tracking
+ * (see src/mirror/dedup.ts). The legacy JSON checkpoint is retained as a
+ * DR snapshot only (see src/store.ts checkpoint helpers).
+ *
+ * The recall function continues to work from the VectorStore (checkpoint
+ * summaries + embeddings) for fast semantic search — this path is unaffected
+ * by the mirror flag. If full transcript reconstruction is ever needed
+ * (replay, export, debug), prefer reading from `raw_transcript + dedup_mirror`
+ * via `listRawTranscriptRange()` + `dedupTranscript()` instead of the legacy
+ * JSON checkpoint. Falls back to legacy checkpoint if mirror is empty
+ * (pre-migration sessions).
+ *
+ * Pi-agnostic: no pi runtime imports (src/ invariant).
+ */
 export function recallAndInline(
   opts: RecallInjectOptions,
   store: Pick<VectorStore, "search" | "wasInjected" | "markInjected">,
 ): RecallInjectResult {
+  // ── S27 Recall Demotion ─────────────────────────────────────────────
+  //
+  // When MEGACOMPACT_DB_MIRROR is ON, the raw_transcript + dedup_mirror
+  // tables are preferred for byte-stable reconstruction. The current
+  // recall path (VectorStore search → format → inject) is unaffected —
+  // it provides fast semantic search over checkpoint summaries.
+  //
+  // If full transcript reconstruction is ever needed (replay, export,
+  // debug), call reconstructFromMirror(db, sessionId, fromSeq, toSeq)
+  // from src/mirror/dedup.ts instead of reading from the legacy JSON
+  // checkpoint. Falls back to legacy checkpoint if mirror is empty
+  // (pre-migration sessions).
+  //
+  // Invariant: raw_transcript + dedup_mirror are additive and never
+  // lose data. The legacy JSON checkpoint remains as a DR snapshot.
+  // ─────────────────────────────────────────────────────────────────────
+
   const limit = opts.limit ?? 3;
   const skip = opts.skipInjected ?? true;
   const maxTokens = opts.recallMaxTokens ?? 0; // 0 = unbounded (legacy behavior)

@@ -321,3 +321,33 @@
 | ACCEPTANCE (grep + behavioral) | 240 | 0 |
 | ROLLBACK | 268 | 0 |
 | RISKS / EDGE CASES | 283 | 0 |
+
+## src/mirror/ (S27 DB-mirror)
+
+| File | Purpose |
+|------|--------|
+| `src/mirror/epoch.ts` | Deterministic epoch-id derivation (FNV-1a nonce, epochIdFor) |
+| `src/mirror/raw_transcript.ts` | Append-only raw message log (upsertRawTranscript, listRawTranscriptRange) |
+| `src/mirror/dedup.ts` | Dedup pipeline for space-efficient storage (dedupTranscript, getDedupRatio) |
+
+## docs/specs/sprint-27-db-mirror-implementation.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 11 | 0 |
+| DECISIONS (locked) | 20 | 9 |
+| SCOPE (in/out) | 37 | 26 |
+| EXECUTION (Tasks 1–9) | 57 | 46 |
+| Task 1 — Schema + Dedup columns (P0) | 60 | 49 |
+| Task 2 — Insert helpers (P0) | 73 | 62 |
+| Task 3 — Epoch nonce (P0) | 96 | 85 |
+| Task 4 — Config flag (P0) | 113 | 102 |
+| Task 5 — Context hook (P0) | 126 | 115 |
+| Task 6 — Dedup pipeline (P1) | 138 | 127 |
+| Task 7 — Recall Demotion (P2) | 149 | 138 |
+| Task 8 — Tests (P0) | 165 | 154 |
+| Task 9 — Maps + Guardrails (P3) | 188 | 177 |
+| Task 10 — DB Maintenance Commands (NEW) | 197 | 186 |
+| Dependency graph | 229 | 218 |
+| ACCEPTANCE | 237 | 226 |
+| ROLLBACK | 258 | 247 |

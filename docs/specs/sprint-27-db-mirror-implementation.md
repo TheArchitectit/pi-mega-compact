@@ -5,6 +5,8 @@
 **Blocks on:** Tasks 1–4 (schema, helpers, epoch.ts, config flag) — ✅ merged
 **Priority:** P0 (cache stability = direct $ savings)
 
+**Status:** Tasks 5–6 ✅ implemented. Tasks 7–9 pending.
+
 ---
 
 ## 1. Database Design
