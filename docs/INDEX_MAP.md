@@ -54,6 +54,7 @@
 | S27 spec (tiered % compaction threshold — `tierPct × contextWindow`; fires below pi native ~80% auto-compact for any model size; reconciles dual-basis pressure flicker) | [specs/s27-tiered-percent-threshold.md](specs/s27-tiered-percent-threshold.md) | docs/ |
 | **S27 spec (db mirror: byte-stable prompt cache via raw transcript mirror + deterministic epoch nonce)** | [specs/sprint-27-db-mirror-cache-stability.md](specs/sprint-27-db-mirror-cache-stability.md) | docs/ |
 | **S27 sprint plan (tasks 5–9: context hook, dedup pipeline, recall demotion, tests, DB maintenance /commands)** | [specs/sprint-27-db-mirror-implementation.md](specs/sprint-27-db-mirror-implementation.md) | docs/ |
+| **post-mortem: "Already compacted" / "Auto compaction failed" race (agent_end vs native _checkCompaction)** | [specs/postmortem-already-compacted-race.md](specs/postmortem-already-compacted-race.md) | docs/ |
 | retention policy (TTL 90d, soft-delete, VACUUM, DR snapshots) | [RETENTION_POLICY.md](RETENTION_POLICY.md) | docs/ |
 | dedup runbook (SEV tiers, first-15-min, MARK_ONLY degrade) | [DEDUP_RUNBOOK.md](DEDUP_RUNBOOK.md) | docs/ |
 

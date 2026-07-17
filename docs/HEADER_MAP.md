@@ -351,3 +351,17 @@
 | Dependency graph | 229 | 218 |
 | ACCEPTANCE | 237 | 226 |
 | ROLLBACK | 258 | 247 |
+
+## docs/specs/postmortem-already-compacted-race.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Summary (Failure ID FAIL-2026071701) | 11 | 0 |
+| Symptom (exact toast + throw sites in agent-session.js) | 30 | 22 |
+| Root Cause (agent_end vs _checkCompaction race) | 59 | 51 |
+| Why It Produced the Symptom | 110 | 102 |
+| Fix (lastNativeCompactAt cooldown, commit 848c817) | 124 | 116 |
+| How It Was Found (repro + hypotheses rejected) | 163 | 155 |
+| Why It Slipped Through | 191 | 183 |
+| Validation | 208 | 200 |
+| Action Items | 224 | 216 |
