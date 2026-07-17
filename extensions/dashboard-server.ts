@@ -70,6 +70,17 @@ interface IndexRepo {
   inputRate: number | null;
   outputRate: number | null;
   lastSeen: number;
+  // Per-repo token + model detail (S25 dashboard enrichment), read directly
+  // from each repo's node:sqlite store at stateDir. tokensKept = Σ stored
+  // summary tokens ("out"); tokensDropped = Σ original region tokens ("in");
+  // sessions = distinct sessions with a checkpoint; contextWindow/maxTokens/
+  // reasoning come from the latest model_snapshots row for that repo.
+  tokensKept: number;
+  tokensDropped: number;
+  sessions: number;
+  contextWindow: number | null;
+  maxTokens: number | null;
+  reasoning: boolean | null;
 }
 
 interface IndexSummary {
@@ -107,7 +118,54 @@ function readIndex(): IndexIndex | null {
       inputRate: (r.input_rate as number | null) ?? null,
       outputRate: (r.output_rate as number | null) ?? null,
       lastSeen: Number(r.last_seen ?? 0),
+      // Defaults — enriched below from each repo's own store.
+      tokensKept: 0,
+      tokensDropped: 0,
+      sessions: 0,
+      contextWindow: null,
+      maxTokens: null,
+      reasoning: null,
     }));
+    // Enrich each repo with per-store token + model detail read directly via
+    // node:sqlite (same zero-dependency invariant as readIndex; no store graph
+    // import). Best-effort: a missing/corrupt store degrades to the defaults
+    // above so the dashboard never fails to render.
+    for (const repo of mapped) {
+      try {
+        const storePath = join(repo.stateDir, "sqlite.db");
+        if (existsSync(storePath)) {
+          const sdb = new DatabaseSync(storePath, { readOnly: true });
+          try {
+            const tok = sdb
+              .prepare(
+                `SELECT COALESCE(SUM(token_estimate),0) AS kept,
+                        COALESCE(SUM(original_token_estimate),0) AS dropped,
+                        COUNT(DISTINCT session_id) AS sess
+                 FROM context_chunks WHERE dedup_status != 'removed'`,
+              )
+              .get() as { kept: number; dropped: number; sess: number };
+            repo.tokensKept = Number(tok.kept ?? 0);
+            repo.tokensDropped = Number(tok.dropped ?? 0);
+            repo.sessions = Number(tok.sess ?? 0);
+            const mrow = sdb
+              .prepare(
+                `SELECT context_window, max_tokens, reasoning
+                 FROM model_snapshots ORDER BY captured_at DESC LIMIT 1`,
+              )
+              .get() as { context_window: number; max_tokens: number; reasoning: number } | undefined;
+            if (mrow) {
+              repo.contextWindow = Number(mrow.context_window ?? 0) || null;
+              repo.maxTokens = Number(mrow.max_tokens ?? 0) || null;
+              repo.reasoning = Number(mrow.reasoning ?? 0) === 1;
+            }
+          } finally {
+            sdb.close();
+          }
+        }
+      } catch {
+        /* best-effort — keep the defaults */
+      }
+    }
     // Defensive display hygiene (belt-and-suspenders — the real fix is that
     // tests now isolate via MEGACOMPACT_INDEX_DIR): drop transient test/temp
     // paths that should never have been real repos, and collapse duplicate
@@ -541,15 +599,23 @@ function dashboardHtml(tierName: string): string {
     <thead>
       <tr>
         <th>Model</th><th>Provider</th>
-        <th style="text-align:right">Repos</th>
+        <th style="text-align:right" title="Tokens dropped from context by compaction (the input reclaimed)">Tokens In</th>
+        <th style="text-align:right" title="Tokens kept as compacted summaries still in context (the output retained)">Tokens Out</th>
+        <th style="text-align:right">Freed</th>
+        <th style="text-align:right" title="Model context window (max input tokens the model accepts)">Ctx Window</th>
+        <th style="text-align:right" title="Model max output tokens per turn">Max Out</th>
+        <th style="text-align:right" title="Reasoning-capable model">Reas.</th>
+        <th style="text-align:right" title="Distinct sessions with at least one checkpoint">Sessions</th>
         <th style="text-align:right">Checkpoints</th>
-        <th style="text-align:right">Tokens Saved</th>
+        <th style="text-align:right" title="USD per input token">In $/tok</th>
+        <th style="text-align:right" title="USD per output token">Out $/tok</th>
         <th style="text-align:right">$ Saved</th>
         <th style="text-align:right">Last Used</th>
       </tr>
     </thead>
-    <tbody id="bm-rows"><tr><td colspan="7" class="repo-none">loading…</td></tr></tbody>
+    <tbody id="bm-rows"><tr><td colspan="14" class="repo-none">loading…</td></tr></tbody>
   </table>
+  <p class="legend-note" style="margin-top:8px">Tokens In = Σ original region tokens dropped by compaction. Tokens Out = Σ compacted summary tokens still retained in context. Freed = Tokens In − Tokens Out (net context reclaimed). Ctx Window / Max Out / Reas. come from the latest captured model snapshot for each repo.</p>
 
   <div class="updated" id="sm-updated"></div>
 </div>
@@ -771,33 +837,67 @@ function dashboardHtml(tierName: string): string {
     var rows = document.getElementById('bm-rows');
     if (!rows) return;
     if (!repos || !repos.length) {
-      rows.innerHTML = '<tr><td colspan="7" class="repo-none">No repositories registered yet.</td></tr>';
+      rows.innerHTML = '<tr><td colspan="14" class="repo-none">No repositories registered yet.</td></tr>';
       return;
     }
     var groups = {};
     for (var i = 0; i < repos.length; i++) {
       var r = repos[i];
       var key = (r.modelName && String(r.modelName).trim()) || '(unknown)';
-      if (!groups[key]) groups[key] = { model: key, provider: r.providerName || r.provider || '—', repos: 0, checkpoints: 0, tokensSaved: 0, usd: 0, lastAt: 0, rates: [] };
+      if (!groups[key]) groups[key] = {
+        model: key, provider: r.providerName || r.provider || '—', repos: 0, checkpoints: 0,
+        tokensSaved: 0, tokensIn: 0, tokensOut: 0, sessions: 0, usd: 0, lastAt: 0,
+        inRates: [], outRates: [], ctxWindows: [], maxTokens: [], reasoning: null,
+      };
       var g = groups[key];
       g.repos++;
       g.checkpoints += (r.checkpointCount || 0);
       g.tokensSaved += (r.tokensSaved || 0);
-      if (r.inputRate) { g.usd += (r.tokensSaved || 0) * r.inputRate; g.rates.push(r.inputRate); }
+      g.tokensIn += (r.tokensDropped || 0);
+      g.tokensOut += (r.tokensKept || 0);
+      g.sessions += (r.sessions || 0);
+      if (r.inputRate) { g.usd += (r.tokensSaved || 0) * r.inputRate; g.inRates.push(r.inputRate); }
+      if (r.outputRate) g.outRates.push(r.outputRate);
+      if (r.contextWindow) g.ctxWindows.push(r.contextWindow);
+      if (r.maxTokens) g.maxTokens.push(r.maxTokens);
+      if (r.reasoning != null) g.reasoning = r.reasoning;
       if (r.lastCompactedAt && r.lastCompactedAt > g.lastAt) g.lastAt = r.lastCompactedAt;
     }
     var arr = [];
     for (var k in groups) { if (Object.prototype.hasOwnProperty.call(groups, k)) arr.push(groups[k]); }
     arr.sort(function(a, b) { return b.tokensSaved - a.tokensSaved; });
+    // Helper: a set of numeric samples collapses to a single value when all
+    // repos in the group agree, otherwise shows the range (min–max) so the
+    // user can see mixed-config model groups at a glance.
+    function collapseNum(samples) {
+      if (!samples || !samples.length) return '—';
+      var lo = Math.min.apply(null, samples), hi = Math.max.apply(null, samples);
+      return lo === hi ? lo.toLocaleString() : lo.toLocaleString() + '–' + hi.toLocaleString();
+    }
+    function collapseRate(samples) {
+      if (!samples || !samples.length) return '—';
+      var lo = Math.min.apply(null, samples), hi = Math.max.apply(null, samples);
+      var fmt = function(v) { return '$' + v.toFixed(6); };
+      return lo === hi ? fmt(lo) : fmt(lo) + '–' + fmt(hi);
+    }
     rows.innerHTML = arr.map(function(g) {
+      var freed = (g.tokensIn || 0) - (g.tokensOut || 0);
       var usd = g.usd > 0 ? '$' + g.usd.toFixed(4) : '—';
       var when = g.lastAt ? new Date(g.lastAt).toLocaleString() : '—';
+      var reas = g.reasoning == null ? '—' : (g.reasoning ? 'yes' : 'no');
       return '<tr>' +
         '<td><span class="repo-model">' + sanitize(g.model) + '</span></td>' +
         '<td>' + sanitize(g.provider) + '</td>' +
-        '<td class="num">' + g.repos.toLocaleString() + '</td>' +
+        '<td class="num">' + (g.tokensIn || 0).toLocaleString() + '</td>' +
+        '<td class="num">' + (g.tokensOut || 0).toLocaleString() + '</td>' +
+        '<td class="num">' + freed.toLocaleString() + '</td>' +
+        '<td class="num">' + collapseNum(g.ctxWindows) + '</td>' +
+        '<td class="num">' + collapseNum(g.maxTokens) + '</td>' +
+        '<td class="num">' + reas + '</td>' +
+        '<td class="num">' + g.sessions.toLocaleString() + '</td>' +
         '<td class="num">' + g.checkpoints.toLocaleString() + '</td>' +
-        '<td class="num">' + g.tokensSaved.toLocaleString() + '</td>' +
+        '<td class="num">' + collapseRate(g.inRates) + '</td>' +
+        '<td class="num">' + collapseRate(g.outRates) + '</td>' +
         '<td class="num">' + sanitize(usd) + '</td>' +
         '<td class="num">' + sanitize(when) + '</td>' +
       '</tr>';
