@@ -328,9 +328,13 @@ test("session_before_compact supplies our durable trim (not pi's summary)", asyn
   assert.ok(res.compaction.tokensBefore >= 0, "tokensBefore reported");
 });
 
-test("session_before_compact falls back to pi when nothing to summarize", async () => {
+test("session_before_compact supplies a fallback summary when nothing to summarize", async () => {
   const h = harness();
-  // Empty preparation → no messages to summarize → return {} so pi compacts natively.
+  // Empty preparation → no messages to summarize (anchor floor protects
+  // everything). We MUST still supply a compaction (never {}), otherwise pi
+  // runs its own compact() which throws "Nothing to compact (session too
+  // small)" and leaves the session stuck with no resume context. The fallback
+  // records a minimal resume summary so the session always resumes.
   const res = await h.fire(
     "session_before_compact",
     {
@@ -342,7 +346,12 @@ test("session_before_compact falls back to pi when nothing to summarize", async 
     } as any,
     h.ctx(),
   );
-  assert.deepEqual(res, {}, "no compaction supplied → pi runs its own");
+  assert.ok(res && (res as any).compaction, "fallback compaction supplied (never {})");
+  assert.ok(
+    (res as any).compaction.summary.includes("context compacted"),
+    "fallback summary injected so the session resumes",
+  );
+  assert.equal((res as any).compaction.firstKeptEntryId, "e0", "keeps pi's cut point");
 });
 
 test("resume auto-inline stages recall into the system prompt", async () => {
