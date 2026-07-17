@@ -24,6 +24,12 @@ import { autoCompactCheck } from "./compact.js";
 import { loadDedupConfig, type DedupConfigShape } from "./config/dedup.js";
 import type { EngineMessage } from "./types.js";
 
+// Real percentage-based threshold config. Replaces the previous LOCAL replica of
+// COMPACT_TIERS + resolveThresholdFromEnv that asserted the OLD static token
+// amounts — importing the live source of truth keeps tests in sync with the
+// source (thresholds are tierPct × the model's context window, not fixed tokens).
+import { TIER_PCT, effectiveThresholdTokens, loadConfig } from "../extensions/mega-config.js";
+
 // recallAndInline may or may not be exported; import safely.
 import * as recallMod from "./recall.js";
 
@@ -540,48 +546,63 @@ describe("Edge Cases", () => {
   });
 });
 
-// -------------------- 7. Tier Switching --------------------
+// -------------------- 7. Tier Switching (percentage-based) --------------------
 
-describe("Tier Switching", () => {
-  it("MEGACOMPACT_TIER env changes produce expected thresholds via extension logic", () => {
-    const tiers: Array<[string, number]> = [
-      ["low", 50_000],
-      ["medium", 100_000],
-      ["high", 200_000],
-      ["ultra", 1_000_000],
-      ["mega", 10_000_000],
+// Replaces the previous LOCAL replica of COMPACT_TIERS + resolveThresholdFromEnv
+// that asserted the OLD static token amounts. We now import the REAL config
+// helpers from extensions/mega-config.js so the tests track the live source of
+// truth: thresholds are tierPct × the model's context window (not fixed tokens).
+
+describe("Tier Switching — percentage-based thresholds", () => {
+  // Documented tierPct fractions (single source of truth in mega-config.ts).
+  it("each named tier carries the documented tierPct fraction", () => {
+    assert.equal(TIER_PCT.low, 0.5);
+    assert.equal(TIER_PCT.medium, 0.6);
+    assert.equal(TIER_PCT.high, 0.7);
+    assert.equal(TIER_PCT.ultra, 0.7);
+    assert.equal(TIER_PCT.mega, 0.75);
+  });
+
+  // Boot fallback threshold (sane gate before the first context event supplies a
+  // window): round(tierPct × 200_000). Resolved through the REAL loadConfig().
+  it("MEGACOMPACT_TIER env resolves to the boot fallback threshold via real config", () => {
+    const tiers: Array<[keyof typeof TIER_PCT, number]> = [
+      ["low", 100_000], // 0.50 × 200_000
+      ["medium", 120_000], // 0.60 × 200_000
+      ["high", 140_000], // 0.70 × 200_000
+      ["ultra", 140_000], // 0.70 × 200_000
+      ["mega", 150_000], // 0.75 × 200_000
     ];
-
-    for (const [tier, expectedThreshold] of tiers) {
+    for (const [tier, expectedBoot] of tiers) {
       const original = process.env.MEGACOMPACT_TIER;
+      delete process.env.MEGACOMPACT_THRESHOLD_TOKENS;
       process.env.MEGACOMPACT_TIER = tier;
       try {
-        // Re-import to pick up env change. Since modules are cached, resolve threshold
-        // directly via COMPACT_TIERS local replica mirroring extensions/mega-compact.ts.
-        const threshold = resolveThresholdFromEnv();
+        const cfg = loadConfig();
+        assert.equal(cfg.tier, tier, `tier ${tier} should resolve`);
+        assert.equal(cfg.tierPct, TIER_PCT[tier], `tier ${tier} tierPct`);
         assert.equal(
-          threshold,
-          expectedThreshold,
-          `tier ${tier} should resolve to ${expectedThreshold}`,
+          cfg.thresholdTokens,
+          expectedBoot,
+          `tier ${tier} boot fallback threshold should be ${expectedBoot}`,
         );
       } finally {
-        if (original === undefined) {
-          delete process.env.MEGACOMPACT_TIER;
-        } else {
-          process.env.MEGACOMPACT_TIER = original;
-        }
+        if (original === undefined) delete process.env.MEGACOMPACT_TIER;
+        else process.env.MEGACOMPACT_TIER = original;
       }
     }
   });
 
-  it("explicit MEGACOMPACT_THRESHOLD_TOKENS overrides tier", () => {
+  it("explicit MEGACOMPACT_THRESHOLD_TOKENS overrides tier (custom stays absolute)", () => {
     const originalTier = process.env.MEGACOMPACT_TIER;
     const originalThreshold = process.env.MEGACOMPACT_THRESHOLD_TOKENS;
-    process.env.MEGACOMPACT_TIER = "mega";
+    delete process.env.MEGACOMPACT_TIER;
     process.env.MEGACOMPACT_THRESHOLD_TOKENS = "123456";
     try {
-      const threshold = resolveThresholdFromEnv();
-      assert.equal(threshold, 123_456, "explicit token threshold should win");
+      const cfg = loadConfig();
+      assert.equal(cfg.tier, "custom", "explicit token threshold → custom tier");
+      assert.equal(cfg.tierPct, null, "custom tier has no tierPct (stays absolute)");
+      assert.equal(cfg.thresholdTokens, 123_456, "explicit token threshold should win");
     } finally {
       if (originalTier === undefined) delete process.env.MEGACOMPACT_TIER;
       else process.env.MEGACOMPACT_TIER = originalTier;
@@ -591,19 +612,59 @@ describe("Tier Switching", () => {
   });
 });
 
-function resolveThresholdFromEnv(): number {
-  const explicit = process.env.MEGACOMPACT_THRESHOLD_TOKENS;
-  if (explicit != null && explicit !== "") {
-    const n = Number(explicit);
-    if (Number.isFinite(n)) return n;
-  }
-  const COMPACT_TIERS: Record<string, number> = {
-    low: 50_000,
-    medium: 100_000,
-    high: 200_000,
-    ultra: 1_000_000,
-    mega: 10_000_000,
-  };
-  const tier = process.env.MEGACOMPACT_TIER ?? "low";
-  return COMPACT_TIERS[tier.toLowerCase()] ?? COMPACT_TIERS.low;
-}
+describe("effectiveThresholdTokens — tierPct × model window", () => {
+  // The real compaction fire point. Tiered → scales with the window so it always
+  // fires BELOW pi's native ~80% auto-compact for any model size. Custom (null
+  // tierPct) → absolute explicitThreshold, never percent-scaled.
+
+  it("scales tierPct × window for a 200k model", () => {
+    assert.equal(
+      effectiveThresholdTokens({ tierPct: TIER_PCT.low, fallbackThreshold: 100_000, window: 200_000 }),
+      100_000,
+    );
+    assert.equal(
+      effectiveThresholdTokens({ tierPct: TIER_PCT.mega, fallbackThreshold: 150_000, window: 200_000 }),
+      150_000,
+    );
+  });
+
+  it("scales tierPct × window for a 1M model", () => {
+    assert.equal(
+      effectiveThresholdTokens({ tierPct: TIER_PCT.low, fallbackThreshold: 500_000, window: 1_000_000 }),
+      500_000,
+    );
+    assert.equal(
+      effectiveThresholdTokens({ tierPct: TIER_PCT.mega, fallbackThreshold: 750_000, window: 1_000_000 }),
+      750_000,
+    );
+  });
+
+  it("falls back to the boot threshold when the window is 0/unknown", () => {
+    assert.equal(
+      effectiveThresholdTokens({ tierPct: TIER_PCT.mega, fallbackThreshold: 150_000, window: 0 }),
+      150_000,
+    );
+    assert.equal(
+      effectiveThresholdTokens({ tierPct: TIER_PCT.low, fallbackThreshold: 100_000, window: -5 }),
+      100_000,
+    );
+  });
+
+  it("custom (tierPct null) stays an absolute threshold regardless of window", () => {
+    assert.equal(
+      effectiveThresholdTokens({ tierPct: null, fallbackThreshold: 100_000, window: 200_000, explicitThreshold: 123456 }),
+      123456,
+      "explicit absolute wins (200k window)",
+    );
+    assert.equal(
+      effectiveThresholdTokens({ tierPct: null, fallbackThreshold: 100_000, window: 1_000_000, explicitThreshold: 123456 }),
+      123456,
+      "explicit absolute wins (1M window)",
+    );
+    assert.equal(
+      effectiveThresholdTokens({ tierPct: null, fallbackThreshold: 100_000, window: 200_000 }),
+      100_000,
+      "no explicit → boot fallback",
+    );
+  });
+});

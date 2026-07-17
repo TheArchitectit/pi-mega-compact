@@ -14,13 +14,13 @@ import { sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readFileSync } from "node:fs";
+import { readFileSync, appendFileSync, mkdirSync } from "node:fs";
 import { VectorStore } from "../src/vectorStore.js";
 import { toEngineMessages } from "../src/adapt.js";
 import { normalizeSessionId } from "../src/store.js";
 import { Logger } from "../src/log.js";
 import { recordModelSnapshot, latestModelSnapshot, upsertRepoRegistry, recordRepoModel, type ModelSnapshot } from "../src/store/sqlite.js";
-import { repoStateDir, resolveRepoRoot, pressureRatio, pressureFromPct, pressureBand, type MegaConfig, type PressureBand } from "./mega-config.js";
+import { repoStateDir, resolveRepoRoot, pressureRatio, pressureFromPct, pressureBand, effectiveThresholdTokens, type MegaConfig, type PressureBand } from "./mega-config.js";
 import { Dashboard, type DashboardSnapshot } from "./mega-dashboard.js";
 
 export const STATUS_KEY = "mega-compact";
@@ -73,6 +73,50 @@ export const C = {
 };
 
 const PULSE = ["◐", "◓", "◑", "◒"];
+
+// ── Full-width widget panel helpers ────────────────────────────────────────
+// pi's above-editor widget renderer (a Container of Text lines) does NOT pass
+// a terminal width to setWidget(), so lines render left-aligned by default. To
+// make the widget read as a full-width status panel we pad each line to the
+// real terminal width with a background fill. NOTE: C.reset is a FULL SGR
+// reset, so we re-apply the panel bg after every reset to keep the background
+// continuous under colored text (and under pi's own trailing reset).
+const PANEL_BG = "\x1b[48;5;236m"; // dark slate panel background
+const PANEL_RST = "\x1b[0m" + PANEL_BG; // reset fg but retain panel bg
+
+/** Visible cell width of a string, ignoring ANSI SGR/OSC escapes. */
+function visibleWidth(s: string): number {
+  const stripped = s
+    .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "");
+  let w = 0;
+  for (const ch of stripped) {
+    const cp = ch.codePointAt(0) ?? 0;
+    const wide = cp >= 0x1100 && (
+      (cp <= 0x115f) || (cp >= 0x2e80 && cp <= 0x303e) ||
+      (cp >= 0x3041 && cp <= 0x33ff) || (cp >= 0x3400 && cp <= 0x4dbf) ||
+      (cp >= 0x4e00 && cp <= 0x9fff) || (cp >= 0xa000 && cp <= 0xa4cf) ||
+      (cp >= 0xac00 && cp <= 0xd7a3) || (cp >= 0xf900 && cp <= 0xfaff) ||
+      (cp >= 0xfe30 && cp <= 0xfe4f) || (cp >= 0xff00 && cp <= 0xff60) ||
+      (cp >= 0xffe0 && cp <= 0xffe6) || (cp >= 0x1f300 && cp <= 0x1faff) ||
+      (cp >= 0x20000 && cp <= 0x3fffd)
+    );
+    w += wide ? 2 : 1;
+  }
+  return w;
+}
+
+/** Pad a content string (with ANSI colors) to `width` cells using panel bg. */
+function panelLine(content: string, width: number): string {
+  const withBg = PANEL_BG + content.replace(/\x1b\[0m/g, PANEL_RST);
+  const pad = Math.max(0, width - visibleWidth(withBg));
+  return withBg + " ".repeat(pad) + "\x1b[0m";
+}
+
+/** A full-width hairline bar (top/bottom border of the panel). */
+function panelBar(width: number, ch = "─"): string {
+  return PANEL_BG + ch.repeat(Math.max(0, width)) + "\x1b[0m";
+}
 
 interface TickerEntry { text: string; at: number; }
 
@@ -166,18 +210,56 @@ export class MegaRuntime {
   diagCtxThrown = 0;          // live-trim try threw (caught)
 
   /**
-   * Live 0–1 pressure: how full the context window is relative to the compaction
-   * threshold. Computed from the most recent context event the runtime already
-   * tracks (token count when available — the direct signal — otherwise the usage
-   * percentage). This is the single "how full" number every subsystem reads; the
-   * toolbar/dashboard tier label is `pressureBand` over this, so it climbs
-   * low→mega as context rises (S24). Always finite + in [0,1].
+   * S26 capture instrumentation: the "model_snapshots empty → $0.00 cost card"
+   * bug was invisible because captureModel swallowed the DB write in a silent
+   * `catch {}`. These always-updated counters (zero cost) let a headless test or
+   * a live capture tell whether captureModel ran and whether the snapshot landed.
+   */
+  diagCaptureModelCalls = 0;   // captureModel entered with a populated ctx.model
+  diagCaptureModelFails = 0;   // recordModelSnapshot threw → model_snapshots stays empty
+
+  /**
+   * Live 0–1 pressure — how full the context window is relative to the
+   * compaction threshold.
+   *
+   * RECONCILE (BACKLOG dual-basis flicker): when the model context window is
+   * known we base pressure consistently on the *percentage* basis
+   * (`lastCtxPercent / (tierPct*100)`). This keeps the band stable whether the
+   * latest context event carried a token count or only a percentage, so the
+   * threshold comparison doesn't jump when a token-count event arrives vs a
+   * percent-only event. We only fall back to the token-count basis
+   * (`config.thresholdTokens`) when the window is unknown (e.g. before the first
+   * context event, or a `custom` tier with no tierPct). Always finite + in [0,1].
    */
   get pressure(): number {
+    if (this.lastCtxWindow > 0 && this.config.tierPct != null && this.lastCtxPercent != null) {
+      // pressureFromPct(x) = x/100, and x = lastCtxPercent/tierPct, so this is
+      // exactly the intended lastCtxPercent/(tierPct*100) 0–1 ratio: at the
+      // fire point (lastCtxPercent == tierPct*100) pressure == 1.0, matching the
+      // token-based pressureRatio(currentTokens, effectiveThreshold) reading so
+      // the band doesn't jump when a token-count vs percent-only event arrives.
+      return pressureFromPct(this.lastCtxPercent / this.config.tierPct);
+    }
     if (this.lastCtxTokens != null && this.lastCtxTokens > 0 && this.config.thresholdTokens > 0) {
       return pressureRatio(this.lastCtxTokens, this.config.thresholdTokens);
     }
     return pressureFromPct(this.lastCtxPercent);
+  }
+
+  /**
+   * The live compaction FIRE POINT in tokens: the effective threshold scaled by
+   * the current model context window (`tierPct * window`) when known, else the
+   * boot fallback `config.thresholdTokens`. This is what the FAST GATE /
+   * `autoCompactCheck` / agent_end durable-trigger compare against, so
+   * compaction fires at tier% of the window for ANY model size (200k or 1M),
+   * always below pi's native auto-compaction (~80% of window).
+   */
+  get effectiveThreshold(): number {
+    return effectiveThresholdTokens({
+      tierPct: this.config.tierPct,
+      fallbackThreshold: this.config.thresholdTokens,
+      window: this.lastCtxWindow,
+    });
   }
 
   /** Live discrete pressure band (low/medium/high/ultra/mega) over `pressure`. */
@@ -251,8 +333,14 @@ export class MegaRuntime {
           outputRate: modelSnap.outputRate,
         }
       : undefined;
-    const armed = this.lastCtxPercent != null && this.lastCtxPercent >= this.config.fastGatePct;
-    const ready = armed && (this.lastCtxTokens ?? 0) >= this.config.thresholdTokens;
+    // effectiveThresholdPct: the live fire point as a % of the window (null for
+    // `custom`, which has no tierPct). Used by armed/ready + the dashboard.
+    const effectiveThresholdPct = this.config.tierPct != null ? this.config.tierPct * 100 : null;
+    // armed lights at/above the REAL fire point: max(effectiveThresholdPct,
+    // fastGatePct). fastGatePct already equals tierPct*100 by default, but a
+    // MEGACOMPACT_FAST_GATE_PCT override can raise it, so we take the max.
+    const armed = this.lastCtxPercent != null && this.lastCtxPercent >= Math.max(effectiveThresholdPct ?? 0, this.config.fastGatePct);
+    const ready = armed && (this.lastCtxTokens ?? 0) >= this.effectiveThreshold;
     this.dashboard.snapshot({
       version: 1,
       updatedAt: new Date().toISOString(),
@@ -263,7 +351,9 @@ export class MegaRuntime {
       pressure: this.pressure,
       config: {
         fastGatePct: this.config.fastGatePct,
-        thresholdTokens: this.config.thresholdTokens,
+        thresholdTokens: this.effectiveThreshold,
+        tierPct: this.config.tierPct,
+        effectiveThresholdPct,
         anchorUserMessages: this.config.anchorUserMessages,
         preserveRecent: this.config.preserveRecent,
         auto: this.config.auto,
@@ -280,7 +370,7 @@ export class MegaRuntime {
         dedupAttempts: this.rt.dedupAttempts,
       },
       context: { tokens: this.lastCtxTokens, percent: this.lastCtxPercent, contextWindow: this.lastCtxWindow },
-      trigger: { armed, ready, currentTokens: this.lastCtxTokens, thresholdTokens: this.config.thresholdTokens, fastGatePct: this.config.fastGatePct },
+      trigger: { armed, ready, currentTokens: this.lastCtxTokens, thresholdTokens: this.effectiveThreshold, fastGatePct: this.config.fastGatePct, tierPct: this.config.tierPct, effectiveThresholdPct },
       crew: { activeAgents: this.activeAgents, currentTurn: this.currentTurn },
       store: { checkpointCount: st.checkpointCount, totalTokenEstimate: st.totalTokenEstimate, originalTokens: st.originalTokens, tokensSaved: this.rt.tokensSaved, injectedCount: st.injectedCount, dedupHitRate: st.dedupHitRate, storageDedupRate: st.storageDedupRate, dedupAttempts: st.dedupAttempts, dedupCollapsed: st.dedupCollapsed },
       // Reconciled token accounting (single canonical formula, session + repo).
@@ -348,7 +438,14 @@ export class MegaRuntime {
         x >= 1_000_000 ? `${(x / 1_000_000).toFixed(1)}mil`
         : x >= 1000 ? `${(x / 1000).toFixed(1)}k`
         : `${Math.round(x)}`;
-      const agentStr = this.activeAgents > 0 ? ` │ 🤖 ${this.activeAgents} agent${this.activeAgents === 1 ? "" : "s"}` : "";
+      // Agents view: ALWAYS show the agent line so status is visible even when
+      // idle (previously hidden at 0). 🤖 N agents when active, dimmed 🤖 idle
+      // when none — this is the restored "agents view" (count + status). Real
+      // per-agent/sub-agent token usage is scoped in Sprint 27.
+      const agentLabel = this.activeAgents > 0
+        ? `🤖 ${this.activeAgents} agent${this.activeAgents === 1 ? "" : "s"}`
+        : `${C.dim}🤖 idle${C.reset}`;
+      const agentStr = ` │ ${agentLabel}`;
       const turnStr = this.currentTurn > 0 ? ` │ turn ${this.currentTurn}` : "";
       // Phase 3 — pulsing status glyph while a compaction is in flight.
       const pulse = this.pulsing ? `${C.cyan}${PULSE[Math.floor(Date.now() / 250) % PULSE.length]}${C.reset} ` : "";
@@ -381,37 +478,40 @@ export class MegaRuntime {
       const ctxPct = this.lastCtxPercent != null ? this.lastCtxPercent / 100 : 0;
       const sTxt = (sessPct * 100).toFixed(sessPct * 100 >= 10 ? 0 : 1);
       const rTxt = (repoPct * 100).toFixed(repoPct * 100 >= 10 ? 0 : 1);
+      // Full-width panel: read the real terminal width and pad each line with a
+      // panel background so the above-editor widget reads as a full-width status
+      // bar. pi's widget renderer does not pass width to setWidget(), so we pad
+      // ourselves. Falls back to 200 cols when stdout.columns is unavailable.
+      const W = process.stdout?.columns ?? 200;
       const lines = [
+        // top border — full-width hairline
+        panelBar(W, "─"),
         // L1 — header: tier + ctx-fill bar (20-cell, green=room→red=full) +
-        // tokens + status glyph + checkpoints + agents/turn. Widened to use the
-        // terminal width; the context bar is the only live-moving bar.
-        ` ${C.amber}⚡ ${tierLabel}${C.reset} v${C.bold}${ownVersion()}${C.reset} ${ramp(ctxPct, 20)} ${C.bold}${pctStr}${C.reset} ${tokStr}/${maxStr} │ ${triggerLabel} │ ${st.checkpointCount} chk${agentStr}${turnStr}`,
+        // tokens + status glyph + checkpoints + agents/turn. The context bar is
+        // the only live-moving bar; the whole block is padded to full width.
+        panelLine(` ${C.amber}⚡ ${tierLabel}${C.reset} v${C.bold}${ownVersion()}${C.reset} ${ramp(ctxPct, 20)} ${C.bold}${pctStr}${C.reset} ${tokStr}/${maxStr} │ ${triggerLabel} │ ${st.checkpointCount} chk${agentStr}${turnStr}`, W),
         // L2 — savings EXPLAINED, not bar'd. The freed/(freed+kept) ratio
-        // saturates near 100% once cumulative freed dwarfs live kept (4.8mil
-        // freed vs 612 kept), so a bar is visually useless. Instead show the
-        // compaction story: "in→kept (X% freed)" reads as "compacted N tokens
-        // down to M, freeing X%". Plus repo-wide chk/session counts.
-        `   ${C.magenta}dup ${dedupStr}${C.reset} │ ${C.gray}sess${C.reset} ${fmt(sessIn)}→${fmt(sessKept)} kept ${C.green}(${sTxt}% freed)${C.reset} · ${C.gray}all-time${C.reset} ${fmt(repoIn)}→${fmt(repoKept)} kept ${C.blue}(${rTxt}% freed)${C.reset} │ ${repo.checkpointCount} chk/${repo.sessionCount} sess`,
+        // saturates near 100% once cumulative freed dwarfs live kept, so a bar
+        // is visually useless; show the compaction story instead.
+        panelLine(`   ${C.magenta}dup ${dedupStr}${C.reset} │ ${C.gray}sess${C.reset} ${fmt(sessIn)}→${fmt(sessKept)} kept ${C.green}(${sTxt}% freed)${C.reset} · ${C.gray}all-time${C.reset} ${fmt(repoIn)}→${fmt(repoKept)} kept ${C.blue}(${rTxt}% freed)${C.reset} │ ${repo.checkpointCount} chk/${repo.sessionCount} sess`, W),
       ];
       // Live "now processing" line + why + recent deduped/compacted events,
-      // collapsed to ONE rotating line (fresh only). The ticker ring buffer
-      // (≤5 most-recent events) is cycled one-per-repaint so the line scrolls
-      // through recent files in real time while activity fires. We rotate on a
-      // 250ms step (same cadence as the pulse), using an event counter as the
-      // deterministic phase so consecutive repaints advance the visible entry.
+      // collapsed to ONE rotating line (fresh only); padded to full width.
       const fresh = Date.now() - this.lastActivityAt < 4000;
       if (this.tierTrace && fresh) {
-        lines.push(`   ${pulse}${this.tierTrace}`);
+        lines.push(panelLine(`   ${pulse}${this.tierTrace}`, W));
       } else if (this.ticker.length > 0) {
         const step = Math.floor(Date.now() / 250);
         const idx = this.ticker.length - 1 - (step % this.ticker.length);
         const head = this.ticker[idx].text;
         const why = this.lastWhy ? ` ${C.gray}· ${this.lastWhy}${C.reset}` : "";
         const more = this.ticker.length > 1 ? ` ${C.dim}(+${this.ticker.length - 1} more)${C.reset}` : "";
-        lines.push(`   ${fresh ? C.teal : C.dim}${head}${why}${more}${C.reset}`);
+        lines.push(panelLine(`   ${fresh ? C.teal : C.dim}${head}${why}${more}${C.reset}`, W));
       } else if (this.pulsing) {
-        lines.push(`   ${pulse}${C.teal}compacting…${C.reset}`);
+        lines.push(panelLine(`   ${pulse}${C.teal}compacting…${C.reset}`, W));
       }
+      // bottom border — full-width hairline closes the panel
+      lines.push(panelBar(W, "─"));
       // (Accounting folded into L2's "in→kept (X% freed)" framing — freed =
       //  in − kept is implied, and the saturated-ratio bars are gone.)
       ctx.ui.setWidget(WIDGET_KEY, lines, { placement: "aboveEditor" });
@@ -454,7 +554,7 @@ export class MegaRuntime {
    */
   captureModel(ctx: ExtensionContext): void {
     const m = ctx.model;
-    if (!m) return;
+    if (!m) { this.appendEvent("captureModel:no-model", { cwd: ctx.cwd }); return; }
     if (this.currentModel && this.currentModel.modelId === m.id && this.currentModel.provider === m.provider) return;
     let providerName: string | null = null;
     try { providerName = ctx.modelRegistry?.getProviderDisplayName(m.provider) ?? null; } catch { /* optional */ }
@@ -470,9 +570,27 @@ export class MegaRuntime {
       reasoning: !!m.reasoning,
     };
     this.currentModel = { ...snap, capturedAt: Date.now() };
+    this.diagCaptureModelCalls++;
+    const repo = resolveRepoRoot(ctx.cwd) ?? this.currentStateDir;
+    // S26: previously a single silent `catch {}` hid every capture failure, so
+    // model_snapshots stayed empty and the cost card read $0.00 with zero signal.
+    // Split per-write + append to events.log (always-on, dashboard live-streams
+    // it) + bump a DIAG counter so a live capture surfaces the root cause.
     try {
-      const repo = resolveRepoRoot(ctx.cwd) ?? this.currentStateDir;
       recordModelSnapshot(repo, snap, this.currentStateDir);
+      this.appendEvent("captureModel:recorded", {
+        repo, modelId: snap.modelId, provider: snap.provider,
+        inputRate: snap.inputRate, outputRate: snap.outputRate,
+      });
+    } catch (e) {
+      this.diagCaptureModelFails++;
+      this.appendEvent("captureModel:record-failed", {
+        repo, modelId: snap.modelId,
+        error: e instanceof Error ? e.message : String(e),
+        stack: e instanceof Error ? e.stack : undefined,
+      });
+    }
+    try {
       // Denormalize the active model into the machine-wide index so the
       // All-repos dashboard table can show provider/model per repo without
       // opening every repo's DB. Best-effort + non-fatal.
@@ -485,7 +603,25 @@ export class MegaRuntime {
         stateDir: this.currentStateDir,
         displayName: repo.split(/[\\/]/).filter(Boolean).pop() ?? repo,
       });
-    } catch { /* non-fatal: cost estimation degrades to model-in-memory only */ }
+    } catch (e) {
+      this.appendEvent("captureModel:index-record-failed", {
+        repo, modelId: snap.modelId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  /**
+   * Append a structured line to the repo's events.log — the always-on
+   * diagnostics sink the dashboard live-streams. Unlike this.logger (gated by
+   * config.debug), this fires in production, so capture failures surface during
+   * a real capture even with debugging off. Best-effort + non-fatal.
+   */
+  private appendEvent(event: string, fields: Record<string, unknown>): void {
+    try {
+      mkdirSync(this.currentStateDir, { recursive: true });
+      appendFileSync(join(this.currentStateDir, "events.log"), JSON.stringify({ ts: Date.now(), event, ...fields }) + "\n");
+    } catch { /* non-fatal */ }
   }
 
   /** S21: state dir of the currently bound repo (where memories live). */

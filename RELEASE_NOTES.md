@@ -1,5 +1,38 @@
 # Release Notes — pi-mega-compact
 
+## v0.6.9 (2026-07-17)
+
+Tiered % compaction threshold — the fire point now scales with the model context window.
+
+### Added (S27)
+- **Percentage-based compaction threshold.** The live + durable trim now fire at
+  `tierPct × contextWindow` — a **% of the model's context window** — instead of
+  a static token amount frozen at boot. Presets are now percents:
+  `low` 50% · `medium` 60% · `high` 70% · `ultra` 70% · `mega` 75%. This
+  scales with model size, so the trim always fires **below** pi's native
+  ~80% auto-compaction for any window (200k → low 100k / high 140k / mega 150k;
+  1M → low 500k / high 700k / mega 750k). `MEGACOMPACT_TIER` selects the %;
+  the old static token amounts (50k/100k/200k/1M/10M) are now only the **boot
+  fallback** used before the first context event reports a window.
+- **Custom stays absolute.** `MEGACOMPACT_THRESHOLD_TOKENS` (the `custom` tier)
+  remains an explicit token count, never percent-scaled — pin an exact fire point
+  regardless of model window.
+- **Pressure band no longer flickers.** The `pressure` getter now uses a single
+  percentage basis (`lastCtxPercent / (tierPct*100)`) when the window is known,
+  so the dual-basis switch that caused 30%↔70s% band oscillation is gone (see
+  `docs/specs/find-pressure-basis-oscillation.md`). Resolves the BACKLOG
+  "thresholdTokens fixed at boot" finding — see `docs/specs/s27-tiered-percent-threshold.md`.
+
+### Changed (display)
+- `/mega-status` now reports `threshold=<eff> (<pct>% of <win> window) tierPct=<…>`.
+- Dashboard **Threshold** card shows `thresholdTokens (NN% of <window>)`.
+
+### Fixed
+- **Live + durable trim were dead code for 200k-window models.** With a static
+  `high`=200k threshold, `high`(200k) == 100% of a 200k window, so pi's
+  native auto-compaction (~80% = 160k) always fired first and our trim never
+  triggered. Now `high` = 70% = 140k < 160k, so our trim fires first.
+
 ## v0.6.7 (2026-07-17)
 
 Crash fix + RAPTOR recall hardening + widget readability.

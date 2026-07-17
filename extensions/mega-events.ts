@@ -30,7 +30,10 @@ import {
 	runMemoryReview,
 } from "./mega-pipeline.js";
 import { recallMemoriesAndInline } from "../src/recall.js";
-import { driveNativeCompaction, type NativeCompactionResult } from "./mega-compact-driver.js";
+import {
+	driveNativeCompaction,
+	type NativeCompactionResult,
+} from "./mega-compact-driver.js";
 import { computeLiveTrimCut, liveTrimSummaryMessage } from "./mega-trim.js";
 import {
 	pressureFromPct,
@@ -227,7 +230,7 @@ export function registerEventHandlers(
 				// threshold at agent_end so we can see if a mid-run durable-trim trigger
 				// *should* have fired but didn't.
 				const overThreshold =
-					(runtime.lastCtxTokens ?? 0) >= config.thresholdTokens;
+					(runtime.lastCtxTokens ?? 0) >= runtime.effectiveThreshold;
 				runtime.diagAgentEndIdle++;
 				runtime.logger.info("agent-end-idle", {
 					sessionId: runtime.rt.sessionId,
@@ -367,13 +370,13 @@ export function registerEventHandlers(
 			estimateSessionTokens(view) ??
 			Math.round((pct / 100) * (usage?.contextWindow ?? 0));
 
-		// FAST GATE: token-based (tier threshold), not percentage-based.
-		if (currentTokens < config.thresholdTokens) {
+		// FAST GATE: token-based (tier% of the window), not a static amount.
+		if (currentTokens < runtime.effectiveThreshold) {
 			runtime.diagCtxFastGate++;
 			return;
 		}
 
-		const check = autoCompactCheck(currentTokens, config.thresholdTokens); // SERVER-STYLE CONFIRM (local)
+		const check = autoCompactCheck(currentTokens, runtime.effectiveThreshold); // SERVER-STYLE CONFIRM (local)
 		if (!check.shouldCompact) {
 			runtime.diagCtxNoCompact++;
 			return;
@@ -548,52 +551,52 @@ export function registerEventHandlers(
 		},
 	);
 
-/**
- * Build a minimal fallback compaction so pi never runs its throwing compact().
- *
- * Used when our Trident/RAPTOR summary is empty or there is nothing to
- * summarize (the anchor floor protects every message). We still record a
- * resume summary + truncate from prep.firstKeptEntryId so the session always
- * gets a compact summary and resumes. Returns undefined only if pi handed us
- * no preparation cut point at all.
- */
-function fallbackCompaction(
-	event: SessionBeforeCompactEvent,
-): NativeCompactionResult | undefined {
-	const prep = event.preparation;
-	if (!prep?.firstKeptEntryId) return undefined;
-	// When messagesToSummarize is empty the anchor floor protects everything,
-	// so firstKeptEntryId == current first entry and the trim is a no-op — but
-	// we still record a resume summary so the session has context after compaction.
-	const tokensBefore = prep.tokensBefore ?? 0;
-	const summary =
-		`[mega-compact] context compacted at ${tokensBefore.toLocaleString()} tokens ` +
-		`(anchor floor active). Continue from the most recent messages above.`;
-	return {
-		compaction: {
-			summary,
-			firstKeptEntryId: prep.firstKeptEntryId,
-			tokensBefore,
-			estimatedTokensAfter: estimateBlockTokens(summary),
-		},
-	};
-}
-
-/**
- * Debounced resume-nudge: restart the agent loop after a compaction (which
- * may have stopped it). Idempotent — one nudge per 30s, never blocks.
- */
-function nudgeResume(pi: ExtensionAPI, runtime: MegaRuntime): void {
-	try {
-		const now = Date.now();
-		if (now >= runtime.resumeNudgeUntil) {
-			runtime.resumeNudgeUntil = now + 30_000;
-			pi.sendUserMessage(
-			"[mega-compact] continue from the compacted context above.",
-		);
-		}
-	} catch {
-		/* non-fatal: a failed nudge never blocks */
+	/**
+	 * Build a minimal fallback compaction so pi never runs its throwing compact().
+	 *
+	 * Used when our Trident/RAPTOR summary is empty or there is nothing to
+	 * summarize (the anchor floor protects every message). We still record a
+	 * resume summary + truncate from prep.firstKeptEntryId so the session always
+	 * gets a compact summary and resumes. Returns undefined only if pi handed us
+	 * no preparation cut point at all.
+	 */
+	function fallbackCompaction(
+		event: SessionBeforeCompactEvent,
+	): NativeCompactionResult | undefined {
+		const prep = event.preparation;
+		if (!prep?.firstKeptEntryId) return undefined;
+		// When messagesToSummarize is empty the anchor floor protects everything,
+		// so firstKeptEntryId == current first entry and the trim is a no-op — but
+		// we still record a resume summary so the session has context after compaction.
+		const tokensBefore = prep.tokensBefore ?? 0;
+		const summary =
+			`[mega-compact] context compacted at ${tokensBefore.toLocaleString()} tokens ` +
+			`(anchor floor active). Continue from the most recent messages above.`;
+		return {
+			compaction: {
+				summary,
+				firstKeptEntryId: prep.firstKeptEntryId,
+				tokensBefore,
+				estimatedTokensAfter: estimateBlockTokens(summary),
+			},
+		};
 	}
-}
+
+	/**
+	 * Debounced resume-nudge: restart the agent loop after a compaction (which
+	 * may have stopped it). Idempotent — one nudge per 30s, never blocks.
+	 */
+	function nudgeResume(pi: ExtensionAPI, runtime: MegaRuntime): void {
+		try {
+			const now = Date.now();
+			if (now >= runtime.resumeNudgeUntil) {
+				runtime.resumeNudgeUntil = now + 30_000;
+				pi.sendUserMessage(
+					"[mega-compact] continue from the compacted context above.",
+				);
+			}
+		} catch {
+			/* non-fatal: a failed nudge never blocks */
+		}
+	}
 }

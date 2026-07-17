@@ -1,4 +1,4 @@
-# Tester Guide — pi-mega-compact v0.6.3
+# Tester Guide — pi-mega-compact v0.6.9
 
 This guide is for QA testers and contributors validating pi-mega-compact before
 a release or after a change. It covers environment setup, the automated test
@@ -190,23 +190,24 @@ configured threshold.
    /mega-status
    ```
    The status output shows `preset` (the `MEGACOMPACT_TIER` base preset, default
-   `low` = 50k tokens) and `MEGACOMPACT_FAST_GATE_PCT` (default 70%). The headline
+   `low` = 50% of the model context window) and `MEGACOMPACT_FAST_GATE_PCT` (default 70%). The headline
    `tier` is the **live pressure band** (`low`/`medium`/`high`/`ultra`/`mega`), not
    a manual setting — there is no `/mega-tier` command (removed in v0.6.0).
 3. Work a session until context fills past the gate percentage (70%+ of the
    tier threshold). You can speed this up by:
    - Reading large files repeatedly.
    - Having long conversations.
-   - Setting `MEGACOMPACT_TIER=low` (50k threshold) so the gate fires sooner.
+   - Setting `MEGACOMPACT_TIER=low` (50% of the context window) so the gate fires sooner.
 4. Watch the live stats widget above the pi editor:
    ```
     ⚡ low·low v0.6.0 │ 35k/50k tokens (70%) │ 0 chkpts │ turn 12
       ◐ armed │ dedup: 0% │ saved: 0 tok
    ```
    The headline band **auto-climbs** as context fills: `low → medium → high →
-   ultra → mega` (driven by `currentTokens / thresholdTokens`), then falls back
+   ultra → mega` (driven by `currentTokens / effectiveThreshold`, where
+   `effectiveThreshold = tierPct × contextWindow`), then falls back
    as a compaction relieves pressure. The trigger state should transition:
-   `○ idle` → `◐ armed` (≥ gate %) → `● ready` (≥ threshold).
+   `○ idle` → `◐ armed` (≥ gate %) → `● ready` (≥ effectiveThreshold = tierPct × window).
 5. When the trigger fires, you should see:
    - A `compact_start` event in `events.log`.
    - Context visibly drops (token count decreases).
@@ -410,18 +411,25 @@ near-duplicate regions correctly.
 
 **Reading the pressure band (don't misread it as a leak):**
 
-- The band is `pressure = currentTokens / thresholdTokens` — a **ratio**, not an
-  absolute context size. An **instant** drop (e.g. 70s → ~30% in under a second,
+- The band is `pressure = currentTokens / effectiveThreshold` — a **ratio** over
+  the live fire point `effectiveThreshold = tierPct × contextWindow` (a **% of
+  the model context window**). When the window is known, pressure uses a
+  **single percentage basis** (`lastCtxPercent / (tierPct*100)`), so the band no
+  longer flickers between a token-ratio and a percent basis on alternating
+  context events (the old 30%↔70s% oscillation is gone — see
+  `docs/specs/s27-tiered-percent-threshold.md`).
+- An **instant** drop (e.g. 70s → ~30% in under a second,
   no 30s+ compaction pause) is **not** compaction and **not** a context shrink.
-  It is the ratio being recomputed against a moving `thresholdTokens` basis.
+  It is the ratio being recomputed against a moving `effectiveThreshold` basis
+  (e.g. the window changed, or the `custom` tier / pre-first-context-event
+  fallback re-read).
 - **Genuine compaction takes 30s+** (disk rewrite + session reload). If the band
   drops that fast with no pause, it's the denominator changing, not the context
   actually shrinking. Treat sub-second drops as measurement artifacts.
-- **Wild jumps** (e.g. 30% → high-70s% → instant drop-back) are the same artifact:
-  the same absolute token count shows differently as `thresholdTokens` is
-  re-read. Report these with the **exact band values + the time between them**;
-  they are useful signal for stabilizing `thresholdTokens` (see Known Issues),
-  but they are not leaks or data loss on their own.
+- **Wild jumps** now only occur on the **fallback path** (a `custom` tier or
+  before the first context event provides a window, where the fire point falls back
+  to the boot token value). Report these with the **exact band values + the time
+  between them**; they are useful signal but not leaks or data loss on their own.
 - If you want to confirm whether a drop was real compaction vs. a recompute,
   check the **compaction graph / SSE event stream** — real compaction emits a
   compaction event; a recompute does not.
@@ -688,15 +696,18 @@ include:
 - **No remote monitoring.** All monitoring is local files (`events.log`,
   `dashboard.json`). No telemetry, no remote alertmanager (PREVENT-PI-004).
 
-- **Pressure band can show wild jumps / instant drop-backs (measurement artifact,
-  not a leak).** The band is `pressure = currentTokens / thresholdTokens` — a
-  ratio over a `thresholdTokens` value that can be re-read mid-session, so the
-  same absolute token count displays differently frame-to-frame (e.g. 30% →
-  high-70s% → instant drop-back). A genuine compaction takes 30s+ and emits a
-  compaction event; an instant drop is a recomputed denominator. Candidate fix:
-  cache `thresholdTokens` for the session. Tracked for a follow-up; see the
-  Dashboard "Reading the pressure band" note above for how to tell the two apart
-  when reporting.
+- **Pressure band wild jumps / instant drop-backs (largely resolved).** The old
+  root cause — a static `thresholdTokens` frozen at boot (`loadConfig()`) plus a
+  dual-basis switch (token-ratio vs percent) — is addressed by the tiered-%
+  threshold: `effectiveThreshold = tierPct × contextWindow` is computed per-window
+  at runtime (no longer fixed at boot), and the `pressure` getter uses one
+  percentage basis when the window is known, so the 30%↔70s% flicker is gone.
+  See `docs/specs/s27-tiered-percent-threshold.md` and the Dashboard
+  "Reading the pressure band" note above. **Residual:** a brief recompute can
+  still show on the fallback path (`custom` tier or before the first context event
+  reports a window, where the fire point falls back to the boot token value). A
+  genuine compaction still takes 30s+ and emits a compaction event; an instant
+  drop is a recomputed denominator, not a leak.
 
 ---
 
