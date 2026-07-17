@@ -54,6 +54,13 @@ export interface MegaConfig {
    *  trim + pi native auto-compaction instead (compact and continue). Kept for
    *  one release as rollback. */
   legacyDurableTrim: boolean;
+  /** S27: durable raw-transcript DB mirror (MEGACOMPACT_DB_MIRROR). When on,
+   *  raw message bytes + checkpoint-epoch bookkeeping are appended to the
+   *  SQLite store so a compacted window can be rehydrated locally instead of
+   *  from the pi runtime transcript. Default OFF — additive, no behavior
+   *  change until flipped on. legacyDurableTrim takes precedence (the legacy
+   *  v0.4.28 ctx.compact() path does not emit the S27 mirror hook). */
+  dbMirror: boolean;
   /** Cross-repo recall enabled (S17). Resume + /mega-recall --cross-repo can
    *  pull checkpoints from OTHER repos via the PGlite HNSW index. Default true. */
   crossRepoEnabled: boolean;
@@ -136,6 +143,7 @@ export function loadConfig(): MegaConfig {
     dedupSim: Number(process.env.MEGACOMPACT_DEDUP_SIM ?? "0.9"),
     raptorEnabled: envBool("MEGACOMPACT_RAPTOR_ENABLED", true),
     legacyDurableTrim: envBool("MEGACOMPACT_LEGACY_DURABLE_TRIM", false),
+    dbMirror: envBool("MEGACOMPACT_DB_MIRROR", false),
     crossRepoEnabled: envBool("MEGACOMPACT_CROSSREPO_ENABLED", true),
     crossRepoCosine: Number(process.env.MEGACOMPACT_CROSSREPO_COSINE ?? "0.90"),
     memoryAutoReview: envBool("MEGACOMPACT_MEMORY_AUTO_REVIEW", true),
