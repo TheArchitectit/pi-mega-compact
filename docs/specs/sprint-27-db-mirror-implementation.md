@@ -5,7 +5,7 @@
 **Blocks on:** Tasks 1–4 (schema, helpers, epoch.ts, config flag) — ✅ merged
 **Priority:** P0 (cache stability = direct $ savings)
 
-**Status:** Tasks 5–6 ✅ implemented. Tasks 7–9 pending.
+**Status:** Tasks 5–9 ✅ implemented (v0.7.4). Task 10 (DB maintenance /commands) ✅ implemented (v0.7.5). S27 complete.
 
 ---
 

@@ -1,5 +1,24 @@
 # Release Notes — pi-mega-compact
 
+## v0.7.5 (2026-07-17)
+
+DB maintenance /commands for the S27 DB-mirror store — inspect, prune, vacuum, integrity-check, and reconcile the raw_transcript + dedup_mirror tables.
+
+### Added
+
+- **`/mega-db-stats`** — table row counts, disk footprint (main + WAL + SHM), page count, freelist %, WAL frame count. Read-only; safe any time.
+- **`/mega-db-prune [days]`** — DELETE `raw_transcript` + `checkpoint_epochs` rows older than N days (default 30), plus orphan `dedup_mirror` rows. Reports deleted counts + reclaimed bytes.
+- **`/mega-db-vacuum`** — `VACUUM` the main DB (rebuilds pages, reclaims freelist). Heavy: briefly doubles disk usage.
+- **`/mega-db-check`** — `PRAGMA integrity_check` + `wal_checkpoint(TRUNCATE)`. Fold the WAL into the main file and verify DB health.
+- **`/mega-db-reconcile`** — fix `dedup_mirror.ref_count` drift vs actual `raw_transcript` refs, delete orphan dedup rows, backfill missing `content_ref`. Run after `/mega-db-prune` or a crash.
+- **Auto-maintenance on `session_start`** — best-effort prune (30d) + WAL checkpoint (>10MB) + VACUUM (DB >100MB AND freelist >20%). Never blocks session start; logs a one-line summary.
+
+All maintenance primitives live in `src/store/sqlite.ts` (pi-agnostic, parameterized queries, local SQLite only). Commands registered in `extensions/mega-db-cmds.ts`. Auto-maintenance wired in `extensions/mega-events.ts`.
+
+Full suite: 407 passed, 0 failed across 41 files.
+
+---
+
 ## v0.7.4 (2026-07-17)
 
 Fixes a compaction race that surfaced spurious "Already compacted" / "Auto compaction failed" errors, plus the S27 DB-mirror foundation for byte-stable prompt-cache keys.

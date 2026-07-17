@@ -16,7 +16,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { normalizeSessionId } from "../src/store.js";
-import { openStore, appendRawTranscript, writeCheckpointEpoch, type CheckpointEpoch } from "../src/store/sqlite.js";
+import { openStore, appendRawTranscript, writeCheckpointEpoch, autoMaintain, type CheckpointEpoch } from "../src/store/sqlite.js";
 import { epochIdFor } from "../src/mirror/epoch.js";
 import { autoCompactCheck } from "../src/compact.js";
 import { estimateSessionTokens, estimateBlockTokens } from "../src/tokens.js";
@@ -157,6 +157,16 @@ export function registerEventHandlers(
 			} catch (err) {
 				runtime.logger.warn("memory-recall skipped", { err: String(err) });
 			}
+		}
+		// S27 Task 10: best-effort auto-maintenance on session start (prune rows
+		// older than 30d, checkpoint WAL if >10MB, VACUUM if DB >100MB + >20%
+		// freelist). Never blocks session start — swallows errors and logs a
+		// one-line summary for diagnostics.
+		try {
+			const m = autoMaintain(runtime.currentStateDir);
+			if (m && !m.endsWith("nothing to do")) runtime.logger.info("db-auto-maintain", { result: m });
+		} catch (e) {
+			runtime.logger.warn("db-auto-maintain-fail", { error: String(e) });
 		}
 		runtime.dashboard.event("session_start", {
 			reason: event.reason,

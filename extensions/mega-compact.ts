@@ -32,6 +32,7 @@ import { registerEventHandlers } from "./mega-events.js";
 import { registerCommands } from "./mega-commands.js";
 import { registerDashboardCommands } from "./mega-dashboard-cmds.js";
 import { registerConflictCommands } from "./mega-conflict-cmds.js";
+import { registerDbCommands } from "./mega-db-cmds.js";
 
 export default function (pi: ExtensionAPI) {
   const config = loadConfig();
@@ -40,4 +41,5 @@ export default function (pi: ExtensionAPI) {
   registerCommands(pi, runtime, config);
   registerDashboardCommands(pi, runtime);
   registerConflictCommands(pi, runtime);
+  registerDbCommands(pi, runtime);
 }

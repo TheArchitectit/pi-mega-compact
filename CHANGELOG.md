@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.7.5 (2026-07-17) — DB maintenance /commands (S27 Task 10)
+
+- **feat(db-maint): `/mega-db-*` commands + auto-maintenance.** S27 Task 10.
+  - `src/store/sqlite.ts` — new maintenance primitives: `getDbStats`,
+    `pruneOldRows`, `checkpointWal`, `vacuumDb`, `integrityCheck`,
+    `reconcileDedupMirror`, `autoMaintain`. All parameterized (PREVENT-002),
+    local SQLite (PREVENT-PI-004).
+  - `extensions/mega-db-cmds.ts` (new) — registers `/mega-db-stats`,
+    `/mega-db-prune [days]`, `/mega-db-vacuum`, `/mega-db-check`,
+    `/mega-db-reconcile`.
+  - `extensions/mega-compact.ts` — wires `registerDbCommands`.
+  - `extensions/mega-events.ts` — best-effort `autoMaintain` on `session_start`
+    (prune 30d, WAL checkpoint >10MB, VACUUM DB >100MB + freelist >20%). Never
+    blocks session start.
+  - `src/store/sqlite.dbmaint.test.ts` (new) — 12 unit tests for the
+    maintenance primitives.
+
+Full suite: 407 passed, 0 failed across 41 files.
+
 ## v0.7.4 (2026-07-17) — compaction race fix + S27 DB-mirror foundation
 
 - **fix(compaction): prevent "Already compacted" race in agent_end.** pi emits
