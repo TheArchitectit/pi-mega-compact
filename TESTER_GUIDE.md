@@ -1,4 +1,4 @@
-# Tester Guide — pi-mega-compact v0.5.1
+# Tester Guide — pi-mega-compact v0.6.3
 
 This guide is for QA testers and contributors validating pi-mega-compact before
 a release or after a change. It covers environment setup, the automated test
@@ -42,6 +42,21 @@ pi auto-discovers the extension from the package's own
 > `/mega-status` prints the same version. This is the fastest way to verify the
 > update actually landed. Check the registry with
 > `npm view pi-mega-compact version`.
+
+> **Beware a stale `extensions/` copy shadowing the npm install.** pi pulls the
+> npm-managed extension into `~/.pi/agent/npm/node_modules/pi-mega-compact`, but
+> a **separate, older copy can linger at `~/.pi/agent/extensions/pi-mega-compact`**
+> (e.g. a past dev symlink or manual install). That copy is what pi actually
+> loads if present — and it can be a much older version whose `src/` still has the
+> static pglite import, crashing at load with `Cannot find module '@electric-sql/pglite'`
+> even after you publish a fixed version. Symptoms: `pi` crashes on startup, but
+> `npm view pi-mega-compact version` shows the new version. Fix: `pi uninstall npm:pi-mega-compact`,
+> then `rm -rf ~/.pi/agent/extensions/pi-mega-compact`, then reinstall. Always
+> verify the loaded path + version:
+> ```bash
+> pi list | grep pi-mega-compact        # path must be .../npm/node_modules/... , NOT .../extensions/...
+> cat ~/.pi/agent/npm/node_modules/pi-mega-compact/package.json | grep '"version"'   # must equal the published version
+> ```
 
 ### From a git checkout (development only — NOT a valid test target)
 
@@ -393,6 +408,24 @@ near-duplicate regions correctly.
 - `/mega-dashboard-stop` cleanly shuts down the server.
 - Server only listens on `127.0.0.1` (no network exposure).
 
+**Reading the pressure band (don't misread it as a leak):**
+
+- The band is `pressure = currentTokens / thresholdTokens` — a **ratio**, not an
+  absolute context size. An **instant** drop (e.g. 70s → ~30% in under a second,
+  no 30s+ compaction pause) is **not** compaction and **not** a context shrink.
+  It is the ratio being recomputed against a moving `thresholdTokens` basis.
+- **Genuine compaction takes 30s+** (disk rewrite + session reload). If the band
+  drops that fast with no pause, it's the denominator changing, not the context
+  actually shrinking. Treat sub-second drops as measurement artifacts.
+- **Wild jumps** (e.g. 30% → high-70s% → instant drop-back) are the same artifact:
+  the same absolute token count shows differently as `thresholdTokens` is
+  re-read. Report these with the **exact band values + the time between them**;
+  they are useful signal for stabilizing `thresholdTokens` (see Known Issues),
+  but they are not leaks or data loss on their own.
+- If you want to confirm whether a drop was real compaction vs. a recompute,
+  check the **compaction graph / SSE event stream** — real compaction emits a
+  compaction event; a recompute does not.
+
 ---
 
 ### 6. DR Drill
@@ -654,6 +687,16 @@ include:
 
 - **No remote monitoring.** All monitoring is local files (`events.log`,
   `dashboard.json`). No telemetry, no remote alertmanager (PREVENT-PI-004).
+
+- **Pressure band can show wild jumps / instant drop-backs (measurement artifact,
+  not a leak).** The band is `pressure = currentTokens / thresholdTokens` — a
+  ratio over a `thresholdTokens` value that can be re-read mid-session, so the
+  same absolute token count displays differently frame-to-frame (e.g. 30% →
+  high-70s% → instant drop-back). A genuine compaction takes 30s+ and emits a
+  compaction event; an instant drop is a recomputed denominator. Candidate fix:
+  cache `thresholdTokens` for the session. Tracked for a follow-up; see the
+  Dashboard "Reading the pressure band" note above for how to tell the two apart
+  when reporting.
 
 ---
 
