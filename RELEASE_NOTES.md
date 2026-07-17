@@ -1,5 +1,24 @@
 # Release Notes — pi-mega-compact
 
+## v0.7.4 (2026-07-17)
+
+Fixes a compaction race that surfaced spurious "Already compacted" / "Auto compaction failed" errors, plus the S27 DB-mirror foundation for byte-stable prompt-cache keys.
+
+### Fixed
+
+- **Compaction race — "Already compacted" / "Auto compaction failed".** pi emits `agent_end` BEFORE its own native auto-compaction (`_checkCompaction`), so our manual durable-trim `ctx.compact()` call raced with pi's native compaction and surfaced a spurious error toast to the user. A new `session_compact` listener stamps `lastNativeCompactAt` for every compaction (manual/threshold/overflow, ours or pi's own), and both `ctx.compact()` call sites (agent_end mid-run trim + legacy path) now skip for 10s after a native compaction. The guard uses `lastNativeCompactAt` (not `lastCompactAt`, which our own checkpoint persistence also stamps — that would falsely skip).
+
+### Added (S27 DB-mirror, behind `MEGACOMPACT_DB_MIRROR`, default OFF)
+
+- **Raw transcript mirror.** All incoming messages are appended to a new `raw_transcript` SQLite table (idempotent, `content_hash` primary key) when `MEGACOMPACT_DB_MIRROR=1`. This is the byte-stable source of truth for prompt-cache-key stability.
+- **Deterministic epoch nonce.** `checkpoint_epochs` rows are written with a deterministic FNV-1a nonce (`src/mirror/epoch.ts`) so replaying/refreshing the same compaction yields the same epoch id (idempotent upserts).
+- **Dedup pipeline.** `dedup_mirror` table stores unique `content_bytes` once; `raw_transcript` rows reference it via `content_ref` with `ref_count` tracking. `dedupTranscript()` runs fire-and-forget after each compaction.
+- **Recall demotion contract.** `src/recall.ts` documents the S27 preference: when the mirror is ON, `raw_transcript + dedup_mirror` are preferred for byte-stable reconstruction; the legacy JSON checkpoint is a DR fallback only. The VectorStore recall path (fast semantic search) is unaffected.
+
+Full suite: 395 passed, 0 failed across 40 files.
+
+---
+
 ## v0.7.3 (2026-07-17)
 
 Widget content now wraps to fill terminal width — one long line that adapts to screen size.
