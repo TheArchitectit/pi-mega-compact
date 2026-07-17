@@ -226,18 +226,24 @@ export function extractiveSummarize(messages: EngineMessage[]): ExtractiveSummar
     return { topicSummary: "(empty)", keyDecisions: [], nextSteps: [], filesModified: [], tokenEstimate: 0 };
   }
 
-  const toolMsgs = messages.filter((m) => m.role === "tool");
+  // PREVENT crash: tool/custom messages can arrive with `text: undefined` when
+  // only `input`/`output` is set (the type says string, but pi's runtime does
+  // not always fill it). Coerce to "" once at the entry so every downstream
+  // `.text` / `.matchAll` / `.split` access is safe.
+  const safe = messages.map((m) => ({ ...m, text: m.text ?? "" }));
+
+  const toolMsgs = safe.filter((m) => m.role === "tool");
   const tools = [...new Set(messages.flatMap((m) => (m.toolName ? [m.toolName] : [])))].sort();
 
-  const recentUser = collectRecentUserRequests(messages, MAX_RECENT_USER);
-  const currentWork = inferCurrentWork(messages);
-  const keyFiles = collectKeyFiles(messages);
-  const pending = inferPendingWork(messages);
-  const keyDecisions = extractDecisions(messages);
+  const recentUser = collectRecentUserRequests(safe, MAX_RECENT_USER);
+  const currentWork = inferCurrentWork(safe);
+  const keyFiles = collectKeyFiles(safe);
+  const pending = inferPendingWork(safe);
+  const keyDecisions = extractDecisions(safe);
   const filesModified = extractFilesModified(toolMsgs);
 
   const topicSummary = buildTopicSummary(
-    messages, tools, recentUser, currentWork, keyFiles, pending,
+    safe, tools, recentUser, currentWork, keyFiles, pending,
   );
 
   const tokenEstimate = estimateBlockTokens(topicSummary);

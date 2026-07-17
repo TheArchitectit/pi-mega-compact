@@ -254,7 +254,9 @@ export function backfillRaptor(
     return { phase: "RAPTOR", processed: 0, batches: 0, interrupted: false, cursor: undefined };
   }
   const tree = buildRaptorTree(leaves, { embedder });
-  saveRaptorTree(sessionId, tree, stateDir);
+  // S25: freshness-guard timestamp = newest checkpoint's epoch.
+  const builtAt = all.length > 0 ? Math.max(...all.map((c) => c.timestamp)) : Date.now();
+  saveRaptorTree(sessionId, tree, Number.isFinite(builtAt) ? builtAt : Date.now(), stateDir);
   const db = openStore(stateDir);
   ensureProgressTable(db);
   savePhaseCursor(db, "RAPTOR", leaves[leaves.length - 1].id, leaves.length);

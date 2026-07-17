@@ -458,6 +458,7 @@ function initSchema(db: DatabaseSync): void {
       embedding_blob BLOB,         -- float32 centroid
       quality_marker TEXT DEFAULT 'low',
       token_estimate INTEGER,
+      built_at     INTEGER,        -- S25: epoch ms when the tree was built (freshness guard)
       PRIMARY KEY (session_id, id)
     );
     CREATE INDEX IF NOT EXISTS idx_raptor_session ON raptor_nodes(session_id);
@@ -555,6 +556,9 @@ function initSchema(db: DatabaseSync): void {
   ensureColumn(db, "memories", "target", "TEXT");
   ensureColumn(db, "memories", "last_referenced", "INTEGER");
   ensureColumn(db, "memories", "source_turn", "INTEGER");
+  // S25: RAPTOR freshness-guard timestamp. Additive; old DBs have NULL → 0 →
+  // treated as stale → flat fallback (safe).
+  ensureColumn(db, "raptor_nodes", "built_at", "INTEGER");
   const v = db.prepare("SELECT value FROM meta WHERE key='schema_version'").get() as
     | { value: string }
     | undefined;
@@ -1103,6 +1107,16 @@ export function listCheckpoints(sessionId: string, stateDir: string = getStateDi
   return rows.map(rowToCheckpoint);
 }
 
+/** S25: the newest checkpoint timestamp for a session, or 0 when none. Used by
+ *  the RAPTOR freshness guard to reject a tree older than the live checkpoints. */
+export function maxCheckpointTimestamp(sessionId: string, stateDir: string = getStateDir()): number {
+  const db = openStore(stateDir);
+  const row = db
+    .prepare("SELECT MAX(timestamp) AS mx FROM context_chunks WHERE session_id = ?")
+    .get(normalizeSessionId(sessionId)) as { mx: number | null } | undefined;
+  return Number(row?.mx ?? 0);
+}
+
 /** Next sequential checkpoint id (chkpt_001 …) for a session. */
 export function nextCheckpointId(sessionId: string, stateDir: string = getStateDir()): string {
   const db = openStore(stateDir);
@@ -1404,18 +1418,21 @@ export interface StoredRaptorNode {
   embedding: number[];
   qualityMarker: string;
   tokenEstimate: number;
+  /** S25: epoch ms when the tree containing this node was built. */
+  builtAt: number;
 }
 
 /** Persist a single RAPTOR node (upsert by (session_id, id)). */
 export function upsertRaptorNode(node: StoredRaptorNode, stateDir: string = getStateDir()): void {
   const db = openStore(stateDir);
   db.prepare(
-    `INSERT INTO raptor_nodes(id, session_id, level, parent_id, children, summary, embedding_blob, quality_marker, token_estimate)
-     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO raptor_nodes(id, session_id, level, parent_id, children, summary, embedding_blob, quality_marker, token_estimate, built_at)
+     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(session_id, id) DO UPDATE SET
        level=excluded.level, parent_id=excluded.parent_id, children=excluded.children,
        summary=excluded.summary, embedding_blob=excluded.embedding_blob,
-       quality_marker=excluded.quality_marker, token_estimate=excluded.token_estimate`,
+       quality_marker=excluded.quality_marker, token_estimate=excluded.token_estimate,
+       built_at=excluded.built_at`,
   ).run(
     node.id,
     node.sessionId,
@@ -1426,13 +1443,26 @@ export function upsertRaptorNode(node: StoredRaptorNode, stateDir: string = getS
     encodeEmbedding(node.embedding),
     node.qualityMarker,
     node.tokenEstimate,
+    node.builtAt,
   );
 }
 
 /** Persist an entire built RAPTOR tree for a session (shadow or live). */
 export function saveRaptorTree(
   sessionId: string,
-  tree: { nodes: Map<string, { id: string; level: number; parentId: string | null; children: string[]; summary: string; embedding: number[]; qualityMarker: string; tokenEstimate: number }> },
+  tree: {
+    nodes: Map<string, {
+      id: string;
+      level: number;
+      parentId: string | null;
+      children: string[];
+      summary: string;
+      embedding: number[];
+      qualityMarker: string;
+      tokenEstimate: number;
+    }>
+  },
+  builtAt: number,
   stateDir: string = getStateDir(),
 ): void {
   for (const node of tree.nodes.values()) {
@@ -1447,6 +1477,7 @@ export function saveRaptorTree(
         embedding: node.embedding,
         qualityMarker: node.qualityMarker,
         tokenEstimate: node.tokenEstimate,
+        builtAt,
       },
       stateDir,
     );
@@ -1469,6 +1500,7 @@ export function listRaptorNodes(sessionId: string, stateDir: string = getStateDi
     embedding: decodeEmbedding(row.embedding_blob),
     qualityMarker: row.quality_marker ?? "low",
     tokenEstimate: row.token_estimate ?? 0,
+    builtAt: Number(row.built_at ?? 0),
   }));
 }
 

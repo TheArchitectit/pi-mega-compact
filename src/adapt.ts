@@ -44,26 +44,41 @@ export function messageToolName(m: AgentMessage): string | undefined {
 /** Pull the text out of a string-or-blocks content field. */
 function contentText(content: string | Array<{ type: string; text?: string }>): string {
   if (typeof content === "string") return content;
+  // PREVENT crash: pi blocks can arrive with `text: undefined` or a missing
+  // `content` field (tool/custom messages). Coerce to a string at the single
+  // choke point so every downstream `.matchAll`/`.split`/`.toLowerCase` is safe
+  // (extractive.ts, compact.ts, supersede.ts, summarizer.ts, boundary.ts).
+  if (!Array.isArray(content)) return "";
   return content
-    .filter((c) => c.type === "text" && typeof c.text === "string")
+    .filter((c) => c?.type === "text" && typeof c.text === "string")
     .map((c) => c.text as string)
     .join("\n");
 }
 
 /** Project any AgentMessage into a single text blob the engine can reason on. */
 function messageText(m: AgentMessage): string {
+  let out: string;
   switch (m.role) {
     case "toolResult":
     case "user":
     case "assistant":
     case "custom":
-      return contentText((m as { content: string | Array<{ type: string; text?: string }> }).content);
+      out = contentText((m as { content: string | Array<{ type: string; text?: string }> }).content);
+      break;
     case "bashExecution":
-      return `${(m as { command: string }).command}\n${(m as { output: string }).output}`;
+      out = `${(m as { command: string }).command ?? ""}\n${(m as { output: string }).output ?? ""}`;
+      break;
     case "branchSummary":
     case "compactionSummary":
-      return (m as { summary: string }).summary;
+      out = (m as { summary: string }).summary ?? "";
+      break;
+    default:
+      out = "";
+      break;
   }
+  // PREVENT crash: final safety net — never let `undefined`/`null` escape the
+  // adapter into the engine, which assumes `text: string` everywhere.
+  return out ?? "";
 }
 
 /**

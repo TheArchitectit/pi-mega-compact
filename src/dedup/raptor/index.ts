@@ -31,6 +31,8 @@ export interface RaptorOrchestratorOptions {
   consistencyThreshold?: number;
   /** Best-effort logger for shadow events. */
   logger?: Logger;
+  /** S25: epoch ms to stamp on every node (freshness guard). Defaults to now. */
+  builtAt?: number;
 }
 
 /**
@@ -54,7 +56,8 @@ export function runRaptor(
       clustersPerLevel: opts.clustersPerLevel,
       consistencyThreshold: opts.consistencyThreshold,
     });
-    saveRaptorTree(opts.sessionId, tree, opts.stateDir);
+    const builtAt = opts.builtAt ?? Date.now();
+    saveRaptorTree(opts.sessionId, tree, builtAt, opts.stateDir);
     logger?.info("raptor_build", {
       sessionId: opts.sessionId,
       nodes: tree.nodes.size,
@@ -105,6 +108,15 @@ export function rehydrateRaptorTree(
 ): RaptorTree | null {
   const nodes = listRaptorNodes(sessionId, stateDir);
   if (nodes.length === 0) return null;
+  // S25: derive freshness + fallback metadata from the persisted nodes.
+  // builtAt = max node built_at (0 when unknown → caller treats as stale).
+  // timedOut = the tree's root is the extractive-fallback marker (level 99).
+  const builtAt = nodes.reduce((max, n) => Math.max(max, n.builtAt), 0);
+  const root = nodes.reduce<typeof nodes[number] | null>(
+    (best, n) => (!best || n.level > (best?.level ?? -1) ? n : best),
+    null,
+  );
+  const timedOut = root != null && root.level >= 99;
   const tree: RaptorTree = {
     nodes: new Map(
       nodes.map((n) => [
@@ -121,13 +133,10 @@ export function rehydrateRaptorTree(
         },
       ]),
     ),
-    rootId:
-      nodes.reduce<typeof nodes[number] | null>(
-        (best, n) => (!best || n.level > (best?.level ?? -1) ? n : best),
-        null,
-      )?.id ?? null,
+    rootId: root?.id ?? null,
     levels: Math.max(1, ...nodes.map((n) => n.level + 1)),
-    timedOut: false,
+    timedOut,
+    builtAt,
   };
   return tree;
 }

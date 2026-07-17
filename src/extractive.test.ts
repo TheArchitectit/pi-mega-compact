@@ -7,6 +7,24 @@ function msg(role: EngineMessage["role"], text: string, toolName?: string): Engi
   return toolName ? { role, text, toolName, input: text, output: text } : { role, text };
 }
 
+// ---- Crash regression: undefined text (S25 hotfix) ------------------------
+// pi tool/custom messages can arrive with `text: undefined` when only
+// input/output is set. The adapter (adapt.ts) now coerces to "", and
+// extractiveSummarize guards its entry too. This test pins the no-crash
+// contract directly against the engine entry (defense in depth).
+test("extractiveSummarize does not crash on messages with undefined text", () => {
+  const messages = [
+    { role: "user", text: "please edit src/index.ts" },
+    { role: "assistant", text: undefined as unknown as string, toolName: "Edit", input: "src/index.ts" },
+    { role: "tool", text: undefined as unknown as string, toolName: "Edit", output: "ok" },
+    { role: "assistant", text: "done editing src/index.ts" },
+  ] as EngineMessage[];
+  // Must not throw — previously crashed at text.matchAll in extractFilePaths.
+  const s = extractiveSummarize(messages);
+  assert.ok(typeof s.topicSummary === "string");
+  assert.ok(s.topicSummary.length >= 0);
+});
+
 // ---- Determinism -----------------------------------------------------------
 
 test("extractive summary is deterministic", () => {

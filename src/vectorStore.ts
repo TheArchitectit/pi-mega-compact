@@ -38,13 +38,14 @@ import {
   bumpDedupStats,
   repoStats as repoStatsFromStore,
   dataInvariantStats,
+  maxCheckpointTimestamp,
 } from "./store/sqlite.js";
 import {
   initVectorIndex,
   searchAsync as vectorIndexSearch,
   type VectorIndexHit,
 } from "./store/vectorIndex.js";
-import { rehydrateRaptorTree } from "./dedup/raptor/index.js";
+import { rehydrateRaptorTree, isShadowMode } from "./dedup/raptor/index.js";
 import { stagedExpansion } from "./dedup/raptor/retrieval.js";
 import { migrateJsonToSqlite } from "./store/migrate.js";
 
@@ -557,9 +558,20 @@ export class VectorStore {
    * exists (small sessions — flat search remains the path). Best-effort/non-fatal.
    */
   private raptorSearchHits(sid: string, query: string, k: number): SearchHit[] {
+    const t0 = Date.now();
     try {
+      // S25 gate (a): honor the shadow contract at SERVE time. The tree is still
+      // built + persisted (logging-only) but NOT merged into recall while
+      // RAPTOR_SHADOW_MODE is anything other than "false".
+      if (isShadowMode()) return [];
       const tree = rehydrateRaptorTree(sid, this.stateDir);
       if (!tree || !tree.rootId) return [];
+      // S25 gate (b): freshness + fallback guards. Skip a tree built before the
+      // newest checkpoint (stale → may reference trimmed/deduped leaves) or one
+      // whose root is a budget-exhausted extractive fallback (level 99).
+      if (tree.timedOut) return [];
+      const maxTs = maxCheckpointTimestamp(sid, this.stateDir);
+      if (tree.builtAt && tree.builtAt < maxTs) return [];
       const leafIds = stagedExpansion(query, tree, {
         embedder: this.embedder,
         k,
@@ -576,6 +588,9 @@ export class VectorStore {
         const cp = all.find((c) => c.checkpointId === id);
         if (cp) hits.push({ checkpoint: cp, score: cosineSimilarity(qv, cp.embedding) });
       }
+      // S25 monitoring: emit a raptor_serve decision so canary.ts can track
+      // p95 latency + the tier's live traffic (non-fatal, best-effort).
+      this.record("RAPTOR", hits.length > 0 ? "new" : "mark_only", `leaves=${leafIds.length}`, Date.now() - t0);
       return hits;
     } catch {
       return [];

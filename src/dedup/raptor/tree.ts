@@ -40,6 +40,8 @@ export interface RaptorTree {
   levels: number;
   /** True when the budget forced an extractive fallback root. */
   timedOut: boolean;
+  /** S25: epoch ms when the tree was built (freshness guard). 0 when unknown. */
+  builtAt?: number;
 }
 
 export interface Leaf {

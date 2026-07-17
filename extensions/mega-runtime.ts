@@ -361,9 +361,11 @@ export class MegaRuntime {
       const repoKept = repo.totalTokenEstimate;
       const repoFreed = repo.tokensSaved;
       const repoPct = repoIn > 0 ? repoFreed / repoIn : 0;
-      // Retro gradient bar — 12 cells, each cell shaded by fill so it reads as a
-      // smooth green→amber→red ramp instead of a flat block. Higher fill = more
-      // reclaimed, so the bar trends green at the right end.
+      // Retro gradient bar — `w` cells, each shaded by fill position so it
+      // reads as a smooth green→amber→red ramp. Used for CONTEXT fill where
+      // low=green (room to spare) and high=red (near the limit) — the only
+      // live-moving metric worth a bar. Savings ratios saturate near 100% and
+      // are shown as explanatory numbers instead (see L2).
       const ramp = (pct: number, w = 12): string => {
         const cells = ["▏","▎","▍","▌","▋","▊","▉","█"];
         const scaled = Math.max(0, Math.min(w, pct * w));
@@ -380,10 +382,16 @@ export class MegaRuntime {
       const sTxt = (sessPct * 100).toFixed(sessPct * 100 >= 10 ? 0 : 1);
       const rTxt = (repoPct * 100).toFixed(repoPct * 100 >= 10 ? 0 : 1);
       const lines = [
-        // L1 — header: tier + ctx fill bar + tokens + checkpoints + agents
-        ` ${C.amber}⚡ ${tierLabel}${C.reset} v${C.bold}${ownVersion()}${C.reset} ${ramp(ctxPct)} ${C.bold}${pctStr}${C.reset} ${tokStr}/${maxStr} │ ${st.checkpointCount} chk${agentStr}${turnStr}`,
-        // L2 — status + dedup + session + all-time savings bars
-        `   ${triggerLabel} ${C.magenta}dup ${dedupStr}${C.reset} ${C.gray}sess${C.reset} ${ramp(sessPct)} ${C.green}${sTxt}%${C.reset} ${C.gray}all-time${C.reset} ${ramp(repoPct)} ${C.blue}${rTxt}%${C.reset}`,
+        // L1 — header: tier + ctx-fill bar (20-cell, green=room→red=full) +
+        // tokens + status glyph + checkpoints + agents/turn. Widened to use the
+        // terminal width; the context bar is the only live-moving bar.
+        ` ${C.amber}⚡ ${tierLabel}${C.reset} v${C.bold}${ownVersion()}${C.reset} ${ramp(ctxPct, 20)} ${C.bold}${pctStr}${C.reset} ${tokStr}/${maxStr} │ ${triggerLabel} │ ${st.checkpointCount} chk${agentStr}${turnStr}`,
+        // L2 — savings EXPLAINED, not bar'd. The freed/(freed+kept) ratio
+        // saturates near 100% once cumulative freed dwarfs live kept (4.8mil
+        // freed vs 612 kept), so a bar is visually useless. Instead show the
+        // compaction story: "in→kept (X% freed)" reads as "compacted N tokens
+        // down to M, freeing X%". Plus repo-wide chk/session counts.
+        `   ${C.magenta}dup ${dedupStr}${C.reset} │ ${C.gray}sess${C.reset} ${fmt(sessIn)}→${fmt(sessKept)} kept ${C.green}(${sTxt}% freed)${C.reset} · ${C.gray}all-time${C.reset} ${fmt(repoIn)}→${fmt(repoKept)} kept ${C.blue}(${rTxt}% freed)${C.reset} │ ${repo.checkpointCount} chk/${repo.sessionCount} sess`,
       ];
       // Live "now processing" line + why + recent deduped/compacted events,
       // collapsed to ONE rotating line (fresh only). The ticker ring buffer
@@ -404,11 +412,8 @@ export class MegaRuntime {
       } else if (this.pulsing) {
         lines.push(`   ${pulse}${C.teal}compacting…${C.reset}`);
       }
-      // L4 — accounting: session + all-time in/out/freed, one compact line.
-      // in = dropped into compaction, out = kept summaries, freed = saved.
-      if (lines.length < 10) {
-        lines.push(`   ${C.dim}session ↑${fmt(sessIn)} in ↓${fmt(sessKept)} out ↓${fmt(sessFreed)} freed · all-time ↑${fmt(repoIn)} in ↓${fmt(repoKept)} out ↓${fmt(repoFreed)} freed${C.reset}`);
-      }
+      // (Accounting folded into L2's "in→kept (X% freed)" framing — freed =
+      //  in − kept is implied, and the saturated-ratio bars are gone.)
       ctx.ui.setWidget(WIDGET_KEY, lines, { placement: "aboveEditor" });
     }
   }

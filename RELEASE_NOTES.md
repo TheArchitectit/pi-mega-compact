@@ -1,5 +1,43 @@
 # Release Notes — pi-mega-compact
 
+## v0.6.7 (2026-07-17)
+
+Crash fix + RAPTOR recall hardening + widget readability.
+
+### Fixed
+- **🔴 Compaction crash on undefined message text** — the highest-impact fix.
+  pi tool/custom messages can arrive with `text: undefined` (only `input`/
+  `output` set); `extractFilePaths` called `text.matchAll` and threw `Cannot
+  read properties of undefined (reading 'matchAll')`, taking down the whole
+  compaction pass. Fixed at the single choke point (`adapt.ts` `contentText`/
+  `messageText` now coerce to `""` so every downstream `.matchAll`/`.split`/
+  `.toLowerCase` is safe) plus defense-in-depth at the `extractiveSummarize`
+  entry. Regression test added.
+
+### Added (S25 RAPTOR hardening)
+- **Shadow SERVE gate** — `RAPTOR_SHADOW_MODE=false` now actually disables
+  RAPTOR serving in `VectorStore.search` (was logging-only; the tree was always
+  merged). Honors the Sprint-13 transition contract at serve time.
+- **Freshness guard** — the RAPTOR tree is stamped with `built_at` (the newest
+  checkpoint epoch at build time, stored in the `raptor_nodes` table).
+  `raptorSearchHits` rejects a tree older than `max(timestamp)` over the live
+  checkpoints and falls back to flat MMR — no stale root summaries or
+  references to trimmed/deduped leaves.
+- **`timedOut` guard** — a tree whose root is a budget-exhausted extractive
+  fallback (level 99) is skipped (flat fallback) instead of served.
+- **`raptor_serve` monitoring** — RAPTOR now emits a decision event via the
+  existing `events.log` path so canary p95 can track the live tier.
+- Freshness state lives in SQLite (`built_at` column + `maxCheckpointTimestamp`
+  query), not in-memory — per the "all data in SQL/PGlite" invariant.
+
+### Changed (widget)
+- L1 header widened: the context-fill bar is now 20 cells (green=room → red=
+  full) and carries the status glyph + checkpoints, using more of the terminal.
+- L2 savings: replaced the two saturated `freed/(freed+kept)` bars (which peg
+  ~100% once cumulative freed dwarfs live kept — e.g. 4.8mil freed vs 612 kept)
+  with an explanatory `in→kept (X% freed)` framing that reads as "compacted N
+  tokens down to M, freeing X%". Dropped the now-redundant L4 accounting line.
+
 ## v0.6.6 (2026-07-17)
 
 Toolbar widget redesign — compact retro block with gradient bars.

@@ -240,6 +240,10 @@ function doCompact(
         embedding: cp.embedding,
       }));
       if (leaves.length >= 2) {
+        // S25: stamp the tree with the newest checkpoint epoch so the
+        // freshness guard in raptorSearchHits can reject stale trees after a
+        // later compaction adds newer checkpoints.
+        const builtAt = all.length > 0 ? Math.max(...all.map((c) => c.timestamp)) : Date.now();
         runRaptor(
           leaves,
           {
@@ -249,6 +253,7 @@ function doCompact(
             clustersPerLevel: dd.RAPTOR_CLUSTERS_PER_LEVEL,
             consistencyThreshold: dd.RAPTOR_CONSISTENCY,
             logger: runtime.logger,
+            builtAt: Number.isFinite(builtAt) ? builtAt : Date.now(),
           },
         );
       }
