@@ -51,6 +51,7 @@
 | sprint 14 spec (full pipeline + flags) | [specs/sprint-14.md](specs/sprint-14.md) | docs/ |
 | sprint 15 spec (benchmarks, DR, release) | [specs/sprint-15.md](specs/sprint-15.md) | docs/ |
 | S24 spec (unified pressure signal: auto-compact + tier + memory; memory storage hardening) | [specs/s24-unified-pressure.md](specs/s24-unified-pressure.md) | docs/ |
+| **S27 spec (db mirror: byte-stable prompt cache via raw transcript mirror + deterministic epoch nonce)** | [specs/sprint-27-db-mirror-cache-stability.md](specs/sprint-27-db-mirror-cache-stability.md) | docs/ |
 | retention policy (TTL 90d, soft-delete, VACUUM, DR snapshots) | [RETENTION_POLICY.md](RETENTION_POLICY.md) | docs/ |
 | dedup runbook (SEV tiers, first-15-min, MARK_ONLY degrade) | [DEDUP_RUNBOOK.md](DEDUP_RUNBOOK.md) | docs/ |
 

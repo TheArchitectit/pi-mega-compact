@@ -297,3 +297,15 @@
 | Memory storage hardening | 130 | 119 |
 | ACCEPTANCE | 168 | 157 |
 | ROLLBACK | 178 | 167 |
+
+## docs/specs/sprint-27-db-mirror-cache-stability.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 15 | 0 |
+| PROBLEM (root cause: Date.now() + shifting slice) | 47 | 0 |
+| SCOPE (in/out) | 76 | 0 |
+| EXECUTION (Tasks 1–9) | 137 | 0 |
+| ACCEPTANCE (grep + behavioral) | 240 | 0 |
+| ROLLBACK | 268 | 0 |
+| RISKS / EDGE CASES | 283 | 0 |
