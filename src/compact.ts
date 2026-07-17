@@ -23,7 +23,11 @@ function truncate(s: string, max: number): string {
 }
 
 function firstText(m: EngineMessage): string | undefined {
-  const t = m.text.trim();
+  // PREVENT crash: pi can hand us a message with text: undefined (pure
+  // tool-call/tool-result). Guard the trim so the legacy summarizeMessages
+  // path can't throw the same undefined-text crash the extractive path did.
+  const raw = m.text ?? "";
+  const t = raw.trim();
   return t.length > 0 ? t : undefined;
 }
 

@@ -12,12 +12,15 @@ import { extractFileCandidates } from "./compact.js";
 
 /** Classify a message's relationship to a file path. */
 function fileOps(msg: EngineMessage): { path: string; op: "read" | "write" }[] {
-  // msg.text may be undefined for pure tool-call/result messages; the guard
-  // lives in extractFileCandidates, but the early return short-circuits the
-  // write-detection regex too so we never classify an empty message.
-  const paths = extractFileCandidates(msg.text);
+  // PREVENT crash: msg.text may be undefined for pure tool-call/result
+  // messages. extractFileCandidates guards the split, but if it returned a
+  // hit we'd still call .toLowerCase() on the raw (possibly-undefined) text.
+  // Coerce once so both extractFileCandidates and the write-detection regex
+  // are safe, and the early return still skips empty messages.
+  const text = msg.text ?? "";
+  const paths = extractFileCandidates(text);
   if (paths.length === 0) return [];
-  const low = msg.text.toLowerCase();
+  const low = text.toLowerCase();
   const isWrite = /\b(write|edit|create|save|append|overwrite|update|patch|modify)\b/.test(low);
   return paths.map((p) => ({ path: p, op: isWrite ? "write" : "read" }));
 }
