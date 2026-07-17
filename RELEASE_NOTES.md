@@ -1,5 +1,22 @@
 # Release Notes — pi-mega-compact
 
+## v0.6.6 (2026-07-17)
+
+Toolbar widget redesign — compact retro block with gradient bars.
+
+### Changed
+- Toolbar widget collapsed from 6 lines to 4:
+  - L1: tier + context-fill gradient bar + tokens + checkpoints
+  - L2: status + dedup + session-savings bar + all-time-savings bar
+  - L3: live activity (compacting / deduped / recalled ticker — unchanged)
+  - L4: full accounting — session AND all-time in/out/freed on one line
+- Replaced the single flat `% tokens saved` bar with three **retro gradient
+  bars** (context fill, session savings, all-time savings) using fractional
+  block characters (▏▎▍▌▋▊▉█) for smooth fills, shaded green→amber→red.
+- `fmt()` now renders `mil` at >=1M (was `M`).
+- Killed ambiguous labels: no more "sess vs session" or bare "100% repo";
+  now `sess` / `all-time` with a colored % next to each bar.
+
 ## v0.6.5 (2026-07-17)
 
 Bugfix release: widget token summary, crash guard, dashboard Savings-by-Model.

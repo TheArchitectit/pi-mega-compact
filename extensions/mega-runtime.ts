@@ -69,6 +69,7 @@ export const C = {
   magenta: "\x1b[38;5;201m", // dedup rate
   blue: "\x1b[38;5;75m", // repo totals
   gray: "\x1b[38;5;245m", // labels
+  red: "\x1b[38;5;203m", // pressure / overflow
 };
 
 const PULSE = ["◐", "◓", "◑", "◒"];
@@ -344,7 +345,7 @@ export class MegaRuntime {
       // 142 → "142". Dropped (in) = Freed + Kept; Freed = rt.tokensSaved (session)
       // / repo.tokensSaved meta (repo); Kept = totalTokenEstimate (stored).
       const fmt = (x: number) =>
-        x >= 1_000_000 ? `${(x / 1_000_000).toFixed(1)}M`
+        x >= 1_000_000 ? `${(x / 1_000_000).toFixed(1)}mil`
         : x >= 1000 ? `${(x / 1000).toFixed(1)}k`
         : `${Math.round(x)}`;
       const agentStr = this.activeAgents > 0 ? ` │ 🤖 ${this.activeAgents} agent${this.activeAgents === 1 ? "" : "s"}` : "";
@@ -360,21 +361,30 @@ export class MegaRuntime {
       const repoKept = repo.totalTokenEstimate;
       const repoFreed = repo.tokensSaved;
       const repoPct = repoIn > 0 ? repoFreed / repoIn : 0;
+      // Retro gradient bar — 12 cells, each cell shaded by fill so it reads as a
+      // smooth green→amber→red ramp instead of a flat block. Higher fill = more
+      // reclaimed, so the bar trends green at the right end.
+      const ramp = (pct: number, w = 12): string => {
+        const cells = ["▏","▎","▍","▌","▋","▊","▉","█"];
+        const scaled = Math.max(0, Math.min(w, pct * w));
+        const full = Math.floor(scaled);
+        const frac = scaled - full;
+        const fracCell = frac > 0 ? cells[Math.round(frac * (cells.length - 1))] : "";
+        let out = "";
+        for (let i = 0; i < full; i++) out += (i / w < 0.6 ? C.green : i / w < 0.85 ? C.amber : C.red) + "█";
+        if (fracCell) out += (full / w < 0.6 ? C.green : full / w < 0.85 ? C.amber : C.red) + fracCell;
+        out += C.dim + "░".repeat(Math.max(0, w - full - (fracCell ? 1 : 0))) + C.reset;
+        return out;
+      };
+      const ctxPct = this.lastCtxPercent != null ? this.lastCtxPercent / 100 : 0;
+      const sTxt = (sessPct * 100).toFixed(sessPct * 100 >= 10 ? 0 : 1);
+      const rTxt = (repoPct * 100).toFixed(repoPct * 100 >= 10 ? 0 : 1);
       const lines = [
-        ` ${C.amber}⚡ ${tierLabel}${C.reset} v${C.bold}${ownVersion()}${C.reset} │ ${tokStr}/${maxStr} tokens (${C.bold}${pctStr}${C.reset}) │ ${st.checkpointCount} saved${agentStr}${turnStr}`,
-        `   ${triggerLabel} │ ${C.magenta}repeat-skipped: ${dedupStr}${C.reset}`,
-        `   ${C.gray}dropped ${fmt(sessIn)} → kept ${fmt(sessKept)} sess / ${fmt(repoKept)} repo · freed ${fmt(sessFreed)} sess / ${fmt(repoFreed)} repo${C.reset}`,
+        // L1 — header: tier + ctx fill bar + tokens + checkpoints + agents
+        ` ${C.amber}⚡ ${tierLabel}${C.reset} v${C.bold}${ownVersion()}${C.reset} ${ramp(ctxPct)} ${C.bold}${pctStr}${C.reset} ${tokStr}/${maxStr} │ ${st.checkpointCount} chk${agentStr}${turnStr}`,
+        // L2 — status + dedup + session + all-time savings bars
+        `   ${triggerLabel} ${C.magenta}dup ${dedupStr}${C.reset} ${C.gray}sess${C.reset} ${ramp(sessPct)} ${C.green}${sTxt}%${C.reset} ${C.gray}all-time${C.reset} ${ramp(repoPct)} ${C.blue}${rTxt}%${C.reset}`,
       ];
-      // Compression meter — the single headline "% tokens saved" (Freed / In),
-      // same formula as the dashboard. Higher = better, so it reads green.
-      {
-        const w = 10;
-        const filled = Math.max(0, Math.min(w, Math.round(sessPct * w)));
-        const cbar = C.green + "▓".repeat(filled) + C.dim + "░".repeat(w - filled) + C.reset;
-        const sTxt = (sessPct * 100).toFixed(sessPct * 100 >= 10 ? 0 : 1);
-        const rTxt = (repoPct * 100).toFixed(repoPct * 100 >= 10 ? 0 : 1);
-        lines.push(`   ${cbar} ${sTxt}% tokens saved (sess) · ${rTxt}% repo${C.reset}`);
-      }
       // Live "now processing" line + why + recent deduped/compacted events,
       // collapsed to ONE rotating line (fresh only). The ticker ring buffer
       // (≤5 most-recent events) is cycled one-per-repaint so the line scrolls
@@ -394,11 +404,10 @@ export class MegaRuntime {
       } else if (this.pulsing) {
         lines.push(`   ${pulse}${C.teal}compacting…${C.reset}`);
       }
-      // Token accounting summary, always last + dimmed. Shows the total
-      // tokens dropped (in) + kept (out) for this session, then the freed
-      // (saved) tokens for both this session and all-time across the repo.
+      // L4 — accounting: session + all-time in/out/freed, one compact line.
+      // in = dropped into compaction, out = kept summaries, freed = saved.
       if (lines.length < 10) {
-        lines.push(`   ${C.dim}session ↑${fmt(sessIn)} in ↓${fmt(sessKept)} out · saved ${fmt(sessFreed)} session / ${fmt(repoFreed)} all-time${C.reset}`);
+        lines.push(`   ${C.dim}session ↑${fmt(sessIn)} in ↓${fmt(sessKept)} out ↓${fmt(sessFreed)} freed · all-time ↑${fmt(repoIn)} in ↓${fmt(repoKept)} out ↓${fmt(repoFreed)} freed${C.reset}`);
       }
       ctx.ui.setWidget(WIDGET_KEY, lines, { placement: "aboveEditor" });
     }
