@@ -40,6 +40,7 @@ import {
 import { computeLiveTrimCut, liveTrimSummaryMessage } from "./mega-trim.js";
 import {
 	pressureFromPct,
+	pressureRatio,
 	memoryReviewCadence,
 	type MegaConfig,
 } from "./mega-config.js";
@@ -446,14 +447,13 @@ export function registerEventHandlers(
 		runtime.lastCtxPercent = pct ?? null;
 		runtime.lastCtxWindow = usage?.contextWindow ?? 0;
 		runtime.snapshot(ctx);
-		if (pct == null) return;
 
 		const messages = event.messages;
 		const view = runtime.engineView(messages);
 		const currentTokens =
 			usage?.tokens ??
 			estimateSessionTokens(view) ??
-			Math.round((pct / 100) * (usage?.contextWindow ?? 0));
+			Math.round(((pct ?? 0) / 100) * (usage?.contextWindow ?? 0));
 
 		// S27 DB-mirror: append ALL incoming messages to raw_transcript.
 		// Runs BEFORE fast-gate so every message is captured, even if we
@@ -471,15 +471,35 @@ export function registerEventHandlers(
 			}
 		}
 
-		// FAST GATE: token-based (tier% of the window), not a static amount.
-		if (currentTokens < runtime.effectiveThreshold) {
-			runtime.diagCtxFastGate++;
-			return;
+		// S29 FAST GATE: drive the auto-trigger off the context % (the number the
+		// menu bar shows), NOT the token count — the model under-reports tokens,
+		// so a token-only gate misses the overshoot that causes max-output-token
+		// truncation. The fire point is the tier's percent threshold (tierPct)
+		// unless overridden by MEGACOMPACT_AUTO_PCT_TRIGGER. `custom` (absolute
+		// MEGACOMPACT_THRESHOLD_TOKENS, tierPct null) is an explicit opt-out of
+		// percent scaling — it keeps the token gate. When pct is unavailable
+		// (window unknown / a model that doesn't report percent) a tiered config
+		// falls back to the token gate (S27 boot-fallback guarantee) instead of
+		// skipping compaction — a percent-only gate would regress that.
+		let gatePassed = false;
+		if (config.tierPct != null && pct != null) {
+			const firePct = config.autoPctTrigger ?? config.tierPct;
+			gatePassed = pct / 100 >= firePct;
+		} else {
+			// custom tier OR tiered-but-pct-unavailable → token gate (S27 fallback).
+			if (currentTokens < runtime.effectiveThreshold) {
+				runtime.diagCtxFastGate++;
+				return;
+			}
+			const check = autoCompactCheck(currentTokens, runtime.effectiveThreshold); // SERVER-STYLE CONFIRM (local)
+			if (!check.shouldCompact) {
+				runtime.diagCtxNoCompact++;
+				return;
+			}
+			gatePassed = true;
 		}
-
-		const check = autoCompactCheck(currentTokens, runtime.effectiveThreshold); // SERVER-STYLE CONFIRM (local)
-		if (!check.shouldCompact) {
-			runtime.diagCtxNoCompact++;
+		if (!gatePassed) {
+			runtime.diagCtxFastGate++;
 			return;
 		}
 
@@ -492,8 +512,10 @@ export function registerEventHandlers(
 		runtime.debounceUntil = now + 2000;
 
 		// Adaptive compression (Fix E): scale compression strength + keepFrom depth
-		// with how close we are to the model context limit.
-		const pressure = pressureFromPct(pct);
+		// with how close we are to the model context limit. Null-safe: when the
+		// token-fallback path ran (pct unavailable) use the token-basis pressure
+		// (the same basis the runtime `pressure` getter uses for custom/no-window).
+		const pressure = pct != null ? pressureFromPct(pct) : pressureRatio(currentTokens, runtime.effectiveThreshold);
 		const ran = runCompact(pi, runtime, config, ctx, messages, {
 			compressionPressure: pressure,
 		});

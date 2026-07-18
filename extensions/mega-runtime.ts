@@ -521,9 +521,13 @@ export class MegaRuntime {
 				}
 			: undefined;
 		// effectiveThresholdPct: the live fire point as a % of the window (null for
-		// `custom`, which has no tierPct). Used by armed/ready + the dashboard.
+		// `custom`, which has no tierPct). S29: honors MEGACOMPACT_AUTO_PCT_TRIGGER
+		// override so the dashboard's armed/ready match the context-handler gate
+		// (which fires on this same %). Used by armed/ready + the dashboard.
 		const effectiveThresholdPct =
-			this.config.tierPct != null ? this.config.tierPct * 100 : null;
+			this.config.tierPct != null
+				? (this.config.autoPctTrigger ?? this.config.tierPct) * 100
+				: null;
 		// armed lights at/above the REAL fire point: max(effectiveThresholdPct,
 		// fastGatePct). fastGatePct already equals tierPct*100 by default, but a
 		// MEGACOMPACT_FAST_GATE_PCT override can raise it, so we take the max.
@@ -531,7 +535,15 @@ export class MegaRuntime {
 			this.lastCtxPercent != null &&
 			this.lastCtxPercent >=
 				Math.max(effectiveThresholdPct ?? 0, this.config.fastGatePct);
-		const ready = armed && (this.lastCtxTokens ?? 0) >= this.effectiveThreshold;
+		// S29: ready mirrors the context-handler gate's basis — percent for tiered
+		// (the gate fires on pct), tokens for custom (the gate fires on tokens).
+		// Previously this always required tokens, so the dashboard could show
+		// "armed" (percent high) but never "ready" when tokens were under-reported
+		// — the same inconsistency the S29 gate fix removes.
+		const ready =
+			this.config.tierPct != null
+				? armed && (this.lastCtxPercent ?? 0) >= (effectiveThresholdPct ?? 0)
+				: armed && (this.lastCtxTokens ?? 0) >= this.effectiveThreshold;
 		this.dashboard.snapshot({
 			version: 1,
 			updatedAt: new Date().toISOString(),
