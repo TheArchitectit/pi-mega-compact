@@ -1,5 +1,22 @@
 # Release Notes — pi-mega-compact
 
+## v0.7.6 (2026-07-17)
+
+Patch release to complete the v0.7.5 documentation and force the npm upgrade path. No code changes — the `/mega-db-*` commands and auto-maintenance shipped in v0.7.5 are unchanged; this release only adds the user-facing docs that were committed after the v0.7.5 tag and bumps the version so `pi update --extensions` picks up the latest.
+
+### Documentation
+
+- **README.md** — the `/mega-db-stats` · `/mega-db-prune [days]` · `/mega-db-vacuum` · `/mega-db-check` · `/mega-db-reconcile` commands are now listed in the commands table; a callout under the live-stats-widget section documents the `session_start` auto-maintenance pass (prune 30d + WAL checkpoint >10MB + VACUUM when DB >100MB & freelist >20%). The "Current version" header was bumped from `v0.6.9` → `v0.7.6` with an S27 note (raw-transcript mirror + dedup pipeline + DB maintenance /commands).
+- **TESTER_GUIDE.md** — new section **§12 "DB maintenance /commands (v0.7.5+)"** with a 6-step manual checklist covering stats, prune, vacuum, check, reconcile, and the auto-maintenance-on-`session_start` behavior, plus explicit pass criteria for each.
+
+### Upgrade path
+
+v0.7.4 bundled the critical compaction race fix (`848c817`) with the S27 cache-stability Tasks 1–9. v0.7.5 added Task 10 (`/mega-db-*` commands + auto-maint). v0.7.6 is a docs-complete + version-bump patch over v0.7.5 — upgrade with `pi update --extensions`.
+
+Full suite: 407 passed, 0 failed across 41 files.
+
+---
+
 ## v0.7.5 (2026-07-17)
 
 DB maintenance /commands for the S27 DB-mirror store — inspect, prune, vacuum, integrity-check, and reconcile the raw_transcript + dedup_mirror tables.

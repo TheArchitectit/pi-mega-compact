@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.7.6 (2026-07-17) — docs-complete + version bump
+
+- **docs(readme):** `/mega-db-*` commands table + auto-maintenance callout; "Current version" bumped to v0.7.6 with S27 note.
+- **docs(tester):** new TESTER_GUIDE.md §12 — DB maintenance /commands manual checklist (stats / prune / vacuum / check / reconcile / auto-maint-on-`session_start`).
+- **chore:** version bump 0.7.5 → 0.7.6 to force the npm upgrade path (no code changes).
+
+No code changes — `/mega-db-*` commands and auto-maintenance are unchanged from v0.7.5. Tests: 407 passed / 0 failed across 41 files.
+
 ## v0.7.5 (2026-07-17) — DB maintenance /commands (S27 Task 10)
 
 - **feat(db-maint): `/mega-db-*` commands + auto-maintenance.** S27 Task 10.
