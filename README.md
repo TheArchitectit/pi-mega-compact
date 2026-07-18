@@ -6,7 +6,7 @@ sessions into a **local SQLite store** and offers **deduped inline recall** — 
 running **locally inside the extension**, with **no remote MCP server** and
 **zero network calls at runtime** (PREVENT-PI-004).
 
-> **Current version:** `v0.7.5` — storage backend is **`node:sqlite`**
+> **Current version:** `v0.7.6` — storage backend is **`node:sqlite`**
 > (`DatabaseSync`, a Node ≥22.13 built-in), replacing the old `better-sqlite3`
 > native addon and the per-session gzipped JSON checkpoint files. **Zero native
 > build step, fully local, zero network at runtime.** S27 added a **raw-transcript
@@ -242,11 +242,12 @@ The commands (slash commands inside pi):
 | `/mega-db-vacuum` | `VACUUM` the DB (rebuild pages, reclaim freelist). Heavy: briefly doubles disk usage. |
 | `/mega-db-check` | `PRAGMA integrity_check` + `wal_checkpoint(TRUNCATE)`. Fold the WAL into the main file and verify DB health. Use after a crash. |
 | `/mega-db-reconcile` | Fix `dedup_mirror.ref_count` drift vs actual `raw_transcript` refs, delete orphan dedup rows, backfill missing `content_ref`. Run after `/mega-db-prune` or a crash. |
+| `/mega-dashboard [open]` | Start the **localhost-only** live dashboard and open it in a browser (token gauge, store stats, live event stream, per-repo + All-repos/Summary views, cross-repo drift). |
+| `/mega-dashboard-status` | Report dashboard server status (port / url / live). |
+| `/mega-dashboard-stop` | Stop the dashboard server. |
 
 The **tier** you see in the toolbar and dashboard is a *live pressure band* (`low` → `medium` → `high` → `ultra` → `mega`) that climbs automatically as your context window fills and falls back as it's relieved — it is driven by `currentTokens / effectiveThreshold`, not a manual setting. The base compaction *threshold* is set by `MEGACOMPACT_TIER` at startup as a **% of the model context window** (`low` 50% · `medium` 60% · `high` 70% · `ultra` 70% · `mega` 75%; default `low`) — the fire point is `tierPct × contextWindow`, so it always lands below pi's native ~80% auto-compaction (any model size). The old static token amounts (50k/100k/200k/1M/10M) are now only the boot fallback used before the first context event reports a window. `/mega-tier` was removed in v0.6.0. Higher pressure also deepens the live trim and reviews durable memory more often — the whole system reacts as one.
-| `/mega-dashboard` | Start the **localhost-only** live dashboard and open it in a browser (token gauge, store stats, live event stream, per-repo + cross-repo drift). |
-| `/mega-dashboard-status` | Report dashboard server status. |
-| `/mega-dashboard-stop` | Stop the dashboard server. |
+
 
 ### Live stats widget
 
@@ -272,7 +273,7 @@ Above the pi editor the extension shows a compact widget:
 > **auto-maintenance** pass runs on `session_start`: it prunes rows older than
 > 30d, checkpoints the WAL if it's over 10 MB, and VACUUMs if the DB is over
 > 100 MB AND the freelist is >20% of pages. It never blocks session start and
-> logs a one-line summary to the diagnostic log. (v0.7.5+)
+> logs a one-line summary to the diagnostic log. (v0.7.6+)
 
 ---
 
@@ -337,11 +338,59 @@ checklist, MARK_ONLY degrade) and `docs/RETENTION_POLICY.md` for TTL / soft-dele
 
 #### Dashboard
 
-The localhost-only dashboard adds a **Summary** + **All-repos** view over the
-machine-wide `repo_registry`, plus a **cross-repo drift** report (`GET /api/drift`)
-flagging stale repos (>30d idle), compaction lag (an active repo >24h behind the
-most-recently-active repo's last compaction), and recent model churn (within 7d).
-All read-only — the report never writes the index.
+The localhost-only dashboard (started with `/mega-dashboard`) is a single-page
+app served from a detached child process on `127.0.0.1` (random port in
+9320–9329). Every API is read-only — the server never writes the index or your
+store. It reads the machine-wide `repo_registry`
+(`~/.mega-compact-index/index.sqlite`) plus the current repo's own `node:sqlite`
+store.
+
+**Tabs**
+
+- **Current repo** — the live single-session view: context-window gauge, trigger
+  status, the Vector Store (checkpoints / dropped / kept / freed / injected /
+  dedup / collapsed), the repo-wide aggregate, the Data Safety card, the live
+  Model & Cost Savings card, and crew/agent activity.
+- **All repos** — a machine-wide table aggregated from `repo_registry`
+  (`GET /api/index`): one row per repo with checkpoints, tokens saved,
+  compressed-originals, last-compacted, and active model. Each row opens a
+  per-repo detail modal. Currently-open sessions are badged **active** (see
+  below).
+- **Summary** — machine-wide header tiles plus a **savings-by-model** table
+  (tokens in/out/freed, context window, $ saved) grouped by the model you were
+  running.
+
+**Active repos (every open session in one place).** Each session writes a
+`last_seen` heartbeat into `repo_registry`. The All-repos view and `GET
+/api/summary` surface an `activeRepos` count, and `GET /api/repos?active=Nh`
+filters to repos seen within the last *N* hours (e.g. `?active=24h`) — so 1–6
+sessions running at once are visible together instead of only the single
+current-repo view. (The `?active` filter is hour-granular.)
+
+**DB-backed cumulative metrics.** The dashboard's **Repo (all sessions)** view
+reads counters persisted in the SQLite `meta` table (`tokens_saved`,
+`dedup_attempts`, `deduped`) plus a SUM over `context_chunks`. These survive
+session restarts and travel with the repo's state dir, so the totals are durable
+rather than only the per-process snapshot. It shows:
+
+- **Cache hits** = dedup collapses (`deduped` / `repo.dedupCollapsed`) + recall
+  re-injections (`store.injectedCount`) — as **current session** and **repo-wide
+  total**.
+- **Compactions** = current session (`store.checkpointCount`) + repo-wide total
+  (`repo.checkpointCount`).
+- **Estimated time saved** = compact time saved + cache-hit time saved, derived
+  from tokens ÷ ~2k tok/s and labeled `est.`, as current session + total.
+
+**Localhost API surface:** `GET /api/snapshot` (current-repo live state),
+`/api/index` (all repos), `/api/repos` (with `?active=Nh` filter), `/api/summary`
+(header tiles + `activeRepos`), `/api/drift` (cross-repo drift: stale /
+compaction-lag / model-churn — read-only), `/api/events` (SSE live event stream),
+and `/api/version`.
+
+**Data-safety invariant.** Every compacted region is kept verbatim (compressed);
+the Data Safety card shows regions retained, compressed-originals bytes, dedup
+duplicates, and permanently-deleted bytes (**always 0**). Nothing is permanently
+deleted — any region is restorable.
 
 ---
 
@@ -385,7 +434,7 @@ The extension entry adapts between the engine and pi's runtime types.
 
 ```bash
 npm run build      # tsc
-npm test           # build + node --test on dist/**/*.test.js (353 tests)
+npm test           # build + node --test on dist/**/*.test.js (407 tests)
 npm run lint       # tsc --noEmit + guardrails-scan
 npm run guardrails # regression_check + guardrails-scan
 ```
