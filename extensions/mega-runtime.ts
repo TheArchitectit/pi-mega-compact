@@ -670,7 +670,9 @@ export class MegaRuntime {
 					: "?";
 			const pctStr =
 				this.lastCtxPercent != null
-					? `${Math.round(this.lastCtxPercent * 10) / 10}%`
+					? this.lastCtxPercent > 100
+						? `>100%` // S29: overshoot warning, not a raw "250%" — the percent trigger now compacts before 100%, so this is the residual case where it can't keep up.
+						: `${Math.round(this.lastCtxPercent * 10) / 10}%`
 					: "?%";
 			// S24: the tier label is the LIVE pressure band (low/medium/high/ultra/
 			// mega), not the static env preset. It climbs as context fills.
