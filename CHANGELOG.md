@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.7.7 (2026-07-17) — dashboard Active Repos tab + DB-backed metrics
+
+- **feat(dashboard): Active Repos tab + `GET /api/servers`.** Dedicated dashboard tab listing every server / session seen within the last 30 minutes, with live tier / context % / state per row. New `GET /api/servers` endpoint walks `repo_registry` + reads each repo's `dashboard.json`. `extensions/dashboard-server.ts` (+tests).
+- **feat(dashboard): DB-backed cumulative cache-hit / compaction / time-saved metrics.** Persist `compact_count`, `recall_injected`, `cache_hit_tokens_saved` to SQLite `meta` (durable, cross-session). Dashboard Cache-hit / Compaction / Estimated-time-saved cards now read from DB counters instead of the per-process `dashboard.json` snapshot. `src/store/sqlite.ts` (new meta helpers + `sqlite.cachehit.test.ts`); wiring in `extensions/mega-runtime.ts`, `mega-pipeline.ts`, `mega-dashboard.ts`.
+- **docs(readme):** Active Repos tab + Metrics (DB-backed, durable) subsections; `GET /api/servers` in API list; Status + widget version bumped to v0.7.7.
+- **chore:** version bump 0.7.6 → 0.7.7.
+
+No migration required — additive; new `meta` counters populate lazily. Tests: 412 passed / 0 failed across 42 files.
+
 ## v0.7.6 (2026-07-17) — docs-complete + version bump
 
 - **docs(readme):** `/mega-db-*` commands table + auto-maintenance callout; "Current version" bumped to v0.7.6 with S27 note.

@@ -1,5 +1,26 @@
 # Release Notes — pi-mega-compact
 
+## v0.7.7 (2026-07-17)
+
+Dashboard: a dedicated **Active Repos** tab plus **DB-backed cumulative metrics** so cache-hit / compaction / time-saved totals are durable across session restarts. Additive — no behavior change to compaction or recall.
+
+### Added
+
+- **Active Repos tab + `GET /api/servers`.** The dashboard gains a dedicated **Active Repos** tab listing every server / session seen within the **last 30 minutes**, each with its live tier, context %, and session state. Backed by a new `GET /api/servers` endpoint that walks `repo_registry`, reads each repo's per-process `dashboard.json`, and returns one row per currently-open session. Running multiple sessions at once is now visible together in one table instead of only the single current-repo view. Each row shows that repo's live cache-hit / compaction / time-saved totals.
+- **DB-backed cumulative dashboard metrics.** `compact_count`, `recall_injected`, and `cache_hit_tokens_saved` are now persisted to the SQLite `meta` table (durable, cross-session, travel with the repo's state dir). The dashboard's **Cache hits** (dedup collapses + recall re-injections), **Compactions** (session + total), and **Estimated time saved** (compact + cache-hit, est. @ ~2k tok/s) cards now read from these DB counters rather than the per-process `dashboard.json` snapshot. `dashboard.json` is now just the live per-process view that feeds the Active Repos rows.
+
+### Documentation
+
+- **README.md** — new **Active Repos tab** + **Metrics (DB-backed, durable)** subsections in the Dashboard section; `GET /api/servers` added to the Localhost API list; Features bullet and live-stats-widget version example updated; Status callout bumped to v0.7.7.
+
+### Upgrade / migration
+
+No migration required — additive only. The new `meta` counters are populated lazily as sessions compact / recall; pre-existing repos simply show 0 totals until activity resumes. Upgrade with `pi update --extensions` (npm is the only distribution path).
+
+Full suite: 412 passed, 0 failed across 42 files.
+
+---
+
 ## v0.7.6 (2026-07-17)
 
 Patch release to complete the v0.7.5 documentation and force the npm upgrade path. No code changes — the `/mega-db-*` commands and auto-maintenance shipped in v0.7.5 are unchanged; this release only adds the user-facing docs that were committed after the v0.7.5 tag and bumps the version so `pi update --extensions` picks up the latest.
