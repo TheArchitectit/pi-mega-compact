@@ -24,6 +24,10 @@ import {
 	latestModelSnapshot,
 	upsertRepoRegistry,
 	recordRepoModel,
+	getDedupStats,
+	getCompactCount,
+	getRecallInjected,
+	getCacheHitTokensSaved,
 	type ModelSnapshot,
 } from "../src/store/sqlite.js";
 import { detectCrossRepoDrift } from "../src/driftDetection.js";
@@ -73,6 +77,10 @@ interface SessionRuntime {
 	tokensSaved: number; // this session-instance only: reset on session_start
 	lastCompactAt: number | null; // wall-clock ms of the last compaction this session
 	lastNativeCompactAt: number | null; // COMPACT-DEDUP FIX: wall-clock ms of the last NATIVE pi compaction (session_compact event) — used by the agent_end/legacy race guard to skip a redundant ctx.compact() that would throw "Already compacted".
+	// S25: live dashboard counters (reset on session_start, mirrored to SQLite).
+	compactCount: number; // compactions performed this session-instance
+	recallInjections: number; // recall blocks injected this session-instance
+	cacheHitTokens: number; // tokens saved via cache hits (dedup + recall) this session
 }
 
 /** ANSI palette for the toolbar. The pi TUI's Text component preserves ANSI
@@ -93,6 +101,11 @@ export const C = {
 };
 
 const PULSE = ["◐", "◓", "◑", "◒"];
+
+// Rough tokens-processed-per-second heuristic for the dashboard's "time saved"
+// estimate. Throughput varies by model/hardware; this is order-of-magnitude so
+// the dashboard can show a human-readable figure, not a precise measurement.
+const TOKENS_PER_SEC_ESTIMATE = 2000;
 
 // ── Full-width widget panel helpers ────────────────────────────────────────
 // pi's above-editor widget renderer (a Container of Text lines) does NOT pass
@@ -274,6 +287,9 @@ export class MegaRuntime {
 		tokensSaved: 0,
 		lastCompactAt: null,
 		lastNativeCompactAt: null,
+		compactCount: 0,
+		recallInjections: 0,
+		cacheHitTokens: 0,
 	};
 	debounceUntil = 0;
 	// S16: debounce for the agent_end resume nudge (avoid busy-loops).
@@ -485,6 +501,12 @@ export class MegaRuntime {
 		const st = this.store.stats(this.rt.sessionId);
 		const repo = this.store.repoStats();
 		const di = this.store.dataInvariant();
+		// Live + store-wide cache-hit / compaction counters for the dashboard.
+		const ds = getDedupStats(this.currentStateDir);
+		const cacheHitsTotal = ds.deduped + getRecallInjected(this.currentStateDir);
+		const cacheHitsTotalTokens = getCacheHitTokensSaved(this.currentStateDir);
+		const cacheHitsSession = this.rt.dedupSkips + this.rt.recallInjections;
+		const sec = (tok: number) => (tok || 0) / TOKENS_PER_SEC_ESTIMATE;
 		// Active model/provider for the current-repo card + the multi-repo table.
 		const modelSnap = latestModelSnapshot(this.currentStateDir);
 		const model = modelSnap
@@ -603,6 +625,20 @@ export class MegaRuntime {
 				compressedOriginalBytes: di.compressedOriginalBytes,
 				duplicatesCollapsed: di.duplicatesCollapsed,
 				bytesPermanentlyDeleted: di.bytesPermanentlyDeleted,
+			},
+			cacheHits: {
+				session: cacheHitsSession,
+				total: cacheHitsTotal,
+				sessionTokensSaved: this.rt.cacheHitTokens,
+				totalTokensSaved: cacheHitsTotalTokens,
+			},
+			compacts: {
+				session: this.rt.compactCount,
+				total: getCompactCount(this.currentStateDir),
+			},
+			timeSaved: {
+				compact: { sessionSec: sec(this.rt.tokensSaved), totalSec: sec(this.store.repoStats().tokensSaved) },
+				cacheHit: { sessionSec: sec(this.rt.cacheHitTokens), totalSec: sec(cacheHitsTotalTokens) },
 			},
 			model,
 		} as DashboardSnapshot);
@@ -849,7 +885,10 @@ export class MegaRuntime {
 			tokensSaved: 0,
 			lastCompactAt: null,
 			lastNativeCompactAt: null,
-		};
+			compactCount: 0,
+			recallInjections: 0,
+			cacheHitTokens: 0,
+	};
 		this.statusKey = undefined;
 		this.activeAgents = 0;
 		this.currentTurn = 0;
