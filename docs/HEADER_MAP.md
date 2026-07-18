@@ -263,6 +263,19 @@
 | Acceptance | 113 | 0 |
 | Rollback | 124 | 0 |
 
+## docs/specs/s28-max-output-token-auto-continue.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Safety Protocols | 12 | 0 |
+| Problem Statement | 23 | 0 |
+| Scope Boundary | 43 | 0 |
+| Execution | 63 | 0 |
+| Files To Change | 161 | 0 |
+| Acceptance | 174 | 0 |
+| Rollback | 188 | 0 |
+| P2-2 implementation notes | 196 | 0 |
+
 ## docs/superpowers/plans/2026-07-15-compaction-continuity-cross-repo-memory.md
 
 | Section | Line | Offset |

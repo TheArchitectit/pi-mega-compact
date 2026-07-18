@@ -66,6 +66,10 @@ export interface MegaConfig {
   auto: boolean;
   autoInline: boolean;
   autoInlineK: number;
+  /** S28: auto-continue the agent after a max-output-token length stop by
+   *  reusing the existing S16 resume-nudge. Default true. Off = silent (the
+   *  prior behavior). PREVENT-PI-003: restart via user-role sendUserMessage. */
+  autoContinueLengthStop: boolean;
   dedupSim: number;
   /** RAPTOR hierarchical recall enabled (Fix D). Drives both live recall and
    *  the durable-trim summary source (root summary). */
@@ -217,6 +221,7 @@ export function loadConfig(): MegaConfig {
     preserveRecentMin: envFlag("MEGACOMPACT_PRESERVE_RECENT_MIN", 2),
     auto: envBool("MEGACOMPACT_AUTO", true),
     autoInline: envBool("MEGACOMPACT_AUTO_INLINE", true),
+    autoContinueLengthStop: envBool("MEGACOMPACT_AUTO_CONTINUE_LENGTH_STOP", true),
     autoInlineK: envFlag("MEGACOMPACT_AUTO_INLINE_K", 3),
     dedupSim: Number(process.env.MEGACOMPACT_DEDUP_SIM ?? "0.9"),
     raptorEnabled: envBool("MEGACOMPACT_RAPTOR_ENABLED", true),

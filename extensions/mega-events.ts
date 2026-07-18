@@ -267,7 +267,7 @@ export function registerEventHandlers(
 		// compaction AND there is queued work AND we haven't nudged recently, nudge
 		// once so the agent continues (the live trim should make this rare). Guarded
 		// to never busy-loop: one nudge per 30s, only when truly idle + queued.
-		if (config.auto && runtime.activeAgents === 0) {
+		if ((config.auto || config.autoContinueLengthStop) && runtime.activeAgents === 0) {
 			try {
 				const idle = ctx.isIdle?.() ?? true;
 				const queued = ctx.hasPendingMessages?.() ?? false;
@@ -316,7 +316,7 @@ export function registerEventHandlers(
 				// most. Instead we DECOUPLE the nudge from `queued`: after a durable
 				// trim we ALWAYS nudge so the agent reliably restarts. Debounced 30s.
 				let didDurableTrim = false;
-				if (idle && overThreshold && now >= runtime.debounceUntil) {
+				if (config.auto && idle && overThreshold && now >= runtime.debounceUntil) {
 					// COMPACT-DEDUP FIX: skip the manual durable-trim trigger when pi's
 					// NATIVE auto-compaction just fired (or is in-flight). pi emits
 					// agent_end BEFORE its own _checkCompaction (per its docstring:
@@ -346,15 +346,28 @@ export function registerEventHandlers(
 				// Restart the agent after a mid-run durable trim (which stopped it), or
 				// when it settled idle with queued work. Decoupled from `queued` for the
 				// durable-trim case — see FIX note above. Debounced 30s; never blocks.
+				const lengthStop = config.autoContinueLengthStop && runtime.rt.lengthStopPending;
 				if (
 					idle &&
 					now >= runtime.resumeNudgeUntil &&
-					(didDurableTrim || queued)
+					((config.auto && (didDurableTrim || queued)) || lengthStop)
 				) {
 					runtime.resumeNudgeUntil = now + 30_000;
-					pi.sendUserMessage(
-						"[mega-compact] continue from the compacted context above.",
-					);
+					if (runtime.rt.lengthStopPending) {
+						runtime.rt.lengthStopPending = false; // one-shot: never re-fire for same stop
+						runtime.dashboard.event("length_stop_continue", { turnIndex: runtime.currentTurn });
+						runtime.logger.info("length_stop_continue", {
+						sessionId: runtime.rt.sessionId,
+						didDurableTrim,
+						queued,
+						});
+					}
+					// S28: when a length-stop (max-output-token truncation) fired WITHOUT a durable trim, do NOT claim a compaction happened
+					// (nothing was compacted on the low-pressure length path). Branch the message so the nudge matches reality.
+					const nudgeMsg = lengthStop && !didDurableTrim
+						? "[mega-compact] the last response hit the output-token cap; continue from where it stopped."
+						: "[mega-compact] continue from the compacted context above.";
+					pi.sendUserMessage(nudgeMsg);
 				}
 			} catch {
 				/* non-fatal: a failed nudge never blocks */
@@ -365,6 +378,7 @@ export function registerEventHandlers(
 
 	pi.on("turn_start", async (event, ctx) => {
 		runtime.currentTurn = event.turnIndex;
+		runtime.rt.lengthStopPending = false; // S28: re-arm defensively each user turn
 		runtime.dashboard.event("turn_start", { turnIndex: event.turnIndex });
 		runtime.snapshot(ctx);
 	});
@@ -394,6 +408,18 @@ export function registerEventHandlers(
 				);
 				await runMemoryReview(runtime, view, "turn");
 			}
+		}
+
+		// S28: detect max-output-token truncation. event.message.stopReason is the
+		// pi-ai StopReason union; 'length' == generation hit max_tokens OUTPUT cap
+		// (INPUT-orthogonal to context-window overflow). Arm the agent_end nudge.
+		if (
+			config.autoContinueLengthStop &&
+			event.message.role === "assistant" &&
+			event.message.stopReason === "length"
+		) {
+			runtime.rt.lengthStopPending = true;
+			runtime.dashboard.event("length_stop", { turnIndex: event.turnIndex });
 		}
 	});
 

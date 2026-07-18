@@ -81,6 +81,7 @@ interface SessionRuntime {
 	compactCount: number; // compactions performed this session-instance
 	recallInjections: number; // recall blocks injected this session-instance
 	cacheHitTokens: number; // tokens saved via cache hits (dedup + recall) this session
+	lengthStopPending: boolean; // S28: set on turn_end when stopReason==='length'
 }
 
 /** ANSI palette for the toolbar. The pi TUI's Text component preserves ANSI
@@ -290,6 +291,7 @@ export class MegaRuntime {
 		compactCount: 0,
 		recallInjections: 0,
 		cacheHitTokens: 0,
+		lengthStopPending: false,
 	};
 	debounceUntil = 0;
 	// S16: debounce for the agent_end resume nudge (avoid busy-loops).
@@ -888,6 +890,7 @@ export class MegaRuntime {
 			compactCount: 0,
 			recallInjections: 0,
 			cacheHitTokens: 0,
+			lengthStopPending: false,
 	};
 		this.statusKey = undefined;
 		this.activeAgents = 0;
