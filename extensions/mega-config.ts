@@ -66,6 +66,17 @@ export interface MegaConfig {
   auto: boolean;
   autoInline: boolean;
   autoInlineK: number;
+  /** S28: auto-continue the agent after a max-output-token length stop by
+   *  reusing the existing S16 resume-nudge. Default true. Off = silent (the
+   *  prior behavior). PREVENT-PI-003: restart via user-role sendUserMessage. */
+  autoContinueLengthStop: boolean;
+  /** S29: override the auto-compact fire point for tiered configs, as a
+   *  fraction of the context window (e.g. 0.85). null = inherit the tier's
+   *  tierPct (default; preserves existing fire points). The context-handler
+   *  gate fires on context % (reliable), not token count (under-reported),
+   *  so it catches the overshoot that causes max-output-token truncation.
+   *  `custom` (tierPct null) ignores this — it keeps the absolute token gate. */
+  autoPctTrigger: number | null;
   dedupSim: number;
   /** RAPTOR hierarchical recall enabled (Fix D). Drives both live recall and
    *  the durable-trim summary source (root summary). */
@@ -204,6 +215,15 @@ export {
 /** Build the resolved config from env + defaults. */
 export function loadConfig(): MegaConfig {
   const { tier, tierPct, thresholdTokens } = resolveThreshold();
+  // S29: optional percent-based fire-point override for tiered configs.
+  // null = inherit tierPct (default; preserves existing fire points). Clamped
+  // to [0.1, 1] so a bogus env can't disable or invert the gate. Ignored by
+  // the `custom` tier (tierPct null) which keeps the absolute token gate.
+  const aptRaw = process.env.MEGACOMPACT_AUTO_PCT_TRIGGER;
+  const autoPctTrigger =
+    aptRaw && aptRaw !== "" && Number.isFinite(Number(aptRaw))
+      ? Math.min(1, Math.max(0.1, Number(aptRaw)))
+      : null;
   return {
     tier,
     tierPct,
@@ -217,6 +237,8 @@ export function loadConfig(): MegaConfig {
     preserveRecentMin: envFlag("MEGACOMPACT_PRESERVE_RECENT_MIN", 2),
     auto: envBool("MEGACOMPACT_AUTO", true),
     autoInline: envBool("MEGACOMPACT_AUTO_INLINE", true),
+    autoContinueLengthStop: envBool("MEGACOMPACT_AUTO_CONTINUE_LENGTH_STOP", true),
+    autoPctTrigger,
     autoInlineK: envFlag("MEGACOMPACT_AUTO_INLINE_K", 3),
     dedupSim: Number(process.env.MEGACOMPACT_DEDUP_SIM ?? "0.9"),
     raptorEnabled: envBool("MEGACOMPACT_RAPTOR_ENABLED", true),

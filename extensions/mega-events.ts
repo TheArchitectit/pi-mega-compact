@@ -40,6 +40,7 @@ import {
 import { computeLiveTrimCut, liveTrimSummaryMessage } from "./mega-trim.js";
 import {
 	pressureFromPct,
+	pressureRatio,
 	memoryReviewCadence,
 	type MegaConfig,
 } from "./mega-config.js";
@@ -267,7 +268,7 @@ export function registerEventHandlers(
 		// compaction AND there is queued work AND we haven't nudged recently, nudge
 		// once so the agent continues (the live trim should make this rare). Guarded
 		// to never busy-loop: one nudge per 30s, only when truly idle + queued.
-		if (config.auto && runtime.activeAgents === 0) {
+		if ((config.auto || config.autoContinueLengthStop) && runtime.activeAgents === 0) {
 			try {
 				const idle = ctx.isIdle?.() ?? true;
 				const queued = ctx.hasPendingMessages?.() ?? false;
@@ -316,7 +317,7 @@ export function registerEventHandlers(
 				// most. Instead we DECOUPLE the nudge from `queued`: after a durable
 				// trim we ALWAYS nudge so the agent reliably restarts. Debounced 30s.
 				let didDurableTrim = false;
-				if (idle && overThreshold && now >= runtime.debounceUntil) {
+				if (config.auto && idle && overThreshold && now >= runtime.debounceUntil) {
 					// COMPACT-DEDUP FIX: skip the manual durable-trim trigger when pi's
 					// NATIVE auto-compaction just fired (or is in-flight). pi emits
 					// agent_end BEFORE its own _checkCompaction (per its docstring:
@@ -346,15 +347,28 @@ export function registerEventHandlers(
 				// Restart the agent after a mid-run durable trim (which stopped it), or
 				// when it settled idle with queued work. Decoupled from `queued` for the
 				// durable-trim case — see FIX note above. Debounced 30s; never blocks.
+				const lengthStop = config.autoContinueLengthStop && runtime.rt.lengthStopPending;
 				if (
 					idle &&
 					now >= runtime.resumeNudgeUntil &&
-					(didDurableTrim || queued)
+					((config.auto && (didDurableTrim || queued)) || lengthStop)
 				) {
 					runtime.resumeNudgeUntil = now + 30_000;
-					pi.sendUserMessage(
-						"[mega-compact] continue from the compacted context above.",
-					);
+					if (runtime.rt.lengthStopPending) {
+						runtime.rt.lengthStopPending = false; // one-shot: never re-fire for same stop
+						runtime.dashboard.event("length_stop_continue", { turnIndex: runtime.currentTurn });
+						runtime.logger.info("length_stop_continue", {
+						sessionId: runtime.rt.sessionId,
+						didDurableTrim,
+						queued,
+						});
+					}
+					// S28: when a length-stop (max-output-token truncation) fired WITHOUT a durable trim, do NOT claim a compaction happened
+					// (nothing was compacted on the low-pressure length path). Branch the message so the nudge matches reality.
+					const nudgeMsg = lengthStop && !didDurableTrim
+						? "[mega-compact] the last response hit the output-token cap; continue from where it stopped."
+						: "[mega-compact] continue from the compacted context above.";
+					pi.sendUserMessage(nudgeMsg);
 				}
 			} catch {
 				/* non-fatal: a failed nudge never blocks */
@@ -365,6 +379,7 @@ export function registerEventHandlers(
 
 	pi.on("turn_start", async (event, ctx) => {
 		runtime.currentTurn = event.turnIndex;
+		runtime.rt.lengthStopPending = false; // S28: re-arm defensively each user turn
 		runtime.dashboard.event("turn_start", { turnIndex: event.turnIndex });
 		runtime.snapshot(ctx);
 	});
@@ -395,6 +410,18 @@ export function registerEventHandlers(
 				await runMemoryReview(runtime, view, "turn");
 			}
 		}
+
+		// S28: detect max-output-token truncation. event.message.stopReason is the
+		// pi-ai StopReason union; 'length' == generation hit max_tokens OUTPUT cap
+		// (INPUT-orthogonal to context-window overflow). Arm the agent_end nudge.
+		if (
+			config.autoContinueLengthStop &&
+			event.message.role === "assistant" &&
+			event.message.stopReason === "length"
+		) {
+			runtime.rt.lengthStopPending = true;
+			runtime.dashboard.event("length_stop", { turnIndex: event.turnIndex });
+		}
 	});
 
 	// ---- Auto-trigger: live trim (compact and continue) + native durable ----
@@ -420,14 +447,13 @@ export function registerEventHandlers(
 		runtime.lastCtxPercent = pct ?? null;
 		runtime.lastCtxWindow = usage?.contextWindow ?? 0;
 		runtime.snapshot(ctx);
-		if (pct == null) return;
 
 		const messages = event.messages;
 		const view = runtime.engineView(messages);
 		const currentTokens =
 			usage?.tokens ??
 			estimateSessionTokens(view) ??
-			Math.round((pct / 100) * (usage?.contextWindow ?? 0));
+			Math.round(((pct ?? 0) / 100) * (usage?.contextWindow ?? 0));
 
 		// S27 DB-mirror: append ALL incoming messages to raw_transcript.
 		// Runs BEFORE fast-gate so every message is captured, even if we
@@ -445,15 +471,35 @@ export function registerEventHandlers(
 			}
 		}
 
-		// FAST GATE: token-based (tier% of the window), not a static amount.
-		if (currentTokens < runtime.effectiveThreshold) {
-			runtime.diagCtxFastGate++;
-			return;
+		// S29 FAST GATE: drive the auto-trigger off the context % (the number the
+		// menu bar shows), NOT the token count — the model under-reports tokens,
+		// so a token-only gate misses the overshoot that causes max-output-token
+		// truncation. The fire point is the tier's percent threshold (tierPct)
+		// unless overridden by MEGACOMPACT_AUTO_PCT_TRIGGER. `custom` (absolute
+		// MEGACOMPACT_THRESHOLD_TOKENS, tierPct null) is an explicit opt-out of
+		// percent scaling — it keeps the token gate. When pct is unavailable
+		// (window unknown / a model that doesn't report percent) a tiered config
+		// falls back to the token gate (S27 boot-fallback guarantee) instead of
+		// skipping compaction — a percent-only gate would regress that.
+		let gatePassed = false;
+		if (config.tierPct != null && pct != null) {
+			const firePct = config.autoPctTrigger ?? config.tierPct;
+			gatePassed = pct / 100 >= firePct;
+		} else {
+			// custom tier OR tiered-but-pct-unavailable → token gate (S27 fallback).
+			if (currentTokens < runtime.effectiveThreshold) {
+				runtime.diagCtxFastGate++;
+				return;
+			}
+			const check = autoCompactCheck(currentTokens, runtime.effectiveThreshold); // SERVER-STYLE CONFIRM (local)
+			if (!check.shouldCompact) {
+				runtime.diagCtxNoCompact++;
+				return;
+			}
+			gatePassed = true;
 		}
-
-		const check = autoCompactCheck(currentTokens, runtime.effectiveThreshold); // SERVER-STYLE CONFIRM (local)
-		if (!check.shouldCompact) {
-			runtime.diagCtxNoCompact++;
+		if (!gatePassed) {
+			runtime.diagCtxFastGate++;
 			return;
 		}
 
@@ -466,8 +512,10 @@ export function registerEventHandlers(
 		runtime.debounceUntil = now + 2000;
 
 		// Adaptive compression (Fix E): scale compression strength + keepFrom depth
-		// with how close we are to the model context limit.
-		const pressure = pressureFromPct(pct);
+		// with how close we are to the model context limit. Null-safe: when the
+		// token-fallback path ran (pct unavailable) use the token-basis pressure
+		// (the same basis the runtime `pressure` getter uses for custom/no-window).
+		const pressure = pct != null ? pressureFromPct(pct) : pressureRatio(currentTokens, runtime.effectiveThreshold);
 		const ran = runCompact(pi, runtime, config, ctx, messages, {
 			compressionPressure: pressure,
 		});

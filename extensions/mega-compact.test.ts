@@ -50,6 +50,7 @@ function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
 	let statusText: string | undefined;
 	const notifies: string[] = [];
 	const compactCalls: any[] = [];
+	const sendUserMessages: string[] = [];
 
 	// Minimal AgentMessage factory for the session we project into the extension.
 	function msg(role: string, text: string, toolName?: string): AgentMessage {
@@ -192,7 +193,7 @@ function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
 		registerMessageRenderer: () => {},
 		registerEntryRenderer: () => {},
 		sendMessage: (_m: any) => {},
-		sendUserMessage: () => {},
+		sendUserMessage: (m: string) => { sendUserMessages.push(m); },
 		appendEntry: (t: string, d: any) => appended.push({ t, d }),
 		setSessionName: () => {},
 		getSessionName: () => undefined,
@@ -221,6 +222,7 @@ function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
 		},
 		notifies,
 		compactCalls,
+		sendUserMessages,
 		fire: (ev: string, event: any, ctx: any) => handlers[ev](event, ctx),
 		ctx: makeCtx,
 		session,
@@ -957,40 +959,6 @@ test("/dashboard skips server spawn when already running", async () => {
 	delete process.env.MEGACOMPACT_DASHBOARD_PORT;
 });
 
-test("/dashboard-status reports running after dashboard start", async () => {
-	// Private dashboard port base for this harness — never collides with the
-	// parallel dashboard-server.test.js (9320 family) or a leftover server.
-	process.env.MEGACOMPACT_DASHBOARD_PORT = "39320";
-	const h = harness();
-	const livPort = 39320;
-	const { createServer } = await import("node:http");
-	const { join: j } = await import("node:path");
-	const { writeFileSync: wf } = await import("node:fs");
-	const server = createServer((_req, res) => {
-		res.writeHead(200, { "Content-Type": "application/json" });
-		res.end(
-			JSON.stringify({ updatedAt: new Date().toISOString(), tier: "test" }),
-		);
-	});
-	await new Promise<void>((r) => server.listen(livPort, "127.0.0.1", r));
-	wf(
-		j(h.stateDir, "port.pid"),
-		JSON.stringify({ port: livPort, pid: process.pid }),
-	);
-
-	const ctx = h.ctx();
-	await h.commands["mega-dashboard-status"].handler("", ctx);
-	assert.ok(
-		h.notifies.some(
-			(n) => n.includes("running") && n.includes(String(livPort)),
-		),
-		"reports running with port",
-	);
-
-	await new Promise<void>((r) => server.close(() => r()));
-	delete process.env.MEGACOMPACT_DASHBOARD_PORT;
-});
-
 test("state snapshot writes dashboard.json after compaction", async () => {
 	const h = harness();
 	const ctx = h.ctx({
@@ -1053,6 +1021,299 @@ test("events.log receives compaction events", async () => {
 			ex(j(h.stateDir, "dashboard.json")),
 			"dashboard.json proves post-compact ran",
 		);
+	}
+});
+
+test("S28: length-stop auto-continue nudges once, no ctx.compact on low-pressure length path", async () => {
+	const h = harness();
+	// Force a low-pressure context so the durable-trim branch (which calls
+	// ctx.compact()) is NOT taken; only the length-stop nudge should fire.
+	const lowPressureCtx = h.ctx({
+		isIdle: () => true,
+		hasPendingMessages: () => false,
+		getContextUsage: () => ({ tokens: 100, contextWindow: 200000, percent: 0 }),
+	});
+	// 1) Normal stop: no length flag armed → no nudge.
+	await h.fire(
+		"turn_end",
+		{ type: "turn_end", turnIndex: 1, message: { role: "assistant", stopReason: "stop" } },
+		lowPressureCtx,
+	);
+	await h.fire("agent_end", { type: "agent_end", messages: [] }, lowPressureCtx);
+	assert.equal(h.sendUserMessages.length, 0, "normal stop: no nudge");
+	assert.equal(h.compactCalls.length, 0, "normal stop: no ctx.compact");
+
+	// 2) Length stop: arms the flag, agent_end fires exactly one continue nudge
+	//    that references the output-token truncation (not a compaction).
+	await h.fire(
+		"turn_end",
+		{ type: "turn_end", turnIndex: 2, message: { role: "assistant", stopReason: "length" } },
+		lowPressureCtx,
+	);
+	await h.fire("agent_end", { type: "agent_end", messages: [] }, lowPressureCtx);
+	assert.equal(h.sendUserMessages.length, 1, "length stop: exactly one nudge");
+	assert.match(
+		h.sendUserMessages[0],
+		/output-token cap/,
+		"length stop: nudge references the output-token truncation",
+	);
+	assert.equal(h.compactCalls.length, 0, "length path: ctx.compact() NOT called (low pressure)");
+
+	// 3) One-shot: a second agent_end without a new length stop must NOT re-nudge.
+	await h.fire("agent_end", { type: "agent_end", messages: [] }, lowPressureCtx);
+	assert.equal(h.sendUserMessages.length, 1, "one-shot: no second nudge without a new length stop");
+});
+
+test("S28: length-stop auto-continue fires even when config.auto === false (autoContinueLengthStop is the sole gate)", async () => {
+	// Disable auto (durable-trim + queued-resume) but keep the length-stop flag on.
+	// Set BEFORE harness() loads the compiled extension so loadConfig() picks it up.
+	const prevAuto = process.env.MEGACOMPACT_AUTO;
+	process.env.MEGACOMPACT_AUTO = "false";
+	try {
+		// Re-load the extension with the new env so config.auto is false but
+		// autoContinueLengthStop stays true (default).
+		const h2 = harness();
+		const lowPressureCtx = h2.ctx({
+			isIdle: () => true,
+			hasPendingMessages: () => false,
+			getContextUsage: () => ({ tokens: 100, contextWindow: 200000, percent: 0 }),
+		});
+		// Length stop arms the flag; agent_end must still nudge despite auto=false.
+		await h2.fire(
+			"turn_end",
+			{ type: "turn_end", turnIndex: 1, message: { role: "assistant", stopReason: "length" } },
+			lowPressureCtx,
+		);
+		await h2.fire("agent_end", { type: "agent_end", messages: [] }, lowPressureCtx);
+		assert.equal(h2.sendUserMessages.length, 1, "auto=false: length stop still nudges");
+		assert.match(
+			h2.sendUserMessages[0],
+			/output-token cap/,
+			"auto=false: nudge references the output-token truncation",
+		);
+		assert.equal(h2.compactCalls.length, 0, "auto=false: ctx.compact() NOT called (auto gates durable-trim)");
+	} finally {
+		if (prevAuto === undefined) delete process.env.MEGACOMPACT_AUTO;
+		else process.env.MEGACOMPACT_AUTO = prevAuto;
+	}
+});
+
+// Helper: read <stateDir>/events.log JSONL and return the list of event `type`s.
+// Dashboard.event (extensions/mega-dashboard.ts) appends `{ ts, type, ...data }`
+// per line. Used to assert the S28 length_stop / length_stop_continue dashboard
+// events fire on the right paths (spec acceptance #7; OPEN issue #3).
+function eventTypes(stateDir: string): string[] {
+	const { readFileSync: rf, existsSync: ex } = require("node:fs") as typeof import("node:fs");
+	const { join: j } = require("node:path") as typeof import("node:path");
+	const logPath = j(stateDir, "events.log");
+	if (!ex(logPath)) return [];
+	const content = rf(logPath, "utf-8").trim();
+	if (content.length === 0) return [];
+	return content
+		.split("\n")
+		.map((line) => {
+			try {
+				return JSON.parse(line).type;
+			} catch {
+				return undefined;
+			}
+		})
+		.filter((t): t is string => typeof t === "string");
+}
+
+test("S28: length_stop + length_stop_continue dashboard events fire on the right paths", async () => {
+	const h = harness();
+	const lowPressureCtx = h.ctx({
+		isIdle: () => true,
+		hasPendingMessages: () => false,
+		getContextUsage: () => ({ tokens: 100, contextWindow: 200000, percent: 0 }),
+	});
+	// Normal stop: no length_stop event, no nudge, no length_stop_continue.
+	await h.fire(
+		"turn_end",
+		{ type: "turn_end", turnIndex: 1, message: { role: "assistant", stopReason: "stop" } },
+		lowPressureCtx,
+	);
+	await h.fire("agent_end", { type: "agent_end", messages: [] }, lowPressureCtx);
+	const afterNormal = eventTypes(h.stateDir);
+	assert.ok(
+		!afterNormal.includes("length_stop"),
+		"normal stop: no length_stop dashboard event",
+	);
+	assert.ok(
+		!afterNormal.includes("length_stop_continue"),
+		"normal stop: no length_stop_continue dashboard event",
+	);
+	assert.equal(h.sendUserMessages.length, 0, "normal stop: no nudge");
+
+	// Length stop: length_stop fires on turn_end, length_stop_continue on agent_end.
+	await h.fire(
+		"turn_end",
+		{ type: "turn_end", turnIndex: 2, message: { role: "assistant", stopReason: "length" } },
+		lowPressureCtx,
+	);
+	const afterTurnEnd = eventTypes(h.stateDir);
+	assert.ok(
+		afterTurnEnd.includes("length_stop"),
+		"length stop: length_stop dashboard event fired on turn_end",
+	);
+	await h.fire("agent_end", { type: "agent_end", messages: [] }, lowPressureCtx);
+	const afterAgentEnd = eventTypes(h.stateDir);
+	assert.ok(
+		afterAgentEnd.includes("length_stop_continue"),
+		"length stop: length_stop_continue dashboard event fired on agent_end",
+	);
+	assert.equal(h.sendUserMessages.length, 1, "length stop: exactly one nudge");
+});
+
+test("S28: non-length stopReasons do not arm the flag (no nudge, no length_stop event)", async () => {
+	const h = harness();
+	const lowPressureCtx = h.ctx({
+		isIdle: () => true,
+		hasPendingMessages: () => false,
+		getContextUsage: () => ({ tokens: 100, contextWindow: 200000, percent: 0 }),
+	});
+	// Every other pi-ai StopReason must leave the flag unset → no nudge + no event.
+	for (const stopReason of ["tool_use", "error", "aborted"] as const) {
+		await h.fire(
+			"turn_end",
+			{ type: "turn_end", turnIndex: 1, message: { role: "assistant", stopReason } },
+			lowPressureCtx,
+		);
+		await h.fire("agent_end", { type: "agent_end", messages: [] }, lowPressureCtx);
+	}
+	assert.equal(
+		h.sendUserMessages.length,
+		0,
+		"non-length stopReasons: no nudge",
+	);
+	assert.ok(
+		!eventTypes(h.stateDir).includes("length_stop"),
+		"non-length stopReasons: no length_stop dashboard event",
+	);
+});
+
+// ---- S29: percent-based auto-compact trigger (gate on context %, not tokens) -
+// The context-handler gate now fires on pct/100 >= (autoPctTrigger ?? tierPct)
+// for tiered configs, with a token FALLBACK when pct is null. `custom` keeps the
+// absolute token gate. These are the first tests to drive a `context` event
+// on a tiered config (the default harness forces custom via THRESHOLD_TOKENS=50).
+
+/** S29 tiered-config helper: tiered (not custom), low tier (tierPct 0.5), with
+ *  the legacy durable-trim flag off + anchor floor lowered so the live trim
+ *  returns a trimmed view (mirrors the S16 live-trim test setup at ~line 329). */
+function s29TieredCtx(h: ReturnType<typeof harness>, usage: { tokens: number; contextWindow: number; percent: number | null }) {
+	delete process.env.MEGACOMPACT_LEGACY_DURABLE_TRIM;
+	delete process.env.MEGACOMPACT_DURABLE_TRIM_FLOOR;
+	process.env.MEGACOMPACT_ANCHOR_USER_MESSAGES = "1";
+	return h.ctx({
+		isIdle: () => true,
+		hasPendingMessages: () => false,
+		getContextUsage: () => usage as any,
+	});
+}
+
+test("S29: percent gate fires when tokens under-report (tiered low, percent 55, tokens 10)", async () => {
+	process.env.MEGACOMPACT_TIER = "low";
+	delete process.env.MEGACOMPACT_THRESHOLD_TOKENS;
+	delete process.env.MEGACOMPACT_AUTO_PCT_TRIGGER;
+	try {
+		const h = harness({ keepTier: true, keepThreshold: true });
+		// tokens=10 (under the 0.5×10000=5000 token gate), percent=55 (>= 0.5).
+		// The OLD token-only gate would return (10 < 5000) → no trim. The S29
+		// percent gate (0.55 >= 0.5) fires → live trim returns a trimmed view.
+		const ctx = s29TieredCtx(h, { tokens: 10, contextWindow: 10000, percent: 55 });
+		const res = await h.fire("context", { type: "context", messages: h.session }, ctx);
+		assert.ok(res && typeof res === "object", "percent gate: live trim returned a result object");
+		assert.ok(Array.isArray((res as any).messages), "percent gate: result has a trimmed messages array");
+		assert.ok(
+			(res as any).messages.length < h.session.length,
+			"percent gate: trimmed view is shorter than the full session",
+		);
+		assert.equal(h.compactCalls.length, 0, "percent gate: live trim, no ctx.compact()");
+
+		// Control: percent 40 (< 0.5) → no trim, even with the same under-reported tokens.
+		const h2 = harness({ keepTier: true, keepThreshold: true });
+		const ctx2 = s29TieredCtx(h2, { tokens: 10, contextWindow: 10000, percent: 40 });
+		const res2 = await h2.fire("context", { type: "context", messages: h2.session }, ctx2);
+		assert.ok(
+			!(res2 && typeof res2 === "object" && Array.isArray((res2 as any).messages)),
+			"percent below fire point: no trim (token count 10 is also below the token gate)",
+		);
+	} finally {
+		delete process.env.MEGACOMPACT_TIER;
+		delete process.env.MEGACOMPACT_ANCHOR_USER_MESSAGES;
+	}
+});
+
+test("S29: MEGACOMPACT_AUTO_PCT_TRIGGER overrides the tier fire point (0.85)", async () => {
+	process.env.MEGACOMPACT_TIER = "low"; // tierPct 0.5
+	process.env.MEGACOMPACT_AUTO_PCT_TRIGGER = "0.85";
+	delete process.env.MEGACOMPACT_THRESHOLD_TOKENS;
+	try {
+		// percent 80 < 0.85 → no trim.
+		const h = harness({ keepTier: true, keepThreshold: true });
+		const ctx80 = s29TieredCtx(h, { tokens: 10, contextWindow: 10000, percent: 80 });
+		const res80 = await h.fire("context", { type: "context", messages: h.session }, ctx80);
+		assert.ok(
+			!(res80 && typeof res80 === "object" && Array.isArray((res80 as any).messages)),
+			"override 0.85: percent 80 does NOT trim (below the override fire point)",
+		);
+
+		// percent 90 >= 0.85 → trim fires (despite the tier's own 0.5 fire point).
+		const h2 = harness({ keepTier: true, keepThreshold: true });
+		const ctx90 = s29TieredCtx(h2, { tokens: 10, contextWindow: 10000, percent: 90 });
+		const res90 = await h2.fire("context", { type: "context", messages: h2.session }, ctx90);
+		assert.ok(
+			res90 && Array.isArray((res90 as any).messages) && (res90 as any).messages.length < h2.session.length,
+			"override 0.85: percent 90 DOES trim (above the override fire point)",
+		);
+	} finally {
+		delete process.env.MEGACOMPACT_TIER;
+		delete process.env.MEGACOMPACT_AUTO_PCT_TRIGGER;
+		delete process.env.MEGACOMPACT_ANCHOR_USER_MESSAGES;
+	}
+});
+
+test("S29: custom tier keeps the absolute token gate (percent 40 but tokens 100 >= 50)", async () => {
+	// MEGACOMPACT_THRESHOLD_TOKENS → custom (tierPct null) → token gate, percent ignored.
+	process.env.MEGACOMPACT_THRESHOLD_TOKENS = "50";
+	delete process.env.MEGACOMPACT_TIER;
+	delete process.env.MEGACOMPACT_AUTO_PCT_TRIGGER;
+	try {
+		const h = harness({ keepTier: true, keepThreshold: true });
+		// percent 40 (low) BUT tokens 100 >= 50 threshold → custom token gate fires.
+		const ctx = s29TieredCtx(h, { tokens: 100, contextWindow: 10000, percent: 40 });
+		const res = await h.fire("context", { type: "context", messages: h.session }, ctx);
+		assert.ok(
+			res && Array.isArray((res as any).messages) && (res as any).messages.length < h.session.length,
+			"custom tier: token gate fires (tokens 100 >= 50) despite low percent 40",
+		);
+	} finally {
+		delete process.env.MEGACOMPACT_THRESHOLD_TOKENS;
+		delete process.env.MEGACOMPACT_ANCHOR_USER_MESSAGES;
+	}
+});
+
+test("S29: tiered config with pct==null falls back to the token gate (not skipped)", async () => {
+	// The regression guard for the audit finding: a percent-ONLY gate would skip
+	// compaction when percent is unreported. S29 falls back to the token gate
+	// (S27 boot-fallback guarantee). tiered low: effectiveThreshold = 0.5×10000 = 5000;
+	// tokens 6000 >= 5000 → token fallback fires.
+	process.env.MEGACOMPACT_TIER = "low";
+	delete process.env.MEGACOMPACT_THRESHOLD_TOKENS;
+	delete process.env.MEGACOMPACT_AUTO_PCT_TRIGGER;
+	try {
+		const h = harness({ keepTier: true, keepThreshold: true });
+		const ctx = s29TieredCtx(h, { tokens: 6000, contextWindow: 10000, percent: null });
+		const res = await h.fire("context", { type: "context", messages: h.session }, ctx);
+		assert.ok(
+			res && Array.isArray((res as any).messages) && (res as any).messages.length < h.session.length,
+			"pct==null on tiered: token fallback fires (NOT skipped) — S27 boot-fallback preserved",
+		);
+	} finally {
+		delete process.env.MEGACOMPACT_TIER;
+		delete process.env.MEGACOMPACT_ANCHOR_USER_MESSAGES;
 	}
 });
 

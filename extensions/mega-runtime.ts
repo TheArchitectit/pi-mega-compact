@@ -81,6 +81,7 @@ interface SessionRuntime {
 	compactCount: number; // compactions performed this session-instance
 	recallInjections: number; // recall blocks injected this session-instance
 	cacheHitTokens: number; // tokens saved via cache hits (dedup + recall) this session
+	lengthStopPending: boolean; // S28: set on turn_end when stopReason==='length'
 }
 
 /** ANSI palette for the toolbar. The pi TUI's Text component preserves ANSI
@@ -290,6 +291,7 @@ export class MegaRuntime {
 		compactCount: 0,
 		recallInjections: 0,
 		cacheHitTokens: 0,
+		lengthStopPending: false,
 	};
 	debounceUntil = 0;
 	// S16: debounce for the agent_end resume nudge (avoid busy-loops).
@@ -519,9 +521,13 @@ export class MegaRuntime {
 				}
 			: undefined;
 		// effectiveThresholdPct: the live fire point as a % of the window (null for
-		// `custom`, which has no tierPct). Used by armed/ready + the dashboard.
+		// `custom`, which has no tierPct). S29: honors MEGACOMPACT_AUTO_PCT_TRIGGER
+		// override so the dashboard's armed/ready match the context-handler gate
+		// (which fires on this same %). Used by armed/ready + the dashboard.
 		const effectiveThresholdPct =
-			this.config.tierPct != null ? this.config.tierPct * 100 : null;
+			this.config.tierPct != null
+				? (this.config.autoPctTrigger ?? this.config.tierPct) * 100
+				: null;
 		// armed lights at/above the REAL fire point: max(effectiveThresholdPct,
 		// fastGatePct). fastGatePct already equals tierPct*100 by default, but a
 		// MEGACOMPACT_FAST_GATE_PCT override can raise it, so we take the max.
@@ -529,7 +535,15 @@ export class MegaRuntime {
 			this.lastCtxPercent != null &&
 			this.lastCtxPercent >=
 				Math.max(effectiveThresholdPct ?? 0, this.config.fastGatePct);
-		const ready = armed && (this.lastCtxTokens ?? 0) >= this.effectiveThreshold;
+		// S29: ready mirrors the context-handler gate's basis — percent for tiered
+		// (the gate fires on pct), tokens for custom (the gate fires on tokens).
+		// Previously this always required tokens, so the dashboard could show
+		// "armed" (percent high) but never "ready" when tokens were under-reported
+		// — the same inconsistency the S29 gate fix removes.
+		const ready =
+			this.config.tierPct != null
+				? armed && (this.lastCtxPercent ?? 0) >= (effectiveThresholdPct ?? 0)
+				: armed && (this.lastCtxTokens ?? 0) >= this.effectiveThreshold;
 		this.dashboard.snapshot({
 			version: 1,
 			updatedAt: new Date().toISOString(),
@@ -656,7 +670,9 @@ export class MegaRuntime {
 					: "?";
 			const pctStr =
 				this.lastCtxPercent != null
-					? `${Math.round(this.lastCtxPercent * 10) / 10}%`
+					? this.lastCtxPercent > 100
+						? `>100%` // S29: overshoot warning, not a raw "250%" — the percent trigger now compacts before 100%, so this is the residual case where it can't keep up.
+						: `${Math.round(this.lastCtxPercent * 10) / 10}%`
 					: "?%";
 			// S24: the tier label is the LIVE pressure band (low/medium/high/ultra/
 			// mega), not the static env preset. It climbs as context fills.
@@ -888,6 +904,7 @@ export class MegaRuntime {
 			compactCount: 0,
 			recallInjections: 0,
 			cacheHitTokens: 0,
+			lengthStopPending: false,
 	};
 		this.statusKey = undefined;
 		this.activeAgents = 0;
