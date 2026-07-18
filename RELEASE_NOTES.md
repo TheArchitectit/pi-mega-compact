@@ -1,5 +1,28 @@
 # Release Notes — pi-mega-compact
 
+## v0.7.8 (2026-07-18)
+
+Fix the max-output-token truncation at its source, plus recover from it when prevention misses. The auto-compact trigger now gates on **context %** (reliable, the number the menu bar shows) instead of a **token count** the model under-reports — so compaction fires at the tier's fire point *before* the context reaches 100%, instead of silently missing it while the menu bar climbed past 100% and the turn hit the output-token cap.
+
+### Added
+
+- **S29: percent-based auto-compact trigger.** The context-handler gate now fires on `pct/100 >= (autoPctTrigger ?? tierPct)` for tiered configs, with a **token fallback** when `percent` is unavailable (preserves S27's boot-fallback guarantee — a percent-only gate would skip compaction when percent isn't reported). `custom` (`MEGACOMPACT_THRESHOLD_TOKENS`) keeps the absolute token gate. New optional `MEGACOMPACT_AUTO_PCT_TRIGGER` (clamped 0.1–1, default unset = inherit the tier's `tierPct`, so the fire point is unchanged by default). The dashboard's `armed`/`ready` now mirror the gate's basis (percent for tiered, tokens for custom), so the menu bar and the trigger no longer disagree. This is a **reliability fix, not a threshold change**: the default fire point is byte-identical to S27; compaction that previously got missed now fires.
+- **S28: max-output-token auto-continue.** Detects `stopReason === "length"` on `turn_end` and arms a one-shot, 30s-debounced, idle-gated continue nudge at `agent_end`, so the agent resumes a truncated turn instead of surfacing it as a terminal error. Input-orthogonal to context overflow — no `ctx.compact()` on the low-pressure length path. Nudge text branches so it never claims a compaction that didn't occur. `MEGACOMPACT_AUTO_CONTINUE_LENGTH_STOP` (default true) is the sole gate; disabling it reverts to the prior silent behavior.
+
+### Fixed
+
+- **Status-bar context % caps at ">100%"** instead of printing a raw overshoot value (e.g. "250%"). The bar was already clamped; only the number was unclamped. With S29 the overshoot is rare; the cap makes the residual case read as a warning.
+
+### Documentation
+
+- New specs: `docs/specs/s28-max-output-token-auto-continue.md` (status IMPLEMENTED + P2-2 notes) and `docs/specs/s29-percent-auto-trigger.md`. `docs/INDEX_MAP.md` + `docs/HEADER_MAP.md` updated.
+
+### Upgrade / migration
+
+No migration required — additive + signal-only. Default behavior (no `MEGACOMPACT_AUTO_PCT_TRIGGER`) keeps the S27 fire points; the gate just reads the reliable percent signal now. Upgrade with `pi update --extensions` (npm is the only distribution path).
+
+---
+
 ## v0.7.7 (2026-07-17)
 
 Dashboard: a dedicated **Active Repos** tab plus **DB-backed cumulative metrics** so cache-hit / compaction / time-saved totals are durable across session restarts. Additive — no behavior change to compaction or recall.
