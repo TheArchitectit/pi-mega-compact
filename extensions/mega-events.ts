@@ -12,9 +12,12 @@ import type {
 	ExtensionContext,
 	ContextEvent,
 	SessionBeforeCompactEvent,
+	SessionCompactEvent,
 } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { normalizeSessionId } from "../src/store.js";
+import { openStore, appendRawTranscript, writeCheckpointEpoch, autoMaintain, type CheckpointEpoch } from "../src/store/sqlite.js";
+import { epochIdFor } from "../src/mirror/epoch.js";
 import { autoCompactCheck } from "../src/compact.js";
 import { estimateSessionTokens, estimateBlockTokens } from "../src/tokens.js";
 import {
@@ -40,6 +43,39 @@ import {
 	memoryReviewCadence,
 	type MegaConfig,
 } from "./mega-config.js";
+import type { RawTranscriptRow } from "../src/store/sqlite.js";
+import { createHash } from "node:crypto";
+
+/**
+ * Convert a pi AgentMessage to a RawTranscriptRow for the DB mirror.
+ * content_bytes is canonical JSON (sorted keys) for deterministic hashing.
+ * Returns null if the message has no usable content.
+ */
+function toRawTranscriptRow(
+	msg: AgentMessage,
+	sessionId: string,
+	epochId: string,
+): RawTranscriptRow | null {
+	// Narrow to Message union (has content + timestamp).
+	const m = msg as { role?: string; content?: unknown; timestamp?: number; toolName?: string };
+	const content = m.content;
+	if (content == null || content === "") return null;
+	// Canonical form: sort object keys for deterministic hashing.
+	const contentBytes = typeof content === "string"
+		? content
+		: JSON.stringify(content, Object.keys(content as object).sort());
+	const contentHash = createHash("sha256").update(contentBytes).digest("hex");
+	return {
+		contentHash,
+		sessionId,
+		seq: 0, // assigned by appendRawTranscript (COALESCE(MAX(seq),0)+1)
+		role: m.role ?? "unknown",
+		contentBytes,
+		toolName: m.toolName ?? null,
+		messageTimestamp: m.timestamp ?? null,
+		checkpointEpoch: epochId,
+	};
+}
 
 /**
  * DIAG accessor for the headless test harness: the most recently constructed
@@ -121,6 +157,16 @@ export function registerEventHandlers(
 			} catch (err) {
 				runtime.logger.warn("memory-recall skipped", { err: String(err) });
 			}
+		}
+		// S27 Task 10: best-effort auto-maintenance on session start (prune rows
+		// older than 30d, checkpoint WAL if >10MB, VACUUM if DB >100MB + >20%
+		// freelist). Never blocks session start — swallows errors and logs a
+		// one-line summary for diagnostics.
+		try {
+			const m = autoMaintain(runtime.currentStateDir);
+			if (m && !m.endsWith("nothing to do")) runtime.logger.info("db-auto-maintain", { result: m });
+		} catch (e) {
+			runtime.logger.warn("db-auto-maintain-fail", { error: String(e) });
 		}
 		runtime.dashboard.event("session_start", {
 			reason: event.reason,
@@ -271,7 +317,20 @@ export function registerEventHandlers(
 				// trim we ALWAYS nudge so the agent reliably restarts. Debounced 30s.
 				let didDurableTrim = false;
 				if (idle && overThreshold && now >= runtime.debounceUntil) {
-					if (!piCompactWouldNoop(ctx)) {
+					// COMPACT-DEDUP FIX: skip the manual durable-trim trigger when pi's
+					// NATIVE auto-compaction just fired (or is in-flight). pi emits
+					// agent_end BEFORE its own _checkCompaction (per its docstring:
+					// "Called after agent_end and before prompt submission"), so a
+					// synchronous `piCompactWouldNoop` branch check misses a native
+					// compaction that hasn't appended its entry yet — calling
+					// ctx.compact() then races with pi and throws "Already compacted"
+					// to the user. The `lastCompactAt` cooldown (updated by the
+					// session_compact listener for EVERY compaction, native or
+					// extension-supplied) closes that race window.
+					const sinceCompact = now - (runtime.rt.lastNativeCompactAt ?? 0);
+					if (sinceCompact < 10_000) {
+						runtime.diagAgentEndDurableSkipRecent++;
+					} else if (!piCompactWouldNoop(ctx)) {
 						runtime.debounceUntil = now + 2000;
 						runtime.diagAgentEndDurable++;
 						runtime.logger.info("agent-end-durable-trigger", {
@@ -280,7 +339,7 @@ export function registerEventHandlers(
 							thresholdTokens: config.thresholdTokens,
 							queued,
 						});
-						ctx.compact({ customInstructions: undefined }); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; agent settled so no in-flight abort
+						ctx.compact({ customInstructions: undefined }); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; agent settled so no in-flight abort. Race-guarded by lastCompactAt cooldown above (ctx.compact returns void → throw is surfaced by pi as compaction_end; the cooldown prevents the call entirely).
 						didDurableTrim = true;
 					}
 				}
@@ -370,6 +429,22 @@ export function registerEventHandlers(
 			estimateSessionTokens(view) ??
 			Math.round((pct / 100) * (usage?.contextWindow ?? 0));
 
+		// S27 DB-mirror: append ALL incoming messages to raw_transcript.
+		// Runs BEFORE fast-gate so every message is captured, even if we
+		// don't compact this turn. Append is idempotent (content_hash PK).
+		if (config.dbMirror) {
+			try {
+				const db = openStore(runtime.currentStateDir);
+				const epochId = epochIdFor(runtime.rt.sessionId);
+				for (const msg of messages) {
+					const raw = toRawTranscriptRow(msg, runtime.rt.sessionId, epochId);
+					if (raw) appendRawTranscript(db, raw);
+				}
+			} catch (e) {
+				runtime.logger.warn("db-mirror-append-fail", { error: String(e) });
+			}
+		}
+
 		// FAST GATE: token-based (tier% of the window), not a static amount.
 		if (currentTokens < runtime.effectiveThreshold) {
 			runtime.diagCtxFastGate++;
@@ -401,6 +476,41 @@ export function registerEventHandlers(
 			return;
 		}
 
+		// S27 DB-mirror: write checkpoint_epoch with deterministic nonce.
+		// This makes the cache key stable across identical compactions.
+		if (config.dbMirror) {
+			try {
+				const db = openStore(runtime.currentStateDir);
+				const cpId = ran.result.checkpointId ?? `epoch-${Date.now()}`;
+				const epoch: CheckpointEpoch = {
+					epochId: epochIdFor(cpId),
+					sessionId: runtime.rt.sessionId,
+					startedSeq: 0,
+					committedSeq: ran.result.compactedFrom,
+					checkpointId: cpId,
+					cutIndex: ran.result.compactedFrom,
+					summaryMessageText: ran.result.summary,
+					createdAt: Date.now(),
+				};
+				writeCheckpointEpoch(db, epoch);
+				// S27 Task 6: Fire-and-forget dedup pipeline.
+				// Deduplicates raw_transcript rows for the compacted range.
+				try {
+					const { dedupTranscript } = await import("../src/mirror/dedup.js");
+					dedupTranscript(
+						db,
+						runtime.rt.sessionId,
+						0,
+						ran.result.compactedFrom,
+					);
+				} catch (_dedupErr) {
+					// Fire-and-forget: dedup failure is non-fatal
+				}
+			} catch (e) {
+				runtime.logger.warn("db-mirror-epoch-fail", { error: String(e) });
+			}
+		}
+
 		// LEGACY path (rollback): v0.4.28 ctx.compact() + the no-op gate. The
 		// manual compact path aborts the in-flight turn — only used behind the flag.
 		// Read live from env (in addition to the load-time config) so the flag can be
@@ -411,8 +521,13 @@ export function registerEventHandlers(
 			process.env.MEGACOMPACT_LEGACY_DURABLE_TRIM === "true" ||
 			process.env.MEGACOMPACT_LEGACY_DURABLE_TRIM === "1";
 		if (legacy) {
-			if (piCompactWouldNoop(ctx)) return;
-			ctx.compact({ customInstructions: undefined });
+			// COMPACT-DEDUP FIX: same race guard as the agent_end path. Skip when a
+			// NATIVE compaction just fired (avoids racing pi and surfacing a spurious
+			// "Already compacted" / "Nothing to compact" toast). Uses lastNativeCompactAt
+			// (NOT lastCompactAt, which runCompact also stamps for our own checkpoint).
+			const sinceCompact = Date.now() - (runtime.rt.lastNativeCompactAt ?? 0);
+			if (sinceCompact < 10_000 || piCompactWouldNoop(ctx)) return;
+			ctx.compact({ customInstructions: undefined }); // race-guarded by lastNativeCompactAt cooldown (ctx.compact returns void → not catchable; the cooldown prevents the call)
 			return;
 		}
 
@@ -550,6 +665,23 @@ export function registerEventHandlers(
 			return {};
 		},
 	);
+
+		// COMPACT-DEDUP FIX: track EVERY compaction (native + extension-supplied)
+		// so the agent_end durable-trim guard can skip a redundant ctx.compact()
+		// when pi just compacted. Without this, agent_end fires ctx.compact()
+		// synchronously AFTER pi's native auto-compaction appended a compaction
+		// entry but BEFORE our branch read sees it on the next tick — racing
+		// into a user-facing "Already compacted" throw. `lastCompactAt` is the
+		// race-closing signal: any compaction (manual/threshold/overflow, ours
+		// or pi's own) stamps it, and the agent_end guard skips for 10s.
+		pi.on("session_compact", async (_event: SessionCompactEvent, _ctx: ExtensionContext) => {
+			runtime.rt.lastNativeCompactAt = Date.now();
+			runtime.rt.lastCompactAt = Date.now();
+			runtime.logger.info("session-compacted", {
+				sessionId: runtime.rt.sessionId,
+				at: runtime.rt.lastCompactAt,
+			});
+		});
 
 	/**
 	 * Build a minimal fallback compaction so pi never runs its throwing compact().

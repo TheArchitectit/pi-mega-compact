@@ -52,6 +52,10 @@
 | sprint 15 spec (benchmarks, DR, release) | [specs/sprint-15.md](specs/sprint-15.md) | docs/ |
 | S24 spec (unified pressure signal: auto-compact + tier + memory; memory storage hardening) | [specs/s24-unified-pressure.md](specs/s24-unified-pressure.md) | docs/ |
 | S27 spec (tiered % compaction threshold — `tierPct × contextWindow`; fires below pi native ~80% auto-compact for any model size; reconciles dual-basis pressure flicker) | [specs/s27-tiered-percent-threshold.md](specs/s27-tiered-percent-threshold.md) | docs/ |
+| **S27 spec (db mirror: byte-stable prompt cache via raw transcript mirror + deterministic epoch nonce)** | [specs/sprint-27-db-mirror-cache-stability.md](specs/sprint-27-db-mirror-cache-stability.md) | docs/ |
+| **S27 sprint plan (tasks 5–9: context hook, dedup pipeline, recall demotion, tests, DB maintenance /commands)** | [specs/sprint-27-db-mirror-implementation.md](specs/sprint-27-db-mirror-implementation.md) | docs/ |
+| **post-mortem: "Already compacted" / "Auto compaction failed" race (agent_end vs native _checkCompaction)** | [specs/postmortem-already-compacted-race.md](specs/postmortem-already-compacted-race.md) | docs/specs/ |
+| **S27 Task 10: DB maintenance /commands (/mega-db-stats, prune, vacuum, check, reconcile) + auto-maintenance on session_start** | `extensions/mega-db-cmds.ts` + `src/store/sqlite.ts` | extensions/ + src/ |
 | retention policy (TTL 90d, soft-delete, VACUUM, DR snapshots) | [RETENTION_POLICY.md](RETENTION_POLICY.md) | docs/ |
 | dedup runbook (SEV tiers, first-15-min, MARK_ONLY degrade) | [DEDUP_RUNBOOK.md](DEDUP_RUNBOOK.md) | docs/ |
 
@@ -94,6 +98,10 @@
 | embedder interface | [src/embedder.ts](../src/embedder.ts) | src/ |
 | extractive summary | [src/extractive.ts](../src/extractive.ts) | src/ |
 | pi extension entry, slash commands | [extensions/mega-compact.ts](../extensions/mega-compact.ts) | extensions/ |
+| **S27: raw_transcript (byte-stable message mirror), append-only log, seq ordering** | [src/store/sqlite.ts](../src/store/sqlite.ts) | src/store/ |
+| **S27: dedup_mirror (space-efficient dedup storage), ref_count, content_hash** | [src/mirror/dedup.ts](../src/mirror/dedup.ts) | src/mirror/ |
+| **S27: epoch.ts (deterministic epoch-id derivation, FNV-1a nonce, checkpoint_epochs)** | [src/mirror/epoch.ts](../src/mirror/epoch.ts) | src/mirror/ |
+| **S27: DB-mirror sprint plan (tasks 5–9: context hook, dedup pipeline, recall demotion, tests, DB maintenance)** | [specs/sprint-27-db-mirror-implementation.md](specs/sprint-27-db-mirror-implementation.md) | docs/specs/ |
 
 ---
 

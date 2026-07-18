@@ -309,3 +309,59 @@
 | Memory storage hardening | 130 | 119 |
 | ACCEPTANCE | 168 | 157 |
 | ROLLBACK | 178 | 167 |
+
+## docs/specs/sprint-27-db-mirror-cache-stability.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 15 | 0 |
+| PROBLEM (root cause: Date.now() + shifting slice) | 47 | 0 |
+| SCOPE (in/out) | 76 | 0 |
+| EXECUTION (Tasks 1–9) | 137 | 0 |
+| ACCEPTANCE (grep + behavioral) | 240 | 0 |
+| ROLLBACK | 268 | 0 |
+| RISKS / EDGE CASES | 283 | 0 |
+
+## src/mirror/ (S27 DB-mirror)
+
+| File | Purpose |
+|------|--------|
+| `src/mirror/epoch.ts` | Deterministic epoch-id derivation (FNV-1a nonce, epochIdFor) |
+| `src/mirror/raw_transcript.ts` | Append-only raw message log (upsertRawTranscript, listRawTranscriptRange) |
+| `src/mirror/dedup.ts` | Dedup pipeline for space-efficient storage (dedupTranscript, getDedupRatio) |
+
+## docs/specs/sprint-27-db-mirror-implementation.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 11 | 0 |
+| DECISIONS (locked) | 20 | 9 |
+| SCOPE (in/out) | 37 | 26 |
+| EXECUTION (Tasks 1–9) | 57 | 46 |
+| Task 1 — Schema + Dedup columns (P0) | 60 | 49 |
+| Task 2 — Insert helpers (P0) | 73 | 62 |
+| Task 3 — Epoch nonce (P0) | 96 | 85 |
+| Task 4 — Config flag (P0) | 113 | 102 |
+| Task 5 — Context hook (P0) | 126 | 115 |
+| Task 6 — Dedup pipeline (P1) | 138 | 127 |
+| Task 7 — Recall Demotion (P2) | 149 | 138 |
+| Task 8 — Tests (P0) | 165 | 154 |
+| Task 9 — Maps + Guardrails (P3) | 188 | 177 |
+| Task 10 — DB Maintenance Commands (NEW) | 197 | 186 |
+| Dependency graph | 229 | 218 |
+| ACCEPTANCE | 237 | 226 |
+| ROLLBACK | 258 | 247 |
+
+## docs/specs/postmortem-already-compacted-race.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Summary (Failure ID FAIL-2026071701) | 11 | 0 |
+| Symptom (exact toast + throw sites in agent-session.js) | 30 | 22 |
+| Root Cause (agent_end vs _checkCompaction race) | 59 | 51 |
+| Why It Produced the Symptom | 110 | 102 |
+| Fix (lastNativeCompactAt cooldown, commit 848c817) | 124 | 116 |
+| How It Was Found (repro + hypotheses rejected) | 163 | 155 |
+| Why It Slipped Through | 191 | 183 |
+| Validation | 208 | 200 |
+| Action Items | 224 | 216 |

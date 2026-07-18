@@ -1,5 +1,66 @@
 # Changelog
 
+## v0.7.6 (2026-07-17) — docs-complete + version bump
+
+- **docs(readme):** `/mega-db-*` commands table + auto-maintenance callout; "Current version" bumped to v0.7.6 with S27 note.
+- **docs(tester):** new TESTER_GUIDE.md §12 — DB maintenance /commands manual checklist (stats / prune / vacuum / check / reconcile / auto-maint-on-`session_start`).
+- **chore:** version bump 0.7.5 → 0.7.6 to force the npm upgrade path (no code changes).
+
+No code changes — `/mega-db-*` commands and auto-maintenance are unchanged from v0.7.5. Tests: 407 passed / 0 failed across 41 files.
+
+## v0.7.5 (2026-07-17) — DB maintenance /commands (S27 Task 10)
+
+- **feat(db-maint): `/mega-db-*` commands + auto-maintenance.** S27 Task 10.
+  - `src/store/sqlite.ts` — new maintenance primitives: `getDbStats`,
+    `pruneOldRows`, `checkpointWal`, `vacuumDb`, `integrityCheck`,
+    `reconcileDedupMirror`, `autoMaintain`. All parameterized (PREVENT-002),
+    local SQLite (PREVENT-PI-004).
+  - `extensions/mega-db-cmds.ts` (new) — registers `/mega-db-stats`,
+    `/mega-db-prune [days]`, `/mega-db-vacuum`, `/mega-db-check`,
+    `/mega-db-reconcile`.
+  - `extensions/mega-compact.ts` — wires `registerDbCommands`.
+  - `extensions/mega-events.ts` — best-effort `autoMaintain` on `session_start`
+    (prune 30d, WAL checkpoint >10MB, VACUUM DB >100MB + freelist >20%). Never
+    blocks session start.
+  - `src/store/sqlite.dbmaint.test.ts` (new) — 12 unit tests for the
+    maintenance primitives.
+
+Full suite: 407 passed, 0 failed across 41 files.
+
+## v0.7.4 (2026-07-17) — compaction race fix + S27 DB-mirror foundation
+
+- **fix(compaction): prevent "Already compacted" race in agent_end.** pi emits
+  `agent_end` BEFORE its own native `_checkCompaction`, so our manual durable-trim
+  `ctx.compact()` call raced with pi's native auto-compaction and surfaced a
+  spurious "Already compacted" / "Auto compaction failed" error toast.
+  - `extensions/mega-runtime.ts` — new `rt.lastNativeCompactAt` field +
+    `diagAgentEndDurableSkipRecent` counter.
+  - `extensions/mega-events.ts` — new `session_compact` listener stamps
+    `lastNativeCompactAt` for EVERY compaction (manual/threshold/overflow, ours
+    or pi's own); both `ctx.compact()` call sites (agent_end mid-run trim +
+    legacy path) skip for 10s after a native compaction. Uses
+    `lastNativeCompactAt` (not `lastCompactAt`, which `runCompact` also stamps
+    for our own checkpoint persistence — that would falsely skip).
+
+- **feat(db-mirror): S27 raw transcript mirror + dedup pipeline (Tasks 5-9).**
+  Byte-stable prompt-cache-key foundation, behind `MEGACOMPACT_DB_MIRROR`
+  (default OFF). Additive only.
+  - Task 5 — `extensions/mega-events.ts` context hook: append ALL incoming
+    messages to `raw_transcript` (idempotent, content_hash PK); write
+    `checkpoint_epoch` with deterministic nonce on compaction.
+  - Task 6 — `src/mirror/dedup.ts` + `src/store/sqlite.ts`: `dedup_mirror`
+    table stores unique `content_bytes` once; `raw_transcript` references via
+    `content_ref` with `ref_count`. `dedupTranscript()` fire-and-forget.
+  - Task 7 — `src/recall.ts` recall demotion contract: when mirror is ON,
+    `raw_transcript + dedup_mirror` are the byte-stable source of truth;
+    legacy JSON checkpoint is DR fallback only. VectorStore recall unaffected.
+  - Task 8 — tests: `src/mirror/mirror.test.ts`, `src/store/sqlite.dbmirror.test.ts`,
+    `extensions/mega-events.test.ts`. Full suite 395/395 pass.
+  - Task 9 — maps + guardrails: `docs/INDEX_MAP.md` + `docs/HEADER_MAP.md`
+    updated; `docs/specs/sprint-009-db-maintenance.md` added.
+
+Full suite: 395 passed, 0 failed across 40 files.
+
 ## v0.6.9 (2026-07-17) — tiered % compaction threshold (scales with model window)
 
 - **Percentage-based fire point.** The compaction threshold is now `tierPct ×

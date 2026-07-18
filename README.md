@@ -6,15 +6,18 @@ sessions into a **local SQLite store** and offers **deduped inline recall** — 
 running **locally inside the extension**, with **no remote MCP server** and
 **zero network calls at runtime** (PREVENT-PI-004).
 
-> **Current version:** `v0.6.9` — storage backend is **`node:sqlite`**
+> **Current version:** `v0.7.5` — storage backend is **`node:sqlite`**
 > (`DatabaseSync`, a Node ≥22.13 built-in), replacing the old `better-sqlite3`
 > native addon and the per-session gzipped JSON checkpoint files. **Zero native
-> build step, fully local, zero network at runtime.** Legacy
-> `.checkpoints.json.gz` snapshots are retained as disaster-recovery fallbacks
-> and auto-imported on first run. The S24 line ties auto-compact, the tier
-> label, trim depth, and durable-memory review to one **unified pressure
-> signal**, adds a **cross-repo memory-RAG index**, and relieves context
-> **during team runs** (not just at the end).
+> build step, fully local, zero network at runtime.** S27 added a **raw-transcript
+> mirror + dedup pipeline** (byte-stable prompt cache via deterministic epoch
+> nonce) and **DB maintenance /commands** (`/mega-db-stats` · `prune` ·
+> `vacuum` · `check` · `reconcile`) plus best-effort auto-maintenance on
+> `session_start`. Legacy `.checkpoints.json.gz` snapshots are retained as
+> disaster-recovery fallbacks and auto-imported on first run. The S24 line ties
+> auto-compact, the tier label, trim depth, and durable-memory review to one
+> **unified pressure signal**, adds a **cross-repo memory-RAG index**, and
+> relieves context **during team runs** (not just at the end).
 
 ---
 
@@ -234,6 +237,11 @@ The commands (slash commands inside pi):
 | `/mega-view <chkpt\|recent>` | Show a checkpoint's verbatim original region. |
 | `/mega-help` | Explain the toolbar widget terms (live tier, gate, dedup, tokens saved). |
 | `/mega-compat-check` | Detect extension conflicts (duplicate commands / overlapping handlers) across installed pi extensions. |
+| `/mega-db-stats` | Show mega-compact SQLite DB stats: table row counts, disk footprint (db + WAL + SHM), page count, freelist %, WAL frames. Read-only; safe any time. |
+| `/mega-db-prune [days]` | DELETE `raw_transcript` + `checkpoint_epochs` rows older than N days (default 30) + orphan `dedup_mirror` rows. Reports deleted counts + reclaimed bytes. |
+| `/mega-db-vacuum` | `VACUUM` the DB (rebuild pages, reclaim freelist). Heavy: briefly doubles disk usage. |
+| `/mega-db-check` | `PRAGMA integrity_check` + `wal_checkpoint(TRUNCATE)`. Fold the WAL into the main file and verify DB health. Use after a crash. |
+| `/mega-db-reconcile` | Fix `dedup_mirror.ref_count` drift vs actual `raw_transcript` refs, delete orphan dedup rows, backfill missing `content_ref`. Run after `/mega-db-prune` or a crash. |
 
 The **tier** you see in the toolbar and dashboard is a *live pressure band* (`low` → `medium` → `high` → `ultra` → `mega`) that climbs automatically as your context window fills and falls back as it's relieved — it is driven by `currentTokens / effectiveThreshold`, not a manual setting. The base compaction *threshold* is set by `MEGACOMPACT_TIER` at startup as a **% of the model context window** (`low` 50% · `medium` 60% · `high` 70% · `ultra` 70% · `mega` 75%; default `low`) — the fire point is `tierPct × contextWindow`, so it always lands below pi's native ~80% auto-compaction (any model size). The old static token amounts (50k/100k/200k/1M/10M) are now only the boot fallback used before the first context event reports a window. `/mega-tier` was removed in v0.6.0. Higher pressure also deepens the live trim and reviews durable memory more often — the whole system reacts as one.
 | `/mega-dashboard` | Start the **localhost-only** live dashboard and open it in a browser (token gauge, store stats, live event stream, per-repo + cross-repo drift). |
@@ -258,6 +266,13 @@ Above the pi editor the extension shows a compact widget:
 - **Trigger state** — ○ idle, ◐ armed, ● ready
 - **Dedup hit rate** — % of checkpoints collapsed as duplicates
 - **Active agents / turn** — sub-agent count and conversation turn (when > 0)
+
+> **DB housekeeping** — `/mega-db-stats` / `prune` / `vacuum` / `check` / `reconcile`
+> give you manual control over the SQLite store. In addition, a best-effort
+> **auto-maintenance** pass runs on `session_start`: it prunes rows older than
+> 30d, checkpoints the WAL if it's over 10 MB, and VACUUMs if the DB is over
+> 100 MB AND the freelist is >20% of pages. It never blocks session start and
+> logs a one-line summary to the diagnostic log. (v0.7.5+)
 
 ---
 

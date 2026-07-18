@@ -18,14 +18,14 @@
  */
 
 import { DatabaseSync } from "node:sqlite";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { getStateDir } from "../store.js";
 import type { StoredCheckpoint, SessionState } from "../store.js";
 import { normalizeSessionId } from "../store.js";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 /** Encode a float vector as a little-endian Float32 BLOB for cosine scanning. */
 function encodeEmbedding(v: number[]): Buffer {
@@ -543,6 +543,54 @@ function initSchema(db: DatabaseSync): void {
       normalized_text,
       tokenize='trigram'
     );
+
+    -- S27: durable raw-transcript mirror (MEGACOMPACT_DB_MIRROR). Appended
+    -- RAW message bytes per session so a compacted window can be rehydrated
+    -- from the local store instead of the pi runtime transcript (which is
+    -- trimmed). PK is (content_hash, session_id) — NOT content_hash alone —
+    -- so identical content in different sessions never collides. Additive:
+    -- CREATE TABLE IF NOT EXISTS leaves existing DBs untouched on open until
+    -- the S27 mirror flag is flipped on. All queries parameterized (PREVENT-002).
+    CREATE TABLE IF NOT EXISTS raw_transcript (
+      content_hash      TEXT NOT NULL,
+      session_id        TEXT NOT NULL,
+      seq               INTEGER NOT NULL,
+      role              TEXT NOT NULL,
+      content_bytes     TEXT NOT NULL,
+      tool_name         TEXT,
+      message_timestamp INTEGER,          -- ORIGINAL msg ts at append, NOT served
+      checkpoint_epoch  TEXT NOT NULL,
+      PRIMARY KEY (content_hash, session_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_rt_session_seq ON raw_transcript(session_id, seq);
+    CREATE INDEX IF NOT EXISTS idx_rt_epoch ON raw_transcript(checkpoint_epoch);
+
+    -- S27: checkpoint-epoch registry. One row per compaction epoch; the
+    -- summary_message_text is the verbatim system message that replaced the
+    -- trimmed prefix. Informational bookkeeping (the raw_transcript rows are
+    -- authoritative); refresh-safe via ON CONFLICT(epoch_id) DO UPDATE.
+    CREATE TABLE IF NOT EXISTS checkpoint_epochs (
+      epoch_id             TEXT PRIMARY KEY,
+      session_id           TEXT NOT NULL,
+      started_seq          INTEGER NOT NULL,
+      committed_seq        INTEGER NOT NULL,
+      summary_message_text TEXT NOT NULL,
+      cut_index            INTEGER NOT NULL,
+      checkpoint_id        TEXT NOT NULL,
+      created_at           INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_epoch_session ON checkpoint_epochs(session_id, created_at DESC);
+
+    -- S27 Task 6: dedup_mirror for space-efficient deduplicated storage.
+    -- Each unique content_hash stores its bytes ONCE; raw_transcript rows
+    -- reference this table via content_ref instead of storing duplicate content_bytes inline.
+    CREATE TABLE IF NOT EXISTS dedup_mirror (
+      content_hash    TEXT PRIMARY KEY,
+      content_bytes   TEXT NOT NULL,
+      ref_count       INTEGER NOT NULL DEFAULT 1,
+      first_seen_seq  INTEGER NOT NULL,
+      created_at      INTEGER NOT NULL
+    );
   `);
   // Idempotent column migrations. `CREATE TABLE IF NOT EXISTS` is a no-op on a
   // pre-existing table, so new columns added to context_chunks after a store was
@@ -550,6 +598,8 @@ function initSchema(db: DatabaseSync): void {
   // databases created by an older version — otherwise repoStats()/upsert crash
   // with "no such column" and the extension fails to load. Additive only.
   ensureColumn(db, "context_chunks", "original_token_estimate", "INTEGER");
+  // S27 Task 6: content_ref column in raw_transcript for dedup_mirror references.
+  ensureColumn(db, "raw_transcript", "content_ref", "TEXT");
   // S20 memory-RAG extension: additive columns for auto-review ops. Idempotent —
   // only alters DBs created by an older version that lack these columns.
   ensureColumn(db, "memories", "category", "TEXT");
@@ -1508,4 +1558,621 @@ export function listRaptorNodes(sessionId: string, stateDir: string = getStateDi
 export function clearRaptorNodes(sessionId: string, stateDir: string = getStateDir()): void {
   const db = openStore(stateDir);
   db.prepare("DELETE FROM raptor_nodes WHERE session_id = ?").run(normalizeSessionId(sessionId));
+}
+
+// --- S27: durable raw-transcript mirror + checkpoint-epoch registry ---------
+// ADDITIVE + flag-default-OFF (MEGACOMPACT_DB_MIRROR). No behavior change
+// until the flag is flipped on; the tables above are created IF NOT EXISTS on
+// open so existing stores are untouched. These helpers are storage primitives
+// only — the runtime hook (Task 5) wires them into the compaction flow. All
+// queries use @-parameterized placeholders (PREVENT-002); no `any` types
+// (PREVENT-011).
+
+/** One appended raw-message row in the durable mirror. */
+export interface RawTranscriptRow {
+  contentHash: string;
+  sessionId: string;
+  seq: number;
+  role: string;
+  contentBytes: string;
+  toolName: string | null;
+  /** ORIGINAL message timestamp captured at append time (NOT a served ts). */
+  messageTimestamp: number | null;
+  checkpointEpoch: string;
+}
+
+/** One checkpoint-epoch bookkeeping row (informational registry). */
+export interface CheckpointEpoch {
+  epochId: string;
+  sessionId: string;
+  startedSeq: number;
+  committedSeq: number;
+  summaryMessageText: string;
+  cutIndex: number;
+  checkpointId: string;
+  createdAt: number;
+}
+
+/** DB row shape for raw_transcript (snake_case column names). */
+interface RawTranscriptDBRow {
+  content_hash: string;
+  session_id: string;
+  seq: number;
+  role: string;
+  content_bytes: string;
+  tool_name: string | null;
+  message_timestamp: number | null;
+  checkpoint_epoch: string;
+}
+
+/** DB row shape for checkpoint_epochs (snake_case column names). */
+interface CheckpointEpochDBRow {
+  epoch_id: string;
+  session_id: string;
+  started_seq: number;
+  committed_seq: number;
+  summary_message_text: string;
+  cut_index: number;
+  checkpoint_id: string;
+  created_at: number;
+}
+
+function rowToRawTranscript(row: RawTranscriptDBRow): RawTranscriptRow {
+  return {
+    contentHash: row.content_hash,
+    sessionId: row.session_id,
+    seq: Number(row.seq),
+    role: row.role,
+    contentBytes: row.content_bytes,
+    toolName: row.tool_name ?? null,
+    messageTimestamp:
+      row.message_timestamp == null ? null : Number(row.message_timestamp),
+    checkpointEpoch: row.checkpoint_epoch,
+  };
+}
+
+function rowToCheckpointEpoch(row: CheckpointEpochDBRow): CheckpointEpoch {
+  return {
+    epochId: row.epoch_id,
+    sessionId: row.session_id,
+    startedSeq: Number(row.started_seq),
+    committedSeq: Number(row.committed_seq),
+    summaryMessageText: row.summary_message_text,
+    cutIndex: Number(row.cut_index),
+    checkpointId: row.checkpoint_id,
+    createdAt: Number(row.created_at),
+  };
+}
+
+/**
+ * Append one raw-message row to the durable mirror. Idempotent by
+ * (content_hash, session_id) via INSERT OR IGNORE — re-appending the same
+ * content for the same session is a no-op. seq is assigned server-side as
+ * COALESCE(MAX(seq),0)+1 within the session, so callers never need to compute
+ * it. Pass an open store handle (openStore) — matches the other DatabaseSync
+ * helpers. Parameterized (PREVENT-002).
+ */
+export function appendRawTranscript(db: DatabaseSync, row: RawTranscriptRow): void {
+  withTx(db, () => {
+    db.prepare(
+      `INSERT OR IGNORE INTO raw_transcript
+        (content_hash, session_id, seq, role, content_bytes, tool_name, message_timestamp, checkpoint_epoch)
+       VALUES (
+         @content_hash, @session_id,
+         COALESCE((SELECT MAX(seq) FROM raw_transcript WHERE session_id = @session_id), 0) + 1,
+         @role, @content_bytes, @tool_name, @message_timestamp, @checkpoint_epoch
+       )`,
+    ).run({
+      "@content_hash": row.contentHash,
+      "@session_id": row.sessionId,
+      "@role": row.role,
+      "@content_bytes": row.contentBytes,
+      "@tool_name": row.toolName,
+      "@message_timestamp": row.messageTimestamp,
+      "@checkpoint_epoch": row.checkpointEpoch,
+    });
+  });
+}
+
+/**
+ * List raw-transcript rows for a session in [fromSeq, toSeq], ordered by seq
+ * ascending. Returns camel-cased RawTranscriptRow[]. Parameterized.
+ */
+export function listRawTranscriptRange(
+  db: DatabaseSync,
+  sessionId: string,
+  fromSeq: number,
+  toSeq: number,
+): RawTranscriptRow[] {
+  const rows = db
+    .prepare(
+      `SELECT content_hash, session_id, seq, role, content_bytes, tool_name, message_timestamp, checkpoint_epoch
+       FROM raw_transcript
+       WHERE session_id = @session_id AND seq >= @from_seq AND seq <= @to_seq
+       ORDER BY seq ASC`,
+    )
+    .all({
+      "@session_id": sessionId,
+      "@from_seq": fromSeq,
+      "@to_seq": toSeq,
+    }) as unknown as RawTranscriptDBRow[];
+  return rows.map(rowToRawTranscript);
+}
+
+/**
+ * Insert (or refresh) a checkpoint-epoch row. ON CONFLICT(epoch_id) DO UPDATE
+ * so re-running the same compaction epoch is idempotent / refresh-safe.
+ * Parameterized (PREVENT-002).
+ */
+export function writeCheckpointEpoch(db: DatabaseSync, epoch: CheckpointEpoch): void {
+  withTx(db, () => {
+    db.prepare(
+      `INSERT INTO checkpoint_epochs
+        (epoch_id, session_id, started_seq, committed_seq, summary_message_text, cut_index, checkpoint_id, created_at)
+       VALUES (@epoch_id, @session_id, @started_seq, @committed_seq, @summary_message_text, @cut_index, @checkpoint_id, @created_at)
+       ON CONFLICT(epoch_id) DO UPDATE SET
+         session_id = excluded.session_id,
+         started_seq = excluded.started_seq,
+         committed_seq = excluded.committed_seq,
+         summary_message_text = excluded.summary_message_text,
+         cut_index = excluded.cut_index,
+         checkpoint_id = excluded.checkpoint_id,
+         created_at = excluded.created_at`,
+    ).run({
+      "@epoch_id": epoch.epochId,
+      "@session_id": epoch.sessionId,
+      "@started_seq": epoch.startedSeq,
+      "@committed_seq": epoch.committedSeq,
+      "@summary_message_text": epoch.summaryMessageText,
+      "@cut_index": epoch.cutIndex,
+      "@checkpoint_id": epoch.checkpointId,
+      "@created_at": epoch.createdAt,
+    });
+  });
+}
+
+/** Read one checkpoint-epoch row by id (or null if absent). Parameterized. */
+export function readCheckpointEpoch(db: DatabaseSync, epochId: string): CheckpointEpoch | null {
+  const row = db
+    .prepare(
+      `SELECT epoch_id, session_id, started_seq, committed_seq, summary_message_text, cut_index, checkpoint_id, created_at
+       FROM checkpoint_epochs WHERE epoch_id = @epoch_id`,
+    )
+    .get({ "@epoch_id": epochId }) as unknown as CheckpointEpochDBRow | undefined;
+  return row ? rowToCheckpointEpoch(row) : null;
+}
+
+/**
+ * Latest checkpoint-epoch row for a session (highest created_at), or null if
+ * none. Parameterized (PREVENT-002).
+ */
+export function getActiveEpochForSession(db: DatabaseSync, sessionId: string): CheckpointEpoch | null {
+  const row = db
+    .prepare(
+      `SELECT epoch_id, session_id, started_seq, committed_seq, summary_message_text, cut_index, checkpoint_id, created_at
+       FROM checkpoint_epochs
+       WHERE session_id = @session_id
+       ORDER BY created_at DESC
+       LIMIT 1`,
+    )
+    .get({ "@session_id": sessionId }) as unknown as CheckpointEpochDBRow | undefined;
+  return row ? rowToCheckpointEpoch(row) : null;
+}
+
+/** List all checkpoint epochs (diagnostic / test helper). */
+export function listCheckpointEpochs(db: DatabaseSync): CheckpointEpoch[] {
+  const rows = db
+    .prepare(
+      `SELECT epoch_id, session_id, started_seq, committed_seq, summary_message_text, cut_index, checkpoint_id, created_at
+       FROM checkpoint_epochs
+       ORDER BY created_at DESC`,
+    )
+    .all() as unknown as CheckpointEpochDBRow[];
+  return rows.map(rowToCheckpointEpoch);
+}
+
+/** Count raw transcript rows (diagnostic / test helper). */
+export function countRawTranscript(db: DatabaseSync): number {
+  const row = db.prepare(`SELECT COUNT(*) AS cnt FROM raw_transcript`).get() as { cnt: number };
+  return row.cnt;
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// S27 Task 6: dedup_mirror functions
+// ────────────────────────────────────────────────────────────────────────
+
+/**
+ * Dedup mirror row (DB representation).
+ */
+export interface DedupMirrorRowDB {
+  content_hash: string;
+  content_bytes: string;
+  ref_count: number;
+  first_seen_seq: number;
+  created_at: number;
+}
+
+/**
+ * Upsert a row into dedup_mirror. If the hash already exists, increment ref_count.
+ * Returns true if this was a NEW unique content (first insert), false if it was a duplicate.
+ */
+export function upsertDedupMirror(
+  db: DatabaseSync,
+  contentHash: string,
+  contentBytes: string,
+  seq: number,
+): boolean {
+  const now = Date.now();
+  const existing = db
+    .prepare(`SELECT content_hash FROM dedup_mirror WHERE content_hash = @hash`)
+    .get({ "@hash": contentHash }) as { content_hash: string } | undefined;
+  if (existing) {
+    db.prepare(`UPDATE dedup_mirror SET ref_count = ref_count + 1 WHERE content_hash = @hash`).run({
+      "@hash": contentHash,
+    });
+    return false;
+  }
+  db.prepare(
+    `INSERT INTO dedup_mirror (content_hash, content_bytes, ref_count, first_seen_seq, created_at)
+     VALUES (@hash, @bytes, 1, @seq, @now)`,
+  ).run({
+    "@hash": contentHash,
+    "@bytes": contentBytes,
+    "@seq": seq,
+    "@now": now,
+  });
+  return true;
+}
+
+/**
+ * Get dedup ratio for a session: total bytes vs unique bytes.
+ */
+export function getDedupRatio(
+  db: DatabaseSync,
+  sessionId: string,
+): { totalBytes: number; uniqueBytes: number; ratio: number } {
+  const totalRow = db
+    .prepare(
+      `SELECT COALESCE(SUM(LENGTH(content_bytes)), 0) AS total
+       FROM raw_transcript
+       WHERE session_id = @session_id`,
+    )
+    .get({ "@session_id": sessionId }) as { total: number };
+  const uniqueRow = db
+    .prepare(
+      `SELECT COALESCE(SUM(LENGTH(content_bytes)), 0) AS unique_bytes
+       FROM dedup_mirror`,
+    )
+    .get() as { unique_bytes: number };
+  const totalBytes = totalRow.total;
+  const uniqueBytes = uniqueRow.unique_bytes;
+  const ratio = uniqueBytes > 0 ? totalBytes / uniqueBytes : 1;
+  return { totalBytes, uniqueBytes, ratio };
+}
+
+/**
+ * Get dedup mirror stats (diagnostic / test helper).
+ */
+export function getDedupMirrorStats(db: DatabaseSync): {
+  rowCount: number;
+  totalBytes: number;
+  avgRefCount: number;
+} {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS cnt,
+              COALESCE(SUM(LENGTH(content_bytes)), 0) AS total_bytes,
+              COALESCE(AVG(ref_count), 0) AS avg_ref
+       FROM dedup_mirror`,
+    )
+    .get() as { cnt: number; total_bytes: number; avg_ref: number };
+  return { rowCount: row.cnt, totalBytes: row.total_bytes, avgRefCount: row.avg_ref };
+}
+
+/**
+ * Update raw_transcript.content_ref to point to dedup_mirror.
+ */
+export function updateRawTranscriptRef(
+  db: DatabaseSync,
+  sessionId: string,
+  seq: number,
+  contentHash: string,
+): void {
+  db.prepare(
+    `UPDATE raw_transcript SET content_ref = @ref WHERE session_id = @sid AND seq = @seq`,
+  ).run({
+    "@ref": contentHash,
+    "@sid": sessionId,
+    "@seq": seq,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// S27 Task 10 — DB maintenance / housekeeping primitives.
+// All pi-agnostic, all parameterized (PREVENT-002), all local (PREVENT-PI-004).
+// Exposed via the /mega-db-* slash commands in extensions/mega-db-cmds.ts.
+// ---------------------------------------------------------------------------
+
+/** Per-table row counts + DB file sizes for the /mega-db-stats command. */
+export interface DbStats {
+  /** Row count per table (keys are table names that exist in this DB). */
+  tableCounts: Record<string, number>;
+  /** Bytes used by the main DB file on disk. */
+  dbBytes: number;
+  /** Bytes used by the -wal sidecar file (0 if absent). */
+  walBytes: number;
+  /** Bytes used by the -shm sidecar file (0 if absent). */
+  shmBytes: number;
+  /** SQLite page size in bytes. */
+  pageSize: number;
+  /** Total pages (freelist + in-use). */
+  pageCount: number;
+  /** Freelist pages (reusable by VACUUM). */
+  freelistPages: number;
+  /** WAL frame count from PRAGMA wal_info (best-effort; 0 if unsupported). */
+  walFrames: number;
+}
+
+const DB_TABLE_NAMES = [
+  "context_chunks",
+  "session_state",
+  "raw_transcript",
+  "checkpoint_epochs",
+  "dedup_mirror",
+  "memories",
+  "dedup_stats",
+  "daily_log",
+] as const;
+
+function fileSizeIfExists(path: string): number {
+  try {
+    const st = statSync(path);
+    return st.size;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Gather DB stats for /mega-db-stats: per-table row counts, disk footprint
+ * (main + WAL + SHM), page count, freelist, WAL frame count.
+ *
+ * Read-only: no PRAGMA writes, no VACUUM. Safe to call any time.
+ */
+export function getDbStats(stateDir: string = getStateDir()): DbStats {
+  const db = openStore(stateDir);
+  const tableCounts: Record<string, number> = {};
+  for (const t of DB_TABLE_NAMES) {
+    try {
+      const row = db.prepare(`SELECT COUNT(*) AS c FROM ${t}`).get() as { c: number } | undefined;
+      if (row) tableCounts[t] = row.c;
+    } catch {
+      // Table doesn't exist on this DB (e.g. raw_transcript on a pre-S27 store).
+      // Skip silently — /mega-db-stats lists only tables that exist.
+    }
+  }
+  const pageStat = db.prepare("PRAGMA page_count").get() as { page_count?: number } | undefined;
+  const freelistStat = db.prepare("PRAGMA freelist_count").get() as { freelist_count?: number } | undefined;
+  const pageSizeStat = db.prepare("PRAGMA page_size").get() as { page_size?: number } | undefined;
+  let walFrames = 0;
+  try {
+    const walInfo = db.prepare("PRAGMA wal_info").get() as { frames?: number } | undefined;
+    walFrames = walInfo?.frames ?? 0;
+  } catch {
+    // node:sqlite may not expose wal_info on all versions; not fatal.
+  }
+  const dbPath = join(stateDir, "sqlite.db");
+  return {
+    tableCounts,
+    dbBytes: fileSizeIfExists(dbPath),
+    walBytes: fileSizeIfExists(`${dbPath}-wal`),
+    shmBytes: fileSizeIfExists(`${dbPath}-shm`),
+    pageSize: pageSizeStat?.page_size ?? 0,
+    pageCount: pageStat?.page_count ?? 0,
+    freelistPages: freelistStat?.freelist_count ?? 0,
+    walFrames,
+  };
+}
+
+/** Result of a prune / VACUUM / checkpoint operation (reclaimed bytes). */
+export interface MaintenanceResult {
+  /** Rows deleted (prune) or pages reclaimed (VACUUM / checkpoint). */
+  affected: number;
+  /** Bytes reclaimed on disk (best-effort: post-op size minus pre-op size). */
+  reclaimedBytes: number;
+  /** Human-readable summary line for the command output. */
+  summary: string;
+}
+
+/**
+ * Prune raw_transcript + checkpoint_epochs rows older than `daysOld`.
+ * Uses `message_timestamp` (raw_transcript) and `created_at` (epochs), both
+ * epoch-ms. Returns the total deleted rows + reclaimed disk bytes.
+ *
+ * PREVENT-002: parameterized. PREVENT-PI-004: local SQLite only.
+ */
+export function pruneOldRows(stateDir: string = getStateDir(), daysOld = 30): MaintenanceResult {
+  const db = openStore(stateDir);
+  const cutoff = Date.now() - daysOld * 86_400_000;
+  const beforeBytes = fileSizeIfExists(join(stateDir, "sqlite.db"));
+  // raw_transcript: message_timestamp may be NULL (pre-S27 rows); those use
+  // the row's insertion order implicitly via seq, so we prune NULL-ts rows
+  // only when the whole session is older than the cutoff (join via session_id
+  // to checkpoint_epochs.created_at). Simpler: prune NULL-ts rows older than
+  // cutoff by falling back to the MIN(created_at) of their epoch.
+  // Delete raw_transcript rows whose message_timestamp is older than cutoff,
+  // OR whose message_timestamp is NULL and the session's latest epoch is older.
+  const delRt = db.prepare(
+    `DELETE FROM raw_transcript
+     WHERE message_timestamp IS NOT NULL AND message_timestamp < ?
+        OR (message_timestamp IS NULL
+            AND session_id IN (
+              SELECT session_id FROM checkpoint_epochs
+              GROUP BY session_id HAVING MAX(created_at) < ?
+            ))`,
+  ).run(cutoff, cutoff) as { changes?: number } | undefined;
+  const rtDeleted = delRt?.changes ?? 0;
+  // checkpoint_epochs: created_at is NOT NULL.
+  const delEp = db.prepare(`DELETE FROM checkpoint_epochs WHERE created_at < ?`).run(cutoff) as {
+    changes?: number;
+  } | undefined;
+  const epDeleted = delEp?.changes ?? 0;
+  // dedup_mirror: cascade-delete orphan rows whose ref_count has dropped to 0
+  // after the raw_transcript deletes. Safe even if FK is off (raw_transcript has
+  // no FK to dedup_mirror; ref_count is maintained by the dedup pipeline).
+  const delDedup = db.prepare(`DELETE FROM dedup_mirror WHERE ref_count <= 0`).run() as {
+    changes?: number;
+  } | undefined;
+  const dedupDeleted = delDedup?.changes ?? 0;
+  const afterBytes = fileSizeIfExists(join(stateDir, "sqlite.db"));
+  const total = rtDeleted + epDeleted + dedupDeleted;
+  return {
+    affected: total,
+    reclaimedBytes: Math.max(0, beforeBytes - afterBytes),
+    summary: `pruned ${rtDeleted} raw_transcript + ${epDeleted} epochs + ${dedupDeleted} dedup_mirror rows older than ${daysOld}d`,
+  };
+}
+
+/**
+ * Force a WAL checkpoint (TRUNCATE mode) so the -wal sidecar is reclaimed.
+ * Returns the WAL bytes reclaimed (pre-wal size minus post-wal size).
+ */
+export function checkpointWal(stateDir: string = getStateDir()): MaintenanceResult {
+  const db = openStore(stateDir);
+  const dbPath = join(stateDir, "sqlite.db");
+  const beforeWal = fileSizeIfExists(`${dbPath}-wal`);
+  // PRAGMA wal_checkpoint(TRUNCATE) blocks until all frames are folded into the
+  // main db and the WAL file is truncated to 0 bytes.
+  const res = db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get() as {
+    busy?: number;
+    log?: number;
+    checkpointed?: number;
+  } | undefined;
+  const afterWal = fileSizeIfExists(`${dbPath}-wal`);
+  const reclaimed = Math.max(0, beforeWal - afterWal);
+  return {
+    affected: res?.checkpointed ?? 0,
+    reclaimedBytes: reclaimed,
+    summary: `wal_checkpoint(TRUNCATE): ${res?.checkpointed ?? 0} frames folded, WAL ${beforeWal}→${afterWal} bytes${res?.busy ? " (busy: " + res.busy + ")" : ""}`,
+  };
+}
+
+/**
+ * VACUUM the main DB file (rebuilds pages, reclaims freelist space).
+ * Heavy: briefly doubles disk usage. Run only when freelist is large or the
+ * user explicitly invokes /mega-db-vacuum.
+ */
+export function vacuumDb(stateDir: string = getStateDir()): MaintenanceResult {
+  const db = openStore(stateDir);
+  const dbPath = join(stateDir, "sqlite.db");
+  const beforeBytes = fileSizeIfExists(dbPath);
+  db.exec("VACUUM"); // VACUUM cannot be parameterized; it rewrites the whole DB.
+  const afterBytes = fileSizeIfExists(dbPath);
+  const reclaimed = Math.max(0, beforeBytes - afterBytes);
+  return {
+    affected: 0,
+    reclaimedBytes: reclaimed,
+    summary: `VACUUM: db ${beforeBytes}→${afterBytes} bytes (reclaimed ${reclaimed})`,
+  };
+}
+
+/**
+ * Run `PRAGMA integrity_check` and return the result lines.
+ * Returns ["ok"] when the DB is healthy; otherwise returns the error lines.
+ */
+export function integrityCheck(stateDir: string = getStateDir()): string[] {
+  const db = openStore(stateDir);
+  const rows = db.prepare("PRAGMA integrity_check").all() as Array<{ integrity_check: string }> | undefined;
+  return (rows ?? []).map((r) => r.integrity_check);
+}
+
+/** Reconcile drift in dedup_mirror.ref_count vs actual raw_transcript refs. */
+export interface DedupReconcileResult {
+  /** Rows whose ref_count was corrected. */
+  fixedRefCount: number;
+  /** Orphan dedup_mirror rows (content_hash with 0 raw_transcript refs) deleted. */
+  orphansDeleted: number;
+  /** raw_transcript rows whose content_ref was NULL but now set (backfill). */
+  refsBackfilled: number;
+}
+
+/**
+ * Reconcile dedup_mirror vs raw_transcript after pruning or crashes:
+ *   1. Recompute ref_count = COUNT(raw_transcript rows pointing at this hash).
+ *   2. Delete orphan dedup_mirror rows whose recomputed ref_count is 0.
+ *   3. Backfill raw_transcript.content_ref for rows still storing inline bytes.
+ *
+ * Idempotent. Read-modify-write within a single transaction (withTx).
+ */
+export function reconcileDedupMirror(stateDir: string = getStateDir()): DedupReconcileResult {
+  const db = openStore(stateDir);
+  const result: DedupReconcileResult = { fixedRefCount: 0, orphansDeleted: 0, refsBackfilled: 0 };
+  withTx(db, () => {
+    // 1. Recompute ref_count for every dedup_mirror row from the actual
+    //    raw_transcript references.
+    const recompute = db.prepare(
+      `UPDATE dedup_mirror AS dm
+       SET ref_count = COALESCE((
+         SELECT COUNT(*) FROM raw_transcript rt WHERE rt.content_ref = dm.content_hash
+       ), 0)
+       WHERE dm.ref_count != COALESCE((
+         SELECT COUNT(*) FROM raw_transcript rt WHERE rt.content_ref = dm.content_hash
+       ), 0)`,
+    ).run() as { changes?: number } | undefined;
+    result.fixedRefCount = recompute?.changes ?? 0;
+    // 2. Delete orphan dedup_mirror rows (no raw_transcript refs).
+    const delOrphans = db.prepare(
+      `DELETE FROM dedup_mirror
+       WHERE content_hash NOT IN (SELECT DISTINCT content_ref FROM raw_transcript WHERE content_ref IS NOT NULL)`,
+    ).run() as { changes?: number } | undefined;
+    result.orphansDeleted = delOrphans?.changes ?? 0;
+    // 3. Backfill content_ref for rows still storing inline content_bytes (no
+    //    ref yet). Only safe when a matching dedup_mirror row exists; otherwise
+    //    we'd need to insert one, which is the dedup pipeline's job, not the
+    //    reconciler's.
+    const backfill = db.prepare(
+      `UPDATE raw_transcript AS rt
+       SET content_ref = (
+         SELECT dm.content_hash FROM dedup_mirror dm WHERE dm.content_bytes = rt.content_bytes
+       )
+       WHERE rt.content_ref IS NULL
+         AND EXISTS (SELECT 1 FROM dedup_mirror dm WHERE dm.content_bytes = rt.content_bytes)`,
+    ).run() as { changes?: number } | undefined;
+    result.refsBackfilled = backfill?.changes ?? 0;
+  });
+  return result;
+}
+
+/**
+ * One-shot auto-maintenance pass for the session_start hook: prune old rows,
+ * checkpoint the WAL if it's grown large, and (only if the DB is huge) VACUUM.
+ * Best-effort: swallows errors so a session never fails to start over a
+ * housekeeping hiccup. Returns a short summary for the diagnostic log.
+ */
+export function autoMaintain(stateDir: string = getStateDir()): string {
+  try {
+    const stats = getDbStats(stateDir);
+    const parts: string[] = [];
+    // Prune rows older than 30d (default retention).
+    const prune = pruneOldRows(stateDir, 30);
+    if (prune.affected > 0) parts.push(`pruned ${prune.affected}`);
+    // Checkpoint the WAL if it's over 10 MB (avoid pathological WAL growth).
+    if (stats.walBytes > 10 * 1024 * 1024) {
+      const ck = checkpointWal(stateDir);
+      if (ck.reclaimedBytes > 0) parts.push(`wal -${ck.reclaimedBytes}B`);
+    }
+    // VACUUM only if the DB is over 100 MB AND freelist is >20% of pages.
+    if (
+      stats.dbBytes > 100 * 1024 * 1024 &&
+      stats.pageCount > 0 &&
+      stats.freelistPages / stats.pageCount > 0.2
+    ) {
+      const v = vacuumDb(stateDir);
+      if (v.reclaimedBytes > 0) parts.push(`vacuum -${v.reclaimedBytes}B`);
+    }
+    return parts.length ? `auto-maintain: ${parts.join(", ")}` : "auto-maintain: nothing to do";
+  } catch (err) {
+    // Never block session start over housekeeping.
+    return `auto-maintain: skipped (${(err as Error).message})`;
+  }
 }

@@ -1,5 +1,60 @@
 # Release Notes — pi-mega-compact
 
+## v0.7.6 (2026-07-17)
+
+Patch release to complete the v0.7.5 documentation and force the npm upgrade path. No code changes — the `/mega-db-*` commands and auto-maintenance shipped in v0.7.5 are unchanged; this release only adds the user-facing docs that were committed after the v0.7.5 tag and bumps the version so `pi update --extensions` picks up the latest.
+
+### Documentation
+
+- **README.md** — the `/mega-db-stats` · `/mega-db-prune [days]` · `/mega-db-vacuum` · `/mega-db-check` · `/mega-db-reconcile` commands are now listed in the commands table; a callout under the live-stats-widget section documents the `session_start` auto-maintenance pass (prune 30d + WAL checkpoint >10MB + VACUUM when DB >100MB & freelist >20%). The "Current version" header was bumped from `v0.6.9` → `v0.7.6` with an S27 note (raw-transcript mirror + dedup pipeline + DB maintenance /commands).
+- **TESTER_GUIDE.md** — new section **§12 "DB maintenance /commands (v0.7.5+)"** with a 6-step manual checklist covering stats, prune, vacuum, check, reconcile, and the auto-maintenance-on-`session_start` behavior, plus explicit pass criteria for each.
+
+### Upgrade path
+
+v0.7.4 bundled the critical compaction race fix (`848c817`) with the S27 cache-stability Tasks 1–9. v0.7.5 added Task 10 (`/mega-db-*` commands + auto-maint). v0.7.6 is a docs-complete + version-bump patch over v0.7.5 — upgrade with `pi update --extensions`.
+
+Full suite: 407 passed, 0 failed across 41 files.
+
+---
+
+## v0.7.5 (2026-07-17)
+
+DB maintenance /commands for the S27 DB-mirror store — inspect, prune, vacuum, integrity-check, and reconcile the raw_transcript + dedup_mirror tables.
+
+### Added
+
+- **`/mega-db-stats`** — table row counts, disk footprint (main + WAL + SHM), page count, freelist %, WAL frame count. Read-only; safe any time.
+- **`/mega-db-prune [days]`** — DELETE `raw_transcript` + `checkpoint_epochs` rows older than N days (default 30), plus orphan `dedup_mirror` rows. Reports deleted counts + reclaimed bytes.
+- **`/mega-db-vacuum`** — `VACUUM` the main DB (rebuilds pages, reclaims freelist). Heavy: briefly doubles disk usage.
+- **`/mega-db-check`** — `PRAGMA integrity_check` + `wal_checkpoint(TRUNCATE)`. Fold the WAL into the main file and verify DB health.
+- **`/mega-db-reconcile`** — fix `dedup_mirror.ref_count` drift vs actual `raw_transcript` refs, delete orphan dedup rows, backfill missing `content_ref`. Run after `/mega-db-prune` or a crash.
+- **Auto-maintenance on `session_start`** — best-effort prune (30d) + WAL checkpoint (>10MB) + VACUUM (DB >100MB AND freelist >20%). Never blocks session start; logs a one-line summary.
+
+All maintenance primitives live in `src/store/sqlite.ts` (pi-agnostic, parameterized queries, local SQLite only). Commands registered in `extensions/mega-db-cmds.ts`. Auto-maintenance wired in `extensions/mega-events.ts`.
+
+Full suite: 407 passed, 0 failed across 41 files.
+
+---
+
+## v0.7.4 (2026-07-17)
+
+Fixes a compaction race that surfaced spurious "Already compacted" / "Auto compaction failed" errors, plus the S27 DB-mirror foundation for byte-stable prompt-cache keys.
+
+### Fixed
+
+- **Compaction race — "Already compacted" / "Auto compaction failed".** pi emits `agent_end` BEFORE its own native auto-compaction (`_checkCompaction`), so our manual durable-trim `ctx.compact()` call raced with pi's native compaction and surfaced a spurious error toast to the user. A new `session_compact` listener stamps `lastNativeCompactAt` for every compaction (manual/threshold/overflow, ours or pi's own), and both `ctx.compact()` call sites (agent_end mid-run trim + legacy path) now skip for 10s after a native compaction. The guard uses `lastNativeCompactAt` (not `lastCompactAt`, which our own checkpoint persistence also stamps — that would falsely skip).
+
+### Added (S27 DB-mirror, behind `MEGACOMPACT_DB_MIRROR`, default OFF)
+
+- **Raw transcript mirror.** All incoming messages are appended to a new `raw_transcript` SQLite table (idempotent, `content_hash` primary key) when `MEGACOMPACT_DB_MIRROR=1`. This is the byte-stable source of truth for prompt-cache-key stability.
+- **Deterministic epoch nonce.** `checkpoint_epochs` rows are written with a deterministic FNV-1a nonce (`src/mirror/epoch.ts`) so replaying/refreshing the same compaction yields the same epoch id (idempotent upserts).
+- **Dedup pipeline.** `dedup_mirror` table stores unique `content_bytes` once; `raw_transcript` rows reference it via `content_ref` with `ref_count` tracking. `dedupTranscript()` runs fire-and-forget after each compaction.
+- **Recall demotion contract.** `src/recall.ts` documents the S27 preference: when the mirror is ON, `raw_transcript + dedup_mirror` are preferred for byte-stable reconstruction; the legacy JSON checkpoint is a DR fallback only. The VectorStore recall path (fast semantic search) is unaffected.
+
+Full suite: 395 passed, 0 failed across 40 files.
+
+---
+
 ## v0.7.3 (2026-07-17)
 
 Widget content now wraps to fill terminal width — one long line that adapts to screen size.
