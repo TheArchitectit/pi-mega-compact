@@ -6,7 +6,7 @@ sessions into a **local SQLite store** and offers **deduped inline recall** — 
 running **locally inside the extension**, with **no remote MCP server** and
 **zero network calls at runtime** (PREVENT-PI-004).
 
-> **Status - v0.7.6.** Storage uses the built-in `node:sqlite` backend
+> **Status - v0.7.7.** Storage uses the built-in `node:sqlite` backend
 > (`DatabaseSync`, Node >=22.13): zero native build step, fully local, and zero
 > network at runtime. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the full
 > changelog.
@@ -19,7 +19,7 @@ running **locally inside the extension**, with **no remote MCP server** and
 - **Two-layer compaction** - a non-destructive live summary every LLM call, plus durable checkpoints that relieve context mid-run (not just at the end).
 - **Vector store + dedup** - each checkpoint is embedded and stored locally; an L0->L2 + RAPTOR cascade collapses duplicate work so storage and recall stay lean.
 - **Automatic recall** - the most relevant checkpoints are re-inlined on resume or branch switch; cross-repo memory-RAG augments a thin store with decisions from other repos.
-- **Live dashboard** - a localhost-only view of token usage, store stats, savings, and per-repo activity.
+- **Live dashboard** - a localhost-only view of token usage, store stats, savings, per-repo activity, and an **Active Repos tab** that shows every currently-open session (last 30 minutes) side by side — so running multiple sessions at once is visible in one place.
 - **Database maintenance** - `/mega-db-*` commands plus best-effort auto-maintenance on session start.
 
 ## Table of contents
@@ -273,7 +273,7 @@ The **tier** you see in the toolbar and dashboard is a *live pressure band* (`lo
 Above the pi editor the extension shows a compact widget:
 
 ```
- ⚡ high·low v0.6.0 │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
+ ⚡ high·low v0.7.7 │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
    ◐ armed │ dedup: 92% │ saved: 45k tok
 ```
 
@@ -381,34 +381,45 @@ store.
   (tokens in/out/freed, context window, $ saved) grouped by the model you were
   running.
 
-### Active repos
+### Active Repos tab
 
-Each session writes a
-`last_seen` heartbeat into `repo_registry`. The All-repos view and `GET
-/api/summary` surface an `activeRepos` count, and `GET /api/repos?active=Nh`
-filters to repos seen within the last *N* hours (e.g. `?active=24h`) — so 1–6
-sessions running at once are visible together instead of only the single
-current-repo view. (The `?active` filter is hour-granular.)
+The dashboard has a dedicated **Active Repos** tab that lists every server /
+session seen within the **last 30 minutes**, each with its live tier,
+context %, and session state. It is backed by `GET /api/servers`, which walks
+the machine-wide `repo_registry`, reads each repo's per-process
+`dashboard.json` snapshot, and returns one row per currently-open session —
+so 1–6 sessions running at once are visible together in a single table instead
+of only the single current-repo view. Each row shows that repo's live
+cache-hit / compaction / time-saved totals (see below).
 
-### Metrics
+The older **All repos** view and `GET /api/summary` still surface an
+`activeRepos` count, and `GET /api/repos?active=Nh` filters to repos seen
+within the last *N* hours (e.g. `?active=24h`, hour-granular) for the
+longer-window cross-repo table.
 
-The dashboard's **Repo (all sessions)** view
-reads counters persisted in the SQLite `meta` table (`tokens_saved`,
-`dedup_attempts`, `deduped`) plus a SUM over `context_chunks`. These survive
-session restarts and travel with the repo's state dir, so the totals are durable
-rather than only the per-process snapshot. It shows:
+### Metrics (DB-backed, durable)
 
-- **Cache hits** = dedup collapses (`deduped` / `repo.dedupCollapsed`) + recall
-  re-injections (`store.injectedCount`) — as **current session** and **repo-wide
-  total**.
-- **Compactions** = current session (`store.checkpointCount`) + repo-wide total
-  (`repo.checkpointCount`).
+The dashboard's cumulative **Cache hits**, **Compactions**, and **Estimated
+time saved** cards are backed by **SQLite `meta` counters**
+(`compact_count`, `recall_injected`, `cache_hit_tokens_saved`, plus the
+existing `tokens_saved` / `deduped`), not the per-process `dashboard.json`
+snapshot. Because they live in the repo's `node:sqlite` store, the totals are
+**durable across session restarts** and travel with the repo's state dir —
+`dashboard.json` is now just the live per-process view that feeds the Active
+Repos rows. The cards show:
+
+- **Cache hits** = dedup collapses (`deduped`) + recall re-injections
+  (`recall_injected`) — as **current session** and **repo-wide total**.
+- **Compactions** = current session (`checkpointCount`) + repo-wide total
+  (`compact_count` from `meta`).
 - **Estimated time saved** = compact time saved + cache-hit time saved, derived
   from tokens ÷ ~2k tok/s and labeled `est.`, as current session + total.
 
 ### Localhost API
 
 `GET /api/snapshot` (current-repo live state),
+`/api/servers` (**Active Repos** — sessions active in the last 30 min, with
+tier / context % / state / live cache-hit & compaction totals),
 `/api/index` (all repos), `/api/repos` (with `?active=Nh` filter), `/api/summary`
 (header tiles + `activeRepos`), `/api/drift` (cross-repo drift: stale /
 compaction-lag / model-churn — read-only), `/api/events` (SSE live event stream),
