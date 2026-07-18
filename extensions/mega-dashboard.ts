@@ -114,6 +114,23 @@ export interface DashboardSnapshot {
     duplicatesCollapsed: number;     // dedup duplicates (original kept on survivor)
     bytesPermanentlyDeleted: number; // ALWAYS 0 — the invariant
   };
+  /** Cache-hit / recall-injection counters (live session + store-wide totals). */
+  cacheHits: {
+    session: number;            // dedup skips + recall injections this session
+    total: number;              // store-wide deduped collapses + recall injections
+    sessionTokensSaved: number; // tokens saved via cache hits this session
+    totalTokensSaved: number;   // store-wide tokens saved via cache hits
+  };
+  /** Compaction counters (live session + store-wide cumulative). */
+  compacts: {
+    session: number;            // compactions performed this session
+    total: number;              // store-wide cumulative compaction count
+  };
+  /** Estimated wall-clock time saved (rough tokens/sec heuristic). */
+  timeSaved: {
+    compact: { sessionSec: number; totalSec: number };
+    cacheHit: { sessionSec: number; totalSec: number };
+  };
   /** Active model/provider (captured live) — shown on the current-repo card. */
   model?: {
     name: string;          // Model.name or Model.id

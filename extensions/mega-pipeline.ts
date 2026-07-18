@@ -15,7 +15,7 @@ import type { EngineMessage } from "../src/types.js";
 import { recallAndInline, recallAndInlineAsync, formatRecallBlock, type RecallInjectResult } from "../src/recall.js";
 import { normalizeSessionId } from "../src/store.js";
 import { estimateBlockTokens } from "../src/tokens.js";
-import { touchSession, logDaily } from "../src/store/sqlite.js";
+import { touchSession, logDaily, incCompactCount, incRecallInjected, incCacheHitTokens } from "../src/store/sqlite.js";
 import { consolidateMemories } from "../src/memory.js";
 import {
   type MegaRuntime,
@@ -146,6 +146,9 @@ function doCompact(
     ? result.originalTokenEstimate
     : Math.max(0, result.originalTokenEstimate - result.tokenEstimate);
   runtime.rt.tokensSaved += saved;
+  runtime.rt.compactCount += 1;
+  incCompactCount(runtime.currentStateDir);
+  if (result.deduped) { runtime.rt.cacheHitTokens += saved; incCacheHitTokens(saved, runtime.currentStateDir); }
   runtime.rt.lastCompactAt = Date.now();
   if (result.deduped) runtime.rt.dedupSkips++;
   // Grow the rolling "saved" goal so the progress bar always has a fresh
@@ -435,6 +438,13 @@ export function doRecall(
     runtime.pushTicker(`${C.amber}↩${C.reset} recalled ${top.checkpoint.checkpointId} · ${scorePct}% · ${label}`);
     runtime.lastWhy = `why: recalled@${scorePct}% (${result.toInject.length} chkpt)`;
   }
+  if (result.toInject.length > 0) {
+    let sumTokens = 0; for (const h of result.toInject) sumTokens += h.checkpoint.tokenEstimate;
+    runtime.rt.recallInjections += result.toInject.length;
+    runtime.rt.cacheHitTokens += sumTokens;
+    incRecallInjected(result.toInject.length, runtime.currentStateDir);
+    incCacheHitTokens(sumTokens, runtime.currentStateDir);
+  }
   return result;
 }
 
@@ -493,6 +503,13 @@ export async function doRecallAsync(
       if (!seen.has(h.checkpoint.checkpointId)) { merged.push(h); seen.add(h.checkpoint.checkpointId); }
     }
     const block = merged.length ? formatRecallBlock(merged) : "";
+    if (merged.length > 0) {
+      let sumTokens = 0; for (const h of merged) sumTokens += h.checkpoint.tokenEstimate;
+      runtime.rt.recallInjections += merged.length;
+      runtime.rt.cacheHitTokens += sumTokens;
+      incRecallInjected(merged.length, runtime.currentStateDir);
+      incCacheHitTokens(sumTokens, runtime.currentStateDir);
+    }
     return {
       toInject: merged,
       report: merged.map((h) => `  • ${h.checkpoint.checkpointId}${h.repoId ? ` (from ${h.repoId.split("/").filter(Boolean).pop()})` : ""}`),

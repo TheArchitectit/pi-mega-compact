@@ -46,6 +46,8 @@ function log(...parts: unknown[]): void {
 // concurrent writer's WAL never blocks the request). All registry data lives in
 // SQLite (the project's one-store invariant) — there is no JSON mirror. Same
 // index-dir resolution as src/store/sqlite.ts getIndexDir().
+const ACTIVE_WINDOW_SEC = 1800;
+
 function getIndexDir(): string {
   const override = process.env.MEGACOMPACT_INDEX_DIR;
   if (override && override.trim() !== "") return override;
@@ -266,6 +268,20 @@ interface Snapshot {
     duplicatesCollapsed: number;
     bytesPermanentlyDeleted: number;
   };
+  cacheHits: {
+    session: number;
+    total: number;
+    sessionTokensSaved: number;
+    totalTokensSaved: number;
+  };
+  compacts: {
+    session: number;
+    total: number;
+  };
+  timeSaved: {
+    compact: { sessionSec: number; totalSec: number };
+    cacheHit: { sessionSec: number; totalSec: number };
+  };
   compression: {
     session: { tokensIn: number; tokensOut: number; tokensFreed: number; compressionPct: number; dedupPct: number };
     repo: { tokensIn: number; tokensOut: number; tokensFreed: number; compressionPct: number; dedupPct: number };
@@ -282,6 +298,8 @@ interface Snapshot {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+interface LiveSnapshot { tier?: string; updatedAt?: string | null; context?: { tokens?: number | null; percent?: number | null; contextWindow?: number }; session?: { id?: string; state?: string }; cacheHits?: { session: number; total: number; sessionTokensSaved: number; totalTokensSaved: number }; compacts?: { session: number; total: number }; timeSaved?: { compact: { sessionSec: number; totalSec: number }; cacheHit: { sessionSec: number; totalSec: number } }; }
 
 function readSnapshot(snapshotPath: string) {
   try {
@@ -302,6 +320,9 @@ function readSnapshot(snapshotPath: string) {
       crew: { activeAgents: 0, currentTurn: 0 },
       repo: { checkpointCount: 0, totalTokenEstimate: 0, originalTokens: 0, tokensSaved: 0, sessionCount: 0, dedupAttempts: 0, dedupCollapsed: 0, storageDedupRate: 0 },
       integrity: { regionsRetained: 0, compressedOriginalBytes: 0, duplicatesCollapsed: 0, bytesPermanentlyDeleted: 0 },
+      cacheHits: { session: 0, total: 0, sessionTokensSaved: 0, totalTokensSaved: 0 },
+      compacts: { session: 0, total: 0 },
+      timeSaved: { compact: { sessionSec: 0, totalSec: 0 }, cacheHit: { sessionSec: 0, totalSec: 0 } },
       compression: { session: { tokensIn: 0, tokensOut: 0, tokensFreed: 0, compressionPct: 0, dedupPct: 0 }, repo: { tokensIn: 0, tokensOut: 0, tokensFreed: 0, compressionPct: 0, dedupPct: 0 } },
       model: undefined,
     } as Snapshot;
@@ -426,6 +447,7 @@ function dashboardHtml(tierName: string): string {
 <nav class="tabs">
   <button class="tab active" data-tab="current">Current repo</button>
   <button class="tab" data-tab="all">All repos</button>
+  <button class="tab" data-tab="active">Active Repos</button>
   <button class="tab" data-tab="summary">Summary</button>
 </nav>
 
@@ -527,6 +549,26 @@ function dashboardHtml(tierName: string): string {
     </ul>
     <p class="legend-note">Hover any label above for a quick explanation.</p>
   </div>
+  <div class="card">
+    <h2>💾 Cache Hits &amp; Compactions</h2>
+    <div class="stat-grid">
+      <span class="label">Cache Hits (session)</span><span class="value" id="ch-session">0</span>
+      <span class="label">Cache Hits (total)</span><span class="value" id="ch-total">0</span>
+      <span class="label">Tokens Saved (session)</span><span class="value" id="ch-tok-session">0</span>
+      <span class="label">Tokens Saved (total)</span><span class="value" id="ch-tok-total">0</span>
+      <span class="label">Compactions (session)</span><span class="value" id="cp-session">0</span>
+      <span class="label">Compactions (total)</span><span class="value" id="cp-total">0</span>
+    </div>
+  </div>
+  <div class="card">
+    <h2>⏱ Time Saved (est.)</h2>
+    <div class="stat-grid">
+      <span class="label">Compact (session)</span><span class="value" id="ts-compact-session">0</span>
+      <span class="label">Compact (total)</span><span class="value" id="ts-compact-total">0</span>
+      <span class="label">Cache Hit (session)</span><span class="value" id="ts-cache-session">0</span>
+      <span class="label">Cache Hit (total)</span><span class="value" id="ts-cache-total">0</span>
+    </div>
+  </div>
 </div>
 
 <div class="events">
@@ -551,6 +593,28 @@ function dashboardHtml(tierName: string): string {
 
 <div class="updated" id="updated"></div>
 </div><!-- /panel-current -->
+
+<!-- Active repos (live cache-hit / compaction stats across machines) -->
+<div class="tab-panel" id="panel-active">
+  <div class="card">
+    <h2>Active Repos — Live Cache Hits &amp; Compactions</h2>
+    <p class="legend-note">Repos seen within the last 30 minutes, with their per-repo cache-hit, compaction, and time-saved (est.) totals pulled live from each repo's dashboard.json.</p>
+    <table class="repos">
+      <thead>
+        <tr>
+          <th>Repo</th><th>Model</th><th>Tier</th>
+          <th style="text-align:right">Context %</th><th>State</th>
+          <th style="text-align:right">Compactions (s/t)</th>
+          <th style="text-align:right">Cache Hits (s/t)</th>
+          <th style="text-align:right">Compact s/t (s)</th>
+          <th style="text-align:right">CacheHit s/t (s)</th>
+        </tr>
+      </thead>
+      <tbody id="active-rows"><tr><td colspan="9" class="repo-none">loading…</td></tr></tbody>
+    </table>
+    <div class="updated" id="active-updated"></div>
+  </div>
+</div>
 
 <!-- Per-repo detail modal -->
 <div class="repo-detail" id="repo-detail">
@@ -745,6 +809,21 @@ function dashboardHtml(tierName: string): string {
       document.getElementById('cost-usd').textContent = '≈ $0.00 saved';
       document.getElementById('cost-windows').textContent = '0 context-windows extended';
     }
+
+    // --- Cache hits & compactions (live counters) ---------------------------
+    var ch = d.cacheHits || { session: 0, total: 0, sessionTokensSaved: 0, totalTokensSaved: 0 };
+    var cp = d.compacts || { session: 0, total: 0 };
+    var ts = d.timeSaved || { compact: { sessionSec: 0, totalSec: 0 }, cacheHit: { sessionSec: 0, totalSec: 0 } };
+    document.getElementById('ch-session').textContent = (ch.session || 0).toLocaleString();
+    document.getElementById('ch-total').textContent = (ch.total || 0).toLocaleString();
+    document.getElementById('ch-tok-session').textContent = (ch.sessionTokensSaved || 0).toLocaleString();
+    document.getElementById('ch-tok-total').textContent = (ch.totalTokensSaved || 0).toLocaleString();
+    document.getElementById('cp-session').textContent = (cp.session || 0).toLocaleString();
+    document.getElementById('cp-total').textContent = (cp.total || 0).toLocaleString();
+    document.getElementById('ts-compact-session').textContent = fmtSec(ts.compact.sessionSec);
+    document.getElementById('ts-compact-total').textContent = fmtSec(ts.compact.totalSec);
+    document.getElementById('ts-cache-session').textContent = fmtSec(ts.cacheHit.sessionSec);
+    document.getElementById('ts-cache-total').textContent = fmtSec(ts.cacheHit.totalSec);
 
     document.getElementById('updated').textContent = 'Updated ' + new Date(d.updatedAt).toLocaleTimeString();
   }
@@ -951,9 +1030,51 @@ function dashboardHtml(tierName: string): string {
   pollIndex();
   setInterval(pollIndex, 5000);
 
+  // --- Active repos (live cache-hit / compaction stats) ---------------------
+  function fmtSec(s) {
+    s = s || 0;
+    if (s >= 3600) return (s / 3600).toFixed(1) + 'h';
+    if (s >= 60) return Math.round(s / 60) + 'm';
+    if (s >= 1) return s.toFixed(1) + 's';
+    return Math.round(s * 1000) + 'ms';
+  }
+  function renderActiveRepos(d) {
+    d = d || { updatedAt: null, servers: [] };
+    var servers = d.servers || [];
+    var rowsEl = document.getElementById('active-rows');
+    if (!rowsEl) return;
+    if (!servers.length) {
+      rowsEl.innerHTML = '<tr><td colspan="9" class="repo-none">No active repositories.</td></tr>';
+    } else {
+      rowsEl.innerHTML = servers.map(function(r) {
+        var ch = r.cacheHits || { session: 0, total: 0, sessionTokensSaved: 0, totalTokensSaved: 0 };
+        var cp = r.compacts || { session: 0, total: 0 };
+        var ts = r.timeSaved || { compact: { sessionSec: 0, totalSec: 0 }, cacheHit: { sessionSec: 0, totalSec: 0 } };
+        return '<tr>' +
+          '<td title="' + sanitize(r.repoRoot) + '">' + sanitize(r.displayName || r.repoRoot) + '</td>' +
+          '<td>' + sanitize(r.model || '—') + '</td>' +
+          '<td>' + sanitize(r.tier || '—') + '</td>' +
+          '<td class="num">' + (r.contextPct != null ? Math.round(r.contextPct * 100) + '%' : '—') + '</td>' +
+          '<td>' + sanitize(r.state || '—') + '</td>' +
+          '<td class="num">' + (cp.session || 0) + ' / ' + (cp.total || 0) + '</td>' +
+          '<td class="num">' + (ch.session || 0) + ' / ' + (ch.total || 0) + '</td>' +
+          '<td class="num">' + fmtSec(ts.compact.sessionSec) + ' / ' + fmtSec(ts.compact.totalSec) + '</td>' +
+          '<td class="num">' + fmtSec(ts.cacheHit.sessionSec) + ' / ' + fmtSec(ts.cacheHit.totalSec) + '</td>' +
+        '</tr>';
+      }).join('');
+    }
+    var upd = document.getElementById('active-updated');
+    if (upd) upd.textContent = d.updatedAt ? 'Updated ' + new Date(d.updatedAt).toLocaleTimeString() : '';
+  }
+  function pollServers() {
+    fetch('/api/servers').then(function(r) { return r.json(); }).then(renderActiveRepos).catch(function() {});
+  }
+  pollServers();
+  setInterval(pollServers, 5000);
+
   // --- Tab switching ------------------------------------------------------
   var tabs = document.querySelectorAll('.tab');
-  var panels = { current: 'panel-current', all: 'panel-all', summary: 'panel-summary' };
+  var panels = { current: 'panel-current', all: 'panel-all', active: 'panel-active', summary: 'panel-summary' };
   for (var i = 0; i < tabs.length; i++) {
     tabs[i].addEventListener('click', function() {
       var name = this.getAttribute('data-tab');
@@ -966,6 +1087,7 @@ function dashboardHtml(tierName: string): string {
         }
       }
       if (name === 'all' || name === 'summary') pollIndex();
+      if (name === 'active') pollServers();
     });
   }
 })();
@@ -1167,6 +1289,24 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
       const report = detectCrossRepoDrift(getIndexDir());
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(report));
+      return;
+    }
+
+    if (req.url === "/api/servers") {
+      try {
+        const idx = readIndex();
+        const nowSec = Math.floor(Date.now() / 1000);
+        const servers = (idx?.repos ?? []).filter((r) => (r.lastSeen ?? 0) >= nowSec - ACTIVE_WINDOW_SEC).map((r) => {
+          const out: Record<string, unknown> = { repoRoot: r.repoRoot, displayName: r.displayName, model: r.modelName, provider: r.providerName, lastSeen: r.lastSeen, lastCompactedAt: r.lastCompactedAt };
+          try { const p = join(r.stateDir, "dashboard.json"); if (existsSync(p)) { const snap = JSON.parse(readFileSync(p, "utf-8")) as LiveSnapshot; out.tier = snap.tier ?? null; out.contextPct = (snap.context && snap.context.percent != null) ? snap.context.percent : null; out.state = (snap.session && snap.session.state) || null; out.cacheHits = snap.cacheHits ?? null; out.compacts = snap.compacts ?? null; out.timeSaved = snap.timeSaved ?? null; out.updatedAt = snap.updatedAt ?? null; } } catch { /* best-effort */ }
+          return out;
+        }).sort((a, b) => (b.lastSeen as number) - (a.lastSeen as number));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ updatedAt: new Date().toISOString(), servers }));
+      } catch {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "servers_unavailable" }));
+      }
       return;
     }
 

@@ -228,6 +228,75 @@ describe("multi-repo /api/index (S19)", () => {
   });
 });
 
+describe("multi-repo /api/servers (active cache-hit stats)", () => {
+  test("returns active repos with live dashboard.json cache-hit/compaction stats", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "dash-servers-"));
+    const indexDir = mkdtempSync(join(tmpdir(), "index-servers-"));
+    process.env.MEGACOMPACT_INDEX_DIR = indexDir;
+    process.env.MEGACOMPACT_DASHBOARD_PORT = "19323";
+
+    const { upsertRepoRegistry } = await import("../src/store/sqlite.js");
+
+    const activeState = mkdtempSync(join(tmpdir(), "srv-active-"));
+    writeFileSync(join(activeState, "dashboard.json"), JSON.stringify({
+      updatedAt: new Date().toISOString(),
+      tier: "high",
+      context: { tokens: 5000, percent: 0.42, contextWindow: 12000 },
+      session: { id: "s1", state: "idle" },
+      cacheHits: { session: 3, total: 7, sessionTokensSaved: 1200, totalTokensSaved: 9000 },
+      compacts: { session: 2, total: 5 },
+      timeSaved: { compact: { sessionSec: 1.5, totalSec: 4 }, cacheHit: { sessionSec: 0.6, totalSec: 4.5 } },
+    }, null, 2));
+    upsertRepoRegistry(
+      { repoRoot: "/home/u/active", displayName: "active", stateDir: activeState, checkpointCount: 4, tokensSaved: 9000, compressedOriginalBytes: 0, lastSeen: Math.floor(Date.now() / 1000), modelName: "gpt-4o", providerName: "OpenAI" },
+      indexDir,
+    );
+
+    const staleState = mkdtempSync(join(tmpdir(), "srv-stale-"));
+    writeFileSync(join(staleState, "dashboard.json"), JSON.stringify({ updatedAt: new Date().toISOString(), tier: "low" }, null, 2));
+    const longAgo = Math.floor(Date.now() / 1000) - 7 * 86_400;
+    upsertRepoRegistry(
+      { repoRoot: "/home/u/stale", displayName: "stale", stateDir: staleState, checkpointCount: 1, tokensSaved: 100, compressedOriginalBytes: 0, lastSeen: longAgo },
+      indexDir,
+    );
+
+    const child = spawn(process.execPath, [SERVER_ENTRY, dir], { stdio: "ignore" });
+    try {
+      await waitFor(async () => {
+        try {
+          const raw = JSON.parse(readFileSync(join(dir, "port.pid"), "utf-8"));
+          const res = await fetch(`http://localhost:${raw.port}/api/version`);
+          return res.ok;
+        } catch { return false; }
+      });
+      const raw = JSON.parse(readFileSync(join(dir, "port.pid"), "utf-8"));
+      const body = (await fetch(`http://localhost:${raw.port}/api/servers`).then((r) => r.json())) as {
+        updatedAt: string;
+        servers: Array<Record<string, unknown>>;
+      };
+      assert.equal(body.servers.length, 1, "only the active repo is returned");
+      const s = body.servers[0];
+      assert.equal(s.displayName, "active");
+      assert.equal(s.tier, "high");
+      assert.equal(s.model, "gpt-4o");
+      assert.equal(s.provider, "OpenAI");
+      assert.equal(s.contextPct, 0.42);
+      assert.equal(s.state, "idle");
+      assert.deepEqual(s.cacheHits, { session: 3, total: 7, sessionTokensSaved: 1200, totalTokensSaved: 9000 });
+      assert.deepEqual(s.compacts, { session: 2, total: 5 });
+      const ts = s.timeSaved as { compact: { sessionSec: number; totalSec: number }; cacheHit: { sessionSec: number; totalSec: number } };
+      assert.equal(ts.compact.sessionSec, 1.5);
+      assert.equal(ts.cacheHit.sessionSec, 0.6);
+    } finally {
+      child.kill("SIGTERM");
+      delete process.env.MEGACOMPACT_INDEX_DIR;
+      delete process.env.MEGACOMPACT_DASHBOARD_PORT;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(indexDir, { recursive: true, force: true });
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Lifecycle integration — launch the compiled server as a real subprocess
 // (the same way the /dashboard command spawns it) and assert the two failure

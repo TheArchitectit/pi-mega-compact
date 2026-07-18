@@ -704,6 +704,34 @@ export function bumpDedupStats(deduped: boolean, stateDir: string = getStateDir(
   if (deduped) incMeta("deduped", 1, stateDir);
 }
 
+// --- Live dashboard counters (schemaless meta key/value — NO migration) -----
+// These reuse the private `incMeta` atomically-incrementing integer counter so
+// all cumulative tallies live in the same `meta` table as tokens_saved etc.
+
+export function incCompactCount(stateDir: string = getStateDir()): void {
+  incMeta("compact_count", 1, stateDir);
+}
+
+export function getCompactCount(stateDir: string = getStateDir()): number {
+  return getMetaNumber("compact_count", stateDir);
+}
+
+export function incRecallInjected(n: number, stateDir: string = getStateDir()): void {
+  if (n > 0) incMeta("recall_injected", n, stateDir);
+}
+
+export function getRecallInjected(stateDir: string = getStateDir()): number {
+  return getMetaNumber("recall_injected", stateDir);
+}
+
+export function incCacheHitTokens(delta: number, stateDir: string = getStateDir()): void {
+  if (delta > 0) incMeta("cache_hit_tokens_saved", delta, stateDir);
+}
+
+export function getCacheHitTokensSaved(stateDir: string = getStateDir()): number {
+  return getMetaNumber("cache_hit_tokens_saved", stateDir);
+}
+
 // --- Future-feature foundation (resume sessions / daily log / lessons) -------
 // Scaffolded tables + minimal helpers so all store data lives in SQLite from
 // day one. Full UI/recall for these lands in later sprints.
