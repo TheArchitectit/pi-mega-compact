@@ -6,22 +6,37 @@ sessions into a **local SQLite store** and offers **deduped inline recall** — 
 running **locally inside the extension**, with **no remote MCP server** and
 **zero network calls at runtime** (PREVENT-PI-004).
 
-> **Current version:** `v0.7.6` — storage backend is **`node:sqlite`**
-> (`DatabaseSync`, a Node ≥22.13 built-in), replacing the old `better-sqlite3`
-> native addon and the per-session gzipped JSON checkpoint files. **Zero native
-> build step, fully local, zero network at runtime.** S27 added a **raw-transcript
-> mirror + dedup pipeline** (byte-stable prompt cache via deterministic epoch
-> nonce) and **DB maintenance /commands** (`/mega-db-stats` · `prune` ·
-> `vacuum` · `check` · `reconcile`) plus best-effort auto-maintenance on
-> `session_start`. Legacy `.checkpoints.json.gz` snapshots are retained as
-> disaster-recovery fallbacks and auto-imported on first run. The S24 line ties
-> auto-compact, the tier label, trim depth, and durable-memory review to one
-> **unified pressure signal**, adds a **cross-repo memory-RAG index**, and
-> relieves context **during team runs** (not just at the end).
+> **Status - v0.7.6.** Storage uses the built-in `node:sqlite` backend
+> (`DatabaseSync`, Node >=22.13): zero native build step, fully local, and zero
+> network at runtime. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the full
+> changelog.
 
 ---
 
-## What this is (the 30-second version)
+## Features
+
+- **Local & private** - everything stays on your disk. No telemetry, no API key, no MCP server, no cloud. The only network surface is an optional localhost dashboard you open yourself.
+- **Two-layer compaction** - a non-destructive live summary every LLM call, plus durable checkpoints that relieve context mid-run (not just at the end).
+- **Vector store + dedup** - each checkpoint is embedded and stored locally; an L0->L2 + RAPTOR cascade collapses duplicate work so storage and recall stay lean.
+- **Automatic recall** - the most relevant checkpoints are re-inlined on resume or branch switch; cross-repo memory-RAG augments a thin store with decisions from other repos.
+- **Live dashboard** - a localhost-only view of token usage, store stats, savings, and per-repo activity.
+- **Database maintenance** - `/mega-db-*` commands plus best-effort auto-maintenance on session start.
+
+## Table of contents
+
+- [Overview](#overview)
+- [How it works](#how-it-works)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Dashboard](#dashboard)
+- [Architecture](#architecture)
+- [Development](#development)
+- [Testing & bug reports](#testing--bug-reports)
+- [Acknowledgements](#acknowledgements)
+- [License](#license)
+
+## Overview
 
 pi's context window is finite. When a session gets long — especially a team run
 with sub-agents — pi-mega-compact keeps it going without overflowing:
@@ -217,13 +232,15 @@ rm -f ~/.pi/agent/extensions/pi-mega-compact
 
 ---
 
-## How to use it
+## Usage
 
 Once installed and registered, pi-mega-compact runs **automatically** — you don't
 have to drive it. Past the context threshold it compacts in the background and
 drops a checkpoint; on resume it re-inlines the relevant ones silently.
 
 The commands (slash commands inside pi):
+
+### Commands
 
 | Command | Description |
 |---|---|
@@ -246,7 +263,9 @@ The commands (slash commands inside pi):
 | `/mega-dashboard-status` | Report dashboard server status (port / url / live). |
 | `/mega-dashboard-stop` | Stop the dashboard server. |
 
-The **tier** you see in the toolbar and dashboard is a *live pressure band* (`low` → `medium` → `high` → `ultra` → `mega`) that climbs automatically as your context window fills and falls back as it's relieved — it is driven by `currentTokens / effectiveThreshold`, not a manual setting. The base compaction *threshold* is set by `MEGACOMPACT_TIER` at startup as a **% of the model context window** (`low` 50% · `medium` 60% · `high` 70% · `ultra` 70% · `mega` 75%; default `low`) — the fire point is `tierPct × contextWindow`, so it always lands below pi's native ~80% auto-compaction (any model size). The old static token amounts (50k/100k/200k/1M/10M) are now only the boot fallback used before the first context event reports a window. `/mega-tier` was removed in v0.6.0. Higher pressure also deepens the live trim and reviews durable memory more often — the whole system reacts as one.
+### The tier system
+
+The **tier** you see in the toolbar and dashboard is a *live pressure band* (`low` → `medium` → `high` → `ultra` → `mega`) that climbs automatically as your context window fills and falls back as it's relieved — it is driven by `currentTokens / effectiveThreshold`, not a manual setting. The base compaction *threshold* is set by `MEGACOMPACT_TIER` at startup as a **% of the model context window** (`low` 50% · `medium` 60% · `high` 70% · `ultra` 70% · `mega` 75%; default `low`) — the fire point is `tierPct × contextWindow`, so it always lands below pi's native ~80% auto-compaction (any model size). The old static token amounts (50k/100k/200k/1M/10M) are now only the boot fallback used before the first context event reports a window. `/mega-tier` was removed in v0.7.6. Higher pressure also deepens the live trim and reviews durable memory more often — the whole system reacts as one.
 
 
 ### Live stats widget
@@ -282,6 +301,8 @@ Above the pi editor the extension shows a compact widget:
 All defaults are in `src/config/dedup.ts` (single source of truth). Set env vars
 before starting pi.
 
+### Core settings
+
 | Variable | Default | Meaning |
 |---|---|---|
 | `MEGACOMPACT_FAST_GATE_PCT` | `70` | Context-usage % that arms the auto-trigger. Defaults to the tier's % of window (`tierPct*100`): low 50 · med 60 · high 70 · ultra 70 · mega 75. Override raises the arming floor. |
@@ -295,7 +316,7 @@ before starting pi.
 | `MEGACOMPACT_DEDUP_SIM` | `0.90` | Cosine threshold to collapse near-dupes. |
 | `MEGACOMPACT_STATE_DIR` | _(none — per-repo default)_ | Override the store location. By default state is per-repo at `<repo>/.pi/mega-compact/`; this env var forces a single explicit dir (used as the fallback for non-git cwds). |
 
-#### Dedup pipeline flags (single source: `src/config/dedup.ts`)
+### Dedup pipeline flags
 
 These gate the L0/L1/L2/RAPTOR dedup tiers. Defaults reproduce the all-active
 behavior. `MARK_ONLY_*` tiers run + record their decision but never
@@ -325,7 +346,7 @@ See `docs/DEDUP_RUNBOOK.md` for incident response (SEV tiers, first-15-min
 checklist, MARK_ONLY degrade) and `docs/RETENTION_POLICY.md` for TTL / soft-delete
 / VACUUM.
 
-#### Continuity + memory knobs
+### Continuity & memory
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -336,7 +357,7 @@ checklist, MARK_ONLY degrade) and `docs/RETENTION_POLICY.md` for TTL / soft-dele
 | `MEGACOMPACT_MEMORY_REVIEW_INTERVAL` | `10` | Turns between auto-review cycles. |
 | `MEGACOMPACT_PGLITE_DISABLED` | _(unset — index on)_ | Kill-switch for the PGlite/HNSW cross-repo index; set `1`/`true` to disable (falls back to sync per-session scan). |
 
-#### Dashboard
+## Dashboard
 
 The localhost-only dashboard (started with `/mega-dashboard`) is a single-page
 app served from a detached child process on `127.0.0.1` (random port in
@@ -345,7 +366,7 @@ store. It reads the machine-wide `repo_registry`
 (`~/.mega-compact-index/index.sqlite`) plus the current repo's own `node:sqlite`
 store.
 
-**Tabs**
+### Tabs
 
 - **Current repo** — the live single-session view: context-window gauge, trigger
   status, the Vector Store (checkpoints / dropped / kept / freed / injected /
@@ -360,14 +381,18 @@ store.
   (tokens in/out/freed, context window, $ saved) grouped by the model you were
   running.
 
-**Active repos (every open session in one place).** Each session writes a
+### Active repos
+
+Each session writes a
 `last_seen` heartbeat into `repo_registry`. The All-repos view and `GET
 /api/summary` surface an `activeRepos` count, and `GET /api/repos?active=Nh`
 filters to repos seen within the last *N* hours (e.g. `?active=24h`) — so 1–6
 sessions running at once are visible together instead of only the single
 current-repo view. (The `?active` filter is hour-granular.)
 
-**DB-backed cumulative metrics.** The dashboard's **Repo (all sessions)** view
+### Metrics
+
+The dashboard's **Repo (all sessions)** view
 reads counters persisted in the SQLite `meta` table (`tokens_saved`,
 `dedup_attempts`, `deduped`) plus a SUM over `context_chunks`. These survive
 session restarts and travel with the repo's state dir, so the totals are durable
@@ -381,20 +406,24 @@ rather than only the per-process snapshot. It shows:
 - **Estimated time saved** = compact time saved + cache-hit time saved, derived
   from tokens ÷ ~2k tok/s and labeled `est.`, as current session + total.
 
-**Localhost API surface:** `GET /api/snapshot` (current-repo live state),
+### Localhost API
+
+`GET /api/snapshot` (current-repo live state),
 `/api/index` (all repos), `/api/repos` (with `?active=Nh` filter), `/api/summary`
 (header tiles + `activeRepos`), `/api/drift` (cross-repo drift: stale /
 compaction-lag / model-churn — read-only), `/api/events` (SSE live event stream),
 and `/api/version`.
 
-**Data-safety invariant.** Every compacted region is kept verbatim (compressed);
+### Data safety
+
+Every compacted region is kept verbatim (compressed);
 the Data Safety card shows regions retained, compressed-originals bytes, dedup
 duplicates, and permanently-deleted bytes (**always 0**). Nothing is permanently
 deleted — any region is restorable.
 
 ---
 
-## Architecture & layout
+## Architecture
 
 ```
 extensions/mega-compact.ts   pi extension entry; wires src/ into pi lifecycle
