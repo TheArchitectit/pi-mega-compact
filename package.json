@@ -41,9 +41,9 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "lint": "tsc --noEmit && node scripts/guardrails-scan.mjs",
+    "lint": "tsc --noEmit && node scripts/guardrails-scan.mjs && node scripts/semantic-scan.mjs",
     "test": "npm run build && node scripts/run-tests.mjs",
-    "guardrails": "python3 scripts/regression_check.py --all || node scripts/guardrails-scan.mjs",
+    "guardrails": "python3 scripts/regression_check.py --all || node scripts/guardrails-scan.mjs || node scripts/semantic-scan.mjs",
     "precommit": "bash .claude/hooks/pre-commit.sh",
     "prepublishOnly": "npm run build",
     "postinstall": "npm rebuild @mongodb-js/zstd || true"

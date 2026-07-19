@@ -11,7 +11,7 @@
 This document is **MANDATORY** for:
 
 | System Type | Examples | Binding? |
-|-------------|----------|----------|
+| ------------- | ---------- | ---------- |
 | **Large Language Models** | Claude, GPT-4/o1/o3, Gemini, LLaMA, Mistral, Qwen, DeepSeek, Cohere, Phi, Falcon, and 30+ other model families | YES |
 | **AI Coding Assistants** | Claude Code, GitHub Copilot, Cursor, Cody, Aider, Continue, Windsurf, and others | YES |
 | **Autonomous Agents** | AutoGPT, AgentGPT, CrewAI, LangChain, LangGraph, Semantic Kernel agents | YES |
@@ -47,6 +47,7 @@ The Four Laws aren't restrictions — they're accelerators. One read costs fewer
 See [skills/shared-prompts/four-laws.md](../skills/shared-prompts/four-laws.md) for the complete Four Laws documentation.
 
 **Quick Reference:**
+
 1. **Read Before Editing** - Never modify code without reading first
 2. **Stay in Scope** - Only touch authorized files
 3. **Verify Before Committing** - Test all changes
@@ -61,7 +62,7 @@ See [skills/shared-prompts/four-laws.md](../skills/shared-prompts/four-laws.md) 
 **EVERY agent MUST verify these before ANY file modification:**
 
 | # | Check | Requirement | Verify |
-|---|-------|-------------|--------|
+| --- | ------- | ------------- | -------- |
 | 1 | **READ FIRST** | NEVER edit a file without reading it first | [ ] |
 | 2 | **SCOPE LOCK** | Only modify files explicitly in scope | [ ] |
 | 3 | **NO FEATURE CREEP** | Do NOT add features, refactor, or "improve" unrelated code | [ ] |
@@ -75,7 +76,7 @@ See [skills/shared-prompts/four-laws.md](../skills/shared-prompts/four-laws.md) 
 ### Git Safety Rules
 
 | Rule | Description | Consequence |
-|------|-------------|-------------|
+| ------ | ------------- | ------------- |
 | **NO FORCE PUSH** | Never use `git push --force` | Data loss, history corruption |
 | **NO AMEND** | Do not amend commits you didn't create this session | Breaks collaborator history |
 | **NO CONFIG CHANGES** | Do not modify git config | Security/identity issues |
@@ -88,7 +89,7 @@ See [skills/shared-prompts/four-laws.md](../skills/shared-prompts/four-laws.md) 
 ### Code Safety Rules
 
 | Rule | Rationale |
-|------|-----------|
+| ------ | ----------- |
 | **EXACT REPLACEMENT** | Use provided code exactly - no "improvements" |
 | **NO NEW IMPORTS** | Unless explicitly required by the task |
 | **NO TYPE CHANGES** | Preserve existing type hints |
@@ -101,7 +102,7 @@ See [skills/shared-prompts/four-laws.md](../skills/shared-prompts/four-laws.md) 
 ### Test/Production Separation Rules (MANDATORY)
 
 | Rule | Violation Level | Action |
-|------|-----------------|--------|
+| ------ | ----------------- | -------- |
 | **PRODUCTION CODE FIRST** | CRITICAL | Halt, ask user |
 | **SEPARATE DATABASES** | CRITICAL | Halt, ask user |
 | **SEPARATE SERVICES** | CRITICAL | Halt, ask user |
@@ -214,10 +215,10 @@ OUT OF SCOPE (DO NOT TOUCH):
 
 ## pi-mega-compact Project Rules
 
-### PREVENT-PI rules (enforced by scripts/guardrails-scan.mjs)
+### PREVENT-PI rules (enforced by scripts/guardrails-scan.mjs + scripts/semantic-scan.mjs)
 
 | Rule ID | Severity | Description |
-|---------|----------|-------------|
+| --------- | ---------- | ------------- |
 | PREVENT-PI-001 | error | Dropping messages without anchor-floor guard |
 | PREVENT-PI-002 | error | Splitting a toolCall/toolResult pair at a boundary |
 | PREVENT-PI-003 | error | Injecting compacted context as `role:"system"` (must use `before_agent_start` systemPrompt) |
@@ -229,7 +230,7 @@ Each Phases 2–7 sprint (S8–S15) exits only when:
 
 1. `npm run build` (tsc) passes
 2. `npm test` (node --test on dist/**/*.test.js) passes
-3. `npm run lint` (tsc --noEmit + guardrails-scan) passes — **PREVENT-PI-004 verified: no network calls**
+3. `npm run lint` (tsc --noEmit + guardrails-scan + semantic-scan) passes — **PREVENT-PI-004 verified: no network calls; SEMANTIC-001 verified: no unhandled promise rejections**
 4. `python3 scripts/regression_check.py --all` passes (Four Laws / scope / secrets)
 5. `python3 scripts/log_failure.py --list` shows no active failures in scope
 
@@ -243,21 +244,29 @@ Each Phases 2–7 sprint (S8–S15) exits only when:
 ### Related Documents
 
 #### Core Guardrails
+
 - **This document** - Core safety protocols (MANDATORY)
-- [PREVENT-PI rules](../../.guardrails/prevention-rules/pattern-rules.json) - pi-specific prevention rules
+- [PREVENT-PI rules](../../.guardrails/prevention-rules/pattern-rules.json) - pi-specific prevention rules (v2.2.0, 32 rules)
+- [.guardrails/prevention-rules/pattern-rules.schema.json](../../.guardrails/prevention-rules/pattern-rules.schema.json) - JSON Schema for pattern-rules.json (editor/CI validation)
 - [.guardrails/pre-work-check.md](../.guardrails/pre-work-check.md) - MANDATORY pre-work checklist
 - [.guardrails/failure-registry.jsonl](../.guardrails/failure-registry.jsonl) - Bug database (JSONL format)
 - [scripts/log_failure.py](../scripts/log_failure.py) - CLI to log new failures
-- [scripts/regression_check.py](../scripts/regression_check.py) - Pre-commit regression scanner
+- [scripts/regression_check.py](../scripts/regression_check.py) - Pre-commit regression scanner (Python)
+- [scripts/guardrails-scan.mjs](../scripts/guardrails-scan.mjs) - Node PREVENT-* pattern scanner (Python fallback) — see [scripts/guardrails-scan.README.md](../scripts/guardrails-scan.README.md)
+- [scripts/semantic-scan.mjs](../scripts/semantic-scan.mjs) - Node SEMANTIC-001 scanner (unhandled promise rejections / missing `.catch()`)
+- [docs/workflows/REGRESSION_PREVENTION.md](workflows/REGRESSION_PREVENTION.md) - Regression-prevention workflow (when to log a failure, how to triage)
 - [skills/shared-prompts/four-laws.md](../skills/shared-prompts/four-laws.md) - The Four Laws (full)
+- [skills/shared-prompts/](../skills/shared-prompts/) - Reusable safety prompts: production-first, scope-validation, halt-conditions, three-strikes, error-recovery, clean-architecture
 
 #### Project Planning
+
 - [PLAN.md](../../PLAN.md) - Architecture + phase status
 - [SPRINT_PLAN.md](../../SPRINT_PLAN.md) - Sprint 0–15 (0–7 shipped v0.1.0; 8–15 → v0.2.0)
 - [docs/dedup-implementation-plan.md](dedup-implementation-plan.md) - Dedup upgrade spec (QA-reviewed)
 - [docs/specs/](specs/) - Per-sprint full specs (S8–S15)
 
 #### Architecture
+
 - [docs/compaction-redesign.md](compaction-redesign.md) - Compaction redesign notes
 
 ---

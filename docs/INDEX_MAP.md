@@ -9,12 +9,17 @@
 ## CORE GUARDRAILS
 
 | Keyword | Document | Location |
-|---------|----------|----------|
+| --------- | ---------- | ---------- |
 | agent safety, four laws, halt conditions, forbidden actions | [AGENT_GUARDRAILS.md](AGENT_GUARDRAILS.md) | docs/ |
 | four laws (full) | [four-laws.md](../skills/shared-prompts/four-laws.md) | skills/shared-prompts/ |
 | pre-work checklist, regression | [.guardrails/pre-work-check.md](../.guardrails/pre-work-check.md) | .guardrails/ |
 | failure registry, known bugs | [.guardrails/failure-registry.jsonl](../.guardrails/failure-registry.jsonl) | .guardrails/ |
-| prevention rules (PREVENT-*) | [.guardrails/prevention-rules/pattern-rules.json](../.guardrails/prevention-rules/pattern-rules.json) | .guardrails/ |
+| prevention rules (PREVENT-*), 32 rules v2.2.0 | [.guardrails/prevention-rules/pattern-rules.json](../.guardrails/prevention-rules/pattern-rules.json) | .guardrails/ |
+| prevention-rules JSON Schema (editor/CI) | [.guardrails/prevention-rules/pattern-rules.schema.json](../.guardrails/prevention-rules/pattern-rules.schema.json) | .guardrails/ |
+| SEMANTIC-001 scanner (unhandled promises) | [scripts/semantic-scan.mjs](../scripts/semantic-scan.mjs) | scripts/ |
+| guardrails-scan README (Node scanner) | [scripts/guardrails-scan.README.md](../scripts/guardrails-scan.README.md) | scripts/ |
+| regression-prevention workflow, failure triage | [workflows/REGRESSION_PREVENTION.md](workflows/REGRESSION_PREVENTION.md) | docs/workflows/ |
+| shared safety prompts (production-first, scope, halt, three-strikes, error-recovery, clean-arch) | [shared-prompts/](../skills/shared-prompts/) | skills/shared-prompts/ |
 | PREVENT-PI rules, local-only invariant | [CLAUDE.md](../CLAUDE.md) | repo root |
 
 ---
@@ -22,7 +27,7 @@
 ## PLANNING
 
 | Keyword | Document | Location |
-|---------|----------|----------|
+| --------- | ---------- | ---------- |
 | architecture, phased status, design decisions | [PLAN.md](../PLAN.md) | repo root |
 | sprints 0–7 (v0.1.0 shipped) | [SPRINT_PLAN.md](../SPRINT_PLAN.md) | repo root |
 | sprints 8–15 (v0.2.0), dedup tiers, sqlite store | [SPRINT_PLAN.md](../SPRINT_PLAN.md) | repo root |
@@ -41,7 +46,7 @@
 ## SPRINT SPECS (full per-sprint)
 
 | Keyword | Document | Location |
-|---------|----------|----------|
+| --------- | ---------- | ---------- |
 | sprint 8 spec (sqlite store + compression v2) | [specs/sprint-08.md](specs/sprint-08.md) | docs/ |
 | sprint 9 spec (content dedup + originals) | [specs/sprint-09.md](specs/sprint-09.md) | docs/ |
 | sprint 10 spec (L0 upgrade) | [specs/sprint-10.md](specs/sprint-10.md) | docs/ |
@@ -66,7 +71,7 @@
 ## TESTING & RELEASE
 
 | Keyword | Document | Location |
-|---------|----------|----------|
+| --------- | ---------- | ---------- |
 | testing, QA, manual testing, bug reports, test suite, DR drill, benchmark | [TESTER_GUIDE.md](../TESTER_GUIDE.md) | repo root |
 | install, setup, usage, openclaw plugin, commands, troubleshooting | [INSTALL_AND_USAGE.md](INSTALL_AND_USAGE.md) | docs/ |
 | release notes, v0.2.0, migration guide, breaking change, what's new | [RELEASE_NOTES.md](../RELEASE_NOTES.md) | repo root |
@@ -78,7 +83,7 @@
 ## FEATURES (v0.5.0 — Slice 3)
 
 | Keyword | Document | Location |
-|---------|----------|----------|
+| --------- | ---------- | ---------- |
 | dual-backend store (node:sqlite + PGlite), kill-switch, kill-switch env | [README.md#storage-backend-v050](../README.md#storage-backend-v050) | repo root |
 | cross-repo recall (HNSW, cosine floor, source labels, global injected-set) | [README.md#cross-repo-recall-v050](../README.md#cross-repo-recall-v050) | repo root |
 | durable memory RAG (auto-review, recall inclusion, dedup, consolidation) | [README.md#memory-v050](../README.md#memory-v050) + [src/memory.ts](../src/memory.ts) + [src/memoryRecall.ts](../src/memoryRecall.ts) + [src/memoryOps.ts](../src/memoryOps.ts) | repo root + src/ |
@@ -92,7 +97,7 @@
 ## ARCHITECTURE / SOURCE
 
 | Keyword | Document | Location |
-|---------|----------|----------|
+| --------- | ---------- | ---------- |
 | store, compression, state | [src/store.ts](../src/store.ts) | src/ |
 | vector store, dedup, recall | [src/vectorStore.ts](../src/vectorStore.ts) | src/ |
 | compaction pipeline | [src/engine.ts](../src/engine.ts) | src/ |

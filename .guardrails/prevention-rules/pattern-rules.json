@@ -1,7 +1,7 @@
 {
   "$schema": "./pattern-rules.schema.json",
-  "description": "Pattern-based prevention rules for regression detection",
-  "version": "2.1.0",
+  "description": "Pattern-based prevention rules for regression detection (added PREVENT-PI-* rules for TypeScript/pi extensions)",
+  "version": "2.2.0",
   "rules": [
     {
       "rule_id": "PREVENT-001",

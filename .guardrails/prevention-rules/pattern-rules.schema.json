@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://pi-megacompact/guardrails/pattern-rules.schema.json",
+  "description": "JSON Schema for validating pattern-rules.json — pattern-based prevention rules for regression detection",
+  "type": "object",
+  "required": ["$schema", "description", "version", "rules"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Reference to this schema file"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the ruleset"
+    },
+    "version": {
+      "type": "string",
+      "description": "Semver version of the ruleset",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "rules": {
+      "type": "array",
+      "description": "List of pattern-based prevention rules",
+      "items": {
+        "$ref": "#/definitions/rule"
+      }
+    }
+  },
+  "definitions": {
+    "severity": {
+      "type": "string",
+      "enum": ["critical", "error", "warning", "info"],
+      "description": "Severity level of the rule violation"
+    },
+    "rule": {
+      "type": "object",
+      "required": ["rule_id", "name", "enabled", "pattern", "severity", "message"],
+      "additionalProperties": true,
+      "properties": {
+        "rule_id": {
+          "type": "string",
+          "description": "Unique identifier for the rule (e.g., PREVENT-001, PREVENT-PI-004)",
+          "pattern": "^PREVENT(-[A-Z]+)?-\\d+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable rule name"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether the rule is active"
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Regex pattern to detect violations"
+        },
+        "severity": {
+          "$ref": "#/definitions/severity"
+        },
+        "message": {
+          "type": "string",
+          "description": "Description shown when the rule fires"
+        },
+        "file_glob": {
+          "type": "array",
+          "description": "Glob patterns limiting which files are scanned",
+          "items": {
+            "type": "string"
+          }
+        },
+        "forbidden_context": {
+          "type": ["string", "null"],
+          "description": "Regex pattern for context that suppresses the violation (e.g., allowed usage patterns)"
+        },
+        "suggestion": {
+          "type": "string",
+          "description": "Recommended fix for the violation"
+        }
+      }
+    }
+  }
+}
