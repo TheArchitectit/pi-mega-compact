@@ -231,6 +231,18 @@ export function initSchema(db: DatabaseSync): void {
       first_seen_seq  INTEGER NOT NULL,
       created_at      INTEGER NOT NULL
     );
+
+    -- S30 game mode: global toggle state (single row, id=1). Holds the
+    -- game-mode on/off switch, the active visual-effect theme id, and the TUI
+    -- widget display mode. Global across all repos; written by /mega-game and
+    -- the dashboard settings strip (S32). Local SQLite (PREVENT-PI-004).
+    CREATE TABLE IF NOT EXISTS game_state (
+      id                 INTEGER PRIMARY KEY CHECK(id = 1),
+      game_mode_on       INTEGER NOT NULL DEFAULT 0,
+      theme              TEXT NOT NULL DEFAULT 'transparent',
+      tui_display_mode   TEXT NOT NULL DEFAULT 'full'
+                          CHECK(tui_display_mode IN ('full','minimal'))
+    );
   `);
   // Idempotent column migrations. `CREATE TABLE IF NOT EXISTS` is a no-op on a
   // pre-existing table, so new columns added to context_chunks after a store was

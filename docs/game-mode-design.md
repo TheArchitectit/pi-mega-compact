@@ -30,10 +30,22 @@ dashboard shows a **scorecard per category**:
 
 - When a session's **cache hit % reaches 100%**, trigger a "level up" fun effect
   for that turn.
-- Known display overshoot: cache % can render **> 100%** (likely a display bug —
-  see v0.7.8 `fix(statusbar): cap context % display at ">100%"` which capped the
-  *context* %; cache % may still overshoot). **Embrace it, don't fix it:** when
-  cache > 100%, label it **MEGA CACHE** with an extra/special fun effect.
+- Known display overshoot: cache % can render **> 100%**. **S30.0 finding
+  (characterized):** the overshoot is a **genuine ratio >1, NOT a NaN/Infinity
+  bug** — `dedupHitRate = injected / cps.length` at `src/vectorStore.ts:748`,
+  where the numerator (`injectedCheckpointIds`, marked via `store.markInjected`
+  at `src/recall.ts:171,339`) counts **cross-repo / cross-session foreign
+  checkpoint IDs** injected into this session, while the denominator
+  (`cps.length` = `listCheckpoints(sessionId)`) is only **this session's own
+  persisted checkpoints**. Cross-repo recall inflates the numerator without
+  inflating the denominator → ratio >1. The same-session path cannot overshoot
+  (the `wasInjected` guard dedups `injectedCheckpointIds`).
+  **Decision: embrace it, don't fix it** — this is a real signal (cross-repo
+  recall is pulling in more than the session produced), so when cache > 100%,
+  label it **MEGA CACHE** with an extra/special fun effect. No source clamp
+  (that would hide the feature). Render sites (`/mega-status`
+  `mega-commands.ts:129,165`, dashboard `html.ts:394`) remain unclamped.
+  See `docs/specs/game-mode-sprint-plan.md` QA3.
 - **Effect flavor** (per surface):
   - Dashboard (HTML): CSS keyframe flash/pulse + a MEGA CACHE badge/banner.
   - TUI widget (ANSI): color cycle (orange->red blink) on the cache bar + a

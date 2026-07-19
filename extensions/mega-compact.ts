@@ -18,6 +18,7 @@
  *   - mega-runtime.ts       shared live state (MegaRuntime) + widget + model capture
  *   - mega-pipeline.ts      runCompact (Trident+persist) + doRecall (Layer 5)
  *   - mega-commands.ts      data/inspection slash commands
+ *   - mega-game-cmds.ts     /mega-game toggle + theme + TUI display mode
  *   - mega-dashboard-cmds.ts  localhost dashboard server lifecycle commands
  *   - mega-events.ts        pi lifecycle event handlers
  *
@@ -33,6 +34,7 @@ import { registerCommands } from "./mega-commands.js";
 import { registerDashboardCommands } from "./mega-dashboard-cmds.js";
 import { registerConflictCommands } from "./mega-conflict-cmds.js";
 import { registerDbCommands } from "./mega-db-cmds.js";
+import { registerGameCommands } from "./mega-game-cmds.js";
 
 export default function (pi: ExtensionAPI) {
   const config = loadConfig();
@@ -42,4 +44,5 @@ export default function (pi: ExtensionAPI) {
   registerDashboardCommands(pi, runtime);
   registerConflictCommands(pi, runtime);
   registerDbCommands(pi, runtime);
+  registerGameCommands(pi, runtime);
 }
