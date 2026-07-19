@@ -305,6 +305,37 @@
 
 ---
 
+## docs/specs/game-mode-sprint-plan.md (docs/specs/game-mode-sprint-plan.md)
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Guardrail Adherence Review | 13 | 0 |
+| QA Review of the v0.2 Spec | 33 | 0 |
+| Sprint Roadmap (S30–S34) | 55 | 0 |
+| S30 Foundation: state + themes + command | 67 | 0 |
+| S31 TUI widget theming + display modes + level | 109 | 0 |
+| S32 Dashboard CSS-variable skin + settings strip | 135 | 0 |
+| S33 Scoring schema + hooks | 169 | 0 |
+| S34 High Score dashboard tab + animations + release | 189 | 0 |
+| Consolidated Pre-Defined TODO Ledger | 221 | 0 |
+| Resolved Open Questions | 240 | 0 |
+| Deferred (future phases) | 252 | 0 |
+
+## docs/game-mode-design.md (docs/game-mode-design.md)
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Goal | 9 | 0 |
+| Scoring model | 17 | 0 |
+| MEGA CACHE | 30 | 0 |
+| Levels on turns | 44 | 0 |
+| Theme system | 50 | 0 |
+| Toggle panel | 73 | 0 |
+| State storage | 96 | 0 |
+| Dashboard | 105 | 0 |
+| Open implementation questions | 113 | 0 |
+| Future | 131 | 0 |
+
 ## src/ (v0.5.0 source index)
 
 | File | Purpose (sprint) |
