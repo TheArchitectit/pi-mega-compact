@@ -1,6 +1,6 @@
 {
   "name": "pi-mega-compact",
-  "version": "0.7.8",
+  "version": "0.7.9",
   "description": "Layered, local, vector-backed context compressor for pi — supersede/collapse/cluster compaction with deduped inline recall.",
   "type": "module",
   "license": "BSD-2-Clause",
@@ -50,6 +50,7 @@
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": ">=0.80",
     "openclaw": ">=0.1.0"
   },
   "devDependencies": {

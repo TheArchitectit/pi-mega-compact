@@ -1,5 +1,35 @@
 # Release Notes — pi-mega-compact
 
+## v0.7.9 (2026-07-19)
+
+Fix the **TUI width-overflow crash** (`Rendered line N exceeds terminal width (W > W-1)`) that took down the pi session whenever the mega-compact status widget rendered — plus the guardrails compliance release, two `/mega-status` + commands audit-fix rounds, and five no-behavior-change refactor splits of oversized files, all landed since v0.7.8.
+
+### Fixed (headline)
+
+- **TUI width-overflow crash.** The above-editor status widget used a hand-rolled `visibleWidth()` that counted the ⚡ bolt (U+26A1, an RGI emoji) as **1** cell, while pi-tui's own `visibleWidth()` — the function that enforces its strict `visibleWidth(line) > width` render check — counts it as **2** (Misc Symbols block, `couldBeEmoji` → `rgiEmojiRegex`). The widget's `panelLine()` padded each line to `width − ourVisibleWidth`, so it **under-padded by exactly 1** and the final line's true pi-tui width was `width + 1`, tripping the check with the `211 > 210` / `226 > 225` the crash logs show. Running `/mega-status` (or any snapshot) populated the widget and triggered the crash; disabling the extension hid it. **Fix:** delete the local `visibleWidth` and import pi-tui's `visibleWidth` + `truncateToWidth` (the same helpers the crash message points to); `panelLine()` now calls `truncateToWidth(line, width, "", true)` which returns **exactly** `width` cells by pi-tui's own measure (ANSI-preserved, space-padded, **hard-clipped** on overflow), so no width-rule mismatch can ever trip the `> width` guard again. `panelBar()` gets the same belt-and-suspenders clip. `extensions/mega-runtime/widget.ts`.
+- **`/mega-status` always-zero metrics + unhandled rejection (H1).** `loadMetrics()` was called with the state **directory** path; `existsSync()` is true for dirs, then `readFileSync()` threw `EISDIR`, silently caught → FP/p95 always `0` regardless of reality. The async handler had no try/catch, so any other throw (locked DB, corrupt SQLite) became an unhandled rejection that could crash the session. Fixed: pass `defaultMetricsPath(stateDir)` (the actual `dashboard.json` file) and wrap the handler body in try/catch → notify on any throw. `extensions/mega-commands.ts`. Audit ref `docs/AUDIT_FINDINGS.md` [H1].
+- **Commands audit findings H2/H3/M1-M7/L1-L5.** H2: `/mega-db-*` captured `stateDir` at registration time → after a repo switch all 5 db commands operated on the **wrong repo's** database (silent data-integrity risk on `/mega-db-prune`/vacuum); now each handler calls `runtime.bindRepo(ctx.cwd)` and reads `runtime.currentStateDir` at call time. H3: same stale-capture for `/mega-dashboard-*` port/runner/log paths → could spawn a duplicate server or fail to stop the running one; converted to call-time functions. M1-M4: `/mega-compact`, `/mega-recall`, `/mega-restore`, `/mega-view` wrapped in try/catch (unhandled rejections on SQLite/PGlite/corrupt-checkpoint failure could crash the session). M5-M7: `any[]` → inferred, `any` → typed, `Number()` on missing arg guarded. L1-L5: null-guards on `/mega-status` model fields (was `"null · null"` / `"$NaN saved"`), freelist fallback, history path `.pop() ?? f`, and `require("node:child_process")` → imported `execSync` (ESM). `extensions/mega-commands.ts`, `mega-runtime.ts`, `mega-pipeline.ts`.
+
+### Added
+
+- **SEMANTIC-001 scanner + 6 shared safety prompts + pattern-rules v2.2.0** (compliance release). `scripts/semantic-scan.mjs` — a Node scanner for **SEMANTIC-001** (unhandled promise rejections / missing `.catch()` in `.then()` chains), wired into `npm run lint` alongside `guardrails-scan` so the PREVENT-PI gate now also catches unhandled rejections in `extensions/` and `src/`. `.guardrails/prevention-rules/pattern-rules.json` bumped to **v2.2.0** (32 rules: PREVENT-PI-001..004 + PREVENT-001..024), with a new JSON Schema for editor/CI validation. `scripts/guardrails-scan.README.md` documents the scanner (path-matching gotcha, `// guardrails-allow` inline mechanism). `docs/workflows/REGRESSION_PREVENTION.md` — regression-prevention workflow (when to log a failure, triage, exit criteria). `skills/shared-prompts/` — 6 reusable safety prompts (`production-first`, `scope-validation`, `halt-conditions`, `three-strikes`, `error-recovery`, `clean-architecture`), composable into any agent prompt. `docs/AGENT_GUARDRAILS.md` + `docs/INDEX_MAP.md` updated.
+
+### Changed
+
+- **Refactor: split 5 oversized files into focused submodules** (no behavior change; all exports preserved via barrel re-exports; no consumer changes). `src/store/sqlite.ts` (2206 lines) → 14 submodules under `src/store/sqlite/` (utils/schema/meta/global-index/foundation/memories/checkpoints/session-state/stats/model-snapshots/raptor/raw-transcript/dedup-mirror/maintenance). `extensions/dashboard-server.ts` (1443 lines) → 6 submodules under `extensions/dashboard-server/` (types/state/index-reader/snapshot/html/server). `extensions/mega-runtime.ts` (1097 lines) → `mega-runtime/` barrel (widget/helpers/state/query). `extensions/mega-pipeline.ts` (545 lines) → `mega-pipeline/` barrel (memory-review/compact/recall). `extensions/mega-events.ts` → `mega-events/` focused lifecycle submodules. The widget crash fix lives in the newly-extracted `mega-runtime/widget.ts`.
+
+### Packaging
+
+- **New optional peerDependency: `@earendil-works/pi-tui` (`>=0.80`).** The status widget imports `visibleWidth`/`truncateToWidth` from pi-tui (already present in every pi install — pi-coding-agent bundles it) so widget width math can never diverge from pi-tui's render-width check. Declared as a peer (not a direct dep) to avoid a second copy in the bundle.
+
+### Upgrade / migration
+
+No migration required — the headline fix is to the widget renderer; the refactors are export-preserving; SEMANTIC-001 + audit fixes are additive. If a stale pi build doesn't export `visibleWidth`/`truncateToWidth` from `@earendil-works/pi-tui`, upgrade pi first. Upgrade with `pi update --extensions` (npm is the only distribution path).
+
+Full suite: 388 passed, 0 failed across 42 files.
+
+---
+
 ## v0.7.8 (2026-07-18)
 
 Fix the max-output-token truncation at its source, plus recover from it when prevention misses. The auto-compact trigger now gates on **context %** (reliable, the number the menu bar shows) instead of a **token count** the model under-reports — so compaction fires at the tier's fire point *before* the context reaches 100%, instead of silently missing it while the menu bar climbed past 100% and the turn hit the output-token cap.
@@ -1127,7 +1157,7 @@ All v0.1.0 env vars still work. New v0.2.0 vars (defaults in
 `src/config/dedup.ts`):
 
 | Variable | Default | Meaning |
-|----------|---------|---------|
+| ---------- | --------- | --------- |
 | `MEGACOMPACT_L0_ENABLED` | `true` | L0 exact content-hash dedup |
 | `MEGACOMPACT_L1_ENABLED` | `true` | L1 MinHash/LSH near-dup |
 | `MEGACOMPACT_L2_ENABLED` | `true` | L2 semantic cosine + MMR |

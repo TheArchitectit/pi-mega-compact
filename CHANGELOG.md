@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.7.9 (2026-07-19) — TUI width-overflow crash fix + guardrails compliance + audit fixes + refactor splits
+
+- **fix(widget): TUI width-overflow crash.** The status widget's hand-rolled `visibleWidth()` counted the ⚡ bolt (U+26A1, RGI emoji) as 1 cell; pi-tui's `visibleWidth()` (which enforces its strict `visibleWidth(line) > width` render check) counts it as 2. `panelLine()` padded to `width − ourVisibleWidth` → under-padded by 1 → final line was `width + 1` by pi-tui's measure → crash `Rendered line N exceeds terminal width (211 > 210)`. Running `/mega-status` (or any snapshot) populated the widget and crashed; disabling the extension hid it. Fix: import pi-tui's `visibleWidth` + `truncateToWidth`; `panelLine()` now calls `truncateToWidth(line, width, "", true)` → exactly `width` cells, ANSI-preserved, space-padded, hard-clipped on overflow. `panelBar()` same. `extensions/mega-runtime/widget.ts`.
+- **fix(mega-status): loadMetrics dir-vs-file + try/catch (H1).** Passed the state **directory** to `loadMetrics()` (existsSync true for dirs → readFileSync EISDIR → silently caught → metrics always 0); handler had no try/catch so any throw became an unhandled rejection that could crash the session. Pass `defaultMetricsPath(stateDir)` + wrap body. `extensions/mega-commands.ts`. Audit ref `docs/AUDIT_FINDINGS.md` [H1].
+- **fix(commands): audit findings H2/H3/M1-M7/L1-L5.** H2 `/mega-db-*` stale `stateDir` at registration → wrong-repo DB on switch; now `bindRepo(ctx.cwd)` + read `currentStateDir` at call time. H3 `/mega-dashboard-*` same stale-capture for port/runner/log → call-time functions + bindRepo on stop/status. M1-M4 wrap `/mega-compact`/`/mega-recall`/`/mega-restore`/`/mega-view` in try/catch. M5-M7 `any[]`→inferred, `any`→typed, `Number()` guard. L1-L5 null-guards (/mega-status model fields, freelist fallback, history `.pop() ?? f`, `execSync` import). `extensions/mega-commands.ts`, `mega-runtime.ts`, `mega-pipeline.ts`.
+- **feat(guardrails): SEMANTIC-001 scanner + shared prompts + pattern-rules v2.2.0.** `scripts/semantic-scan.mjs` (Node scanner for unhandled promise rejections / missing `.catch()` in `.then()` chains) wired into `npm run lint` alongside `guardrails-scan`. `.guardrails/prevention-rules/pattern-rules.json` v2.2.0 (32 rules) + JSON Schema. `scripts/guardrails-scan.README.md`. `docs/workflows/REGRESSION_PREVENTION.md`. `skills/shared-prompts/` (6: production-first, scope-validation, halt-conditions, three-strikes, error-recovery, clean-architecture). `docs/AGENT_GUARDRAILS.md` + `docs/INDEX_MAP.md` updated.
+- **refactor: split 5 oversized files into focused submodules** (export-preserving barrels; no behavior change; no consumer changes). `src/store/sqlite.ts` (2206→barrel) → `src/store/sqlite/` (14 submodules). `extensions/dashboard-server.ts` (1443→barrel) → `extensions/dashboard-server/` (6). `extensions/mega-runtime.ts` (1097→barrel) → `extensions/mega-runtime/` (widget/helpers/state/query). `extensions/mega-pipeline.ts` (545→barrel) → `extensions/mega-pipeline/` (3). `extensions/mega-events.ts` → `mega-events/` lifecycle submodules.
+- **packaging:** new optional peerDependency `@earendil-works/pi-tui` (`>=0.80`) — widget imports `visibleWidth`/`truncateToWidth` from pi-tui (already bundled in every pi install) so width math can't diverge from the render check. Declared peer (not direct) to avoid a second bundle copy.
+- **chore:** version bump 0.7.8 → 0.7.9.
+
+No migration required — widget fix + export-preserving refactors + additive guardrails/audit fixes. Upgrade with `pi update --extensions` (npm only). Tests: 388 passed / 0 failed across 42 files.
+
 ## v0.7.8 (2026-07-18) — percent-based auto-compact trigger + max-output-token auto-continue
 
 - **feat(trigger): S29 percent-based auto-compact trigger.** The context-handler gate now fires on context % (reliable, the menu-bar signal) instead of a token count the model under-reports, with a token fallback when % is absent. `MEGACOMPACT_AUTO_PCT_TRIGGER` (optional, clamped 0.1–1, default unset = inherit tier `tierPct`) allows override. `custom` (`MEGACOMPACT_THRESHOLD_TOKENS`) keeps the absolute token gate. Dashboard `armed`/`ready` now mirror the gate's basis (percent for tiered, tokens for custom). Reliability fix — default fire point byte-identical; compaction that previously got missed now fires. `src/compact.ts`, `extensions/mega-config.ts`, `extensions/mega-events.ts`.
@@ -88,7 +100,7 @@ Full suite: 395 passed, 0 failed across 40 files.
   **below** pi's native ~80% auto-compaction for any model size. See
   `docs/specs/s27-tiered-percent-threshold.md`.
   - `extensions/mega-config.ts` — `TIER_PCT` (fraction map) + `MegaConfig.tierPct`
-    + pure `effectiveThresholdTokens({ tierPct, fallbackThreshold, window,
+    - pure `effectiveThresholdTokens({ tierPct, fallbackThreshold, window,
     explicitThreshold? })`; `resolveFastGatePct` defaults to `tierPct*100`; boot
     `thresholdTokens` is now `round(tierPct * 200_000)`.
   - `extensions/mega-runtime.ts` — `effectiveThreshold` getter; `pressure` getter
@@ -122,7 +134,7 @@ The S16–S23 slice: pi now compacts **and continues** (no more stop-after-
 compact), cross-repo recall is wired into resume + `/mega-recall --cross-repo`
 over a machine-wide PGlite HNSW index, and the `memories` table is auto-
 reviewed + RAG-injected. Plus a multi-repo dashboard (Summary + All-repos
-+ drift) and Slice-3 docs. Single `node:sqlite` source of truth + optional
+- drift) and Slice-3 docs. Single `node:sqlite` source of truth + optional
 PGlite index; zero network (PREVENT-PI-004). See the design spec and the
 per-sprint sections below for full detail.
 
@@ -132,6 +144,7 @@ A read-only health report over the machine-wide `repo_registry`, surfaced on the
 dashboard, so multi-repo drift is visible at a glance.
 
 ### Added
+
 - **`detectCrossRepoDrift()`** (`src/driftDetection.ts`) — classifies each
   registered repo as `ok`, `stale` (>30d idle, info), `compaction_lag` (active
   but >24h behind the most-recently-active repo's last compaction, warn), or
@@ -142,12 +155,14 @@ dashboard, so multi-repo drift is visible at a glance.
   `createRequire` so the sync HTTP handler stays sync.
 
 ### Tests
+
 - `src/driftDetection.test.ts` (5): empty registry, stale flag, compaction-lag
   flag, all-ok, and recent model churn.
 
 ### Sprint S21 (memory recall inclusion + auto-consolidate)
 
 ### Added
+
 - **`recallMemories()` wired into `recallAndInline`** (`src/recall.ts`,
   `src/memory.ts`, `src/memoryRecall.ts`) — durable memories are now recalled as
   part of the unified Layer-5 pipeline, alongside checkpoint recall. Hits are
@@ -182,6 +197,7 @@ Auto-review the conversation and persist durable memories to SQLite, then
 recall them as RAG context. Local, hallucination-guarded, no LLM by default.
 
 ### Added
+
 - **`reviewConversation()`** (`src/memory.ts`) — extractive, hallucination-guarded
   review of recent user requests. Detects decision-style statements (via
   `DECISION_PATTERNS`), emits `add`/`replace`/`remove` `MemoryOp`, and grounds
@@ -210,6 +226,7 @@ recall them as RAG context. Local, hallucination-guarded, no LLM by default.
   the rest of the prior context.
 
 ### Tests
+
 - `src/memory.test.ts` (3): add on decision, replace on contradiction,
   none on smalltalk. `src/memoryOps.test.ts`: add / idempotent-add / replace /
   remove.
@@ -225,6 +242,7 @@ repo-switch) as a read-only, single-shot connection, so one server shows all
 repos' checkpoints, tokens saved, compressed-originals, and active model.
 
 ### Added
+
 - **`/api/index`** (Phase 5b) — returns `{ updatedAt, summary, repos }` from the
   global registry: `summary` carries `totalRepos`, `totalCheckpoints`,
   `totalTokensSaved`, `totalCompressedOriginalBytes`; `repos` is the per-repo
@@ -240,11 +258,13 @@ repos' checkpoints, tokens saved, compressed-originals, and active model.
   most-recently-seen row, keeping the All-repos list readable.
 
 ### Changed
+
 - `bindRepo()` in `extensions/mega-runtime.ts` already upserts the registry via
   `upsertRepoRegistry` on repo-switch (S19.2 wiring), so the dashboard populates
   without a separate write path.
 
 ### Tests
+
 - New `dashboard-server.test.ts` integration test (S19): seeds two repos into
   the global index, launches the real server subprocess on a private port, and
   asserts `/api/index` returns both repos with the correct aggregate summary
@@ -256,6 +276,7 @@ Machine-wide injected-set so a foreign checkpoint injected in repo A is never
 re-injected by repo B; cross-repo injections tracked in `events.log` + `/mega-status`.
 
 ### Added
+
 - **Machine-wide injected-set** (`markInjectedGlobal` / `wasInjectedGlobal`
   in `src/store/sqlite.ts`, backed by the `injected_global` table in
   `~/.mega-compact-index/index.sqlite`). A checkpoint injected in any repo is
@@ -276,6 +297,7 @@ re-injected by repo B; cross-repo injections tracked in `events.log` + `/mega-st
   filters to recently-active repos.
 
 ### Tests
+
 - `dashboard-server.test.ts` (S19/S22): `/api/repos` honors `?active=Nh`
   and `/api/summary` reports the 24h `activeRepos` count from seeded fixtures.
 
@@ -284,6 +306,7 @@ re-injected by repo B; cross-repo injections tracked in `events.log` + `/mega-st
 Wire the built-but-unused PGlite HNSW cross-repo index into the live recall path.
 
 ### Added
+
 - **Cross-repo recall on resume.** `session_start` now uses the new
   `doRecallAsync` (in `mega-pipeline.ts`): runs the sync same-repo scan first,
   and when this repo's store is thin (`< autoInlineK` hits) AND cross-repo is
@@ -302,6 +325,7 @@ Wire the built-but-unused PGlite HNSW cross-repo index into the live recall path
   `MEGACOMPACT_CROSSREPO_COSINE` (default 0.90).
 
 ### Tests
+
 - 2 new `recall.test.ts` tests (source label present for cross-repo, absent for
   same-repo). Full `mega-compact.test.ts` suite green (26/26).
 
@@ -314,6 +338,7 @@ event (live trim every LLM call, no abort) and relies on pi's native
 auto-compaction for the durable disk trim (which continues). Compact-and-continue.
 
 ### Changed
+
 - **Live context-event trim (S16).** `buildLiveTrimmedView()` /
   `computeLiveTrimCut()` (new `extensions/mega-trim.ts`) collapse the compacted
   region to a summary + recent anchor and return it from the `context` handler.
@@ -338,6 +363,7 @@ auto-compaction for the durable disk trim (which continues). Compact-and-continu
   queued, so a turn never stalls post-compact and never busy-loops.
 
 ### Tests
+
 - New `mega-trim.test.ts` (4 unit tests) + 4 S16 integration tests in
   `mega-compact.test.ts`: live trim fires (no `ctx.compact`), below-anchor-floor
   skips, idle+queued nudge guarded, durable trim still supplied via native
@@ -350,6 +376,7 @@ error that the auto-trigger surfaced whenever pi's native compaction had
 nothing durable to trim.
 
 ### Fixed
+
 - **"Nothing to compact" thrown to the user by the auto-trigger.** The
   `context` handler auto-fired `ctx.compact()` based on *in-memory* token
   pressure (our threshold), but pi's `compact()` throws "Nothing to compact
@@ -376,12 +403,14 @@ nothing durable to trim.
   came from pi, not our `runCompact`. The gate above is the actual fix.
 
 ### Added
+
 - `MEGACOMPACT_DURABLE_TRIM_FLOOR` env override (default 20000 = pi's
   `keepRecentTokens` default). Raise it if you raise pi's
   `compact.keepRecentTokens`, so the gate keeps predicting pi's no-op
   threshold correctly.
 
 ### Tests
+
 - New `piCompactWouldNoop` integration tests in `mega-compact.test.ts`: the
   positive path (compactable transcript → `ctx.compact()` still called) and
   the skip path (small transcript → `ctx.compact()` skipped, recall checkpoint
@@ -394,6 +423,7 @@ vector index directory concurrently. Five test failures (dedup-engine,
 sprint10, sprint12, vectorIndex) reduced to zero.
 
 ### Fixed
+
 - **Multi-process PGlite corruption.** `VectorStore.add()` fired a
   fire-and-forget `upsertEmbedding()` on every checkpoint add. Under
   `node --test`'s parallel file execution, 20 workers each spawned their own
@@ -409,6 +439,7 @@ sprint10, sprint12, vectorIndex) reduced to zero.
   rebuilds the index from the authoritative `node:sqlite` store.
 
 ### Changed
+
 - **`closeVectorIndex()` resets the `disabled` flag.** Previously, once the
   kill-switch (`MEGACOMPACT_PGLITE_DISABLED`) was tested and the index closed,
   subsequent calls to `initVectorIndex()` in the same process silently
@@ -422,6 +453,7 @@ sprint10, sprint12, vectorIndex) reduced to zero.
 Fix "dashboard server failed to start" being a silent, undiagnosable error.
 
 ### Fixed
+
 - **Silent dashboard start failures.** The dashboard server ran as a detached
   child with `stdio: "ignore"`, so any crash *before* the first log line
   (notably an ESM module-load/parse error, or a missing server entry) died
@@ -440,6 +472,7 @@ Fix "dashboard server failed to start" being a silent, undiagnosable error.
   inspectable.
 
 ### Added
+
 - `dashboard.log` written by the running server into the per-repo state dir.
 - Integration tests covering the stale-`port.pid` rebind and the new log file.
 
@@ -451,6 +484,7 @@ dedup pipeline — the on-disk location of runtime state moves from a single
 global dir to one dir per git repo.
 
 ### Added
+
 - **Per-repo state dir.** Each git repo gets its own isolated store at
   `<repo>/.pi/mega-compact/` (checkpoints SQLite db, `events.log`,
   `dashboard.json`, `dedup-stats.json`). The store is scoped by repo root, so
@@ -477,11 +511,13 @@ global dir to one dir per git repo.
   the compiled entry or the OpenClaw adapter.
 
 ### Fixed
+
 - `bindRepo()` honors the explicit `MEGACOMPACT_STATE_DIR` override for non-git
   cwds (regression where it fell back to the hardcoded global default instead).
 - All 278 tests pass.
 
 ### Docs
+
 - `README.md` and `docs/INSTALL_AND_USAGE.md` note the per-repo state location
   and the `MEGACOMPACT_STATE_DIR` fallback semantics.
 - Install docs (`README.md`, `docs/INSTALL_AND_USAGE.md`, `TESTER_GUIDE.md`,
@@ -494,6 +530,7 @@ OpenClaw plugin support plus an expanded, graded test suite. Additive on top of
 v0.2.0 — no breaking changes to the SQLite store or dedup pipeline.
 
 ### Added
+
 - **OpenClaw plugin adapter** (`extensions/openclaw-mega-compact.ts` +
   `openclaw.plugin.json`). Exposes pi-mega-compact to OpenClaw as a
   `CompactionProvider` via the new `openclaw` package field. The SQLite store,
@@ -508,6 +545,7 @@ v0.2.0 — no breaking changes to the SQLite store or dedup pipeline.
 - `.gitignore` now excludes the OpenClaw build/state artifacts.
 
 ### Docs
+
 - `SPRINT_PLAN.md` and `TESTER_GUIDE.md` updated for the v0.3.0 plugin surface;
   `docs/HEADER_MAP.md` / `docs/INDEX_MAP.md` re-mapped.
 
@@ -519,6 +557,7 @@ full L0/L1/L2/RAPTOR dedup pipeline plus BYO embedder, backfill, monitoring, and
 canary rollout ship behind feature flags.
 
 ### Breaking change
+
 - **`better-sqlite3` native SQLite store replaces gzipped JSON persistence.**
   The old `<sess>.checkpoints.json.gz` files are **retained as disaster-recovery
   snapshots** and auto-imported on first run via
@@ -528,6 +567,7 @@ canary rollout ship behind feature flags.
   `MEGACOMPACT_STATE_DIR`).
 
 ### Added (by sprint)
+
 - **Sprint 8 — SQLite storage backbone.** `src/store/sqlite.ts` is the "one
   store": `context_chunks` + `session_state` in a single in-process
   `better-sqlite3` database (WAL journal, FTS5 `trigram` tokenizer, parameterized
@@ -563,11 +603,14 @@ canary rollout ship behind feature flags.
   No network port (PREVENT-PI-004).
 
 ### Added (this release, post-Sprint 14)
+
 - **Live agent tracking in toolbar widget.** The stats widget now shows active
   sub-agent count and current turn index in real-time:
+
   ```
    ⚡ medium │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
   ```
+
   Tracks `agent_start`/`agent_end` and `turn_start`/`turn_end` events from pi.
 - `VectorStore.topSimilar(n)` — the n most cosine-similar checkpoints to the
   current one (self-excluded), with unit tests.
@@ -583,6 +626,7 @@ canary rollout ship behind feature flags.
   handler-level integration, dashboard server, stats edge cases.
 
 ### Fixed
+
 - **Auto-trigger fired in a live pi session for the first time.** Two bugs
   made the auto-pipeline dead code in real use despite green unit/engine tests:
   - The `context` handler's `if (!ctx.isIdle()) return` guard blocked all
@@ -597,11 +641,10 @@ canary rollout ship behind feature flags.
   (`~/.pi/agent/extensions/pi-mega-compact`).
 
 ### Verified (live)
+
 - A real `pi --print` session persisted `chkpt_001` to the SQLite store; a
   subsequent `pi --continue` auto-inlined it via `before_agent_start`
   (`event:"auto-inline", injected:["chkpt_001"]`).
-
-
 
 ## v0.1.0 (2026-07-11)
 
@@ -609,6 +652,7 @@ First tagged release. The full local, vector-backed compaction pipeline is wired
 end-to-end as a pi extension — no remote MCP server, all processing local.
 
 ### Added
+
 - **Layer 1 — Supersede**: zero-cost pruning of obsolete file reads
   (`supersede.ts`).
 - **Layer 2 — Collapse**: heuristic summarization (`compact.ts`:
@@ -647,6 +691,7 @@ end-to-end as a pi extension — no remote MCP server, all processing local.
   active from Sprint 0; `guardrails-scan` + `regression_check` both green.
 
 ### Config (env-backed, see README)
+
 `MEGACOMPACT_FAST_GATE_PCT`, `MEGACOMPACT_THRESHOLD_TOKENS`,
 `MEGACOMPACT_ANCHOR_USER_MESSAGES`, `MEGACOMPACT_PRESERVE_RECENT`,
 `MEGACOMPACT_AUTO`, `MEGACOMPACT_AUTO_INLINE`, `MEGACOMPACT_AUTO_INLINE_K`,

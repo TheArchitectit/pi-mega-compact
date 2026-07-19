@@ -6,6 +6,15 @@
  * the `MegaRuntime` class (state.ts) imports them to paint the panel.
  */
 
+// pi-tui's OWN width measurers — the same functions pi-tui uses to enforce its
+// render-width check ("visibleWidth(line) > width" → crash). Measuring with
+// these guarantees we never disagree on a grapheme's width (e.g. RGI emoji
+// like ⚡ which pi-tui counts as 2 but a naive regex counts as 1), and
+// truncateToWidth both pads AND hard-clips to exactly `width` cells, so no
+// off-by-one can trip the strict `> width` guard. (Fix for the
+// `Rendered line N exceeds terminal width (W > W-1)` crash.)
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+
 // ── ANSI palette ───────────────────────────────────────────────────────────
 // The pi TUI's Text component preserves ANSI escape codes (see wrapTextWithAnsi),
 // so raw escapes render as colors. No chalk dependency needed — these are just
@@ -37,33 +46,8 @@ const PULSE = ["◐", "◓", "◑", "◒"];
 const PANEL_BG = "\x1b[48;5;236m"; // dark slate panel background
 const PANEL_RST = "\x1b[0m" + PANEL_BG; // reset fg but retain panel bg
 
-/** Visible cell width of a string, ignoring ANSI SGR/OSC escapes. */
-function visibleWidth(s: string): number {
-	const stripped = s
-		.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
-		.replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "");
-	let w = 0;
-	for (const ch of stripped) {
-		const cp = ch.codePointAt(0) ?? 0;
-		const wide =
-			cp >= 0x1100 &&
-			(cp <= 0x115f ||
-				(cp >= 0x2e80 && cp <= 0x303e) ||
-				(cp >= 0x3041 && cp <= 0x33ff) ||
-				(cp >= 0x3400 && cp <= 0x4dbf) ||
-				(cp >= 0x4e00 && cp <= 0x9fff) ||
-				(cp >= 0xa000 && cp <= 0xa4cf) ||
-				(cp >= 0xac00 && cp <= 0xd7a3) ||
-				(cp >= 0xf900 && cp <= 0xfaff) ||
-				(cp >= 0xfe30 && cp <= 0xfe4f) ||
-				(cp >= 0xff00 && cp <= 0xff60) ||
-				(cp >= 0xffe0 && cp <= 0xffe6) ||
-				(cp >= 0x1f300 && cp <= 0x1faff) ||
-				(cp >= 0x20000 && cp <= 0x3fffd));
-		w += wide ? 2 : 1;
-	}
-	return w;
-}
+// (Visible-width measurement is delegated to pi-tui's `visibleWidth` — imported
+// above — so our width math can never diverge from pi-tui's render-width check.)
 
 /** Wrap a string (with ANSI codes) to fit within `maxWidth` visible chars.
  *  Splits at │ separators or whitespace when possible. */
@@ -91,14 +75,24 @@ function wrapLine(text: string, maxWidth: number): string[] {
 }
 
 function panelLine(content: string, width: number): string {
+	if (width <= 0) return "";
+	// Apply the panel background; swap every inner full-reset for a reset that
+	// re-applies the bg so the fill stays continuous under colored text.
 	const withBg = PANEL_BG + content.replace(/\x1b\[0m/g, PANEL_RST);
-	const pad = Math.max(0, width - visibleWidth(withBg));
-	return withBg + " ".repeat(pad) + "\x1b[0m";
+	// truncateToWidth(line, width, "", true) returns EXACTLY `width` visible cells
+	// (by pi-tui's measure), ANSI-preserved, space-padded. It hard-clips overflow
+	// — so even a segment wider than `width` (or a width-rule mismatch) can never
+	// produce a line that trips pi-tui's strict `visibleWidth(line) > width` check.
+	return truncateToWidth(withBg, width, "", true) + "\x1b[0m";
 }
 
 /** A full-width hairline bar (top/bottom border of the panel). */
 function panelBar(width: number, ch = "─"): string {
-	return PANEL_BG + ch.repeat(Math.max(0, width)) + "\x1b[0m";
+	// `─` (U+2500) is narrow (1 cell) in both our measure and pi-tui's, so a
+	// `ch.repeat(width)` bar is exactly `width` cells and already passes the
+	// `> width` guard. truncateToWidth is belt-and-suspenders in case `ch` is
+	// ever swapped for a wide/fullwidth character.
+	return truncateToWidth(PANEL_BG + ch.repeat(Math.max(0, width)), width, "", false) + "\x1b[0m";
 }
 
 /** Token-count formatter: M at/above 1e6, k at/above 1e3, raw below.

@@ -6,7 +6,7 @@ sessions into a **local SQLite store** and offers **deduped inline recall** — 
 running **locally inside the extension**, with **no remote MCP server** and
 **zero network calls at runtime** (PREVENT-PI-004).
 
-> **Status - v0.7.8.** Storage uses the built-in `node:sqlite` backend
+> **Status - v0.7.9.** Storage uses the built-in `node:sqlite` backend
 > (`DatabaseSync`, Node >=22.13): zero native build step, fully local, and zero
 > network at runtime. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the full
 > changelog.
@@ -96,7 +96,7 @@ Marker    insert compact-marker; dedupe so repeated triggers cost ~0 tokens
 **One store, three ways to read it back — one dedup engine:**
 
 | Entry point | Trigger | Behavior |
-|---|---|---|
+| --- | --- | --- |
 | **Auto-inline** (Layer 5) | `session_start` / `session_tree` | Resume → `recallAndInline(source:"resume")` prepends the most relevant checkpoints, deduped against current context. |
 | **On-demand recall** | `/mega-recall [query]` | Semantic search the store, dedupe, and inline the top-K. |
 | **Dedup sentinel** | every compact | A lightweight `mega-compact-marker` entry lets auto-inline and recall skip re-injecting / re-vectorizing already-present regions. |
@@ -243,7 +243,7 @@ The commands (slash commands inside pi):
 ### Commands
 
 | Command | Description |
-|---|---|
+| --- | --- |
 | `/mega-compact [summary...]` | Manually compact the current session. A summary arg is used verbatim; otherwise the COLLAPSE heuristics build one. Persists a `chkpt_xxx`. |
 | `/mega-compact off` | Disable auto-compaction for this session. |
 | `/mega-status` | Show config + current context usage + store stats (checkpoint count, dedup rate, tokens saved) + the **installed version**. |
@@ -267,13 +267,12 @@ The commands (slash commands inside pi):
 
 The **tier** you see in the toolbar and dashboard is a *live pressure band* (`low` → `medium` → `high` → `ultra` → `mega`) that climbs automatically as your context window fills and falls back as it's relieved — it is driven by `currentTokens / effectiveThreshold`, not a manual setting. The base compaction *threshold* is set by `MEGACOMPACT_TIER` at startup as a **% of the model context window** (`low` 50% · `medium` 60% · `high` 70% · `ultra` 70% · `mega` 75%; default `low`) — the fire point is `tierPct × contextWindow`, so it always lands below pi's native ~80% auto-compaction (any model size). The old static token amounts (50k/100k/200k/1M/10M) are now only the boot fallback used before the first context event reports a window. `/mega-tier` was removed in v0.7.6. Higher pressure also deepens the live trim and reviews durable memory more often — the whole system reacts as one.
 
-
 ### Live stats widget
 
 Above the pi editor the extension shows a compact widget:
 
 ```
- ⚡ high·low v0.7.8 │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
+ ⚡ high·low v0.7.9 │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
    ◐ armed │ dedup: 92% │ saved: 45k tok
 ```
 
@@ -304,17 +303,17 @@ before starting pi.
 ### Core settings
 
 | Variable | Default | Meaning |
-|---|---|---|
+| --- | --- | --- |
 | `MEGACOMPACT_FAST_GATE_PCT` | `70` | Context-usage % that arms the auto-trigger. Defaults to the tier's % of window (`tierPct*100`): low 50 · med 60 · high 70 · ultra 70 · mega 75. Override raises the arming floor. |
 | `MEGACOMPACT_TIER` | `low` | Named trigger preset — sets the compaction threshold as a **% of the model context window**: `low`(50%) `medium`(60%) `high`(70%) `ultra`(70%) `mega`(75%). Fire point = `tierPct × contextWindow`, so it always fires below pi's native ~80% auto-compaction (any model size). The old static token amounts (50k/100k/200k/1M/10M) are now only the **boot fallback** used before the first context event reports a window. Default `low`. |
-| `MEGACOMPACT_THRESHOLD_TOKENS` | _(tier default)_ | Explicit **absolute** token budget (the `custom` tier). Overrides `MEGACOMPACT_TIER` when set and is **never percent-scaled** — use this to pin an exact token fire point regardless of model window. |
+| `MEGACOMPACT_THRESHOLD_TOKENS` | *(tier default)* | Explicit **absolute** token budget (the `custom` tier). Overrides `MEGACOMPACT_TIER` when set and is **never percent-scaled** — use this to pin an exact token fire point regardless of model window. |
 | `MEGACOMPACT_ANCHOR_USER_MESSAGES` | `3` | Never drop the most recent N user messages (anchor floor). |
 | `MEGACOMPACT_PRESERVE_RECENT` | `4` | Preserve the most recent N messages verbatim. |
 | `MEGACOMPACT_AUTO` | `true` | Enable the auto-trigger. |
 | `MEGACOMPACT_AUTO_INLINE` | `true` | Auto-inline on resume / branch. |
 | `MEGACOMPACT_AUTO_INLINE_K` | `3` | Top-K checkpoints to auto-inline. |
 | `MEGACOMPACT_DEDUP_SIM` | `0.90` | Cosine threshold to collapse near-dupes. |
-| `MEGACOMPACT_STATE_DIR` | _(none — per-repo default)_ | Override the store location. By default state is per-repo at `<repo>/.pi/mega-compact/`; this env var forces a single explicit dir (used as the fallback for non-git cwds). |
+| `MEGACOMPACT_STATE_DIR` | *(none — per-repo default)* | Override the store location. By default state is per-repo at `<repo>/.pi/mega-compact/`; this env var forces a single explicit dir (used as the fallback for non-git cwds). |
 
 ### Dedup pipeline flags
 
@@ -323,7 +322,7 @@ behavior. `MARK_ONLY_*` tiers run + record their decision but never
 collapse (safe partial-rollout / auto-degrade state).
 
 | Variable | Default | Meaning |
-|---|---|---|
+| --- | --- | --- |
 | `MEGACOMPACT_L0_ENABLED` | `true` | L0 exact content-hash dedup. |
 | `MEGACOMPACT_L1_ENABLED` | `true` | L1 MinHash/LSH near-dup verification. |
 | `MEGACOMPACT_L2_ENABLED` | `true` | L2 semantic cosine dedup + MMR retrieval diversity. |
@@ -332,7 +331,7 @@ collapse (safe partial-rollout / auto-degrade state).
 | `MEGACOMPACT_MARK_ONLY_L1` | `false` | L1: record, don't collapse. |
 | `MEGACOMPACT_MARK_ONLY_L2` | `false` | L2: record, don't collapse. |
 | `MEGACOMPACT_MINILM` | `false` | MiniLM embedder flag — **off; not shipped** (see Embedding). BYO via `MEGACOMPACT_EMBEDDING_URL`. |
-| `MEGACOMPACT_EMBEDDING_URL` | _(unset)_ | BYO localhost embedder endpoint (loopback-only; enables `HttpEmbedder`). |
+| `MEGACOMPACT_EMBEDDING_URL` | *(unset)* | BYO localhost embedder endpoint (loopback-only; enables `HttpEmbedder`). |
 | `MEGACOMPACT_L2_THRESHOLD` | `0.85` | L2 cosine firing point (trigram-honest; set higher for semantic backends). |
 | `MEGACOMPACT_L1_JACCARD` | `0.8` | L1 MinHash/LSH near-dup Jaccard threshold. |
 | `MEGACOMPACT_MMR_LAMBDA` | `0.5` | MMR retrieval-diversity weight (λ·relevance − (1−λ)·maxSim). |
@@ -349,13 +348,13 @@ checklist, MARK_ONLY degrade) and `docs/RETENTION_POLICY.md` for TTL / soft-dele
 ### Continuity & memory
 
 | Variable | Default | Meaning |
-|---|---|---|
+| --- | --- | --- |
 | `MEGACOMPACT_LEGACY_DURABLE_TRIM` | `false` | Restore the legacy auto-trigger (`ctx.compact()` stops the agent). One-release rollback; default uses live context-event trim + pi native auto-compaction (compact-and-continue). |
 | `MEGACOMPACT_CROSSREPO_ENABLED` | `true` | Cross-repo recall on resume + `/mega-recall --cross-repo` (HNSW index over every repo). |
 | `MEGACOMPACT_CROSSREPO_COSINE` | `0.90` | Stricter cosine floor for cross-repo hits (vs `0.85` same-repo). |
 | `MEGACOMPACT_MEMORY_AUTO_REVIEW` | `true` | Auto-review the conversation every `MEGACOMPACT_MEMORY_REVIEW_INTERVAL` turns → durable memories. |
 | `MEGACOMPACT_MEMORY_REVIEW_INTERVAL` | `10` | Turns between auto-review cycles. |
-| `MEGACOMPACT_PGLITE_DISABLED` | _(unset — index on)_ | Kill-switch for the PGlite/HNSW cross-repo index; set `1`/`true` to disable (falls back to sync per-session scan). |
+| `MEGACOMPACT_PGLITE_DISABLED` | *(unset — index on)* | Kill-switch for the PGlite/HNSW cross-repo index; set `1`/`true` to disable (falls back to sync per-session scan). |
 
 ## Dashboard
 
