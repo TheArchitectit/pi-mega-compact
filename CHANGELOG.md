@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.7.8 (2026-07-18) — percent-based auto-compact trigger + max-output-token auto-continue
+
+- **feat(trigger): S29 percent-based auto-compact trigger.** The context-handler gate now fires on context % (reliable, the menu-bar signal) instead of a token count the model under-reports, with a token fallback when % is absent. `MEGACOMPACT_AUTO_PCT_TRIGGER` (optional, clamped 0.1–1, default unset = inherit tier `tierPct`) allows override. `custom` (`MEGACOMPACT_THRESHOLD_TOKENS`) keeps the absolute token gate. Dashboard `armed`/`ready` now mirror the gate's basis (percent for tiered, tokens for custom). Reliability fix — default fire point byte-identical; compaction that previously got missed now fires. `src/compact.ts`, `extensions/mega-config.ts`, `extensions/mega-events.ts`.
+- **feat(continue): S28 max-output-token auto-continue.** Detects `stopReason === "length"` on `turn_end`, arms a 30s-debounced, idle-gated continue nudge at `agent_end` so the agent resumes a truncated turn instead of surfacing an error. Input-orthogonal to context overflow (no `ctx.compact()` on the length path). Nudge text branches so it never claims a compaction that did not occur. `MEGACOMPACT_AUTO_CONTINUE_LENGTH_STOP` (default true) gates it; disabling reverts to prior silent behavior. `extensions/mega-events.ts`.
+- **fix(statusbar): context % caps at ">100%"** instead of printing a raw overshoot value. The bar was already clamped; only the number printed had overshoot. With S29 the overshoot is rare; the cap makes the residual case read as a warning. `extensions/mega-widget.ts`.
+- **docs:** New specs `docs/specs/s28-max-output-token-auto-continue.md` + `docs/specs/s29-percent-auto-trigger.md`; `docs/INDEX_MAP.md` + `docs/HEADER_MAP.md` updated.
+- **chore:** version bump 0.7.7 → 0.7.8.
+
+No migration required — additive + signal-only; the default fire point is unchanged. Upgrade with `pi update --extensions` (npm only).
+
 ## v0.7.7 (2026-07-17) — dashboard Active Repos tab + DB-backed metrics
 
 - **feat(dashboard): Active Repos tab + `GET /api/servers`.** Dedicated dashboard tab listing every server / session seen within the last 30 minutes, with live tier / context % / state per row. New `GET /api/servers` endpoint walks `repo_registry` + reads each repo's `dashboard.json`. `extensions/dashboard-server.ts` (+tests).

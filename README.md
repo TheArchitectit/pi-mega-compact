@@ -6,7 +6,7 @@ sessions into a **local SQLite store** and offers **deduped inline recall** — 
 running **locally inside the extension**, with **no remote MCP server** and
 **zero network calls at runtime** (PREVENT-PI-004).
 
-> **Status - v0.7.7.** Storage uses the built-in `node:sqlite` backend
+> **Status - v0.7.8.** Storage uses the built-in `node:sqlite` backend
 > (`DatabaseSync`, Node >=22.13): zero native build step, fully local, and zero
 > network at runtime. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the full
 > changelog.
@@ -273,7 +273,7 @@ The **tier** you see in the toolbar and dashboard is a *live pressure band* (`lo
 Above the pi editor the extension shows a compact widget:
 
 ```
- ⚡ high·low v0.7.7 │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
+ ⚡ high·low v0.7.8 │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
    ◐ armed │ dedup: 92% │ saved: 45k tok
 ```
 
