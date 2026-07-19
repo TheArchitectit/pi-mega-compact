@@ -10,14 +10,20 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { join, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync, writeFileSync, readFileSync, unlinkSync, openSync, closeSync } from "node:fs";
-import { spawn } from "node:child_process"; // guardrails-allow PREVENT-PI-004: spawns the optional, user-triggered localhost dashboard server only
-import { MegaRuntime } from "./mega-runtime.js";
+import { spawn, execSync } from "node:child_process"; // guardrails-allow PREVENT-PI-004: spawns the optional, user-triggered localhost dashboard server only
+import type { MegaRuntime } from "./mega-runtime.js";
 
 /** Register the dashboard server lifecycle commands. */
 export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime): void {
-  const portFile = join(runtime.currentStateDir, "port.pid");
-  const runnerFile = join(runtime.currentStateDir, "_dashboard-runner.mjs");
-  const launchLog = join(runtime.currentStateDir, "_dashboard-launch.log");
+  // H3 fix: read currentStateDir at CALL time, not registration time. The
+  // previous `const portFile = join(runtime.currentStateDir, ...)` captured the
+  // state dir once at extension load; after a repo switch (bindRepo updates
+  // currentStateDir) the dashboard commands would read/write the OLD repo's
+  // port.pid — potentially spawning a duplicate server or failing to stop the
+  // current one. Functions re-resolve on every call.
+  const portFile = (): string => join(runtime.currentStateDir, "port.pid");
+  const runnerFile = (): string => join(runtime.currentStateDir, "_dashboard-runner.mjs");
+  const launchLog = (): string => join(runtime.currentStateDir, "_dashboard-launch.log");
   // Whether the runner must be spawned with --experimental-strip-types (true only
   // when we fall back to the .ts source outside node_modules; false when using
   // the shipped compiled dist/extensions/dashboard-server.js).
@@ -46,12 +52,12 @@ export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime
     const port = await findLivePort();
     if (!port) {
       // Stale marker with no live server behind it — clean up.
-      if (existsSync(portFile)) {
-        try { unlinkSync(portFile); } catch { /* ignore */ }
+      if (existsSync(portFile())) {
+        try { unlinkSync(portFile()); } catch { /* ignore */ }
       }
       return null;
     }
-    return { port, url: `http://localhost:${port}`, hasPidFile: existsSync(portFile) }; // guardrails-allow PREVENT-PI-004: localhost URL of the dashboard server this extension spawned
+    return { port, url: `http://localhost:${port}`, hasPidFile: existsSync(portFile()) }; // guardrails-allow PREVENT-PI-004: localhost URL of the dashboard server this extension spawned
   }
 
   /** Version the running server on `port` reports, or null. */
@@ -81,7 +87,6 @@ export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime
    *  (Linux/macOS) — best-effort, returns null if unavailable. */
   function pidOnPort(port: number): number | null {
     try {
-      const { execSync } = require("node:child_process"); // guardrails-allow PREVENT-PI-004: localhost-only, reads our own dashboard port owner
       const out = execSync(`ss -ltnp 2>/dev/null | grep ':${port} '`, { encoding: "utf-8" });
       const m = out.match(/pid=(\d+)/);
       return m ? Number(m[1]) : null;
@@ -96,14 +101,14 @@ export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime
   function killServerOnPort(port: number): void {
     let pid: number | null = null;
     try {
-      const info = JSON.parse(readFileSync(portFile, "utf-8"));
+      const info = JSON.parse(readFileSync(portFile(), "utf-8"));
       if (info && info.pid) pid = info.pid;
     } catch { /* no marker */ }
     if (pid == null) pid = pidOnPort(port); // orphan with no pid.pid
     if (pid != null) {
       try { process.kill(pid, "SIGTERM"); } catch { /* already gone */ }
     }
-    try { unlinkSync(portFile); } catch { /* ignore */ }
+    try { unlinkSync(portFile()); } catch { /* ignore */ }
   }
 
   /**
@@ -145,7 +150,7 @@ export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime
     dashboardNeedsStrip = resolved.needsStripTypes;
     const script = [
       `import { appendFileSync } from "node:fs";`,
-      `const __log = ${JSON.stringify(launchLog)};`,
+      `const __log = ${JSON.stringify(launchLog())};`,
       `function __fail(err) {`,
       `  const msg = "[mega-compact] dashboard failed: " + (err && err.stack ? err.stack : String(err));`,
       `  try { appendFileSync(__log, msg + "\\n"); } catch { /* ignore */ }`,
@@ -155,7 +160,7 @@ export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime
       `import { launchDashboardServer } from ${JSON.stringify(resolved.entry)};`,
       `launchDashboardServer(${JSON.stringify(runtime.currentStateDir)}).catch(__fail);`,
     ].join("\n");
-    writeFileSync(runnerFile, script);
+    writeFileSync(runnerFile(), script);
     return true;
   }
 
@@ -214,10 +219,10 @@ export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime
       // Clear any stale marker so a fresh bind never collides with a lingering
       // orphan, and truncate the launch log so the next error report shows only
       // this attempt's output.
-      try { unlinkSync(portFile); } catch { /* ignore */ }
-      try { writeFileSync(launchLog, ""); } catch { /* ignore */ }
+      try { unlinkSync(portFile()); } catch { /* ignore */ }
+      try { writeFileSync(launchLog(), ""); } catch { /* ignore */ }
 
-      const args = dashboardNeedsStrip ? ["--experimental-strip-types", runnerFile] : [runnerFile];
+      const args = dashboardNeedsStrip ? ["--experimental-strip-types", runnerFile()] : [runnerFile()];
       // Redirect the child's stderr to the launch log so that a CRASH BEFORE the
       // runner's own __fail handler runs (e.g. an ESM module-load / parse error,
       // or a missing entry) is still captured. With the old `stdio: "ignore"`
@@ -226,7 +231,7 @@ export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime
       // child; once spawned we close our copy (the child keeps its own dup).
       let stderrFd: number;
       try {
-        stderrFd = openSync(launchLog, "a");
+        stderrFd = openSync(launchLog(), "a");
       } catch {
         stderrFd = -1; // fall back to ignored stderr
       }
@@ -253,10 +258,10 @@ export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime
       if (!port) {
         let detail = "";
         try {
-          const log = readFileSync(launchLog, "utf-8").trim();
+          const log = readFileSync(launchLog(), "utf-8").trim();
           if (log) detail = ` — ${log.split("\n").slice(-3).join("; ")}`;
         } catch { /* no log yet */ }
-        ctx.ui.notify(`[mega-compact] dashboard server failed to start${detail}. See ${launchLog}`);
+        ctx.ui.notify(`[mega-compact] dashboard server failed to start${detail}. See ${launchLog()}`);
         return;
       }
 
@@ -270,24 +275,25 @@ export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime
   pi.registerCommand("mega-dashboard-stop", {
     description: "Stop the local dashboard server.",
     handler: async (_args: string, ctx: ExtensionContext) => {
-      if (!existsSync(portFile)) {
+      runtime.bindRepo(ctx.cwd);
+      if (!existsSync(portFile())) {
         ctx.ui.notify("[mega-compact] no dashboard server running.");
         return;
       }
       try {
-        const info = JSON.parse(readFileSync(portFile, "utf-8"));
+        const info = JSON.parse(readFileSync(portFile(), "utf-8"));
         // Verify the server is actually ours by probing the port before killing
         try {
           await fetch(`http://localhost:${info.port}/api/snapshot`, { signal: AbortSignal.timeout(1000) }); // guardrails-allow PREVENT-PI-004: localhost probe to verify the dashboard server is ours before stopping it
         } catch {
           // Not responding — just clean up stale pid file
-          try { unlinkSync(portFile); } catch { /* ok */ }
+          try { unlinkSync(portFile()); } catch { /* ok */ }
           ctx.ui.notify("[mega-compact] dashboard was not running (stale pid file cleaned up).");
           return;
         }
         if (info?.pid) process.kill(info.pid, "SIGTERM");
       } catch { /* already dead */ }
-      try { unlinkSync(portFile); } catch { /* ok */ }
+      try { unlinkSync(portFile()); } catch { /* ok */ }
       ctx.ui.notify("[mega-compact] dashboard stopped.");
     },
   });
@@ -295,6 +301,7 @@ export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime
   pi.registerCommand("mega-dashboard-status", {
     description: "Check if the dashboard server is running.",
     handler: async (_args: string, ctx: ExtensionContext) => {
+      runtime.bindRepo(ctx.cwd);
       const info = await isServerRunning();
       if (info) {
         ctx.ui.notify(`[mega-compact] dashboard running at ${info.url}`);

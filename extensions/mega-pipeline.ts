@@ -535,7 +535,7 @@ function extractLiveWindow(ctx: ExtensionContext): string[] {
       for (const m of sessionEntryToContextMessages(e)) {
         const c = (m as { content?: unknown }).content;
         if (typeof c === "string") texts.push(c);
-        else if (Array.isArray(c)) texts.push(c.map((b: any) => b.text).join(" "));
+        else if (Array.isArray(c)) texts.push(c.map((b: { text?: string }) => b.text ?? "").join(" "));
       }
     }
     return texts;

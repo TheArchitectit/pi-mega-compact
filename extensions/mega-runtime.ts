@@ -1086,7 +1086,7 @@ export function recentUserQuery(ctx: ExtensionContext): string {
 				if (msgs[j].role === "user") {
 					const c = (msgs[j] as { content: unknown }).content;
 					if (typeof c === "string") return c;
-					if (Array.isArray(c)) return c.map((b: any) => b.text).join(" ");
+					if (Array.isArray(c)) return c.map((b: { text?: string }) => b.text ?? "").join(" ");
 				}
 			}
 		}

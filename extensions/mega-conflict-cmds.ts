@@ -13,7 +13,7 @@ import { addMemory, listMemories, searchMemories, recallMemory, type MemoryRecor
 import { resolveRepoRoot } from "./mega-config.js";
 import { defaultEmbedder } from "../src/embedder.js";
 import { upsertMemoryEmbedding } from "../src/store/memoryIndex.js";
-import { MegaRuntime } from "./mega-runtime.js";
+import type { MegaRuntime } from "./mega-runtime.js";
 
 /** Run the conflict scan and format a human-readable report. */
 export function validateExtensions(): { report: ConflictReport; lines: string[] } {
@@ -111,8 +111,12 @@ export function registerConflictCommands(pi: ExtensionAPI, runtime: MegaRuntime)
       }
 
       if (sub === "recall") {
+        if (parts[1] === undefined) {
+          ctx.ui.notify("[mega-memory] usage: /mega-memory recall <id>");
+          return;
+        }
         const id = Number(parts[1]);
-        if (!Number.isFinite(id) || parts[1] === undefined) {
+        if (!Number.isFinite(id)) {
           ctx.ui.notify("[mega-memory] usage: /mega-memory recall <id>");
           return;
         }

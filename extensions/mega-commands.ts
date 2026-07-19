@@ -29,9 +29,10 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
   pi.registerCommand("mega-compact", {
     description: "Compress current session context into the local vector store.",
     handler: async (args: string, ctx: ExtensionContext) => {
+     try {
       const sessionEntries = ctx.sessionManager.getEntries();
       // Project entries (branch-aware) into the message view.
-      const messages: any[] = sessionEntries.flatMap((e) => sessionEntryToContextMessages(e));
+      const messages = sessionEntries.flatMap((e) => sessionEntryToContextMessages(e));
       const summaryArg = args.trim();
       const ran = runCompact(pi, runtime, config, ctx, messages, summaryArg ? { summary: summaryArg } : {});
       if ("skipped" in ran && ran.skipped) {
@@ -43,12 +44,16 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
         `[mega-compact] ${r.deduped ? "region already compacted (deduped)" : `persisted ${r.checkpointId}`} · ` +
           `${r.tokenEstimate} tok · ${runtime.currentStateDir}`,
       );
+     } catch (e) {
+       ctx.ui.notify(`[mega-compact] /mega-compact failed: ${String(e)}`);
+     }
     },
   });
 
   pi.registerCommand("mega-recall", {
     description: "Recall relevant compacted context from the vector store and inline it. Use --cross-repo to search all repos.",
     handler: async (args: string, ctx: ExtensionContext) => {
+     try {
       // S17: --cross-repo (or --cross repo) runs the async path over every repo's
       // PGlite HNSW index (stricter cosine floor + source labels).
       const crossRepo = /--cross[- ]repo\b/.test(args);
@@ -75,6 +80,9 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
         `[mega-compact] recall staged ${r.toInject.length} checkpoint(s) for "${query}"${crossRepo ? " (cross-repo)" : ""}:\n${list}\n` +
           `(injected at the next turn via system prompt)`,
       );
+     } catch (e) {
+       ctx.ui.notify(`[mega-compact] /mega-recall failed: ${String(e)}`);
+     }
     },
   });
 
@@ -99,7 +107,7 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
       // windows extended (how much "extra" conversation the freed space buys).
       const model = latestModelSnapshot(runtime.currentStateDir);
       const rate = model?.inputRate ?? 0;
-      const usd = (repo.tokensSaved * rate).toFixed(4);
+      const usd = ((repo.tokensSaved ?? 0) * rate).toFixed(4);
       const ctxWindow = usage?.contextWindow ?? 0;
       const daysExtended = ctxWindow > 0 && repo.tokensSaved > 0
         ? (repo.tokensSaved / ctxWindow).toFixed(1)
@@ -108,7 +116,7 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
       // Shows the human model name + provider so the user knows WHICH model's
       // pricing drives the cost figure. Falls back when none captured yet.
       const modelStr = model
-        ? `${model.modelName ?? model.modelId} · ${model.providerName ?? model.provider}`
+        ? `${model.modelName ?? model.modelId ?? "?"} · ${model.providerName ?? model.provider ?? "?"}`
         : "unknown (no model captured)";
       const costStr = `≈ $${usd} saved · ${daysExtended} context-windows extended`;
       // Recall-quality badge (Phase 4): trust score from monitoring metrics.
@@ -170,6 +178,7 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
   pi.registerCommand("mega-restore", {
     description: "Re-inject a checkpoint's verbatim original region into context. Usage: /mega-restore <chkpt|recent>",
     handler: async (args: string, ctx: ExtensionContext) => {
+     try {
       runtime.bindRepo(ctx.cwd);
       const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
       const cp = findCheckpoint(runtime, sid, args.trim());
@@ -191,6 +200,9 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
         `[mega-compact] files: ${files}`,
       );
       runtime.dashboard.event("restore", { checkpointId: cp.checkpointId, chars: original.length });
+     } catch (e) {
+       ctx.ui.notify(`[mega-compact] /mega-restore failed (checkpoint may be corrupt): ${String(e)}`);
+     }
     },
   });
 
@@ -206,7 +218,7 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
       }
       const rows = all.map((c) => {
         const when = c.timestamp ? new Date(c.timestamp).toISOString().slice(0, 16).replace("T", " ") : "—";
-        const files = c.filesModified?.length ? c.filesModified.map((f) => f.split("/").pop()).join(", ") : "—";
+        const files = c.filesModified?.length ? c.filesModified.map((f) => f.split("/").pop() ?? f).join(", ") : "—";
         const orig = c.originalTokenEstimate ?? 0;
         const stored = c.tokenEstimate ?? 0;
         const saved = Math.max(0, orig - stored);
@@ -222,6 +234,7 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
   pi.registerCommand("mega-view", {
     description: "Show a checkpoint's verbatim original region. Usage: /mega-view <chkpt|recent>",
     handler: async (args: string, ctx: ExtensionContext) => {
+     try {
       runtime.bindRepo(ctx.cwd);
       const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
       const cp = findCheckpoint(runtime, sid, args.trim());
@@ -238,6 +251,9 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
         `[mega-compact] ${cp.checkpointId} — original region (${original.length} chars):\n` +
         `${original.slice(0, 1500)}${original.length > 1500 ? "\n…(truncated)" : ""}`,
       );
+     } catch (e) {
+       ctx.ui.notify(`[mega-compact] /mega-view failed (checkpoint may be corrupt): ${String(e)}`);
+     }
     },
   });
 

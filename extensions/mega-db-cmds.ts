@@ -32,17 +32,17 @@ function fmtBytes(n: number): string {
 
 /** Register the /mega-db-* maintenance commands. */
 export function registerDbCommands(pi: ExtensionAPI, runtime: MegaRuntime): void {
-  const stateDir = runtime.currentStateDir;
-
   pi.registerCommand("mega-db-stats", {
     description:
       "Show mega-compact SQLite DB stats: table row counts, disk footprint (db + WAL + SHM), page count, freelist, WAL frames.",
     handler: async (_args: string, ctx: ExtensionContext) => {
+      runtime.bindRepo(ctx.cwd);
+      const stateDir = runtime.currentStateDir;
       const s = getDbStats(stateDir);
       ctx.ui.notify(`[mega-compact] DB stats — ${stateDir}`);
       ctx.ui.notify(`  main: ${fmtBytes(s.dbBytes)}  wal: ${fmtBytes(s.walBytes)}  shm: ${fmtBytes(s.shmBytes)}`);
       ctx.ui.notify(
-        `  pages: ${s.pageCount} (${s.pageSize}B each), freelist: ${s.freelistPages} (${s.pageCount > 0 ? ((s.freelistPages / s.pageCount) * 100).toFixed(1) : "0"}% reusable), wal frames: ${s.walFrames}`,
+        `  pages: ${s.pageCount} (${s.pageSize}B each), freelist: ${s.freelistPages} (${s.pageCount > 0 ? ((s.freelistPages / s.pageCount) * 100).toFixed(1) : "0.0"}% reusable), wal frames: ${s.walFrames}`,
       );
       const tableLines = Object.entries(s.tableCounts)
         .sort((a, b) => b[1] - a[1])
@@ -60,6 +60,8 @@ export function registerDbCommands(pi: ExtensionAPI, runtime: MegaRuntime): void
     description:
       "Prune raw_transcript + checkpoint_epochs + orphan dedup_mirror rows older than N days (default 30). Usage: /mega-db-prune [days]",
     handler: async (args: string, ctx: ExtensionContext) => {
+      runtime.bindRepo(ctx.cwd);
+      const stateDir = runtime.currentStateDir;
       const days = Number.parseInt(args.trim().split(/\s+/)[0] ?? "30", 10);
       const d = Number.isFinite(days) && days > 0 ? days : 30;
       const r = pruneOldRows(stateDir, d);
@@ -71,6 +73,8 @@ export function registerDbCommands(pi: ExtensionAPI, runtime: MegaRuntime): void
     description:
       "VACUUM the mega-compact SQLite DB (rebuild pages, reclaim freelist space). Heavy: briefly doubles disk usage.",
     handler: async (_args: string, ctx: ExtensionContext) => {
+      runtime.bindRepo(ctx.cwd);
+      const stateDir = runtime.currentStateDir;
       const r = vacuumDb(stateDir);
       ctx.ui.notify(`[mega-compact] ${r.summary}`);
     },
@@ -80,6 +84,8 @@ export function registerDbCommands(pi: ExtensionAPI, runtime: MegaRuntime): void
     description:
       "Run PRAGMA integrity_check + a WAL checkpoint on the mega-compact SQLite DB. Use after a crash or to fold the WAL into the main file.",
     handler: async (_args: string, ctx: ExtensionContext) => {
+      runtime.bindRepo(ctx.cwd);
+      const stateDir = runtime.currentStateDir;
       const lines = integrityCheck(stateDir);
       const healthy = lines.length === 1 && lines[0] === "ok";
       ctx.ui.notify(
@@ -98,6 +104,8 @@ export function registerDbCommands(pi: ExtensionAPI, runtime: MegaRuntime): void
     description:
       "Reconcile dedup_mirror.ref_count vs actual raw_transcript refs: fix drift, delete orphan dedup rows, backfill missing content_ref. Run after /mega-db-prune or a crash.",
     handler: async (_args: string, ctx: ExtensionContext) => {
+      runtime.bindRepo(ctx.cwd);
+      const stateDir = runtime.currentStateDir;
       const r: DedupReconcileResult = reconcileDedupMirror(stateDir);
       ctx.ui.notify(
         `[mega-compact] dedup reconcile: fixed ${r.fixedRefCount} ref_count drift, deleted ${r.orphansDeleted} orphan(s), backfilled ${r.refsBackfilled} content_ref`,
