@@ -11,10 +11,10 @@ import { sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
 import { normalizeSessionId } from "../src/store.js";
 import { listCheckpoints, latestModelSnapshot, countInjectedGlobal, listRepoRegistry } from "../src/store/sqlite.js";
 import { decompressSmart } from "../src/store/compression.js";
-import { loadMetrics, fpRate, p95 } from "../src/monitoring.js";
-import { MegaRuntime, C, recentUserQuery } from "./mega-runtime.js";
+import { loadMetrics, fpRate, p95, defaultMetricsPath } from "../src/monitoring.js";
+import { type MegaRuntime, C, recentUserQuery } from "./mega-runtime.js";
 import { runCompact, doRecall, doRecallAsync } from "./mega-pipeline.js";
-import { type MegaConfig } from "./mega-config.js";
+import type { MegaConfig } from "./mega-config.js";
 
 /** Resolve a checkpoint by id (or "recent"/"last") from this session's store. */
 export function findCheckpoint(runtime: MegaRuntime, sid: string, ref: string) {
@@ -51,8 +51,8 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
     handler: async (args: string, ctx: ExtensionContext) => {
       // S17: --cross-repo (or --cross repo) runs the async path over every repo's
       // PGlite HNSW index (stricter cosine floor + source labels).
-      const crossRepo = /\-\-cross[\- ]repo\b/.test(args);
-      const query = args.replace(/--cross[\- ]repo\b/, "").trim() || recentUserQuery(ctx);
+      const crossRepo = /--cross[- ]repo\b/.test(args);
+      const query = args.replace(/--cross[- ]repo\b/, "").trim() || recentUserQuery(ctx);
       if (!query) {
         ctx.ui.notify("[mega-compact] /mega-recall needs a query or a prior user message.");
         return;
@@ -81,6 +81,7 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
   pi.registerCommand("mega-status", {
     description: "Show mega-compact config, context usage, and the data-safety invariant.",
     handler: async (_args: string, ctx: ExtensionContext) => {
+     try {
       runtime.bindRepo(ctx.cwd);
       const usage = ctx.getContextUsage();
       const pct = usage?.percent != null ? `${usage.percent}%` : "n/a";
@@ -111,7 +112,10 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
         : "unknown (no model captured)";
       const costStr = `≈ $${usd} saved · ${daysExtended} context-windows extended`;
       // Recall-quality badge (Phase 4): trust score from monitoring metrics.
-      const m = loadMetrics(runtime.currentStateDir);
+      // H1 fix: loadMetrics expects a *file* path (dashboard.json), not the
+      // state dir — passing the dir made existsSync() true (dirs exist) then
+      // readFileSync() threw EISDIR, silently caught → metrics always zero.
+      const m = loadMetrics(defaultMetricsPath(runtime.currentStateDir));
       const fp = fpRate(m, "L2");
       const p95L2 = p95(m.latency.L2 ?? []);
       const relPct = (st.dedupHitRate * 100).toFixed(0);
@@ -155,6 +159,9 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
           `[mega-compact] 🌐 ${crossRepoStr}\n` +
           `[mega-compact] stateDir=${runtime.currentStateDir}`,
       );
+     } catch (e) {
+       ctx.ui.notify(`[mega-compact] /mega-status error: ${String(e)}`);
+     }
     },
   });
 
