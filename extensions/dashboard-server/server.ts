@@ -409,6 +409,29 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
       return;
     }
 
+    // /api/achievements — S35 achievement tiles. GET returns the 9 seeded rows
+    // {id,title,description,icon,hidden,unlocked_at}. The dashboard server is a
+    // detached child with no MegaRuntime ref, so it reads game_achievements via
+    // listAchievements(stateDir) directly. Non-GET -> 405. PREVENT-PI-004: loopback.
+    if (req.url?.startsWith("/api/achievements")) {
+      const achReq = createRequire(import.meta.url);
+      const { listAchievements } = achReq("../../src/store/sqlite.js") as typeof import("../../src/store/sqlite.js");
+      if (req.method !== "GET") {
+        res.writeHead(405, { "Content-Type": "application/json" }); // guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
+        res.end(JSON.stringify({ error: "method_not_allowed" }));
+        return;
+      }
+      try {
+        const rows = listAchievements(stateDir); // guardrails-allow PREVENT-PI-004: local SQLite read (loopback dashboard)
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(rows));
+      } catch (e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "achievements_unavailable", detail: String(e) }));
+      }
+      return;
+    }
+
     // Fallback — serve the dashboard
     const tier = readSnapshot(snapshotPath).tier;
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });

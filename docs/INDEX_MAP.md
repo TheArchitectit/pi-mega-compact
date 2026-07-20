@@ -119,3 +119,17 @@
 | Keyword | Document | Location |
 |---------|----------|----------|
 | pi API constraints, extension mechanics, reference algorithms | [RESEARCH.md](../RESEARCH.md) | repo root |
+
+---
+
+## GAME MODE
+
+| Keyword | Document | Location |
+| --------- | ---------- | ---------- |
+| game mode, /mega-game, themes, TUI widget, achievements | [specs/game-mode-sprint-plan.md](specs/game-mode-sprint-plan.md) | docs/specs/ |
+| game-mode design (§3b oopsie, §9b achievements, themes) | [game-mode-design.md](game-mode-design.md) | docs/ |
+| themes (6 palettes, hex+ANSI) | [config/themes.ts](../src/config/themes.ts) | src/config/ |
+| game_scores / game_state / game_achievements tables | [sqlite/schema.ts](../src/store/sqlite/schema.ts) | src/store/sqlite/ |
+| scoring helpers (turnLevel, evaluateAchievements) | [game/scoring.ts](../src/game/scoring.ts) | src/game/ |
+| /api/game-scores, /api/game-state, /api/achievements (loopback) | [dashboard-server/server.ts](../extensions/dashboard-server/server.ts) | extensions/dashboard-server/ |
+| GET /api/game-scores, /api/achievements, /api/game-state | [dashboard-server/server.ts](../extensions/dashboard-server/server.ts) | extensions/dashboard-server/ |

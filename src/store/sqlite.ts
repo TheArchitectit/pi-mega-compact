@@ -22,3 +22,4 @@ export * from "./sqlite/dedup-mirror.js";
 export * from "./sqlite/maintenance.js";
 export * from "./sqlite/game-state.js";
 export * from "./sqlite/game-scores.js";
+export * from "./sqlite/game-achievements.js";

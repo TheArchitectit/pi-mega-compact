@@ -15,6 +15,7 @@ import {
 	type MegaConfig,
 } from "../mega-config.js";
 import { recordScore } from "../../src/store/sqlite.js";
+import { evaluateAndUnlockAchievements } from "../../src/store/sqlite/game-achievements.js";
 import { isMegaCache } from "../../src/game/scoring.js";
 import { resolveRepoRoot } from "../mega-config.js";
 
@@ -214,6 +215,10 @@ export function registerAgentHandlers(
 					});
 					runtime.armMegaCacheFlare(cachePct);
 				}
+				// S35: evaluate achievements after scoring; arm a one-time flare for
+				// the newly-unlocked ones (consumed by snapshot() → widget toast).
+				const newTitles = evaluateAndUnlockAchievements(runtime.currentStateDir);
+				if (newTitles.length) runtime.armAchievementFlare(newTitles);
 			}
 		} catch {
 			/* non-fatal: scoring must never break the agent loop */

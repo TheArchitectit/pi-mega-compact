@@ -228,6 +228,9 @@ export interface WidgetData {
 	/** The peak cache % that armed the flare (for the oopsie toast text). */
 	megaCacheFlarePct?: number;
 	levelUpFlare?: boolean;
+	/** S35: achievement-unlock flare -- renders a one-line toast for one cycle. */
+	achievementFlare?: boolean;
+	achievementFlareTitles?: string[];
 }
 
 // ── buildWidgetLines ───────────────────────────────────────────────────────
@@ -343,6 +346,12 @@ export function buildWidgetLines(
 		);
 	} else if (wd.pulsing) {
 		lines.push(panelLine(`   ${pulse}${C.teal}compacting…${C.reset}`, width, panelBg));
+	}
+	// S35: achievement-unlock toast (one-line, accent) -- fires for one render cycle.
+	if (wd.gameMode && wd.achievementFlare && wd.achievementFlareTitles?.length) {
+		const accentSgr = themeAnsi(wd.theme, "accent");
+		const titlesStr = wd.achievementFlareTitles.join(", ");
+		lines.push(panelLine(`   ${accentSgr}🏆 Achievement unlocked: ${titlesStr}${sgrReset(accentSgr)}`, width, panelBg));
 	}
 	// bottom border
 	lines.push(panelBar(width, "─", panelBg));

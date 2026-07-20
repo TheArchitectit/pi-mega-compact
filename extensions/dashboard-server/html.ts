@@ -159,6 +159,16 @@ export function dashboardHtml(tierName: string): string {
   #game-empty { color: var(--dim); font-style: italic; padding: 12px 0; }
   @keyframes level-up-pulse { 0%{transform:scale(1)} 50%{transform:scale(1.08); filter:brightness(1.3)} 100%{transform:scale(1)} }
   @keyframes mega-flash { 0%{background:transparent} 25%{background:var(--mega-bg, gold)} 100%{background:transparent} }
+  /* S35: achievements tile row + unlock toast */
+  .ach-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; margin: 8px 0 16px; }
+  .ach-tile { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 12px; background: var(--card-bg); }
+  .ach-tile.unlocked { background: linear-gradient(135deg, #f0883e, #ffd700); color: #1a1006; font-weight: 700; box-shadow: 0 0 12px #f0883e66; }
+  .ach-tile.locked { opacity: .55; }
+  .ach-tile.just-unlocked { animation: ach-unlock-pulse 0.6s ease-out; }
+  .ach-tile .ach-detail { display: block; font-weight: 500; font-size: 11px; margin-top: 3px; }
+  #ach-toast { display: none; position: fixed; top: 16px; left: 50%; transform: translateX(-50%); background: var(--blue); color: #fff; font-weight: 700; padding: 10px 18px; border-radius: 8px; z-index: 1000; box-shadow: 0 4px 20px #0008; }
+  #ach-toast.show { display: block; }
+  @keyframes ach-unlock-pulse { 0%{transform:scale(.9);opacity:.4} 60%{transform:scale(1.05)} 100%{transform:scale(1);opacity:1} }
 </style>
 </head>
 <body>
@@ -421,6 +431,9 @@ export function dashboardHtml(tierName: string): string {
   <div id="mega-cache-banner"></div>
   <div id="mega-cache-toast"></div>
   <div class="achievement-tile" id="opie-tile"></div>
+  <h3 style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:16px">Achievements</h3>
+  <div id="ach-toast"></div>
+  <div id="ach-tiles" class="ach-tiles">loading…</div>
   <div class="game-leaderboards">
     <div class="lb-card"><h3>Cache % <span class="repos-badge" id="repos-badge"></span></h3><table><tbody id="lb-cache"><tr><td colspan="2" class="repo-none">loading…</td></tr></tbody></table></div>
     <div class="lb-card"><h3>Dedupe (collapsed)</h3><table><tbody id="lb-dedupe"><tr><td colspan="2" class="repo-none">loading…</td></tr></tbody></table></div>
@@ -603,8 +616,10 @@ export function dashboardHtml(tierName: string): string {
   }
   pollSnapshot();
   renderGameScores();
+  renderAchievements();
   setInterval(pollSnapshot, 2000);
   setInterval(renderGameScores, 2000);
+  setInterval(renderAchievements, 2000);
 
   // SSE for events
   function connectSSE() {
@@ -949,6 +964,42 @@ export function dashboardHtml(tierName: string): string {
     }).catch(function() {}).then(done);
   }
 
+  // --- Achievements tile row (S35) ------------------------------------------
+  // Polls GET /api/achievements; renders the tile row (hidden+locked render
+  // NOTHING; unlocked show icon+title+date; visible-but-locked show ??? teaser)
+  // and fires a transient toast when a newly-unlocked achievement appears.
+  // Browser-side fetch only (PREVENT-PI-004).
+  var lastAchMaxTs = 0;
+  function renderAchievements() {
+    fetch('/api/achievements').then(function(r) { return r.ok ? r.json() : []; }).then(function(rows) { // guardrails-allow PREVENT-PI-004: browser-side fetch in dashboard HTML template (not Node runtime)
+      var box = document.getElementById('ach-tiles');
+      if (!box) return;
+      var html = '';
+      var maxTs = 0;
+      (rows || []).forEach(function(a) {
+        if (a.hidden === 1 && a.unlocked_at == null) return; // hidden invariant: render nothing
+        if (a.unlocked_at != null) {
+          var isNew = a.unlocked_at > lastAchMaxTs && lastAchMaxTs > 0;
+          maxTs = Math.max(maxTs, a.unlocked_at);
+          html += '<div class="ach-tile unlocked' + (isNew ? ' just-unlocked' : '') + '">' + sanitize(a.icon || '') + ' ' + sanitize(a.title) + '<span class="ach-detail">unlocked ' + sanitize(fmtDate(a.unlocked_at)) + '</span></div>';
+        } else {
+          html += '<div class="ach-tile locked">??? ' + sanitize(a.title) + '</div>';
+        }
+      });
+      box.innerHTML = html || '<span class="repo-none">no achievements yet</span>';
+      var newly = (rows || []).filter(function(a) { return a.unlocked_at != null && a.unlocked_at > lastAchMaxTs; });
+      if (lastAchMaxTs && newly.length) {
+        var toast = document.getElementById('ach-toast');
+        if (toast) {
+          toast.textContent = newly.map(function(a) { return (a.icon || '') + ' ' + a.title; }).join(', ') + ' unlocked!';
+          toast.classList.add('show');
+          setTimeout(function() { toast.classList.remove('show'); }, 4000);
+        }
+      }
+      if (maxTs > lastAchMaxTs) lastAchMaxTs = maxTs;
+    }).catch(function() {});
+  }
+
   // --- Tab switching ------------------------------------------------------
   var tabs = document.querySelectorAll('.tab');
   var panels = { current: 'panel-current', all: 'panel-all', active: 'panel-active', summary: 'panel-summary', game: 'panel-game' };
@@ -965,7 +1016,7 @@ export function dashboardHtml(tierName: string): string {
       }
       if (name === 'all' || name === 'summary') pollIndex();
       if (name === 'active') pollServers();
-      if (name === 'game') renderGameScores();
+      if (name === 'game') { renderGameScores(); renderAchievements(); }
     });
   }
 })();

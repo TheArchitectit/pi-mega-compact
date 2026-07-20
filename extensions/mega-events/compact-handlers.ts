@@ -20,6 +20,7 @@ import { estimateBlockTokens } from "../../src/tokens.js";
 import { type MegaRuntime } from "../mega-runtime.js";
 import type { MegaConfig } from "../mega-config.js";
 import { recordScore, getDedupStats } from "../../src/store/sqlite.js";
+import { evaluateAndUnlockAchievements } from "../../src/store/sqlite/game-achievements.js";
 import { resolveRepoRoot } from "../mega-config.js";
 
 /**
@@ -181,6 +182,9 @@ export function registerCompactHandlers(
 						});
 					}
 				}
+			// S35: evaluate achievements after scoring; arm the one-time flare.
+			const newTitles = evaluateAndUnlockAchievements(runtime.currentStateDir);
+			if (newTitles.length) runtime.armAchievementFlare(newTitles);
 			} catch {
 				/* non-fatal: scoring must never break compaction */
 			}

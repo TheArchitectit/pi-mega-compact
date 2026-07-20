@@ -16,6 +16,7 @@
  *   /mega-game theme next      cycle to next theme
  *   /mega-game tui full        full TUI widget (bars, stats, flair)
  *   /mega-game tui minimal     one-line TUI widget (level + cache %)
+ *   /mega-game achievements     list unlocked achievements
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -25,6 +26,7 @@ import {
   setGameState,
   type GameState,
 } from "../src/store/sqlite.js";
+import { listAchievements } from "../src/store/sqlite/game-achievements.js";
 import { THEMES, THEME_IDS, getTheme, isValidTheme, nextTheme, DEFAULT_THEME } from "../src/config/themes.js";
 
 /** Format the current state as a human-readable status line set. */
@@ -40,7 +42,7 @@ function fmtState(s: GameState): string[] {
 export function registerGameCommands(pi: ExtensionAPI, runtime: MegaRuntime): void {
   pi.registerCommand("mega-game", {
     description:
-      "Game mode toggle + theme picker + TUI display mode. Usage: /mega-game [on|off|theme [id|next]|tui [full|minimal]]",
+      "Game mode toggle + theme picker + TUI display mode. Usage: /mega-game [on|off|theme [id|next]|tui [full|minimal]|achievements]",
     handler: async (args: string, ctx: ExtensionContext) => {
       runtime.bindRepo(ctx.cwd);
       const stateDir = runtime.currentStateDir;
@@ -54,6 +56,16 @@ export function registerGameCommands(pi: ExtensionAPI, runtime: MegaRuntime): vo
       }
 
       const sub = parts[0]!;
+
+      // /mega-game achievements — terse list of unlocked (hidden only once unlocked).
+      if (sub === "achievements") {
+        const rows = listAchievements(stateDir).filter((r) => r.unlocked_at != null);
+        ctx.ui.notify(`[mega-game] achievements unlocked (${rows.length}/9):`);
+        for (const r of rows) {
+          ctx.ui.notify(`  ${r.icon ?? ""} ${r.title}`);
+        }
+        return;
+      }
 
       // /mega-game on|off
       if (sub === "on" || sub === "off") {
@@ -103,7 +115,7 @@ export function registerGameCommands(pi: ExtensionAPI, runtime: MegaRuntime): vo
       }
 
       ctx.ui.notify(
-        `[mega-game] usage: /mega-game [on|off|theme [id|next]|tui [full|minimal]]`,
+        `[mega-game] usage: /mega-game [on|off|theme [id|next]|tui [full|minimal]|achievements]`,
       );
     },
   });

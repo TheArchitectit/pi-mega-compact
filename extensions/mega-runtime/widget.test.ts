@@ -160,3 +160,26 @@ describe("buildWidgetLines (S31)", () => {
 		}
 	}
 });
+
+
+describe("buildWidgetLines achievement flare (S35)", () => {
+  const achBase = (overrides: Partial<WidgetData> = {}): WidgetData => baseWd({
+    theme: DEFAULT_THEME, tuiMode: "full", gameMode: true, level: 1, cachePct: 42, ...overrides,
+  });
+  it("achievementFlare + titles -> renders the unlock toast line", () => {
+    const lines = buildWidgetLines(achBase({ achievementFlare: true, achievementFlareTitles: ["First Compact"] }), WIDTH, 0);
+    assert.ok(lines.some((l) => l.includes("Achievement unlocked: First Compact")), "toast line present");
+  });
+  it("achievementFlare off -> no toast line", () => {
+    const lines = buildWidgetLines(achBase({ achievementFlare: false, achievementFlareTitles: ["First Compact"] }), WIDTH, 0);
+    assert.ok(!lines.some((l) => l.includes("Achievement unlocked")), "no toast when flare off");
+  });
+  it("gameMode off -> no toast even if flare set", () => {
+    const lines = buildWidgetLines(achBase({ gameMode: false, achievementFlare: true, achievementFlareTitles: ["X"] }), WIDTH, 0);
+    assert.ok(!lines.some((l) => l.includes("Achievement unlocked")), "no toast when game off");
+  });
+  it("achievement toast is width-safe", () => {
+    const lines = buildWidgetLines(achBase({ achievementFlare: true, achievementFlareTitles: ["First Compact", "Turn Veteran"] }), 60, 0);
+    for (const l of lines) assert.ok(visibleWidth(l) <= 60, "width safe");
+  });
+});

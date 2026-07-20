@@ -100,6 +100,12 @@ export class MegaRuntime {
 	megaCacheFlarePct = 0;
 	levelUpFlare = false;
 	lastLevel = 0;
+	// S35: transient achievement-unlock flare (armed by the scoring hooks after
+	// evaluateAndUnlockAchievements returns newly-unlocked titles). Copied into
+	// widgetData.achievementFlare on the next snapshot() so the widget renders the
+	// unlock toast, then reset (one cycle — mirrors megaCacheFlare/levelUpFlare).
+	achievementFlare = false;
+	achievementFlareTitles: string[] = [];
 	// S33: last cumulative dedup-collapsed count seen by the session_compact
 	// hook, so we only record the DELTA as the dedupe score (leaderboard sums).
 	lastDedupCollapsed = 0;
@@ -611,6 +617,8 @@ export class MegaRuntime {
 				megaCacheFlare: this.megaCacheFlare,
 				megaCacheFlarePct: this.megaCacheFlarePct,
 				levelUpFlare: this.levelUpFlare,
+				achievementFlare: this.achievementFlare,
+				achievementFlareTitles: this.achievementFlareTitles,
 			};
 			// S33: consume the flare after copying it into widgetData so it fires
 			// for exactly one render cycle (the gag flares once, then clears).
@@ -621,6 +629,10 @@ export class MegaRuntime {
 			// megaCacheFlare one-shot semantics), and advance lastLevel.
 			this.levelUpFlare = false;
 			this.lastLevel = curLevel;
+			// S35: consume the achievement-unlock flare after one render cycle
+			// (mirrors the megaCacheFlare/levelUpFlare one-shot semantics).
+			this.achievementFlare = false;
+			this.achievementFlareTitles = [];
 			// Auto-fit: register a factory so pi re-renders the panel at the REAL
 			// terminal width every frame (tui.columns), instead of guessing with
 			// process.stdout.columns. buildWidgetLines reads this.widgetData live.
@@ -893,6 +905,14 @@ export class MegaRuntime {
 	armMegaCacheFlare(peakPct: number): void {
 		this.megaCacheFlare = true;
 		this.megaCacheFlarePct = peakPct;
+	}
+
+	/** S35: arm the transient achievement-unlock flare with the newly-unlocked
+	 *  titles so the next snapshot() copies them into widgetData and the widget
+	 *  renders the one-time unlock toast for one render cycle. */
+	armAchievementFlare(titles: string[]): void {
+		this.achievementFlare = true;
+		this.achievementFlareTitles = titles;
 	}
 
 	/** Build the sync onTier callback that paints the live per-tier trace. */

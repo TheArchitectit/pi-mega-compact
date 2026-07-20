@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.8.0 (unreleased) — Game Mode (S30–S35)
+
+- **feat(game): S30 foundation.** `game_state` table (global on/off + theme + tui_display_mode) + `src/config/themes.ts` (6 themes) + `/mega-game` command. `fb4ec17`.
+- **feat(widget): S31 TUI theming + level + MEGA CACHE flare.** Themed full/minimal widget, `LVL n` level prefix, ANSI blink on level-up, MEGA CACHE oopsie gag, game-mode-off guard (legacy parity). `98a9b3f` + `a0d9b5c`.
+- **feat(dashboard): S32 CSS-variable skin + settings strip.** Theme CSS vars, `/api/game-state` GET/PUT (non-object guard, loopback), fs.watch cross-process cache eviction. `60b7f73` + `fa8cc20`.
+- **feat(game): S33 scoring.** `game_scores` table + `recordScore`/`leaderboard` (parameterized) + `turn_end`/`session_compact` hooks + `evaluateAchievements` pure-helpers + mega_cache trophy + megaCacheFlare. `e4ac3ec`.
+- **feat(dashboard): S34 High Score tab + animations.** Game Mode tab, per-metric leaderboards, MEGA CACHE banner, Opie hidden-unlock tile, transient oopsie toast (cross-process), level-up CSS pulse + ANSI blink, `GET /api/game-scores` (metric validation, 400/405). `05d6550`.
+- **feat(game): S35 achievements capstone.** `game_achievements` table (9 seeded, idempotent) + `game-achievements.ts` accessors (`listAchievements`/`getAchievement`/`unlockAchievement`/`isUnlocked`, parameterized) + `evaluateAchievements(scores)` pure fn over leaderboard aggregates + `evaluateAndUnlockAchievements` orchestrator + hook wiring (turn_end + session_compact) + transient `achievementFlare` (one-cycle TUI toast + dashboard tile pulse) + dashboard achievements tile row (hidden+locked renders nothing; visible-locked shows `???`; unlocked shows icon+title+date) + transient unlock toast + `GET /api/achievements` (405 guarded, loopback) + `/mega-game achievements` subcommand. 9 achievements: first_compact, compact_streak, turn_veteran, level_five, dedupe_master, repo_explorer, night_owl, flawless, opie_wild_ride (hidden).
+- **chore:** version bump 0.7.9 → 0.8.0 (unreleased).
+
+No migration. Tests: 540+ (was 514). npm-only distribution.
+
+
 ## v0.7.9 (2026-07-19) — TUI width-overflow crash fix + guardrails compliance + audit fixes + refactor splits
 
 - **fix(widget): TUI width-overflow crash.** The status widget's hand-rolled `visibleWidth()` counted the ⚡ bolt (U+26A1, RGI emoji) as 1 cell; pi-tui's `visibleWidth()` (which enforces its strict `visibleWidth(line) > width` render check) counts it as 2. `panelLine()` padded to `width − ourVisibleWidth` → under-padded by 1 → final line was `width + 1` by pi-tui's measure → crash `Rendered line N exceeds terminal width (211 > 210)`. Running `/mega-status` (or any snapshot) populated the widget and crashed; disabling the extension hid it. Fix: import pi-tui's `visibleWidth` + `truncateToWidth`; `panelLine()` now calls `truncateToWidth(line, width, "", true)` → exactly `width` cells, ANSI-preserved, space-padded, hard-clipped on overflow. `panelBar()` same. `extensions/mega-runtime/widget.ts`.

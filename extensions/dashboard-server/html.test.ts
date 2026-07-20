@@ -25,3 +25,26 @@ describe("S34 dashboard HTML Game Mode", () => {
     );
   });
 });
+
+
+describe("S35 dashboard HTML achievements", () => {
+  const html = dashboardHtml("custom");
+  test("Achievements heading + ach-tiles/ach-toast containers present", () => {
+    assert.ok(html.includes(">Achievements</h3>"), "Achievements heading present");
+    assert.ok(html.includes('id="ach-tiles"'), "ach-tiles container present");
+    assert.ok(html.includes('id="ach-toast"'), "ach-toast element present");
+  });
+  test("ach-unlock-pulse keyframe + ach-tile classes present", () => {
+    assert.ok(html.includes("@keyframes ach-unlock-pulse"), "ach-unlock-pulse keyframe present");
+    assert.ok(html.includes(".ach-tile"), "ach-tile class present");
+    assert.ok(html.includes(".ach-tile.unlocked"), "unlocked class present");
+    assert.ok(html.includes(".ach-tile.locked"), "locked class present");
+  });
+  test("renderAchievements fn + GET /api/achievements fetch present", () => {
+    assert.ok(html.includes("function renderAchievements"), "renderAchievements fn present");
+    assert.ok(html.includes("fetch('/api/achievements')"), "achievements fetch present");
+  });
+  test("visible-but-locked teaser string present", () => {
+    assert.ok(html.includes("??? "), "??? teaser present");
+  });
+});

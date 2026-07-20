@@ -102,3 +102,30 @@ describe("S34 /api/game-scores", () => {
     });
   });
 });
+
+
+describe("S35 /api/achievements", () => {
+  test("GET returns the 9 seeded achievement rows", async () => {
+    const dir = freshDir("dash-ach-");
+    await withServer("19434", dir, async (port) => {
+      const res = await fetch(`http://localhost:${port}/api/achievements`);
+      assert.equal(res.status, 200);
+      const rows = (await res.json()) as Array<{ id: string; title: string; hidden: number; unlocked_at: number | null }>;
+      assert.ok(Array.isArray(rows));
+      assert.equal(rows.length, 9);
+      const opie = rows.find((r) => r.id === "opie_wild_ride");
+      assert.ok(opie, "opie_wild_ride seeded");
+      assert.equal(opie!.hidden, 1);
+      assert.equal(opie!.unlocked_at, null);
+      assert.equal(rows.find((r) => r.id === "first_compact")!.title, "First Compact");
+    });
+  });
+
+  test("non-GET (POST) -> 405", async () => {
+    const dir = freshDir("dash-ach-meth-");
+    await withServer("19435", dir, async (port) => {
+      const res = await fetch(`http://localhost:${port}/api/achievements`, { method: "POST" });
+      assert.equal(res.status, 405);
+    });
+  });
+});
