@@ -261,6 +261,12 @@ export class MegaRuntime {
 		if (key === this.activeRepoRoot) return dir;
 		this.activeRepoRoot = key;
 		this.currentStateDir = dir;
+		// S31 audit P2: bindRepo switched currentStateDir but left cachedGameState
+		// memoized -> the widget kept showing the previous repo's theme/mode/toggle
+		// until /mega-game or a restart. The game_state row is per-repo (per
+		// stateDir), so evict the memo on every repo switch; the next widget render
+		// re-queries lazily via getCachedGameState().
+		this.cachedGameState = undefined;
 		this.store = new VectorStore({
 			dedupSim: this.config.dedupSim,
 			stateDir: dir,
@@ -660,6 +666,10 @@ export class MegaRuntime {
 		this.pulsing = false;
 		this.savedGoal = 50_000;
 		this.lastWhy = undefined;
+		// S31 audit P2: symmetry with bindRepo — a reset can coincide with a context
+		// that re-binds the repo, so drop the memo too. Cheap; the next
+		// getCachedGameState() re-queries lazily.
+		this.cachedGameState = undefined;
 	}
 
 	/**

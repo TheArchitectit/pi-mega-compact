@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
+import { execSync } from "node:child_process";
 import { closeStore, getGameState, setGameState } from "../../src/store/sqlite.js";
 import { DEFAULT_GAME_STATE } from "../../src/store/sqlite/game-state.js";
 
@@ -115,5 +116,56 @@ describe("MegaRuntime game-state cache (S31)", () => {
 		rt.bumpGameState(); // no cached state yet — must not throw
 		const gs = rt.getCachedGameState();
 		assert.deepEqual(gs, { ...DEFAULT_GAME_STATE });
+	});
+
+	it("bindRepo evicts cachedGameState so a repo switch reflects the new repo's game_state", () => {
+		// Two fresh git repos A and B simulate a real repo switch. Each holds its
+		// own per-repo state dir at <root>/.pi/mega-compact (what repoStateDir
+		// returns for a git cwd), and each holds its own game_state row, so a repo
+		// switch (bindRepo) must evict the cached memo or the widget shows A's
+		// theme/mode/toggle after moving to B. Uses MEGACOMPACT_STATE_DIR + mkdtemp
+		// + closeStore (G7); the global state dir stays separate.
+		const globalDir = freshDir(); dirs.push(globalDir);
+		const repoA = freshDir(); dirs.push(repoA);
+		const repoB = freshDir(); dirs.push(repoB);
+		const stateA = join(repoA, ".pi", "mega-compact");
+		const stateB = join(repoB, ".pi", "mega-compact");
+
+		// Make A and B real git roots so resolveRepoRoot(cwd) returns the root and
+		// repoStateDir produces <root>/.pi/mega-compact (the per-repo store).
+		execSync("git init -q", { cwd: repoA });
+		execSync("git init -q", { cwd: repoB });
+
+		// Seed A and B with distinct game_state rows in their per-repo dirs.
+		setGameState({ game_mode_on: true, theme: "retro", tui_display_mode: "minimal" }, stateA);
+		setGameState({ game_mode_on: false, theme: "cyan-neon", tui_display_mode: "full" }, stateB);
+
+		// Construct the runtime against the GLOBAL dir (the non-git fallback so a
+		// real bindRepo switch occurs once we point it at a git root).
+		process.env.MEGACOMPACT_STATE_DIR = globalDir;
+		const rt = new MegaRuntime(minimalConfig(globalDir));
+
+		// Point the runtime at repo A and prime the cache.
+		rt.bindRepo(repoA);
+		assert.equal(rt.currentStateDir, stateA, "bindRepo(A) switched to A's per-repo dir");
+		const a = rt.getCachedGameState();
+		assert.equal(a.game_mode_on, true, "A: game_mode_on primed");
+		assert.equal(a.theme, "retro", "A: theme primed");
+		assert.equal(a.tui_display_mode, "minimal", "A: tui_display_mode primed");
+
+		// Switch to repo B: bindRepo must evict cachedGameState so the next read
+		// re-queries B's row instead of returning A's stale memo.
+		rt.bindRepo(repoB);
+		assert.equal(rt.currentStateDir, stateB, "bindRepo(B) switched to B's per-repo dir");
+		const b = rt.getCachedGameState();
+		assert.equal(b.game_mode_on, false, "B: game_mode_on after switch (not A's stale true)");
+		assert.equal(b.theme, "cyan-neon", "B: theme after switch (not A's stale retro)");
+		assert.equal(b.tui_display_mode, "full", "B: tui_display_mode after switch (not A's stale minimal)");
+		assert.deepEqual(b, getGameState(stateB), "B matches authoritative getGameState read");
+
+		// Cleanup the per-repo DB handles.
+		try { closeStore(globalDir); } catch { /* */ }
+		try { closeStore(stateA); } catch { /* */ }
+		try { closeStore(stateB); } catch { /* */ }
 	});
 });
