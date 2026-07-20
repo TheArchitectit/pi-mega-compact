@@ -98,6 +98,8 @@ export class MegaRuntime {
 	// snapshot() so the widget renders the oopsie gag, then reset (one cycle).
 	megaCacheFlare = false;
 	megaCacheFlarePct = 0;
+	levelUpFlare = false;
+	lastLevel = 0;
 	// S33: last cumulative dedup-collapsed count seen by the session_compact
 	// hook, so we only record the DELTA as the dedupe score (leaderboard sums).
 	lastDedupCollapsed = 0;
@@ -565,6 +567,9 @@ export class MegaRuntime {
 			// rate (may exceed 100% — that's the MEGA CACHE trigger). megaCacheFlare
 			// is false for now (S33.4 scoring hook arms it when cachePct > 100).
 			const gs = this.getCachedGameState();
+			// S34: derive the level-up flare from the turn count each snapshot.
+			const curLevel = this.getTurnLevel();
+			if (curLevel > this.lastLevel) this.levelUpFlare = true;
 			const cachePct = st.dedupHitRate * 100;
 			this.widgetData = {
 				version: ownVersion(),
@@ -605,11 +610,17 @@ export class MegaRuntime {
 				cachePct,
 				megaCacheFlare: this.megaCacheFlare,
 				megaCacheFlarePct: this.megaCacheFlarePct,
+				levelUpFlare: this.levelUpFlare,
 			};
 			// S33: consume the flare after copying it into widgetData so it fires
 			// for exactly one render cycle (the gag flares once, then clears).
 			this.megaCacheFlare = false;
 			this.megaCacheFlarePct = 0;
+
+			// S34: consume the level-up flare after one render cycle (mirrors the
+			// megaCacheFlare one-shot semantics), and advance lastLevel.
+			this.levelUpFlare = false;
+			this.lastLevel = curLevel;
 			// Auto-fit: register a factory so pi re-renders the panel at the REAL
 			// terminal width every frame (tui.columns), instead of guessing with
 			// process.stdout.columns. buildWidgetLines reads this.widgetData live.

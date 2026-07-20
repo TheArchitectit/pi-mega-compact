@@ -14,6 +14,7 @@ import { readSnapshot, readFrom } from "./snapshot.js";
 import { dashboardHtml } from "./html.js";
 import { ACTIVE_WINDOW_SEC } from "./types.js";
 import type { IndexIndex, Snapshot, LiveSnapshot } from "./types.js";
+import type { GameMetric } from "../../src/game/scoring.js";
 
 export async function launchDashboardServer(stateDir: string): Promise<{ port: number; url: string }> {
   // Our own package version — exposed at /api/version so the launcher can
@@ -369,6 +370,42 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
       // Any other method on /api/game-state → 405.
       res.writeHead(405, { "Content-Type": "application/json" }); // guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
       res.end(JSON.stringify({ error: "method_not_allowed" }));
+      return;
+    }
+
+    // /api/game-scores — S34 high-score leaderboards. GET returns the leaderboard
+    // for a metric (?metric=<m>&limit=<n>). `metric` is validated against the
+    // METRICS allow-list from src/game/scoring (re-exported via the sqlite barrel);
+    // default limit 10, clamped to [1,100]. The dashboard server is a detached
+    // child with no MegaRuntime ref, so it reads the game_scores SQLite table
+    // directly. Unknown metric -> 400, non-GET -> 405. PREVENT-PI-004: loopback.
+    if (req.url?.startsWith("/api/game-scores")) {
+      const gsReq = createRequire(import.meta.url);
+      const { leaderboard, METRICS } = gsReq("../../src/store/sqlite.js") as typeof import("../../src/store/sqlite.js");
+      if (req.method !== "GET") {
+        res.writeHead(405, { "Content-Type": "application/json" }); // guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
+        res.end(JSON.stringify({ error: "method_not_allowed" }));
+        return;
+      }
+      try {
+        const url = new URL(req.url, "http://x"); // guardrails-allow PREVENT-PI-004: localhost dashboard URL base (loopback-only)
+        const metricParam = url.searchParams.get("metric") ?? "cache";
+        if (!(METRICS as readonly string[]).includes(metricParam)) {
+          res.writeHead(400, { "Content-Type": "application/json" }); // guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
+          res.end(JSON.stringify({ error: "unknown_metric", metric: metricParam }));
+          return;
+        }
+        const metric = metricParam as GameMetric; // validated against METRICS above
+        let limit = Number(url.searchParams.get("limit") ?? "10");
+        if (!Number.isFinite(limit) || limit <= 0) limit = 10;
+        limit = Math.min(Math.max(limit, 1), 100); // clamp to [1,100]
+        const rows = leaderboard(stateDir, metric, { limit }); // guardrails-allow PREVENT-PI-004: local SQLite read (loopback dashboard)
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(rows));
+      } catch (e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "game_scores_unavailable", detail: String(e) }));
+      }
       return;
     }
 

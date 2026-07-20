@@ -141,6 +141,24 @@ export function dashboardHtml(tierName: string): string {
   .repo-close { cursor: pointer; color: var(--muted); font-size: 20px; line-height: 1; border: none; background: none; padding: 0 4px; }
   .repo-close:hover { color: var(--fg-strong); }
   .repo-path { font-size: 11px; color: var(--dim); word-break: break-all; margin: -8px 0 12px; }
+  /* S34: Game Mode tab — leaderboards, MEGA CACHE banner, Opie unlock tile */
+  #panel-game .game-leaderboards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  #panel-game .lb-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  #panel-game .lb-card h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 10px; font-weight: 600; }
+  #panel-game table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  #panel-game td { padding: 4px 8px; border-bottom: 1px solid var(--border-soft); }
+  #panel-game td.num { text-align: right; font-family: monospace; color: var(--fg-strong); font-weight: 600; }
+  #panel-game .lb-meta { color: var(--muted); font-size: 11px; margin-left: 6px; }
+  #panel-game .repos-badge { display: inline-block; background: var(--blue); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+  #mega-cache-banner { display: none; background: var(--mega); color: #1a1006; font-weight: 700; padding: 10px 14px; border-radius: 8px; margin: 12px 0; }
+  .achievement-tile { display: none; background: linear-gradient(135deg, #f0883e, #ffd700); color: #1a1006; font-weight: 700; padding: 12px 16px; border-radius: 8px; margin: 12px 0; box-shadow: 0 0 16px #f0883e88; }
+  .achievement-tile .ach-detail { display: block; font-weight: 500; font-size: 12px; margin-top: 4px; }
+  #mega-cache-toast { display: none; position: fixed; top: 16px; left: 50%; transform: translateX(-50%); background: var(--mega); color: #1a1006; font-weight: 700; padding: 10px 18px; border-radius: 8px; z-index: 1000; box-shadow: 0 4px 20px #0008; }
+  #mega-cache-toast.show { display: block; animation: mega-flash 0.6s ease-in-out 2; }
+  .level-up { animation: level-up-pulse 1.2s ease-in-out; }
+  #game-empty { color: var(--dim); font-style: italic; padding: 12px 0; }
+  @keyframes level-up-pulse { 0%{transform:scale(1)} 50%{transform:scale(1.08); filter:brightness(1.3)} 100%{transform:scale(1)} }
+  @keyframes mega-flash { 0%{background:transparent} 25%{background:var(--mega-bg, gold)} 100%{background:transparent} }
 </style>
 </head>
 <body>
@@ -160,6 +178,7 @@ export function dashboardHtml(tierName: string): string {
   <button class="tab" data-tab="all">All repos</button>
   <button class="tab" data-tab="active">Active Repos</button>
   <button class="tab" data-tab="summary">Summary</button>
+  <button class="tab" data-tab="game">Game Mode</button>
 </nav>
 
 <!-- Current repo (existing single-repo view) -->
@@ -396,6 +415,21 @@ export function dashboardHtml(tierName: string): string {
   <div class="updated" id="sm-updated"></div>
 </div>
 
+<!-- Game Mode (S34) — high-score leaderboards, MEGA CACHE banner, Opie unlock -->
+<div class="tab-panel" id="panel-game">
+  <h2 style="font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">High Scores</h2>
+  <div id="mega-cache-banner"></div>
+  <div id="mega-cache-toast"></div>
+  <div class="achievement-tile" id="opie-tile"></div>
+  <div class="game-leaderboards">
+    <div class="lb-card"><h3>Cache % <span class="repos-badge" id="repos-badge"></span></h3><table><tbody id="lb-cache"><tr><td colspan="2" class="repo-none">loading…</td></tr></tbody></table></div>
+    <div class="lb-card"><h3>Dedupe (collapsed)</h3><table><tbody id="lb-dedupe"><tr><td colspan="2" class="repo-none">loading…</td></tr></tbody></table></div>
+    <div class="lb-card"><h3>Turns <span id="turns-level"></span></h3><table><tbody id="lb-turns"><tr><td colspan="2" class="repo-none">loading…</td></tr></tbody></table></div>
+    <div class="lb-card"><h3>MEGA CACHE trophies</h3><table><tbody id="lb-mega_cache"><tr><td colspan="2" class="repo-none">loading…</td></tr></tbody></table></div>
+  </div>
+  <div id="game-empty">No scores yet — run a session with game mode on.</div>
+</div>
+
 <script>
 (function() {
   var evBox = document.getElementById('events');
@@ -568,7 +602,9 @@ export function dashboardHtml(tierName: string): string {
     fetch('/api/snapshot').then(function(r) { return r.json(); }).then(renderSnapshot).catch(function() {}); // guardrails-allow PREVENT-PI-004: browser-side fetch in dashboard HTML template (not Node runtime)
   }
   pollSnapshot();
+  renderGameScores();
   setInterval(pollSnapshot, 2000);
+  setInterval(renderGameScores, 2000);
 
   // SSE for events
   function connectSSE() {
@@ -812,9 +848,110 @@ export function dashboardHtml(tierName: string): string {
   pollGameState();
   setInterval(pollGameState, 5000);
 
+  // --- Game Mode leaderboards (S34) ----------------------------------------
+  // Polls GET /api/game-scores per metric, renders the per-repo leaderboard
+  // tables, the MEGA CACHE banner, the hidden Opie's Wild Ride unlock tile, and
+  // the transient oopsie toast (fires when a NEW mega_cache trophy row appears
+  // since the last poll). Browser-side fetch only (PREVENT-PI-004).
+  var GAME_METRICS = ['cache', 'dedupe', 'turns', 'mega_cache'];
+  var GAME_EMPTY = true;
+  var lastMegaTs = 0;
+  var lastMaxLevel = 0;
+  function fmtPct(v) { return (Math.round(v * 10) / 10) + '%'; }
+  function fmtDate(ts) { return ts ? new Date(ts).toLocaleString() : '—'; }
+  function trophyMeta(m) { try { return (m && typeof m === 'object') ? m : {}; } catch (e) { return {}; } }
+  function renderGameScores() {
+    var results = {};
+    var pending = GAME_METRICS.length + 1; // metrics + repos badge
+    function done() {
+      if (--pending > 0) return;
+      var cache = results['cache'] || [];
+      if (cache.length) GAME_EMPTY = false;
+      document.getElementById('lb-cache').innerHTML = cache.map(function(r) {
+        return '<tr><td title="' + sanitize(r.repo_root) + '">' + sanitize(r.repo_root.split('/').pop()) + '</td><td class="num">' + sanitize(String(r.value)) + '</td></tr>';
+      }).join('') || '<tr><td colspan="2" class="repo-none">no data</td></tr>';
+      var dedupe = results['dedupe'] || [];
+      if (dedupe.length) GAME_EMPTY = false;
+      document.getElementById('lb-dedupe').innerHTML = dedupe.map(function(r) {
+        return '<tr><td title="' + sanitize(r.repo_root) + '">' + sanitize(r.repo_root.split('/').pop()) + '</td><td class="num">' + sanitize(String(r.value)) + '</td></tr>';
+      }).join('') || '<tr><td colspan="2" class="repo-none">no data</td></tr>';
+      var turns = results['turns'] || [];
+      var maxTurns = turns.reduce(function(mx, r) { return Math.max(mx, r.value); }, 0);
+      var lvl = Math.floor(Math.log2(maxTurns + 1)) + 1;
+      var lvlEl = document.getElementById('turns-level');
+      if (lvlEl) lvlEl.textContent = 'LVL ' + lvl;
+      if (turns.length) GAME_EMPTY = false;
+      // level-up pulse: when max level increases vs last poll, pulse the cache bar
+      if (lvl > lastMaxLevel && lastMaxLevel > 0) {
+        var bar = document.getElementById('ctx-bar');
+        if (bar) { bar.classList.add('level-up'); setTimeout(function() { bar.classList.remove('level-up'); }, 1200); }
+      }
+      if (lvl > lastMaxLevel) lastMaxLevel = lvl;
+      document.getElementById('lb-turns').innerHTML = turns.map(function(r) {
+        return '<tr><td title="' + sanitize(r.repo_root) + '">' + sanitize(r.repo_root.split('/').pop()) + '</td><td class="num">' + sanitize(String(r.value)) + '</td></tr>';
+      }).join('') || '<tr><td colspan="2" class="repo-none">no data</td></tr>';
+      // mega_cache trophies + banner + Opie tile + transient toast
+      var mega = results['mega_cache'] || [];
+      var megaBody = document.getElementById('lb-mega_cache');
+      if (megaBody) {
+        megaBody.innerHTML = mega.map(function(r) {
+          var m = trophyMeta(r.meta);
+          var fs = m.firstSeenTs || m.firstSeen || r.ts;
+          var extra = fs ? ' <span class="lb-meta">' + sanitize(fmtDate(fs)) + '</span>' : '';
+          return '<tr><td title="' + sanitize(r.repo_root) + '">' + sanitize(r.repo_root.split('/').pop()) + '</td><td class="num">' + sanitize(fmtPct(r.value)) + extra + '</td></tr>';
+        }).join('') || '<tr><td colspan="2" class="repo-none">no trophies yet</td></tr>';
+      }
+      var banner = document.getElementById('mega-cache-banner');
+      var tile = document.getElementById('opie-tile');
+      var best = null, firstSeen = null;
+      mega.forEach(function(r) {
+        if (best == null || r.value > best) best = r.value;
+        var m = trophyMeta(r.meta);
+        var fs = m.firstSeenTs || m.firstSeen || r.ts;
+        if (firstSeen == null || fs < firstSeen) firstSeen = fs;
+      });
+      if (banner) {
+        if (best != null && best > 100) {
+          banner.style.display = 'block';
+          banner.textContent = '🥧 MEGA CACHE! peak ' + fmtPct(best) + ' — first reached ' + fmtDate(firstSeen);
+        } else { banner.style.display = 'none'; }
+      }
+      if (tile) {
+        if (best != null && best > 100) {
+          tile.style.display = 'block';
+          tile.className = 'achievement-tile unlocked';
+          tile.innerHTML = '🏆 Opie\'s Wild Ride<span class="ach-detail">best ' + sanitize(fmtPct(best)) + ' · first ' + sanitize(fmtDate(firstSeen)) + '</span>';
+        } else { tile.style.display = 'none'; tile.className = 'achievement-tile'; }
+      }
+      // transient oopsie toast: a NEW mega_cache trophy row since the last poll
+      var maxTs = mega.reduce(function(mx, r) { return Math.max(mx, r.ts); }, 0);
+      var newRow = mega.find(function(r) { return r.ts > lastMegaTs && r.value > 100; });
+      if (lastMegaTs && newRow) {
+        var toast = document.getElementById('mega-cache-toast');
+        if (toast) {
+          toast.textContent = 'oopsie! cache went to ' + Math.round(newRow.value) + '% — MEGA CACHE 🥧';
+          toast.classList.add('show');
+          setTimeout(function() { toast.classList.remove('show'); }, 4000);
+        }
+      }
+      if (maxTs > lastMegaTs) lastMegaTs = maxTs;
+      // empty state
+      var emptyEl = document.getElementById('game-empty');
+      if (emptyEl) emptyEl.style.display = GAME_EMPTY ? 'block' : 'none';
+    }
+    GAME_METRICS.forEach(function(m) {
+      fetch('/api/game-scores?metric=' + encodeURIComponent(m) + '&limit=25').then(function(r) { return r.ok ? r.json() : []; }).then(function(rows) { results[m] = rows || []; }).catch(function() { results[m] = []; }).then(done);
+    });
+    fetch('/api/game-scores?metric=repos&limit=1').then(function(r) { return r.ok ? r.json() : []; }).then(function(rows) {
+      var badge = document.getElementById('repos-badge');
+      if (badge) badge.textContent = ((rows && rows.length) ? rows[0].value : 0) + ' repos';
+      if (rows && rows.length && rows[0].value > 0) GAME_EMPTY = false;
+    }).catch(function() {}).then(done);
+  }
+
   // --- Tab switching ------------------------------------------------------
   var tabs = document.querySelectorAll('.tab');
-  var panels = { current: 'panel-current', all: 'panel-all', active: 'panel-active', summary: 'panel-summary' };
+  var panels = { current: 'panel-current', all: 'panel-all', active: 'panel-active', summary: 'panel-summary', game: 'panel-game' };
   for (var i = 0; i < tabs.length; i++) {
     tabs[i].addEventListener('click', function() {
       var name = this.getAttribute('data-tab');
@@ -828,6 +965,7 @@ export function dashboardHtml(tierName: string): string {
       }
       if (name === 'all' || name === 'summary') pollIndex();
       if (name === 'active') pollServers();
+      if (name === 'game') renderGameScores();
     });
   }
 })();

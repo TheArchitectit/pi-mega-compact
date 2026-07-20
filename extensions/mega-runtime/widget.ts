@@ -227,6 +227,7 @@ export interface WidgetData {
 	megaCacheFlare?: boolean;
 	/** The peak cache % that armed the flare (for the oopsie toast text). */
 	megaCacheFlarePct?: number;
+	levelUpFlare?: boolean;
 }
 
 // ── buildWidgetLines ───────────────────────────────────────────────────────
@@ -269,7 +270,7 @@ export function buildWidgetLines(
 				: "";
 		const body =
 			lvl != null
-				? `${accent}LVL ${lvl}${sgrReset(accent)} ${C.dim}|${C.reset} cache ${cacheStr}${megaFlare}`
+				? `${accent}${wd.gameMode && wd.levelUpFlare ? "\x1b[5m" : ""}LVL ${lvl}${wd.gameMode && wd.levelUpFlare ? "\x1b[0m" : ""}${sgrReset(accent)} ${C.dim}|${C.reset} cache ${cacheStr}${megaFlare}`
 				: `cache ${cacheStr}${megaFlare}`;
 		return [
 			panelBar(width, "─", panelBg),
@@ -285,7 +286,7 @@ export function buildWidgetLines(
 	// and a MEGA CACHE flare (mega ansi) + oopsie gag appended when armed. Both
 	// hidden when game mode is off (keeps the legacy panel byte-for-byte).
 	const lvlPrefix = wd.gameMode
-		? `${themeAnsi(wd.theme, "accent")}LVL ${wd.level ?? 1}${sgrReset(themeAnsi(wd.theme, "accent"))} `
+		? `${themeAnsi(wd.theme, "accent")}${wd.gameMode && wd.levelUpFlare ? "\x1b[5m" : ""}LVL ${wd.level ?? 1}${wd.gameMode && wd.levelUpFlare ? "\x1b[0m" : ""}${sgrReset(themeAnsi(wd.theme, "accent"))} `
 		: "";
 	const megaFlareSuffix =
 		wd.gameMode && wd.megaCacheFlare && (wd.cachePct ?? 0) >= 100
