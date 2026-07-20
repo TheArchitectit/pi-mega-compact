@@ -1,5 +1,50 @@
 # Release Notes — pi-mega-compact
 
+## v0.8.5 (2026-07-20)
+
+Fix the **typing-lag / main-thread-blocking leak** found in the perf-audit
+follow-up. The `context` event handler called `runtime.snapshot(ctx)`
+unconditionally on every fire, and each `snapshot()` run did ~6 synchronous
+SQLite opens plus a synchronous `writeFileSync(dashboard.json)` — all on the
+single main JS thread. During active streaming / steer / follow-up, `context`
+fires repeatedly with no material change, and each call blocked the thread on
+sync DB+disk IO → TUI keystrokes queued, the widget stuttered, typing felt
+laggy. This was an in-process main-thread contention leak, not a heap leak.
+
+### Fixed (headline)
+
+- **Snapshot gating (the real fix).** `snapshot()` now computes a cheap
+  material-change signature (context tokens/percent/window, turn count, active
+  agents, compaction count, tokens saved, dedup/recall counters, status key,
+  model id, active ambient effect, game-state bump, the transient flares, the
+  tier trace, the ticker length) over in-memory runtime state — **no SQLite**.
+  When the signature matches the last snapshot, the 6 sync SQLite opens + the
+  `writeFileSync(dashboard.json)` are skipped entirely and only the (already
+  registered) widget factory is refreshed. The widget reads `widgetData` live
+  every frame, so the display stays correct. Compaction changes
+  `compactCount`/`tokensSaved` → the signature changes → the full recompute +
+  write runs, so the dashboard still updates on every compaction.
+- **`dispose()` wired to `session_shutdown`.** `pi.on("session_shutdown", () =>
+  runtime.dispose())` releases the `fs.watch` game-state watcher handle on
+  session teardown (audit P3). pi's ExtensionAPI exposes no extension-unload
+  event and no `"shutdown"` event (the factory return value is ignored), so
+  `session_shutdown` is the closest valid teardown signal. `dispose()` is
+  idempotent, and the next `snapshot()` re-opens the watcher lazily via
+  `bindRepo()` → `ensureGameStateWatcher()`, so the handle no longer lingers
+  across reloads and there is no per-session fd accumulation.
+
+### Why not async coalescing?
+
+The dashboard write stays **synchronous**. Many tests read `dashboard.json`
+  synchronously right after triggering `snapshot`; making the write async would
+  race them. The gating above already means the sync write only fires when
+  something material changed — the correct cadence — so the per-keystroke /
+  per-event blocking is gone without introducing async races. The detached
+  dashboard server polls on 1s, so the reduced write rate is invisible to it.
+
+No migration required. Tests: 540+ (all green). Upgrade with `pi update
+  --extensions` (npm only).
+
 ## v0.8.0 (unreleased) — Game Mode
 
 The **Game Mode** release (sprints S30–S35) ships a full progression layer on top of compaction: a `/mega-compact-settings` command (with `/mega-game` as a backward-compat alias), six themes, a minimal/full TUI widget with player levels + the MEGA CACHE overshoot easter egg, a dashboard Game Mode / High Score tab with live leaderboards, and a 9-achievement system (8 visible + 1 hidden easter egg = Opie's Wild Ride). All local-only (PREVENT-PI-004); additive — no migration.

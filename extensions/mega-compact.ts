@@ -45,4 +45,13 @@ export default function (pi: ExtensionAPI) {
   registerConflictCommands(pi, runtime);
   registerDbCommands(pi, runtime);
   registerGameCommands(pi, runtime);
+  // v0.8.5 (audit P3): release the fs.watch game-state watcher handle on
+  // session teardown so it doesn't linger across reloads. pi exposes no
+  // extension-unload event (the factory return value is ignored and there is no
+  // "shutdown" event on the ExtensionAPI), so dispose() is wired to the
+  // session_shutdown lifecycle event — the closest valid teardown signal.
+  // dispose() is idempotent, and the next snapshot() re-opens the watcher
+  // lazily via bindRepo() → ensureGameStateWatcher(), so there is no permanent
+  // leak and no per-session fd accumulation.
+  pi.on("session_shutdown", () => runtime.dispose());
 }

@@ -158,6 +158,17 @@ export class MegaRuntime {
 
 	// Latest computed widget payload (recomputed per snapshot, rendered per frame).
 	widgetData: WidgetData | null = null;
+	// v0.8.5: material-change signature from the last full snapshot() body. When
+	// the next snapshot()'s signature matches, the expensive recompute (6 sync
+	// SQLite opens) + writeFileSync(dashboard.json) are skipped — only the
+	// (already-registered) widget factory is refreshed. Kills the per-event
+	// main-thread block during typing/idle streaming with no material change.
+	private lastSnapshotSig: string | null = null;
+	// v0.8.5: bumped whenever the cached game-state memo is evicted (bumpGameState
+	// for in-process /mega-game writes, the fs.watch callback for cross-process
+	// dashboard-server writes, and bindRepo on repo switch) so the snapshot gate
+	// invalidates and the widget re-reads theme/mode after the change.
+	private gameStateBump = 0;
 	// Cached cross-repo drift status (recomputed at most every 30s — it opens the
 	// machine-wide registry DB, so we don't want to do it on every render frame).
 	private driftCache: { at: number; status: "ok" | "warn" } | null = null;
@@ -303,6 +314,7 @@ export class MegaRuntime {
 		// stateDir), so evict the memo on every repo switch; the next widget render
 		// re-queries lazily via getCachedGameState().
 		this.cachedGameState = undefined;
+		this.gameStateBump++;
 		// S32: re-target the fs.watch cache-eviction watcher at the NEW stateDir's
 		// sqlite.db so cross-process writes (dashboard server) still evict the memo.
 		this.ensureGameStateWatcher();
@@ -343,6 +355,21 @@ export class MegaRuntime {
 	/** Collect live state and write it to disk (+ paint the above-editor widget). */
 	snapshot(ctx?: ExtensionContext): void {
 		if (ctx) this.bindRepo(ctx.cwd);
+		// v0.8.5: gate the expensive body (6 sync SQLite opens +
+		// writeFileSync(dashboard.json)) behind a cheap material-change signature.
+		// During typing / idle / no-compaction streaming, the 'context' event
+		// fires repeatedly with NO material change — skip the recompute + write and
+		// just re-register the (live) widget factory, which reads the cached
+		// widgetData every frame. This removes the per-event main-thread block
+		// WITHOUT changing write timing, so tests that read dashboard.json
+		// synchronously after a compaction still see it written (compaction changes
+		// compactCount/tokensSaved → the signature changes → the full recompute +
+		// write runs).
+		const sig = this.materialSig();
+		if (ctx && this.widgetData && this.lastSnapshotSig === sig) {
+			this.renderWidget(ctx);
+			return;
+		}
 		const st = this.store.stats(this.rt.sessionId);
 		const repo = this.store.repoStats();
 		const di = this.store.dataInvariant();
@@ -664,6 +691,9 @@ export class MegaRuntime {
 			// process.stdout.columns. buildWidgetLines reads this.widgetData live.
 			this.renderWidget(ctx);
 		}
+		// v0.8.5: record the material-change signature computed at the top so the
+		// next snapshot() can skip this whole body when nothing material changed.
+		this.lastSnapshotSig = sig;
 	}
 
 	/** Register the above-editor widget as a width-aware factory so pi re-renders
@@ -684,6 +714,35 @@ export class MegaRuntime {
 			}),
 			{ placement: "aboveEditor" },
 		);
+	}
+
+	/** v0.8.5: cheap material-change signature over live runtime fields (no
+	 *  SQLite). Two snapshots with the same signature produce identical
+	 *  dashboard.json + widgetData, so the 6 synchronous SQLite opens + the
+	 *  writeFileSync(dashboard.json) can be skipped. Built from in-memory state
+	 *  only; gameStateBump covers cross-process game_state edits (fs.watch) +
+	 *  in-process /mega-game writes (bumpGameState) + repo switches (bindRepo).
+	 *  The transient flare flags are included so a one-shot flare forces the
+	 *  recompute that renders (then clears) it for exactly one cycle. */
+	private materialSig(): string {
+		const rt = this.rt;
+		const ae = this.activeEffect;
+		return JSON.stringify([
+			this.lastCtxTokens, this.lastCtxPercent, this.lastCtxWindow,
+			this.activeAgents, this.currentTurn,
+			rt.compactCount, rt.tokensSaved, rt.dedupSkips, rt.dedupAttempts,
+			rt.recallInjections, rt.cacheHitTokens, rt.persistedThisSession,
+			rt.lastCheckpointId ?? null, rt.lastCompactedFrom, rt.lastCompactedTokens,
+			this.statusKey ?? null,
+			this.currentModel?.modelId ?? null, this.currentModel?.provider ?? null,
+			ae ? `${ae.type}:${ae.role}:${ae.startedAt}` : null,
+			this.gameStateBump,
+			this.megaCacheFlare, this.megaCacheFlarePct,
+			this.levelUpFlare, this.achievementFlare,
+			this.achievementFlareTitles.join("|"),
+			this.tierTrace ?? null, this.lastWhy ?? null, this.pulsing,
+			this.ticker.length,
+		]);
 	}
 
 	/** Active embedder name for the memory-store line (Trigram default / MiniLM). */
@@ -887,6 +946,7 @@ export class MegaRuntime {
 				(_eventType, filename) => {
 					if (typeof filename === "string" && filename.startsWith("sqlite.db")) {
 						this.cachedGameState = undefined;
+						this.gameStateBump++;
 					}
 				},
 			);
@@ -932,6 +992,7 @@ export class MegaRuntime {
 	 *  the panel picks up theme/mode/toggle changes live. */
 	bumpGameState(): void {
 		this.cachedGameState = undefined;
+		this.gameStateBump++;
 	}
 
 	/** S33: player level for game mode — floor(log2(turns+1))+1 (gentle).
