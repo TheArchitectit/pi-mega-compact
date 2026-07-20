@@ -1,5 +1,55 @@
 # Release Notes — pi-mega-compact
 
+## v0.8.6 (2026-07-21)
+
+Fix the **cache-prefix-thrash regression** (the user-reported "alternating cache
+miss every other turn" on v0.8.3). Once past the tier threshold, every context
+event surviving the 2000ms debounce (1) re-ran `runCompact`/`compactSession`
+regenerating a fresh summary + cut each fire, (2) appended a `MARKER_TYPE`
+sentinel to the real transcript every fire (unconditional — not gated on a
+genuinely new checkpoint), and (3) synthesized a fresh `summaryAgentMsg` with
+`timestamp: Date.now()` + drifting summary text + a growing recent slice every
+fire. Each of these invalidated the provider KV-cache prefix, so the model
+re-processed the whole window on every other turn (alternating cache miss).
+
+### Fixed (headline)
+
+- **Live-trim now replays a stable summary + cut within a compaction epoch.**
+  After a fresh `runCompact` + `computeLiveTrimCut`, the trimmed view (summary
+  `AgentMessage` + cut index + context %/tokens) is cached on `MegaRuntime`
+  (`trimCache`). Subsequent gated context events in the SAME epoch (same
+  `checkpointId`) replay that cached view verbatim instead of regenerating —
+  the model still sees a compacted window every call (the S16 design is
+  preserved), but the expensive recompute is skipped and the KV-cache prefix
+  stays stable. The summary message's `timestamp` is now the stable
+  `lastCompactAt` instead of `Date.now()`, so the prefix bytes don't drift.
+- **Re-compact only when context grew enough.** The replay short-circuits
+  (skips `runCompact`) only while context hasn't grown materially: re-compact
+  fires when context grew ≥10% of the window (percent basis) or ≥50% of the
+  effective threshold (token basis, when percent is unavailable). This bounds
+  re-compaction to genuine growth instead of every debounce-elapsed event.
+- **MARKER sentinel gated to real new checkpoints.** `pi.appendEntry(MARKER_TYPE, …)`
+  in `compact.ts` now only fires when `!result.deduped` (a genuinely new
+  checkpoint was created), matching the RAPTOR + vector-index blocks above it.
+  This stops sentinel accumulation on dedup re-fires that bloated the
+  transcript and perturbed the cache prefix.
+- **Cache invalidation on durable truncation + session restart.** `trimCache`
+  is cleared on `session_compact` (any native durable compaction that truncates
+  the transcript — the cached cut would be stale against the new transcript)
+  and on `resetRuntime` (session restart), so a stale trim is never replayed
+  into a truncated/changed transcript. PREVENT-PI-001 (anchor floor) and
+  PREVENT-PI-002 (no split toolCall/toolResult pair) hold: the cached cut is
+  computed once via the boundary-safe `computeLiveTrimCut` and replayed
+  verbatim while the transcript only grows, and it is dropped the moment the
+  transcript is truncated.
+
+### Diagnostics
+
+- New `MegaRuntime.diagLiveTrimReplays` counter (next to `diagLiveTrimFires`)
+  counts trim views served from the cache (replays). `diagLiveTrimFires` still
+  increments on every gated call that returns a trim view (fresh or replay),
+  so the team-run relief assertion (`diagLiveTrimFires > 0`) is unchanged.
+
 ## v0.8.5 (2026-07-20)
 
 Fix the **typing-lag / main-thread-blocking leak** found in the perf-audit

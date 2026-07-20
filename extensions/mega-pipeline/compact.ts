@@ -192,12 +192,19 @@ function doCompact(
 
   // Sentinel marker: a non-LLM bookkeeping entry so subsequent triggers can
   // skip re-vectorizing an already-compacted region (zero token cost).
-  pi.appendEntry(MARKER_TYPE, {
-    checkpointId: result.checkpointId,
-    regionHash: result.regionHash,
-    tokenEstimate: result.tokenEstimate,
-    deduped: result.deduped,
-  });
+  // v0.8.6: gate on !result.deduped so the marker ONLY lands when a genuinely
+  // new checkpoint was created. Without this, every dedup re-fire appended a
+  // fresh sentinel to the real transcript, bloating it and perturbing the
+  // provider KV-cache prefix (the alternating cache-miss regression). Matches
+  // the RAPTOR + vector-index blocks above, which are already !deduped-gated.
+  if (!result.deduped) {
+    pi.appendEntry(MARKER_TYPE, {
+      checkpointId: result.checkpointId,
+      regionHash: result.regionHash,
+      tokenEstimate: result.tokenEstimate,
+      deduped: result.deduped,
+    });
+  }
 
   // Fix D: refresh the RAPTOR tree for this session so live recall (search) can
   // serve high-level summaries. Best-effort + non-fatal: never block compaction.

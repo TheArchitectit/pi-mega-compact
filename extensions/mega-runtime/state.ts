@@ -87,6 +87,20 @@ export class MegaRuntime {
 		cacheHitTokens: 0,
 		lengthStopPending: false,
 	};
+	// v0.8.6 cache-stability: the cached live-trim view for the current
+	// compaction epoch. Set after a fresh runCompact + computeLiveTrimCut, and
+	// replayed verbatim on subsequent gated context events in the SAME epoch
+	// (same checkpointId) so the provider KV-cache prefix stays stable instead
+	// of being invalidated by a freshly regenerated summary + sentinel every
+	// fire. Invalidated on session restart (resetRuntime) and on any native
+	// durable compaction (session_compact) that truncates the transcript.
+	trimCache: {
+		checkpointId: string;
+		cut: number;
+		summaryAgentMsg: AgentMessage;
+		ctxPct: number | null;
+		ctxTokens: number | null;
+	} | null = null;
 	debounceUntil = 0;
 	// S16: debounce for the agent_end resume nudge (avoid busy-loops).
 	resumeNudgeUntil = 0;
@@ -199,6 +213,7 @@ export class MegaRuntime {
 	 * updated and cost nothing).
 	 */
 	diagLiveTrimFires = 0; // context handler returned a trimmed view
+	diagLiveTrimReplays = 0; // v0.8.6: trim view returned via cached replay (skipped re-compact)
 	diagBeforeCompactFires = 0; // session_before_compact handler entered
 	diagBeforeCompactSupplied = 0; // session_before_compact supplied our trim
 	diagAgentEndIdle = 0; // agent_end with activeAgents===0
@@ -795,6 +810,7 @@ export class MegaRuntime {
 			cacheHitTokens: 0,
 			lengthStopPending: false,
 	};
+		this.trimCache = null; // v0.8.6: never replay a stale trim into a new session
 		this.statusKey = undefined;
 		this.activeAgents = 0;
 		this.currentTurn = 0;

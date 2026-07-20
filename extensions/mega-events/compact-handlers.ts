@@ -159,6 +159,7 @@ export function registerCompactHandlers(
 		pi.on("session_compact", async (_event: SessionCompactEvent, _ctx: ExtensionContext) => {
 			runtime.rt.lastNativeCompactAt = Date.now();
 			runtime.rt.lastCompactAt = Date.now();
+			runtime.trimCache = null; // v0.8.6: durable truncation changes the transcript — never replay the stale cached cut (PREVENT-PI-001/002)
 			runtime.logger.info("session-compacted", {
 				sessionId: runtime.rt.sessionId,
 				at: runtime.rt.lastCompactAt,
