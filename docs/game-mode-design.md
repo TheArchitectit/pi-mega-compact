@@ -186,6 +186,42 @@ dashboard panel), all reading/writing the same SQLite state so they stay in sync
    of truth, e.g. src/config/themes.ts).
 9. Minimal TUI exact contents — which fields make the cut for one-line mode?
 
+## 9b. Achievements (S35)
+
+A proper achievements system on top of the S33 scores + S34 High Score tab.
+Each achievement is a named, unlockable badge with a description + a trigger
+condition evaluated over the `game_scores` table. Unlocked achievements show
+on the Game Mode tab; locked ones show as `???` (teaser) UNLESS the achievement
+is marked `hidden` (easter-egg — see Opie's Wild Ride, §3b).
+
+Achievement record (in a new `game_achievements` table, S35.1):
+  `{ id TEXT PK, title TEXT, description TEXT, hidden INTEGER, icon TEXT,
+     unlocked_at INTEGER NULL }`
+
+Achievement set (v1 — grounded in the metrics S33 already records):
+
+| id | title | trigger | hidden? |
+|----|-------|---------|--------|
+| `first_blood` | First Blood — first compaction | `compact_count >= 1` (meta) | no |
+| `centurion` | Centurion — 100 turns played | `turns` max value >= 100 | no |
+| `mega_cache` | Opie's Wild Ride — cache > 100% | `mega_cache` trophy row exists (§3b) | YES (easter egg) |
+| `dedup_master` | Dedup Master — 1MB deduped | `dedupe` sum >= 1,048,576 bytes | no |
+| `globetrotter` | Globetrotter — recall across 3+ repos | `repos` distinct >= 3 | no |
+| `level_10` | Level 10 — reach turn level 10 | `turnLevel(max turns) >= 10` | no |
+| `night_owl` | Night Owl — compact after 2am local | a compact with ts hour == 2-4 | no |
+| `flawless` | Flawless — 100% cache (no overshoot) | a `cache` score row with value == 100 AND no `mega_cache` row for that turn | no |
+| `comeback` | Comeback — compact 5x in one session | 5 `dedupe` rows same session/ts window | no |
+
+Evaluation: a pure `evaluateAchievements(scores)` fn in `src/game/scoring.ts`
+(pi-agnostic) returns the unlocked set + newly-unlocked ids. Called from the
+S33 scoring hooks (after a score is recorded) + a `/api/achievements` endpoint
+(S35). Newly-unlocked achievements fire a one-time toast (same oopsie-gag
+pattern from §3b) so the moment of unlock is celebrated.
+
+Hidden achievements: never teased — they only appear on the dashboard once
+unlocked (same invariant as Opie's Wild Ride; gated by the `hidden` flag +
+`unlocked_at IS NOT NULL`, NOT a feature flag).
+
 ## 10. Future (out of scope for v1)
 
 - Mini-game inside the high-score dashboard.

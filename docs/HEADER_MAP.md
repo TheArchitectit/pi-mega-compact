@@ -311,15 +311,16 @@
 |---------|------|--------|
 | Guardrail Adherence Review | 13 | 0 |
 | QA Review of the v0.2 Spec | 33 | 0 |
-| Sprint Roadmap (S30–S34) | 55 | 0 |
+| Sprint Roadmap (S30–S35) | 55 | 0 |
 | S30 Foundation: state + themes + command | 67 | 0 |
 | S31 TUI widget theming + display modes + level | 109 | 0 |
 | S32 Dashboard CSS-variable skin + settings strip | 135 | 0 |
 | S33 Scoring schema + hooks | 169 | 0 |
-| S34 High Score dashboard tab + animations + release | 189 | 0 |
-| Consolidated Pre-Defined TODO Ledger | 221 | 0 |
-| Resolved Open Questions | 240 | 0 |
-| Deferred (future phases) | 252 | 0 |
+| S34 High Score dashboard tab + animations + release | 191 | 0 |
+| S35 Achievements system (capstone) | 228 | 0 |
+| Consolidated Pre-Defined TODO Ledger | 267 | 0 |
+| Resolved Open Questions | 289 | 0 |
+| Deferred (future phases) | 303 | 0 |
 
 ## docs/game-mode-design.md (docs/game-mode-design.md)
 
@@ -335,7 +336,8 @@
 | State storage | 153 | 0 |
 | Dashboard | 162 | 0 |
 | Open implementation questions | 170 | 0 |
-| Future | 189 | 0 |
+| Achievements (S35) | 189 | 0 |
+| Future | 223 | 0 |
 
 ## src/ (v0.5.0 source index)
 

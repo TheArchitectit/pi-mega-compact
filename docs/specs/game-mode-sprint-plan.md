@@ -61,8 +61,9 @@ Reviewed against: [docs/AGENT_GUARDRAILS.md](../AGENT_GUARDRAILS.md),
 | **S32** | Dashboard CSS-variable skin + `data-theme` switching + header settings strip (3 toggles) + `/api/game-state` endpoints | L | S30 |
 | **S33** | Scoring schema + hooks: record cache/dedupe/turns/repos scores on `turn_end`/`session_compact` | M | S30 |
 | **S34** | Game Mode / High Score dashboard tab: leaderboards + MEGA CACHE banner + level-up animation + release | L | S32, S33 |
+| **S35** | Achievements system: `game_achievements` table + 9 achievements (incl. the hidden Opie easter egg) + evaluation fn + `/api/achievements` + unlock toasts + dashboard tiles | M | S33, S34 |
 
-**Total:** ~5.5 days. Built so toggle (S31/S32) + themes test together; scoring (S33) lands in parallel with the UI sprints.
+**Total:** ~6.5 days (S30–S34 ~5.5d + S35 ~1d). Built so toggle (S31/S32) + themes test together; scoring (S33) lands in parallel with the UI sprints; achievements (S35) capstone the game-mode release.
 
 ---
 
@@ -190,6 +191,10 @@ Reviewed against: [docs/AGENT_GUARDRAILS.md](../AGENT_GUARDRAILS.md),
 
 ### S34 — High Score dashboard tab + animations + release
 
+(Note: S34's release-notes/CHANGELOG/map TODOs move to S35 so the game-mode
+release ships as one unit with achievements included. S34 keeps the tab +
+leaderboards + MEGA CACHE + level-up animation + the Opie hidden unlock.)
+
 **Goal:** the Game Mode / High Score tab renders leaderboards, MEGA CACHE banner, turn levels; level-up animation; ship.
 
 **Files (IN scope):**
@@ -211,24 +216,63 @@ Reviewed against: [docs/AGENT_GUARDRAILS.md](../AGENT_GUARDRAILS.md),
 - [ ] **S34.4** Level-up animation: dashboard — CSS keyframe pulse on the cache bar when a new level is hit (client compares last-seen level). TUI — S31's ANSI blink fires on the level-up turn.
 - [ ] **S34.5** `GET /api/game-scores?metric=<m>&limit=<n>` → JSON rows; `metric` validated against the allow-list (no SQL injection — parameterized anyway, G3).
 - [ ] **S34.6** Empty state: "No scores yet — run a session with game mode on."
-- [ ] **S34.7** Release notes: document `/mega-game`, the 6 themes, minimal TUI, the High Score tab, MEGA CACHE.
-- [ ] **S34.8** Update `INDEX_MAP.md` + `HEADER_MAP.md`.
-- [ ] **S34.9** Full gate green; `guardrails-scan` + `semantic-scan` clean; manual dashboard + TUI smoke test.
+- [ ] **S34.7** (moved to S35.10) — release notes + CHANGELOG + INDEX_MAP/HEADER_MAP updates ship with the achievements sprint so game-mode releases as one unit.
+- [ ] **S34.8** Full gate green; `guardrails-scan` + `semantic-scan` clean; manual dashboard + TUI smoke test for the High Score tab + Opie hidden unlock.
 
-**Acceptance:** High Score tab shows live leaderboards after a session; MEGA CACHE banner fires on ≥100%; level-up animates; `/mega-game` + settings strip both work; release notes shipped; gate green.
+**Acceptance:** High Score tab shows live leaderboards after a session; MEGA CACHE banner fires on ≥100%; level-up animates; `/mega-game` + settings strip both work; gate green.
 **Rollback:** `git revert <sha>` — tab is additive; scores/table remain but are unused (drop in a follow-up if needed).
+
+---
+
+### S35 — Achievements system (capstone)
+
+**Goal:** a proper achievements system on top of the S33 scores + S34 High Score
+tab. 9 achievements (8 visible + 1 hidden easter egg = Opie's Wild Ride, §3b).
+Newly-unlocked achievements fire a one-time toast; the Game Mode tab gets an
+achievements row of tiles.
+
+**Files (IN scope):**
+- `src/store/sqlite/schema.ts` — `game_achievements` table DDL.
+- `src/store/sqlite/game-achievements.ts` (new) — `getAchievement(db,id)`, `listAchievements(db)`, `unlockAchievement(db,id)`, `isUnlocked(db,id)`, parameterized. Pi-agnostic.
+- `src/store/sqlite.ts` (barrel) — re-export.
+- `src/game/scoring.ts` (extend) — `evaluateAchievements(scores)` pure fn: returns `{unlocked: string[], newlyUnlocked: string[]}`. Pi-agnostic.
+- `extensions/mega-events/agent-handlers.ts` + `compact-handlers.ts` — after a score is recorded (S33.4/S33.5), call `evaluateAchievements` + `unlockAchievement` for newly-unlocked ids; set a transient `achievementFlare` (mirrors §3b megaCacheFlare).
+- `extensions/mega-runtime/widget.ts` — render a one-line achievement unlock toast when `achievementFlare` is set (ANSI accent, one turn, consumed).
+- `extensions/dashboard-server/html.ts` — achievements tile row on the Game Mode tab; CSS keyframe for unlock pulse; hidden achievements render NOTHING until unlocked (`hidden=1 AND unlocked_at IS NULL`).
+- `extensions/dashboard-server/server.ts` — `GET /api/achievements` → `{id,title,description,icon,hidden,unlocked_at}[]` (annotated `guardrails-allow PREVENT-PI-004`).
+- `extensions/mega-game-cmds.ts` — `/mega-game achievements` lists unlocked (terse; hidden ones only show if unlocked).
+- `RELEASE_NOTES.md` + `CHANGELOG.md` — game-mode release notes (moved from S34; ships as one release with achievements).
+- `docs/INDEX_MAP.md` + `docs/HEADER_MAP.md` — update for the achievements spec + new table.
+- Tests: `src/store/sqlite/game-achievements.test.ts` + `src/game/scoring.test.ts` (extend with `evaluateAchievements`); `extensions/dashboard-server/{html,server}.test.ts` (extend).
+
+**Pre-defined TODOs:**
+- [ ] **S35.1** `game_achievements` DDL: `(id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL, hidden INTEGER NOT NULL DEFAULT 0, icon TEXT, unlocked_at INTEGER NULL)`. Seed the 9 achievement rows (id/title/description/hidden/icon) on first open (idempotent).
+- [ ] **S35.2** `game-achievements.ts` accessors — `getAchievement`, `listAchievements`, `unlockAchievement` (sets `unlocked_at` only if currently NULL, returns whether it was newly unlocked), `isUnlocked`. Parameterized (PREVENT-002).
+- [ ] **S35.3** `evaluateAchievements(scores)` in `src/game/scoring.ts` — pure fn over the `game_scores` aggregates: returns `{unlocked: string[], newlyUnlocked: string[]}` (newly = unlocked-but-not-yet-persisted). Conditions per §9b table (compact_count, turns max, mega_cache row, dedupe sum, repos distinct, turn level, ts hour, flawless 100%-no-overshoot, 5 compacts same session).
+- [ ] **S35.4** Wire evaluation into the S33 scoring hooks: after a score is recorded, call `evaluateAchievements` → for each `newlyUnlocked` id, `unlockAchievement` (records `unlocked_at`) + set a transient `achievementFlare` with the title (consumed by widget + dashboard for that turn).
+- [ ] **S35.5** TUI widget: when `achievementFlare` is set, render a one-line toast `🏆 Achievement unlocked: <title>` in `ansi.accent` for that turn (consumed next render). Width-safe.
+- [ ] **S35.6** Dashboard Game Mode tab: an achievements tile row. Hidden achievements (`hidden=1 AND unlocked_at IS NULL`) render NOTHING (no teaser) — same invariant as Opie. Unlocked achievements show icon + title + unlocked_at. Locked-but-visible achievements show `??? <title>` (teaser).
+- [ ] **S35.7** `GET /api/achievements` → JSON array; `metric`-style validation n/a (fixed ids). Annotated `guardrails-allow PREVENT-PI-004`.
+- [ ] **S35.8** `/mega-game achievements` — terse list of unlocked achievements (hidden ones only appear once unlocked).
+- [ ] **S35.9** Tests: achievement seed idempotency, unlock idempotency (second unlock is a no-op), `evaluateAchievements` triggers (each of the 9 conditions), hidden-achievement render gating (hidden+locked = nothing rendered), `achievementFlare` toast, parameterization (G3), `MEGACOMPACT_STATE_DIR` (G7).
+- [ ] **S35.10** Release notes + CHANGELOG: document `/mega-game`, the 6 themes, minimal TUI, the High Score tab, MEGA CACHE, achievements (incl. the hidden easter-egg rule). Update `INDEX_MAP.md` + `HEADER_MAP.md`.
+- [ ] **S35.11** Full gate green; `guardrails-scan` + `semantic-scan` clean; manual dashboard + TUI smoke test (unlock an achievement, verify toast + tile).
+
+**Acceptance:** 9 achievements seed on first open; playing a session with game mode on unlocks the earned ones; newly-unlocked fire a toast (TUI + dashboard); the Game Mode tab shows an achievements row (hidden ones invisible until unlocked); `/mega-game achievements` lists unlocks; release notes shipped; gate green.
+**Rollback:** `git revert <sha>` — table + tiles additive; drop table manually if desired.
 
 ---
 
 ## 5. Consolidated Pre-Defined TODO Ledger
 
-Total: 41 TODOs across S30–S34.
+Total: 52 TODOs across S30–S35.
 
-- **S30:** 7 todos (S30.0–S30.7) — overshoot characterization, DDL, state accessors, themes file, command, registration, tests, gate.
-- **S31:** 8 todos (S31.1–S31.8) — cache, full mode, minimal mode, level, MEGA effect, game-mode-off guard, tests, gate.
+- **S30:** 7 todos (S30.0–S30.7) — overshoot characterization, DDL, state accessors, themes file, command, registration, tests, gate. ✅ SHIPPED (commit fb4ec17).
+- **S31:** 8 todos (S31.1–S31.8) — cache, full mode, minimal mode, level, MEGA effect + oopsie gag, game-mode-off guard, tests, gate.
 - **S32:** 8 todos (S32.1–S32.8) — CSS vars, parity, settings strip, endpoints, data-theme, guardrail annotations, tests, gate.
-- **S33:** 9 todos (S33.1–S33.9) — DDL, accessors, scoring math, turn_end hook, compact hook, repos metric, game-mode gate, tests, gate.
-- **S34:** 9 todos (S34.1–S34.9) — tab, banner, levels, animations, API, empty state, release notes, maps, gate.
+- **S33:** 9 todos (S33.1–S33.9) — DDL, accessors, scoring math, turn_end hook (incl. mega_cache trophy + flare), compact hook, repos metric, game-mode gate, tests, gate.
+- **S34:** 9 todos (S34.1–S34.9) — tab, banner + Opie hidden unlock, levels, animations, API, empty state. (Release notes/maps moved to S35.)
+- **S35:** 11 todos (S35.1–S35.11) — achievements DDL, accessors, evaluateAchievements, hook wiring, TUI toast, dashboard tiles, /api/achievements, /mega-game achievements, tests, release notes + maps, gate.
 
 Cross-cutting TODOs (apply to every sprint):
 - [ ] One focused commit per sprint with `Co-Authored-By:` footer (G10).
@@ -237,7 +281,7 @@ Cross-cutting TODOs (apply to every sprint):
 - [ ] All tests use `MEGACOMPACT_STATE_DIR` (G7).
 - [ ] Every new dashboard `fetch`/http line annotated `// guardrails-allow PREVENT-PI-004:` (G1/G2).
 - [ ] Every async path has `.catch()` / try-catch (G6).
-- [ ] **Hidden-until-triggered invariant (§3b "Opie's Wild Ride"):** the unlock tile/dashboard copy is rendered ONLY when a `mega_cache` trophy row exists. A fresh install (no overshoot yet) shows nothing about it — no locked tile, no teaser. Gate this with a `hasMegaCacheTrophy()` check, not a feature flag.
+- [ ] **Hidden-until-triggered invariant (§3b "Opie's Wild Ride" + §9b achievements):** the unlock tile/dashboard copy is rendered ONLY when the underlying condition is met (a `mega_cache` trophy row, or an achievement `unlocked_at IS NOT NULL`). A fresh install shows nothing about hidden unlocks — no locked tile, no teaser. Gate with `hasMegaCacheTrophy()` / `isUnlocked()` checks, NOT feature flags. Applies to both the MEGA CACHE easter egg and hidden achievements.
 
 ---
 
@@ -255,7 +299,7 @@ Cross-cutting TODOs (apply to every sprint):
 | Q8 theme palettes | concrete hex+ANSI defined in `src/config/themes.ts` | S30 |
 | Q9 minimal TUI contents | `LVL n │ cache NN%` one line | S31 |
 
-## 7. Deferred (future phases, out of scope for S30–S34)
+## 7. Deferred (future phases, out of scope for S30–S35)
 
 - Mini-game inside the High Score dashboard.
 - Time-windowed leaderboards (daily/weekly).
