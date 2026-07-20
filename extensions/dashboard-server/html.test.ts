@@ -48,3 +48,15 @@ describe("S35 dashboard HTML achievements", () => {
     assert.ok(html.includes("??? "), "??? teaser present");
   });
 });
+
+describe("S35 dashboard HTML achievements escaping (v0.8.4 fix)", () => {
+  const html = dashboardHtml("custom");
+  test("Opie's Wild Ride JS string is backslash-escaped (no bare apostrophe)", () => {
+    // The served <script> uses single-quoted JS strings: '🏆 Opie\'s Wild Ride...'.
+    // A bare apostrophe (Opie's) would terminate the string and halt the script,
+    // breaking .tab click bindings. The served HTML MUST contain the escaped
+    // form Opie\'s and MUST NOT contain the bare form '🏆 Opie's'.
+    assert.ok(html.includes("🏆 Opie\\'s Wild Ride"), "served JS contains Opie\\'s (escaped)");
+    assert.ok(!html.includes("🏆 Opie's Wild Ride"), "no bare Opie's in served JS");
+  });
+});

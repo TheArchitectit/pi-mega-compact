@@ -935,7 +935,7 @@ export function dashboardHtml(tierName: string): string {
         if (best != null && best > 100) {
           tile.style.display = 'block';
           tile.className = 'achievement-tile unlocked';
-          tile.innerHTML = '🏆 Opie\'s Wild Ride<span class="ach-detail">best ' + sanitize(fmtPct(best)) + ' · first ' + sanitize(fmtDate(firstSeen)) + '</span>';
+          tile.innerHTML = '🏆 Opie\\'s Wild Ride<span class="ach-detail">best ' + sanitize(fmtPct(best)) + ' · first ' + sanitize(fmtDate(firstSeen)) + '</span>';
         } else { tile.style.display = 'none'; tile.className = 'achievement-tile'; }
       }
       // transient oopsie toast: a NEW mega_cache trophy row since the last poll
