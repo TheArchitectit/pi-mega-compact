@@ -174,15 +174,15 @@ Reviewed against: [docs/AGENT_GUARDRAILS.md](../AGENT_GUARDRAILS.md),
 - `src/store/sqlite/game-scores.test.ts` (new) + `src/game/scoring.test.ts` (new).
 
 **Pre-defined TODOs:**
-- [ ] **S33.1** `game_scores` DDL: `(repo_root TEXT, metric TEXT NOT NULL, ts INTEGER NOT NULL, value REAL NOT NULL, meta TEXT, PRIMARY KEY(repo_root, metric, ts))` + index on `(metric, ts)`.
-- [ ] **S33.2** `recordScore` / `leaderboard` — parameterized. `leaderboard(metric, {repoRoot?, limit})` returns sorted rows. `metric ∈ {'cache','dedupe','turns','repos','mega_cache'}`.
-- [ ] **S33.3** `src/game/scoring.ts`: `turnLevel(n)` = `Math.floor(Math.log2(n+1))+1` (1,2,2,3,… gentle); `isMegaCache(pct)` = `pct >= 100`; `cacheScore(hits,lookups)` = `lookups>0 ? hits/lookups*100 : 0` (fixes the NaN QA3 root cause if present).
-- [ ] **S33.4** Hook `turn_end` (agent-handlers): increment turn count, record `turns` score (value=turn count, meta=model id), read cache hit/lookups from the existing metrics, record `cache` score per repo. If `isMegaCache(cachePct)` → record `mega_cache` trophy row (QA10) with `meta` carrying the peak overshoot % + turn ts; **and when `cachePct > 100`** (the real ratio >1 from S30.0), set the transient `megaCacheFlare` flag on the turn (§3b) so the S31.5 widget + S34.2 dashboard render the "oopsie" gag for that turn. The `mega_cache` row IS the "Opie's Wild Ride" unlock (§3b) — `metric='mega_cache'`, `meta={peakPct, firstSeenTs}`.
-- [ ] **S33.5** Hook `session_compact` (compact-handlers): read dedup chunks/bytes saved from the dedup tier counters, record `dedupe` score (cumulative — `value` is the delta, leaderboard sums).
-- [ ] **S33.6** `repos` metric: derived (not recorded per event) — `leaderboard('repos')` computes `COUNT(DISTINCT repo_root)` from `game_scores` + the global index (QA11). No new storage.
-- [ ] **S33.7** All hooks gated behind `game_mode_on===true` (no scoring when game mode off).
-- [ ] **S33.8** Tests: score round-trip, leaderboard ordering, mega_cache trophy row, no-scoring-when-off, parameterization (G3). Use `MEGACOMPACT_STATE_DIR` (G7).
-- [ ] **S33.9** Gate green.
+- [x] **S33.1** `game_scores` DDL: `(repo_root TEXT, metric TEXT NOT NULL, ts INTEGER NOT NULL, value REAL NOT NULL, meta TEXT, PRIMARY KEY(repo_root, metric, ts))` + index on `(metric, ts)`.
+- [x] **S33.2** `recordScore` / `leaderboard` — parameterized. `leaderboard(metric, {repoRoot?, limit})` returns sorted rows. `metric ∈ {'cache','dedupe','turns','repos','mega_cache'}`.
+- [x] **S33.3** `src/game/scoring.ts`: `turnLevel(n)` = `Math.floor(Math.log2(n+1))+1` (1,2,2,3,… gentle); `isMegaCache(pct)` = `pct >= 100`; `cacheScore(hits,lookups)` = `lookups>0 ? hits/lookups*100 : 0` (fixes the NaN QA3 root cause if present).
+- [x] **S33.4** Hook `turn_end` (agent-handlers): increment turn count, record `turns` score (value=turn count, meta=model id), read cache hit/lookups from the existing metrics, record `cache` score per repo. If `isMegaCache(cachePct)` → record `mega_cache` trophy row (QA10) with `meta` carrying the peak overshoot % + turn ts; **and when `cachePct > 100`** (the real ratio >1 from S30.0), set the transient `megaCacheFlare` flag on the turn (§3b) so the S31.5 widget + S34.2 dashboard render the "oopsie" gag for that turn. The `mega_cache` row IS the "Opie's Wild Ride" unlock (§3b) — `metric='mega_cache'`, `meta={peakPct, firstSeenTs}`.
+- [x] **S33.5** Hook `session_compact` (compact-handlers): read dedup chunks/bytes saved from the dedup tier counters, record `dedupe` score (cumulative — `value` is the delta, leaderboard sums).
+- [x] **S33.6** `repos` metric: derived (not recorded per event) — `leaderboard('repos')` computes `COUNT(DISTINCT repo_root)` from `game_scores` + the global index (QA11). No new storage.
+- [x] **S33.7** All hooks gated behind `game_mode_on===true` (no scoring when game mode off).
+- [x] **S33.8** Tests: score round-trip, leaderboard ordering, mega_cache trophy row, no-scoring-when-off, parameterization (G3). Use `MEGACOMPACT_STATE_DIR` (G7).
+- [x] **S33.9** Gate green.
 
 **Acceptance:** playing a session with game mode on populates `game_scores`; leaderboards return correct order; gate green.
 **Rollback:** `git revert <sha>` — table is additive; drop table manually if desired.
@@ -270,7 +270,7 @@ Total: 52 TODOs across S30–S35.
 - **S30:** 7 todos (S30.0–S30.7) — overshoot characterization, DDL, state accessors, themes file, command, registration, tests, gate. ✅ SHIPPED (commit fb4ec17).
 - **S31:** 8 todos (S31.1–S31.8) — ✅ DONE (commits `98a9b3f` + `a0d9b5c`). cache + full/minimal mode + level stub + MEGA CACHE flare + oopsie gag + game-mode-off guard + 48-case test matrix + bindRepo eviction (audit P2).
 - **S32:** 8 todos (S32.1–S32.8) — ✅ DONE (commits `60b7f73` + `fa8cc20`). CSS-var skin (transparent-default parity) + settings strip (game-mode/theme/tui selects) + GET/PUT /api/game-state (non-object guard) + fs.watch cross-process eviction + 8 test cases (incl. P1 null/array regression). Gate green (495/495).
-- **S33:** 9 todos (S33.1–S33.9) — DDL, accessors, scoring math, turn_end hook (incl. mega_cache trophy + flare), compact hook, repos metric, game-mode gate, tests, gate.
+- **S33:** 9 todos (S33.1–S33.9) — ✅ DONE (commit `e4ac3ec`). game_scores DDL + recordScore/leaderboard (nextTs monotonic, split repoFilter) + pure scoring helpers + turn_end/session_compact hooks (incl. mega_cache trophy + megaCacheFlare) + game_mode_on gate + 9 test cases. Gate green (507/507).
 - **S34:** 9 todos (S34.1–S34.9) — tab, banner + Opie hidden unlock, levels, animations, API, empty state. (Release notes/maps moved to S35.)
 - **S35:** 11 todos (S35.1–S35.11) — achievements DDL, accessors, evaluateAchievements, hook wiring, TUI toast, dashboard tiles, /api/achievements, /mega-game achievements, tests, release notes + maps, gate.
 
