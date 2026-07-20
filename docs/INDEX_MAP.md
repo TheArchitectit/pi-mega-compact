@@ -60,7 +60,7 @@
 | **S28 spec (max-output-token auto-continue — detect `stopReason==='length'` + reuse S16 debounced resume-nudge; no new compact call, PREVENT-PI-003/004 safe)** | [specs/s28-max-output-token-auto-continue.md](specs/s28-max-output-token-auto-continue.md) | docs/specs/ |
 | **S29 spec (percent-based auto-compact trigger — gate on context %, not under-reported token counts; `MEGACOMPACT_AUTO_PCT_TRIGGER` override; pct-null token fallback preserves S27)** | [specs/s29-percent-auto-trigger.md](specs/s29-percent-auto-trigger.md) | docs/specs/ |
 | **game-mode design spec v0.2 (gamified stats: per-metric leaderboards, MEGA CACHE, 6 themes, 3-toggle panel, minimalist TUI)** | [game-mode-design.md](game-mode-design.md) | docs/ |
-| **game-mode QA review + sprint plan S30–S34 (guardrail adherence, 12 QA findings, 41 pre-defined TODOs)** | [specs/game-mode-sprint-plan.md](specs/game-mode-sprint-plan.md) | docs/specs/ |
+| **game-mode QA review + sprint plan S30–S35 (guardrail adherence, 12 QA findings, 52 pre-defined TODOs; S31 ✅ DONE)** | [specs/game-mode-sprint-plan.md](specs/game-mode-sprint-plan.md) | docs/specs/ |
 | **S27 spec (db mirror: byte-stable prompt cache via raw transcript mirror + deterministic epoch nonce)** | [specs/sprint-27-db-mirror-cache-stability.md](specs/sprint-27-db-mirror-cache-stability.md) | docs/ |
 | **S27 sprint plan (tasks 5–9: context hook, dedup pipeline, recall demotion, tests, DB maintenance /commands)** | [specs/sprint-27-db-mirror-implementation.md](specs/sprint-27-db-mirror-implementation.md) | docs/ |
 | **post-mortem: "Already compacted" / "Auto compaction failed" race (agent_end vs native _checkCompaction)** | [specs/postmortem-already-compacted-race.md](specs/postmortem-already-compacted-race.md) | docs/specs/ |

@@ -118,14 +118,14 @@ Reviewed against: [docs/AGENT_GUARDRAILS.md](../AGENT_GUARDRAILS.md),
 - `extensions/mega-runtime/widget.test.ts` (new or extend) — render snapshots for each theme × {full,minimal} × {normal, mega-cache}.
 
 **Pre-defined TODOs:**
-- [ ] **S31.1** `state.ts`: module-level `let cached: GameState|null` + `let ver=0`; `getCachedGameState(db)` lazy-loads + memoizes; `bumpGameState(db)` re-reads + bumps `ver`. Widget calls `getCachedGameState` (no DB hit on steady-state renders).
-- [ ] **S31.2** `widget.ts` full mode: existing layout, but colors come from `getTheme(theme).ansi`. Background fill skipped when theme=`transparent` (accent fg only).
-- [ ] **S31.3** `widget.ts` minimal mode: one line `LVL n │ cache NN%` (level + cache %). No bars/flair. Level always shown.
-- [ ] **S31.4** Level display: derive turn level (see S33 for the level formula; S31 renders the number S33 produces). **If S33 not landed yet**, render level from a placeholder `getTurnLevel(db)` stub returning 1 — S33 replaces the stub.
-- [ ] **S31.5** MEGA CACHE effect + oopsie gag: when cache % ≥ 100, render the cache segment with `ansi.mega` + a `MEGA CACHE` text flare. Use the S30.0 characterization: it's a real ratio (cross-repo injected IDs / this-session checkpoints), so show the actual % (e.g. `117%`). **Oopsie gag (§3b):** when a transient `megaCacheFlare` flag is set on the turn (set by the S33.4 scoring hook when `cachePct > 100`), render a one-line toast `oopsie! cache went to NNN% — MEGA CACHE 🥧` in `ansi.mega` for that turn only — flares once, then the widget returns to normal on the next render (the flag is consumed). Width-safe (respect `truncateToWidth`).
-- [ ] **S31.6** Guard: when `game_mode_on=false`, widget renders **without** game-mode flair (level hidden, no MEGA CACHE) but still respects theme colors (theme is independent of game_mode).
-- [ ] **S31.7** Tests: snapshot matrix (6 themes × 2 modes × 2 states) — assert ANSI codes present/absent, width ≤ terminal, no bg fill for transparent.
-- [ ] **S31.8** Gate green.
+- [x] **S31.1** `state.ts`: cached game state — implemented as an instance field `private cachedGameState: GameState|undefined` on `MegaRuntime` (functionally equivalent to module-level `let cached` + `ver`): `getCachedGameState()` lazy-loads from the per-repo `game_state` row via `getGameState(this.currentStateDir)` + memoizes (try/catch fallback to defaults); `bumpGameState()` evicts. Widget reads `wd.gameMode/theme/...` populated once per `snapshot()` — no DB hit on steady-state renders. (Audit P2 fix: also evict in `bindRepo()` + `resetRuntime()` so a repo switch doesn't show the prior repo's state.)
+- [x] **S31.2** `widget.ts` full mode: existing layout, colors come from `getTheme(theme).ansi`. `panelBgFor(theme)` resolves the bg SGR (transparent → `""` → no bg fill, accent fg only); `panelLine/panelBar/wrapLine` thread `panelBg` and still route through `truncateToWidth` so the v0.7.9 width guard holds for transparent themes.
+- [x] **S31.3** `widget.ts` minimal mode: early-return after the `wd`-truthy check renders one line `LVL n │ cache NN%` via `panelLine`, flanked by `panelBar`s. No bars/flair. Level always shown.
+- [x] **S31.4** Level display: `getTurnLevel()` stub on `MegaRuntime` returns 1 until S33 wires the real formula. Rendered in the header (`LVL n`, accent-colored) when game mode is on.
+- [x] **S31.5** MEGA CACHE effect + oopsie gag: when `cachePct ≥ 100` + game mode on, the cache segment renders with `ansi.mega` + a `MEGA CACHE` flare. The transient `megaCacheFlare` flag (set by the S33.4 scoring hook) renders the one-line toast `oopsie! cache went to NNN% — MEGA CACHE 🥧` in `ansi.mega` for that turn only — the flag lives on `widgetData` so it's consumed on the next `snapshot()`. Width-safe (every line exits via `panelLine` → `truncateToWidth`).
+- [x] **S31.6** Guard: when `game_mode_on=false`, the widget hides level + MEGA CACHE flair but still applies theme colors (theme is independent of game_mode — threaded via `WidgetData.theme` regardless of `gameMode`).
+- [x] **S31.7** Tests: `widget.test.ts` — 48-case snapshot matrix (6 themes × {full,minimal} × {gameMode on/off} × {cache<100, ≥100}) asserts ANSI bg present/absent (transparent = no `\x1b[48;`), minimal mode is one content line, gameMode-off hides level + MEGA CACHE, MEGA CACHE flare appears only when `megaCacheFlare` + gameMode on, every line `visibleWidth ≤ terminal`. `state.test.ts` — getCachedGameState defaults/memoization + bumpGameState round-trip + bindRepo cross-repo eviction (audit P2). Uses `MEGACOMPACT_STATE_DIR` + `mkdtemp` (G7).
+- [x] **S31.8** Gate green: build OK, 488/488 tests pass (+1), lint clean, regression clean.
 
 **Acceptance:** switching `/mega-game theme` / `tui minimal` / `off` visibly changes the widget; MEGA CACHE flares at ≥100%; gate green.
 **Rollback:** `git revert <sha>` — widget falls back to prior rendering.
@@ -268,7 +268,7 @@ achievements row of tiles.
 Total: 52 TODOs across S30–S35.
 
 - **S30:** 7 todos (S30.0–S30.7) — overshoot characterization, DDL, state accessors, themes file, command, registration, tests, gate. ✅ SHIPPED (commit fb4ec17).
-- **S31:** 8 todos (S31.1–S31.8) — cache, full mode, minimal mode, level, MEGA effect + oopsie gag, game-mode-off guard, tests, gate.
+- **S31:** 8 todos (S31.1–S31.8) — ✅ DONE (commits `98a9b3f` + `a0d9b5c`). cache + full/minimal mode + level stub + MEGA CACHE flare + oopsie gag + game-mode-off guard + 48-case test matrix + bindRepo eviction (audit P2).
 - **S32:** 8 todos (S32.1–S32.8) — CSS vars, parity, settings strip, endpoints, data-theme, guardrail annotations, tests, gate.
 - **S33:** 9 todos (S33.1–S33.9) — DDL, accessors, scoring math, turn_end hook (incl. mega_cache trophy + flare), compact hook, repos metric, game-mode gate, tests, gate.
 - **S34:** 9 todos (S34.1–S34.9) — tab, banner + Opie hidden unlock, levels, animations, API, empty state. (Release notes/maps moved to S35.)
