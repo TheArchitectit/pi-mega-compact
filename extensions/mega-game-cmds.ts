@@ -55,8 +55,19 @@ async function handleSettings(
   const stateDir = runtime.currentStateDir;
   const parts = args.trim().split(/\s+/).filter(Boolean);
 
-  // bare  → print current state.
+  // bare  → interactive in-app menu (ctx.ui.select picker). Falls back to a
+  // static status print when there's no interactive UI (RPC/print mode, or a
+  // test harness stubbing only notify). CLI subcommands below still work for
+  // power users + scripts.
   if (parts.length === 0) {
+    if (typeof ctx.ui.select === "function") {
+      try {
+        await runInteractiveMenu(ctx, runtime, stateDir);
+        return;
+      } catch {
+        // select threw (non-interactive impl) → fall through to status print
+      }
+    }
     const s = getGameState(stateDir);
     for (const line of fmtState(s)) ctx.ui.notify(line);
     return;
@@ -124,6 +135,111 @@ async function handleSettings(
   ctx.ui.notify(
     `[${TAG}] usage: /${TAG} [on|off|theme [id|next]|tui [full|minimal]|achievements]`,
   );
+}
+
+/** Interactive in-app menu for bare `/mega-compact-settings`. Uses ctx.ui.select
+ * (a real TUI picker in interactive mode). Loops until the user cancels (or
+ * picks "Done"). Each action mutates the global game_state row + bumps the
+ * runtime cache so the widget/dashboard reflect it immediately.
+ *
+ * Guarded by the caller via `typeof ctx.ui.select === "function"`; if select is
+ * unavailable we fall back to the static fmtState notify print. */
+async function runInteractiveMenu(
+  ctx: ExtensionContext,
+  runtime: MegaRuntime,
+  stateDir: string,
+): Promise<void> {
+  for (;;) {
+    const s = getGameState(stateDir);
+    const toggleLabel = s.game_mode_on ? "Turn game mode OFF" : "Turn game mode ON";
+    const choice = await ctx.ui.select(
+      `[${TAG}] settings · game mode: ${s.game_mode_on ? "ON" : "off"} · theme: ${s.theme} · tui: ${s.tui_display_mode}`,
+      [toggleLabel, "Theme…", "TUI display mode…", "Achievements…", "Done"],
+    );
+    if (choice === undefined || choice === "Done") return;
+    if (choice === toggleLabel) {
+      const next = !s.game_mode_on;
+      setGameState({ game_mode_on: next }, stateDir);
+      runtime.bumpGameState();
+      ctx.ui.notify(`[${TAG}] game mode ${next ? "ON" : "off"}`, "info");
+      continue;
+    }
+    if (choice === "Theme…") {
+      await themeSubmenu(ctx, runtime, stateDir);
+      continue;
+    }
+    if (choice === "TUI display mode…") {
+      await tuiSubmenu(ctx, runtime, stateDir);
+      continue;
+    }
+    if (choice === "Achievements…") {
+      await achievementsView(ctx, stateDir);
+      continue;
+    }
+  }
+}
+
+/** Theme picker submenu — lists all themes (current marked ✓) + a cycle option. */
+async function themeSubmenu(
+  ctx: ExtensionContext,
+  runtime: MegaRuntime,
+  stateDir: string,
+): Promise<void> {
+  const s = getGameState(stateDir);
+  const opts = THEMES.map((t) => {
+    const mark = t.id === s.theme ? " ✓" : "";
+    return `${t.id}${mark}  ${t.label}`;
+  });
+  opts.push("next (cycle to next theme)");
+  opts.push("Back");
+  const choice = await ctx.ui.select(`[${TAG}] theme (current: ${s.theme})`, opts);
+  if (choice === undefined || choice === "Back") return;
+  const first = choice.split(/\s+/)[0]!;
+  let id: string | undefined;
+  if (first === "next") {
+    id = nextTheme(s.theme);
+  } else if (isValidTheme(first)) {
+    id = first;
+  }
+  if (id && id !== s.theme) {
+    setGameState({ theme: id }, stateDir);
+    runtime.bumpGameState();
+    ctx.ui.notify(`[${TAG}] theme → ${id} (${getTheme(id)?.label ?? ""})`, "info");
+  }
+}
+
+/** TUI display-mode submenu — full vs minimal (current marked ✓). */
+async function tuiSubmenu(
+  ctx: ExtensionContext,
+  runtime: MegaRuntime,
+  stateDir: string,
+): Promise<void> {
+  const s = getGameState(stateDir);
+  const mark = (m: string) => (s.tui_display_mode === m ? " ✓" : "");
+  const choice = await ctx.ui.select(`[${TAG}] TUI display mode (current: ${s.tui_display_mode})`, [
+    `full${mark("full")}  — bars, stats, flair`,
+    `minimal${mark("minimal")}  — one-line level + cache %`,
+    "Back",
+  ]);
+  if (choice === undefined || choice === "Back") return;
+  const mode = choice.split(/\s+/)[0];
+  if (mode === "full" || mode === "minimal") {
+    setGameState({ tui_display_mode: mode }, stateDir);
+    runtime.bumpGameState();
+    ctx.ui.notify(`[${TAG}] tui → ${mode}`, "info");
+  }
+}
+
+/** Achievements view — terse notify list + a read-only select viewer. */
+async function achievementsView(ctx: ExtensionContext, stateDir: string): Promise<void> {
+  const rows = listAchievements(stateDir).filter((r) => r.unlocked_at != null);
+  ctx.ui.notify(`[${TAG}] achievements unlocked (${rows.length}/9):`, "info");
+  for (const r of rows) ctx.ui.notify(`  ${r.icon ?? ""} ${r.title}`, "info");
+  const lines = rows.length
+    ? rows.map((r) => `${r.icon ?? ""} ${r.title}`)
+    : ["(none unlocked yet — keep compacting!)"];
+  // select() as a read-only viewer; any selection / cancel returns to the menu.
+  await ctx.ui.select(`[${TAG}] achievements (${rows.length}/9 unlocked)`, lines);
 }
 
 /** Register /mega-compact-settings (primary) + /mega-game (backward-compat alias). */

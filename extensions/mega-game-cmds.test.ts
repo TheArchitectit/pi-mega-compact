@@ -26,13 +26,16 @@ type Harness = {
   ctx: any;
 };
 
-function makeHarness(stateDir: string): Harness {
+function makeHarness(
+  stateDir: string,
+  select?: (title: string, options: string[]) => Promise<string | undefined>,
+): Harness {
   const commands: Record<string, Cmd> = {};
   const notifies: string[] = [];
   const runtime = { bindRepo: () => {}, currentStateDir: stateDir, bumpGameState: () => {} };
   const ctx = {
     cwd: stateDir,
-    ui: { notify: (s: string) => notifies.push(s) },
+    ui: { notify: (s: string) => notifies.push(s), ...(select ? { select } : {}) },
   };
   const fakePi = {
     registerCommand: (name: string, opts: Cmd) => {
@@ -78,6 +81,38 @@ describe("/mega-compact-settings (S30; /mega-game alias)", () => {
     assert.ok(lines.some((l) => l.includes("game mode: off")));
     assert.ok(lines.some((l) => l.includes("transparent")));
     assert.ok(lines.some((l) => l.includes("tui:")));
+  });
+
+  it("bare command opens interactive menu (select) and toggles game mode", async () => {
+    const seq = ["Turn game mode ON", "Done"];
+    let i = 0;
+    const h = makeHarness(dir, () => Promise.resolve(seq[i++] ?? undefined));
+    h.notifies.length = 0;
+    await h.commands["mega-compact-settings"].handler("", h.ctx);
+    assert.equal(getGameState().game_mode_on, true);
+    assert.ok(h.notifies.some((l) => l.includes("game mode ON")));
+    // toggle back off via the menu
+    const seq2 = ["Turn game mode OFF", "Done"];
+    let j = 0;
+    const h2 = makeHarness(dir, () => Promise.resolve(seq2[j++] ?? undefined));
+    await h2.commands["mega-compact-settings"].handler("", h2.ctx);
+    assert.equal(getGameState().game_mode_on, false);
+  });
+
+  it("bare command falls back to status print when select is unavailable", async () => {
+    // default harness has no select — mimics RPC/print mode
+    const lines = await run("");
+    assert.ok(lines.some((l) => l.includes("game mode: off")));
+  });
+
+  it("menu Theme… → picks a theme and persists", async () => {
+    const seq = ["Theme…", "retro  Retro Terminal", "Done"];
+    let i = 0;
+    const h = makeHarness(dir, () => Promise.resolve(seq[i++] ?? undefined));
+    h.notifies.length = 0;
+    await h.commands["mega-compact-settings"].handler("", h.ctx);
+    assert.equal(getGameState().theme, "retro");
+    assert.ok(h.notifies.some((l) => l.includes("theme → retro")));
   });
 
   it("on enables game mode and persists", async () => {

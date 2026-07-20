@@ -470,6 +470,21 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
         // eslint-disable-next-line no-console
         console.log(`[mega-compact] dashboard server running: ${url}`);
 
+        // v0.8.2: also bind the IPv6 loopback (::1). On many systems `localhost`
+        // resolves to ::1 first (see /etc/hosts), so an IPv4-only bind makes the
+        // browser hit ::1:port and get connection refused. PREVENT-PI-004
+        // (loopback-only) means BOTH 127.0.0.1 and ::1. Non-fatal: IPv4-only
+        // hosts or a ::1 already in use just skip the mirror.
+        let v6: ReturnType<typeof createServer> | undefined;
+        const v4Handler = server.listeners("request")[0];
+        if (v4Handler) {
+          v6 = createServer((r, s) => (v4Handler as (a: IncomingMessage, b: ServerResponse) => void).call(server, r, s));
+          v6.on("error", (e: NodeJS.ErrnoException) =>
+            log("ipv6 loopback bind skipped", { port, code: e.code, message: e.message }),
+          );
+          v6.listen(port, "::1", () => log("ipv6 loopback bound", { port })); // guardrails-allow PREVENT-PI-004: IPv6 loopback (::1) mirror of the localhost dashboard server
+        }
+
         // Write port.pid
         try {
           writeFileSync(portFile, JSON.stringify({ port, pid: process.pid }));
@@ -481,6 +496,7 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
         const cleanup = () => {
           try { unlinkSync(portFile); } catch { /* already gone */ }
           server.close();
+          try { v6?.close(); } catch { /* not bound */ }
           process.exit(0);
         };
         process.on("SIGTERM", cleanup);
