@@ -3,100 +3,144 @@
  */
 
 import { dashboardServerVersion } from "./state.js";
+import { THEMES, DEFAULT_THEME, themeDataBlock } from "../../src/config/themes.js";
+
+// Server-side injection of every theme's :root[data-theme="<id>"] CSS-var
+// override block so the client can switch themes instantly by setting
+// document.documentElement.dataset.theme. PREVENT-PI-004: pure local, no network.
+const THEME_STYLE_BLOCKS = THEMES.map(themeDataBlock).join("\n");
+const THEME_OPTIONS = THEMES.map((t) => `<option value="${t.id}">${t.label}</option>`).join("");
 
 export function dashboardHtml(tierName: string): string {
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="${DEFAULT_THEME}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>mega-compact dashboard</title>
 <style>
+  /* S32: CSS-variable skin. Base :root holds the CURRENT hardcoded hexes so the
+     default (data-theme="transparent") is visually identical to the pre-S32
+     dashboard. Each :root[data-theme="<id>"] block (injected below from
+     src/config/themes.ts) overrides the 4 theme vars (--bg/--fg/--accent/--mega).
+     Non-theme palette tokens (card bg, borders, muted text, meter colors) stay
+     fixed so visual parity is preserved under the transparent default. */
+  :root {
+    --bg: #0d1117;          /* page background (transparent theme -> transparent) */
+    --fg: #c9d1d9;          /* default foreground */
+    --accent: #3fb950;      /* accent (bars, ok values, on-bullets) */
+    --mega: #f0883e;        /* MEGA CACHE highlight */
+    --fg-strong: #f0f6fc;   /* headings, strong values */
+    --muted: #8b949e;       /* labels, sub-text */
+    --dim: #484f58;         /* timestamps, empty states */
+    --card-bg: #161b22;     /* card / events / table background */
+    --border: #30363d;      /* card / table borders */
+    --border-soft: #21262d; /* meter track, ev borders, table row borders */
+    --blue: #1f6feb;        /* tier pill, active tab */
+    --green-bar: #238636;   /* green meter fill, safe border */
+    --yellow-bar: #d29922;  /* yellow meter fill, na-bullet */
+    --red-bar: #f85149;     /* red meter fill, offline banner */
+    --purple: #a371f7;      /* recall events, repo model, cost h2 */
+    --purple-pill: #6e40c9; /* model pill bg */
+    --hover-row: #1c2128;   /* table row hover */
+    --link: #58a6ff;        /* repo-link hover */
+    --th-bg: #0d1117;       /* table header background */
+  }
+  /* html backdrop keeps the page dark even when --bg is transparent (transparent
+     theme) so there's no white flash — visually identical to the pre-S32 fill. */
+  html { background: #0d1117; }
+  ${THEME_STYLE_BLOCKS}
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #0d1117; color: #c9d1d9; padding: 24px; line-height: 1.5; }
-  h1 { font-size: 20px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; color: #f0f6fc; }
-  h1 .tier { background: #1f6feb; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: .5px; }
-  h1 .version-pill { background: #30363d; color: #8b949e; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: var(--bg); color: var(--fg); padding: 24px; line-height: 1.5; }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; color: var(--fg-strong); }
+  h1 .tier { background: var(--blue); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: .5px; }
+  h1 .version-pill { background: var(--border); color: var(--muted); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
-  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
-  .card.safe { border-color: #238636; }
-  .card.safe h2 { color: #3fb950; }
-  .safe-note { font-size: 12px; color: #8b949e; margin: 12px 0 0; line-height: 1.5; }
-  .value.ok { color: #3fb950; }
+  .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .card.safe { border-color: var(--green-bar); }
+  .card.safe h2 { color: var(--accent); }
+  .safe-note { font-size: 12px; color: var(--muted); margin: 12px 0 0; line-height: 1.5; }
+  .value.ok { color: var(--accent); }
   .label {
     cursor: help;
-    border-bottom: 1px dotted #484f58;
+    border-bottom: 1px dotted var(--dim);
   }
   .card.legend { grid-column: 1 / -1; }
-  .legend-list { margin: 0; padding-left: 18px; color: #c9d1d9; }
+  .legend-list { margin: 0; padding-left: 18px; color: var(--fg); }
   .legend-list li { margin-bottom: 8px; line-height: 1.5; }
-  .legend-list b { color: #f0f6fc; }
-  .legend-note { font-size: 12px; color: #8b949e; margin: 12px 0 0; font-style: italic; }
-  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #8b949e; margin-bottom: 12px; font-weight: 600; }
-  .meter-track { background: #21262d; border-radius: 4px; height: 20px; overflow: hidden; margin: 8px 0; }
+  .legend-list b { color: var(--fg-strong); }
+  .legend-note { font-size: 12px; color: var(--muted); margin: 12px 0 0; font-style: italic; }
+  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 12px; font-weight: 600; }
+  .meter-track { background: var(--border-soft); border-radius: 4px; height: 20px; overflow: hidden; margin: 8px 0; }
   .meter-fill { height: 100%; border-radius: 4px; transition: width .6s ease; min-width: 2px; }
-  .meter-green { background: #238636; }
-  .meter-yellow { background: #d29922; }
-  .meter-red { background: #f85149; }
-  .meter-label { font-size: 24px; font-weight: 700; color: #f0f6fc; }
-  .meter-sub { font-size: 12px; color: #8b949e; }
+  .meter-green { background: var(--green-bar); }
+  .meter-yellow { background: var(--yellow-bar); }
+  .meter-red { background: var(--red-bar); }
+  .meter-label { font-size: 24px; font-weight: 700; color: var(--fg-strong); }
+  .meter-sub { font-size: 12px; color: var(--muted); }
   .status-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 14px; }
   .status-row .bullet { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .bullet-on { background: #3fb950; box-shadow: 0 0 6px #3fb95088; }
-  .bullet-off { background: #484f58; }
-  .bullet-na { background: #d29922; }
-  .state-text { font-size: 13px; color: #8b949e; margin-top: 8px; font-family: monospace; }
+  .bullet-on { background: var(--accent); box-shadow: 0 0 6px #3fb95088; }
+  .bullet-off { background: var(--dim); }
+  .bullet-na { background: var(--yellow-bar); }
+  .state-text { font-size: 13px; color: var(--muted); margin-top: 8px; font-family: monospace; }
   .stat-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 14px; }
-  .stat-grid .label { color: #8b949e; }
-  .stat-grid .value { color: #f0f6fc; font-weight: 600; font-family: monospace; }
+  .stat-grid .label { color: var(--muted); }
+  .stat-grid .value { color: var(--fg-strong); font-weight: 600; font-family: monospace; }
   .conf-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 14px; }
-  .conf-grid .label { color: #8b949e; }
-  .conf-grid .value { color: #f0f6fc; font-family: monospace; }
-  .events { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
-  .events h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #8b949e; margin-bottom: 12px; font-weight: 600; }
+  .conf-grid .label { color: var(--muted); }
+  .conf-grid .value { color: var(--fg-strong); font-family: monospace; }
+  .events { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .events h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 12px; font-weight: 600; }
   .events-wrap { max-height: 240px; overflow-y: auto; font-family: monospace; font-size: 12px; }
-  .ev { padding: 3px 0; border-bottom: 1px solid #21262d; display: flex; gap: 8px; align-items: baseline; }
+  .ev { padding: 3px 0; border-bottom: 1px solid var(--border-soft); display: flex; gap: 8px; align-items: baseline; }
   .ev:last-child { border-bottom: none; }
   .ev-type { font-weight: 700; min-width: 70px; text-align: right; }
-  .ev-type-compact { color: #3fb950; }
-  .ev-type-recall { color: #a371f7; }
-  .ev-time { color: #484f58; font-size: 10px; min-width: 80px; }
-  .ev-detail { color: #8b949e; flex: 1; }
-  .updated { font-size: 11px; color: #484f58; margin-top: 16px; text-align: right; }
-  .empty { color: #484f58; font-style: italic; font-size: 13px; padding: 8px 0; }
-  .offline-banner { background: #f8514922; border: 1px solid #f85149; border-radius: 6px; padding: 10px 16px; margin-bottom: 16px; font-size: 13px; color: #f85149; display: none; }
+  .ev-type-compact { color: var(--accent); }
+  .ev-type-recall { color: var(--purple); }
+  .ev-time { color: var(--dim); font-size: 10px; min-width: 80px; }
+  .ev-detail { color: var(--muted); flex: 1; }
+  .updated { font-size: 11px; color: var(--dim); margin-top: 16px; text-align: right; }
+  .empty { color: var(--dim); font-style: italic; font-size: 13px; padding: 8px 0; }
+  .offline-banner { background: #f8514922; border: 1px solid var(--red-bar); border-radius: 6px; padding: 10px 16px; margin-bottom: 16px; font-size: 13px; color: var(--red-bar); display: none; }
   .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
-  .tab { background: #161b22; color: #8b949e; border: 1px solid #30363d; border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s ease; }
-  .tab:hover { color: #c9d1d9; border-color: #484f58; }
-  .tab.active { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+  .tab { background: var(--card-bg); color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s ease; }
+  .tab:hover { color: var(--fg); border-color: var(--dim); }
+  .tab.active { background: var(--blue); color: #fff; border-color: var(--blue); }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
+  /* S32: header settings strip (game-mode toggle + theme + TUI display-mode) */
+  .settings-strip { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; padding: 10px 14px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+  .settings-strip label { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+  .settings-strip input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+  .settings-strip select { background: var(--th-bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 13px; cursor: pointer; }
+  .settings-strip select:hover { border-color: var(--dim); }
   .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 20px; }
-  .summary-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
-  .summary-card .num { font-size: 24px; font-weight: 700; color: #f0f6fc; }
-  .summary-card .lbl { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: .5px; margin-top: 4px; }
-  table.repos { width: 100%; border-collapse: collapse; background: #161b22; border: 1px solid #30363d; border-radius: 8px; overflow: hidden; }
-  table.repos th, table.repos td { text-align: left; padding: 10px 14px; font-size: 13px; border-bottom: 1px solid #21262d; }
-  table.repos th { color: #8b949e; text-transform: uppercase; letter-spacing: .5px; font-size: 11px; background: #0d1117; }
-  table.repos td.num { font-family: monospace; color: #f0f6fc; text-align: right; }
+  .summary-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .summary-card .num { font-size: 24px; font-weight: 700; color: var(--fg-strong); }
+  .summary-card .lbl { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-top: 4px; }
+  table.repos { width: 100%; border-collapse: collapse; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  table.repos th, table.repos td { text-align: left; padding: 10px 14px; font-size: 13px; border-bottom: 1px solid var(--border-soft); }
+  table.repos th { color: var(--muted); text-transform: uppercase; letter-spacing: .5px; font-size: 11px; background: var(--th-bg); }
+  table.repos td.num { font-family: monospace; color: var(--fg-strong); text-align: right; }
   table.repos tr:last-child td { border-bottom: none; }
-  table.repos tr:hover td { background: #1c2128; }
-  .repo-model { color: #a371f7; }
-  .repo-none { color: #484f58; font-style: italic; }
-  .updated { font-size: 11px; color: #484f58; margin-top: 16px; text-align: right; }
-  .model-pill { background: #6e40c9; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: .5px; }
-  .card.cost h2 { color: #a371f7; }
-  .cost-usd { font-size: 22px; font-weight: 700; color: #3fb950; }
-  .cost-sub { font-size: 12px; color: #8b949e; margin-top: 4px; }
+  table.repos tr:hover td { background: var(--hover-row); }
+  .repo-model { color: var(--purple); }
+  .repo-none { color: var(--dim); font-style: italic; }
+  .updated { font-size: 11px; color: var(--dim); margin-top: 16px; text-align: right; }
+  .model-pill { background: var(--purple-pill); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: .5px; }
+  .card.cost h2 { color: var(--purple); }
+  .cost-usd { font-size: 22px; font-weight: 700; color: var(--accent); }
+  .cost-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
   .repo-link { cursor: pointer; }
-  .repo-link:hover td { color: #58a6ff; }
+  .repo-link:hover td { color: var(--link); }
   .repo-detail { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 50; }
   .repo-detail.open { display: flex; }
-  .repo-detail-box { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 24px; width: 560px; max-width: 92vw; max-height: 86vh; overflow-y: auto; }
-  .repo-detail-box h2 { font-size: 14px; color: #f0f6fc; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
-  .repo-close { cursor: pointer; color: #8b949e; font-size: 20px; line-height: 1; border: none; background: none; padding: 0 4px; }
-  .repo-close:hover { color: #f0f6fc; }
-  .repo-path { font-size: 11px; color: #484f58; word-break: break-all; margin: -8px 0 12px; }
+  .repo-detail-box { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 24px; width: 560px; max-width: 92vw; max-height: 86vh; overflow-y: auto; }
+  .repo-detail-box h2 { font-size: 14px; color: var(--fg-strong); margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+  .repo-close { cursor: pointer; color: var(--muted); font-size: 20px; line-height: 1; border: none; background: none; padding: 0 4px; }
+  .repo-close:hover { color: var(--fg-strong); }
+  .repo-path { font-size: 11px; color: var(--dim); word-break: break-all; margin: -8px 0 12px; }
 </style>
 </head>
 <body>
@@ -104,6 +148,12 @@ export function dashboardHtml(tierName: string): string {
 <div class="offline-banner" id="offline-banner">Dashboard data unavailable — waiting for a pi session to write snapshot...</div>
 
 <h1><span>mega-compact</span><span class="tier" id="hdr-tier">${tierName}</span><span class="version-pill">v${dashboardServerVersion}</span><span class="model-pill" id="hdr-model">—</span></h1>
+
+<div class="settings-strip">
+  <label title="Turn game mode on/off (themes the widget + dashboard)"><input type="checkbox" id="set-game-mode"> Game mode</label>
+  <label title="Visual theme (applies instantly)">Theme <select id="set-theme">${THEME_OPTIONS}</select></label>
+  <label title="TUI widget display density">TUI <select id="set-tui-mode"><option value="full">Full</option><option value="minimal">Minimal</option></select></label>
+</div>
 
 <nav class="tabs">
   <button class="tab active" data-tab="current">Current repo</button>
@@ -237,7 +287,7 @@ export function dashboardHtml(tierName: string): string {
   <div class="events-wrap" id="events"><div class="empty">connecting…</div></div>
 </div>
 
-<h2 style="margin-top:24px;font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px">All Repositories</h2>
+<h2 style="margin-top:24px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">All Repositories</h2>
 <table class="repos">
   <thead>
     <tr>
@@ -319,7 +369,7 @@ export function dashboardHtml(tierName: string): string {
     <div class="summary-card"><div class="num" id="sm-bytes">0 B</div><div class="lbl">Compressed-Original</div></div>
   </div>
 
-  <h2 style="margin-top:24px;font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px">Savings by Model</h2>
+  <h2 style="margin-top:24px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Savings by Model</h2>
   <p class="legend-note" style="margin-bottom:10px">How much context &amp; cost mega-compact has reclaimed, grouped by the model you were running. Compression ratio reflects workload/content, not model quality.</p>
   <table class="repos">
     <thead>
@@ -732,6 +782,35 @@ export function dashboardHtml(tierName: string): string {
   }
   pollServers();
   setInterval(pollServers, 5000);
+
+  // --- Game-mode settings strip (S32) -------------------------------------
+  // Polls GET /api/game-state and applies the row to the settings controls +
+  // the document theme. On any control change, PUTs a partial patch back. The
+  // dashboard server is a detached child with no MegaRuntime ref, so it reads /
+  // writes the game_state SQLite row directly; the in-process MegaRuntime picks
+  // up the change via its fs.watch cache-eviction watcher (S32).
+  var gmCheckbox = document.getElementById('set-game-mode');
+  var gmTheme = document.getElementById('set-theme');
+  var gmTui = document.getElementById('set-tui-mode');
+
+  function applyGameState(gs) {
+    if (!gs) return;
+    if (gs.theme) document.documentElement.dataset.theme = gs.theme;
+    if (gmCheckbox) gmCheckbox.checked = !!gs.game_mode_on;
+    if (gmTheme) gmTheme.value = gs.theme || 'transparent';
+    if (gmTui) gmTui.value = gs.tui_display_mode || 'full';
+  }
+  function pollGameState() {
+    fetch('/api/game-state').then(function(r) { return r.json(); }).then(applyGameState).catch(function() {}); // guardrails-allow PREVENT-PI-004: browser-side fetch in dashboard HTML template (not Node runtime)
+  }
+  function putGameState(patch) {
+    fetch('/api/game-state', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) }).then(function(r) { return r.json(); }).then(applyGameState).catch(function() {}); // guardrails-allow PREVENT-PI-004: browser-side fetch in dashboard HTML template (not Node runtime)
+  }
+  if (gmCheckbox) gmCheckbox.addEventListener('change', function() { putGameState({ game_mode_on: gmCheckbox.checked }); });
+  if (gmTheme) gmTheme.addEventListener('change', function() { putGameState({ theme: gmTheme.value }); });
+  if (gmTui) gmTui.addEventListener('change', function() { putGameState({ tui_display_mode: gmTui.value }); });
+  pollGameState();
+  setInterval(pollGameState, 5000);
 
   // --- Tab switching ------------------------------------------------------
   var tabs = document.querySelectorAll('.tab');

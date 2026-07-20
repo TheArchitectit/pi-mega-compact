@@ -108,3 +108,17 @@ export function nextTheme(current: string): string {
   if (i < 0) return DEFAULT_THEME;
   return THEME_IDS[(i + 1) % THEME_IDS.length]!;
 }
+
+/** CSS variable declarations for a theme's CSS palette. `bg` is `null` for the
+ *  transparent theme → `--bg: transparent` (no page fill, accents only). Pure,
+ *  no pi types. */
+export function themeCssVars(theme: Theme): string {
+  const bg = theme.css.bg ?? "transparent";
+  return `--bg: ${bg}; --fg: ${theme.css.fg}; --accent: ${theme.css.accent}; --mega: ${theme.css.mega};`;
+}
+
+/** A `:root[data-theme="<id>"]` override block carrying the theme's CSS vars,
+ *  for client-side instant theme switching. Pure, no pi types. */
+export function themeDataBlock(theme: Theme): string {
+  return `:root[data-theme="${theme.id}"]{ ${themeCssVars(theme)} }`;
+}

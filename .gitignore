@@ -39,3 +39,5 @@ mega-compact-vector/
 !.crew/graphs/
 !.crew/artifacts/.gitkeep
 !.crew/graphs/.gitkeep
+# agent temp scratch dir
+tmp/

@@ -115,7 +115,7 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
     // guardrails-allow PREVENT-PI-004: optional, user-triggered /dashboard localhost server (loopback-only) — CORS open for local browser access
     // CORS for local access
     res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Methods", "GET, PUT, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
     if (req.method === "OPTIONS") {
@@ -282,6 +282,85 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
         if (pollInterval) clearInterval(pollInterval);
         watcher?.close();
       });
+      return;
+    }
+
+    // /api/game-state — S32 game-mode settings (game_mode_on / theme /
+    // tui_display_mode). GET returns the current row; PUT applies a partial
+    // patch (validated) and returns the post-write row. The dashboard server is
+    // a detached child with no MegaRuntime ref, so it reads/writes the
+    // game_state SQLite row directly; the in-process MegaRuntime picks up the
+    // change via its fs.watch cache-eviction watcher. PREVENT-PI-004: loopback.
+    if (req.url?.startsWith("/api/game-state")) {
+      const gsReq = createRequire(import.meta.url);
+      const { getGameState, setGameState } = gsReq("../../src/store/sqlite.js") as typeof import("../../src/store/sqlite.js");
+      const { isValidTheme } = gsReq("../../src/config/themes.js") as typeof import("../../src/config/themes.js");
+      if (req.method === "GET") {
+        try {
+          const gs = getGameState(stateDir); // guardrails-allow PREVENT-PI-004: local SQLite read (loopback dashboard)
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(gs));
+        } catch (e) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "game_state_unavailable", detail: String(e) }));
+        }
+        return;
+      }
+      if (req.method === "PUT") {
+        // Read + parse the JSON body (capped — the patch is tiny). The handler
+        // is sync, so drain the stream via data/end listeners then continue.
+        let body = "";
+        let tooBig = false;
+        req.on("data", (chunk: Buffer) => { // guardrails-allow PREVENT-PI-004: loopback dashboard request body (local)
+          if (body.length > 65536) { tooBig = true; return; }
+          body += chunk.toString();
+        });
+        req.on("end", () => {
+          if (tooBig) {
+            res.writeHead(413, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "body_too_large" }));
+            return;
+          }
+          let patch: Record<string, unknown> = {};
+          try { patch = body ? JSON.parse(body) : {}; } catch {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "invalid_json" }));
+            return;
+          }
+        // Validate the patch fields (unknown keys ignored; invalid values -> 400).
+        const clean: { game_mode_on?: boolean; theme?: string; tui_display_mode?: "full" | "minimal" } = {};
+        let bad = false;
+        if (patch.game_mode_on != null) {
+          if (typeof patch.game_mode_on !== "boolean") bad = true;
+          else clean.game_mode_on = patch.game_mode_on;
+        }
+        if (patch.theme != null) {
+          if (typeof patch.theme !== "string" || !isValidTheme(patch.theme)) bad = true;
+          else clean.theme = patch.theme;
+        }
+        if (patch.tui_display_mode != null) {
+          if (patch.tui_display_mode !== "full" && patch.tui_display_mode !== "minimal") bad = true;
+          else clean.tui_display_mode = patch.tui_display_mode;
+        }
+        if (bad) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid_patch" }));
+          return;
+        }
+          try {
+            const gs = setGameState(clean, stateDir); // guardrails-allow PREVENT-PI-004: local SQLite write (loopback dashboard)
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify(gs));
+          } catch (e) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "game_state_write_failed", detail: String(e) }));
+          }
+        });
+        return;
+      }
+      // Any other method on /api/game-state → 405.
+      res.writeHead(405, { "Content-Type": "application/json" }); // guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
+      res.end(JSON.stringify({ error: "method_not_allowed" }));
       return;
     }
 

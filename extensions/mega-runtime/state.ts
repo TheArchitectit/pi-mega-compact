@@ -57,6 +57,7 @@ import {
 	type WidgetData,
 } from "./widget.js";
 import { getTheme } from "../../src/config/themes.js";
+import { watch, type FSWatcher } from "node:fs";
 
 export class MegaRuntime {
 	config: MegaConfig;
@@ -143,6 +144,17 @@ export class MegaRuntime {
 	// write) so the widget picks up theme/mode/level changes live without
 	// re-querying the DB on every render frame.
 	private cachedGameState: GameState | undefined;
+	// S32: fs.watch on the current repo's sqlite.db so cross-process writes
+	// (e.g. the dashboard server's PUT /api/game-state, which runs as a detached
+	// child with no MegaRuntime ref) evict the cached game-state memo. Without
+	// this, /mega-game's in-process bumpGameState() is the only eviction trigger
+	// and the widget would keep showing stale theme/mode/toggle after a dashboard
+	// edit until a restart. The watcher tracks currentStateDir — closed + re-opened
+	// by ensureGameStateWatcher() on every bindRepo repo switch. Non-fatal: any
+	// fs.watch failure (missing file / platform issue) is swallowed; the next
+	// getCachedGameState() snapshot re-queries the DB anyway.
+	private gameStateWatcher?: FSWatcher;
+	private gameStateWatchDir?: string;
 
 	/**
 	 * DIAG counters for the "team run doesn't relieve context" investigation.
@@ -244,6 +256,7 @@ export class MegaRuntime {
 		});
 		this.dashboard = new Dashboard(config.stateDir);
 		this.currentStateDir = config.stateDir;
+		this.ensureGameStateWatcher();
 	}
 
 	// ---- per-repo binding -----------------------------------------------------
@@ -267,6 +280,9 @@ export class MegaRuntime {
 		// stateDir), so evict the memo on every repo switch; the next widget render
 		// re-queries lazily via getCachedGameState().
 		this.cachedGameState = undefined;
+		// S32: re-target the fs.watch cache-eviction watcher at the NEW stateDir's
+		// sqlite.db so cross-process writes (dashboard server) still evict the memo.
+		this.ensureGameStateWatcher();
 		this.store = new VectorStore({
 			dedupSim: this.config.dedupSim,
 			stateDir: dir,
@@ -775,6 +791,43 @@ export class MegaRuntime {
 	/** S21: state dir of the currently bound repo (where memories live). */
 	getStateDir(): string {
 		return this.currentStateDir;
+	}
+
+	/** S32: (re)target the fs.watch cache-eviction watcher at the current
+	 *  stateDir's sqlite.db. Called from the constructor + every bindRepo repo
+	 *  switch so the watcher always tracks the NEW repo's db file. If a watcher
+	 *  already exists for this dir, no-op; if the dir changed, close the old one
+	 *  first. fs.watch can throw on a missing file / platform issues — wrapped
+	 *  non-fatal; the next getCachedGameState() re-queries the DB anyway. */
+	private ensureGameStateWatcher(): void {
+		if (this.gameStateWatcher && this.gameStateWatchDir === this.currentStateDir) {
+			return;
+		}
+		if (this.gameStateWatcher) {
+			try { this.gameStateWatcher.close(); } catch { /* non-fatal */ }
+			this.gameStateWatcher = undefined;
+			this.gameStateWatchDir = undefined;
+		}
+		try {
+			this.gameStateWatcher = watch(
+				join(this.currentStateDir, "sqlite.db"),
+				() => { this.cachedGameState = undefined; },
+			);
+			this.gameStateWatchDir = this.currentStateDir;
+		} catch {
+			/* non-fatal: missing file / platform issue — next snapshot re-queries */
+		}
+	}
+
+	/** S32: release the fs.watch game-state watcher. Called when the runtime is
+	 *  torn down (no existing dispose path — the process exit reclaims the fd,
+	 *  but explicit close is correct for any in-process reload / test reuse). */
+	dispose(): void {
+		if (this.gameStateWatcher) {
+			try { this.gameStateWatcher.close(); } catch { /* non-fatal */ }
+			this.gameStateWatcher = undefined;
+			this.gameStateWatchDir = undefined;
+		}
 	}
 
 	/** S31: the cached game-mode state (game_mode_on/theme/tui_display_mode).

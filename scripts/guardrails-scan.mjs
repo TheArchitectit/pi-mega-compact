@@ -63,6 +63,7 @@ function walk(dir, acc = []) {
 const PI004_EXCLUSIONS = [
   "extensions/dashboard-server.ts",
   "extensions/dashboard-server.test.ts",
+  "extensions/dashboard-server-s32.test.ts",
   "extensions/DASHBOARD.md",
 ];
 

@@ -11,6 +11,8 @@ import {
   getTheme,
   isValidTheme,
   nextTheme,
+  themeCssVars,
+  themeDataBlock,
 } from "./themes.js";
 
 describe("themes (S30)", () => {
@@ -84,5 +86,31 @@ describe("themes (S30)", () => {
 
   it("nextTheme falls back to DEFAULT_THEME for unknown current", () => {
     assert.equal(nextTheme("garbage"), DEFAULT_THEME);
+  });
+});
+
+describe("themeCssVars / themeDataBlock (S32)", () => {
+  it("themeCssVars emits --bg/--fg/--accent/--mega for a normal theme", () => {
+    const t = getTheme("retro")!;
+    const vars = themeCssVars(t);
+    assert.match(vars, /--bg: #003300;/);
+    assert.match(vars, /--fg: #33ff33;/);
+    assert.match(vars, /--accent: #00ff41;/);
+    assert.match(vars, /--mega: #39ff14;/);
+  });
+
+  it("themeCssVars maps null bg to 'transparent'", () => {
+    const t = getTheme("transparent")!;
+    const vars = themeCssVars(t);
+    assert.match(vars, /--bg: transparent;/);
+    assert.match(vars, /--fg: #c9d1d9;/);
+  });
+
+  it("themeDataBlock wraps vars in a :root[data-theme=\"<id\"] selector", () => {
+    const t = getTheme("cyan-neon")!;
+    const block = themeDataBlock(t);
+    assert.equal(block.startsWith(':root[data-theme="cyan-neon"]{ '), true);
+    assert.equal(block.endsWith(" }"), true);
+    assert.ok(block.includes("--accent: #22d3ee;"));
   });
 });
