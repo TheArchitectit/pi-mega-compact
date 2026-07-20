@@ -18,7 +18,7 @@
  *   - mega-runtime.ts       shared live state (MegaRuntime) + widget + model capture
  *   - mega-pipeline.ts      runCompact (Trident+persist) + doRecall (Layer 5)
  *   - mega-commands.ts      data/inspection slash commands
- *   - mega-game-cmds.ts     /mega-game toggle + theme + TUI display mode
+ *   - mega-game-cmds.ts     /mega-compact-settings (+ /mega-game alias) toggle + theme + TUI display mode
  *   - mega-dashboard-cmds.ts  localhost dashboard server lifecycle commands
  *   - mega-events.ts        pi lifecycle event handlers
  *

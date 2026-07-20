@@ -126,7 +126,7 @@
 
 | Keyword | Document | Location |
 | --------- | ---------- | ---------- |
-| game mode, /mega-game, themes, TUI widget, achievements | [specs/game-mode-sprint-plan.md](specs/game-mode-sprint-plan.md) | docs/specs/ |
+| game mode, /mega-compact-settings, themes, TUI widget, achievements | [specs/game-mode-sprint-plan.md](specs/game-mode-sprint-plan.md) | docs/specs/ |
 | game-mode design (§3b oopsie, §9b achievements, themes) | [game-mode-design.md](game-mode-design.md) | docs/ |
 | themes (6 palettes, hex+ANSI) | [config/themes.ts](../src/config/themes.ts) | src/config/ |
 | game_scores / game_state / game_achievements tables | [sqlite/schema.ts](../src/store/sqlite/schema.ts) | src/store/sqlite/ |

@@ -22,10 +22,16 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
   // upgrade instead of reuse it.
   let SERVER_VERSION = "0.0.0";
   try {
-    // dashboard-server.js lives at <pkg>/dist/extensions/, so package.json is
-    // two levels up. Guard each candidate so a dev-checkout layout still works.
+    // Since v0.7.9 (8821ef3) dashboard-server.js lives at
+    // <pkg>/dist/extensions/dashboard-server/, so package.json is THREE levels
+    // up. Keep the two- and one-level-up candidates as fallbacks for flatter
+    // dev-checkout layouts. Guard each candidate so a missing file is skipped.
     const here = dirname(fileURLToPath(import.meta.url));
-    const candidates = [join(here, "..", "..", "package.json"), join(here, "..", "package.json")];
+    const candidates = [
+      join(here, "..", "..", "..", "package.json"),
+      join(here, "..", "..", "package.json"),
+      join(here, "..", "package.json"),
+    ];
     for (const p of candidates) {
       if (!existsSync(p)) continue;
       const pkg = JSON.parse(readFileSync(p, "utf-8"));

@@ -74,13 +74,13 @@ fresh install):
      peak overshoot % + the turn ts (QA10 already decided the trophy row;
      this names it).
    - Before the first overshoot ever happens: the dashboard Game Mode tab and
-     the `/mega-game` status show **nothing** about it — no locked tile, no
+     the `/mega-compact-settings` status show **nothing** about it — no locked tile, no
      "???" teaser, no hint it exists. It's a true secret.
    - After the first overshoot: a **"🏆 Opie's Wild Ride"** tile/banner
      appears on the Game Mode tab with the peak % + when it first happened.
      It stays (it's a one-time unlock) and can show the best (highest) peak
      across all sessions.
-   - `/mega-game` bare status stays terse — the unlock only surfaces in the
+   - `/mega-compact-settings` bare status stays terse — the unlock only surfaces in the
      dashboard, not the TUI command output (keeps the command clean).
 
 Why both: the gag is the *moment* (rewards the overshoot when it happens),
@@ -140,12 +140,12 @@ dashboard panel), all reading/writing the same SQLite state so they stay in sync
    level + cache %, one line, no bars/flair). Independent of which theme is
    active; affects the TUI widget only, not the dashboard.
 
-- **TUI command** (`/mega-game`, subcommand flags, within pi's command model):
-  - `/mega-game` -> print current state: `{ game_mode, theme, tui_display_mode }`
-  - `/mega-game on` / `/mega-game off` -> toggle game mode
-  - `/mega-game theme <name>` -> set theme by name
-  - `/mega-game theme next` -> cycle to next theme
-  - `/mega-game tui full` / `/mega-game tui minimal` -> set TUI display mode
+- **TUI command** (`/mega-compact-settings`, subcommand flags, within pi's command model; `/mega-compact-settings` is a backward-compat alias):
+  - `/mega-compact-settings` -> print current state: `{ game_mode, theme, tui_display_mode }`
+  - `/mega-compact-settings on` / `/mega-compact-settings off` -> toggle game mode
+  - `/mega-compact-settings theme <name>` -> set theme by name
+  - `/mega-compact-settings theme next` -> cycle to next theme
+  - `/mega-compact-settings tui full` / `/mega-compact-settings tui minimal` -> set TUI display mode
 - **Dashboard panel**: a Settings/panel section with all three toggles
   (game-mode switch + theme picker + TUI display-mode picker). Writes go to the
   same SQLite row(s) as the TUI command.

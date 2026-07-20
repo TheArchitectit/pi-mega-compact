@@ -48,7 +48,7 @@ function makeHarness(stateDir: string): Harness {
   return { commands, notifies, ctx };
 }
 
-describe("/mega-game (S30)", () => {
+describe("/mega-compact-settings (S30; /mega-game alias)", () => {
   let dir: string;
   before(() => {
     dir = mkdtempSync(join(tmpdir(), "mc-megagame-"));
@@ -66,6 +66,12 @@ describe("/mega-game (S30)", () => {
     await h.commands["mega-game"].handler(args, h.ctx);
     return h.notifies;
   }
+
+  it("registers /mega-compact-settings as primary + /mega-game as alias", async () => {
+    const h = makeHarness(dir);
+    assert.ok(h.commands["mega-compact-settings"], "primary registered");
+    assert.ok(h.commands["mega-game"], "alias registered");
+  });
 
   it("bare command prints current (default) state", async () => {
     const lines = await run("");

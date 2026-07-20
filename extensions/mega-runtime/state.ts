@@ -846,13 +846,27 @@ export class MegaRuntime {
 			this.gameStateWatchDir = undefined;
 		}
 		try {
+			// Watch the state DIR (not just sqlite.db) and filter by filename.
+			// Why: the store is WAL-mode (openStore sets PRAGMA journal_mode=WAL).
+			// Cross-process writes (dashboard server child) append to sqlite.db-wal
+			// and do NOT modify sqlite.db until a checkpoint — and a long-lived
+			// parent connection (VectorStore + dashboard readers) keeps the WAL
+			// uncheckpointed, so a watcher on sqlite.db alone never fires and
+			// cachedGameState stays stale (theme stuck after a dashboard edit).
+			// Watching the dir + matching sqlite.db* catches the main db, the -wal
+			// sidecar, and -shm, so the memo evicts on any cross-process write. The
+			// filter also excludes events.log / *.log noise in the same dir.
 			this.gameStateWatcher = watch(
-				join(this.currentStateDir, "sqlite.db"),
-				() => { this.cachedGameState = undefined; },
+				this.currentStateDir,
+				(_eventType, filename) => {
+					if (typeof filename === "string" && filename.startsWith("sqlite.db")) {
+						this.cachedGameState = undefined;
+					}
+				},
 			);
 			this.gameStateWatchDir = this.currentStateDir;
 		} catch {
-			/* non-fatal: missing file / platform issue — next snapshot re-queries */
+			/* non-fatal: missing dir / platform issue — next snapshot re-queries */
 		}
 	}
 

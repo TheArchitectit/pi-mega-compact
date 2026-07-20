@@ -83,14 +83,16 @@ export function registerContextHandler(
 	// Legacy: MEGACOMPACT_LEGACY_DURABLE_TRIM=true restores the v0.4.28 ctx.compact
 	// path (kept one release as rollback).
 	pi.on("context", async (event: ContextEvent, ctx: ExtensionContext) => {
-		if (!config.auto) return;
 		const usage = ctx.getContextUsage();
 		const pct = usage?.percent;
-		// Always track context for the dashboard, even if we return early below.
+		// Always track context for the dashboard/widget, even when auto is off.
+		// (v0.8 regression: !config.auto gate sat above this, leaving ctx stats
+		// null -> widget '?% / ?/?' when auto disabled. Track first, THEN gate.)
 		runtime.lastCtxTokens = usage?.tokens ?? null;
 		runtime.lastCtxPercent = pct ?? null;
 		runtime.lastCtxWindow = usage?.contextWindow ?? 0;
 		runtime.snapshot(ctx);
+		if (!config.auto) return;
 
 		const messages = event.messages;
 		const view = runtime.engineView(messages);

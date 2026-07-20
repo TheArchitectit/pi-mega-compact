@@ -2,18 +2,18 @@
 
 ## v0.8.0 (unreleased) — Game Mode
 
-The **Game Mode** release (sprints S30–S35) ships a full progression layer on top of compaction: a `/mega-game` command, six themes, a minimal/full TUI widget with player levels + the MEGA CACHE overshoot easter egg, a dashboard Game Mode / High Score tab with live leaderboards, and a 9-achievement system (8 visible + 1 hidden easter egg = Opie's Wild Ride). All local-only (PREVENT-PI-004); additive — no migration.
+The **Game Mode** release (sprints S30–S35) ships a full progression layer on top of compaction: a `/mega-compact-settings` command (with `/mega-game` as a backward-compat alias), six themes, a minimal/full TUI widget with player levels + the MEGA CACHE overshoot easter egg, a dashboard Game Mode / High Score tab with live leaderboards, and a 9-achievement system (8 visible + 1 hidden easter egg = Opie's Wild Ride). All local-only (PREVENT-PI-004); additive — no migration.
 
 ### Added (headline)
 
-- **`/mega-game` command.** Toggle game mode on/off, pick a theme, switch TUI display mode, and list unlocked achievements: `/mega-game [on|off|theme [id|next]|tui [full|minimal]|achievements]`. State persists in a new `game_state` SQLite row (global across repos).
+- **`/mega-compact-settings` command.** Toggle game mode on/off, pick a theme, switch TUI display mode, and list unlocked achievements: `/mega-compact-settings [on|off|theme [id|next]|tui [full|minimal]|achievements]` (the `/mega-game` alias still works). State persists in a new `game_state` SQLite row (global across repos).
 - **Six themes** (`src/config/themes.ts`): transparent (default), neon, retro, ocean, forest, cyber. Concrete hex+ANSI palettes threaded through the widget + dashboard as CSS variables.
 - **TUI widget (full + minimal).** Full mode: the legacy stats panel themed + a `LVL n` accent prefix (level-up ANSI blink) + a MEGA CACHE flare (the oopsie gag: "oops, you cached so hard the dedup caught fire"). Minimal mode: one-line `LVL n | cache NN%`. Both hidden when game mode is off (legacy panel byte-for-byte).
 - **Player levels.** `turnLevel(n) = floor(log2(n+1))+1` — one level per doubling of turns. Level-up fires a one-cycle ANSI blink on the TUI + a CSS pulse on the dashboard cache bar.
 - **MEGA CACHE easter egg (§3b).** When the dedup hit rate exceeds 100% (real ratio > 1), two hidden-until-triggered effects fire: (1) a transient per-turn oopsie toast (TUI + dashboard), and (2) a persisted `mega_cache` trophy row that unlocks the "🏆 Opie's Wild Ride" hidden tile. Before the first overshoot: nothing — no locked tile, no `???` teaser.
 - **Dashboard Game Mode tab (S34).** Per-metric leaderboards (cache per-repo, dedupe global, turns global, repos badge), a MEGA CACHE banner, the Opie hidden-unlock tile, a transient oopsie toast, level-up CSS pulse, + `GET /api/game-scores?metric=<m>&limit=<n>` (metric validated against the allow-list, 400/405 guarded, loopback-only).
 - **Scoring (S33).** `game_scores` table + `recordScore`/`leaderboard` + `turn_end`/`session_compact` hooks (turns, cache, dedupe-delta, mega_cache trophy). All gated behind `game_mode_on`; best-effort + non-fatal.
-- **Achievements system (S35).** `game_achievements` table seeded with 9 achievements on first open (idempotent). A pure `evaluateAchievements(scores)` fn evaluates the 9 conditions over the leaderboard aggregates; newly-unlocked fire a one-time toast (TUI ANSI accent + dashboard tile pulse). Hidden achievements render NOTHING until unlocked (`hidden=1 AND unlocked_at IS NULL`) — same invariant as Opie. `GET /api/achievements` serves the tile row; `/mega-game achievements` lists unlocks tersely.
+- **Achievements system (S35).** `game_achievements` table seeded with 9 achievements on first open (idempotent). A pure `evaluateAchievements(scores)` fn evaluates the 9 conditions over the leaderboard aggregates; newly-unlocked fire a one-time toast (TUI ANSI accent + dashboard tile pulse). Hidden achievements render NOTHING until unlocked (`hidden=1 AND unlocked_at IS NULL`) — same invariant as Opie. `GET /api/achievements` serves the tile row; `/mega-compact-settings achievements` (alias `/mega-game achievements`) lists unlocks tersely.
 
 ### Achievement list
 
