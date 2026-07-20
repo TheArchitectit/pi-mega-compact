@@ -14,6 +14,9 @@ import {
 	memoryReviewCadence,
 	type MegaConfig,
 } from "../mega-config.js";
+import { recordScore } from "../../src/store/sqlite.js";
+import { isMegaCache } from "../../src/game/scoring.js";
+import { resolveRepoRoot } from "../mega-config.js";
 
 /** Register agent/turn tracking event handlers. */
 export function registerAgentHandlers(
@@ -175,6 +178,46 @@ export function registerAgentHandlers(
 	pi.on("turn_end", async (event, ctx) => {
 		runtime.dashboard.event("turn_end", { turnIndex: event.turnIndex });
 		runtime.snapshot(ctx);
+
+		// S33: game-mode scoring — record turns + cache metrics per repo, and arm
+		// the MEGA CACHE flare (oopsie gag) when the real dedup hit rate exceeds
+		// 100%. Gated behind game_mode_on (no scoring when off). Best-effort +
+		// non-fatal: a scoring failure must never break the agent loop (G6).
+		try {
+			if (runtime.getCachedGameState().game_mode_on) {
+				const repo = resolveRepoRoot(ctx.cwd) ?? runtime.currentStateDir;
+				const st = runtime.store.stats(runtime.rt.sessionId);
+				const cachePct = st.dedupHitRate * 100;
+				const modelId = runtime.currentModel?.modelId ?? "unknown";
+				recordScore(runtime.currentStateDir, {
+					repo_root: repo,
+					metric: "turns",
+					value: runtime.currentTurn,
+					meta: { modelId, turnIndex: event.turnIndex },
+				});
+				recordScore(runtime.currentStateDir, {
+					repo_root: repo,
+					metric: "cache",
+					value: cachePct,
+					meta: {
+						hits: st.dedupCollapsed + runtime.rt.recallInjections,
+						lookups: st.checkpointCount,
+					},
+				});
+				// MEGA CACHE: the real ratio >1 (dedupHitRate>1) → trophy row + flare.
+				if (isMegaCache(cachePct)) {
+					recordScore(runtime.currentStateDir, {
+						repo_root: repo,
+						metric: "mega_cache",
+						value: cachePct,
+						meta: { peakPct: cachePct, firstSeenTs: Date.now() },
+					});
+					runtime.armMegaCacheFlare(cachePct);
+				}
+			}
+		} catch {
+			/* non-fatal: scoring must never break the agent loop */
+		}
 
 		// S20+S24: auto-review the conversation and persist durable memories. The
 		// review cadence scales with pressure (memoryReviewCadence): as context

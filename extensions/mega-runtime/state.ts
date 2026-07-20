@@ -58,6 +58,7 @@ import {
 } from "./widget.js";
 import { getTheme } from "../../src/config/themes.js";
 import { watch, type FSWatcher } from "node:fs";
+import { turnLevel } from "../../src/game/scoring.js";
 
 export class MegaRuntime {
 	config: MegaConfig;
@@ -92,6 +93,14 @@ export class MegaRuntime {
 	// Agent tracking for real-time widget updates
 	activeAgents = 0;
 	currentTurn = 0;
+	// S33: transient MEGA CACHE flare flag (armed by the turn_end scoring hook
+	// when cachePct > 100). Copied into widgetData.megaCacheFlare on the next
+	// snapshot() so the widget renders the oopsie gag, then reset (one cycle).
+	megaCacheFlare = false;
+	megaCacheFlarePct = 0;
+	// S33: last cumulative dedup-collapsed count seen by the session_compact
+	// hook, so we only record the DELTA as the dedupe score (leaderboard sums).
+	lastDedupCollapsed = 0;
 	// Recall block produced by auto-inline (resume/branch) that the next
 	// before_agent_start should prepend to the system prompt. Unset after use.
 	pendingRecallBlock: string | undefined;
@@ -594,8 +603,13 @@ export class MegaRuntime {
 				tuiMode: gs.tui_display_mode,
 				level: this.getTurnLevel(),
 				cachePct,
-				megaCacheFlare: false,
+				megaCacheFlare: this.megaCacheFlare,
+				megaCacheFlarePct: this.megaCacheFlarePct,
 			};
+			// S33: consume the flare after copying it into widgetData so it fires
+			// for exactly one render cycle (the gag flares once, then clears).
+			this.megaCacheFlare = false;
+			this.megaCacheFlarePct = 0;
 			// Auto-fit: register a factory so pi re-renders the panel at the REAL
 			// terminal width every frame (tui.columns), instead of guessing with
 			// process.stdout.columns. buildWidgetLines reads this.widgetData live.
@@ -857,10 +871,17 @@ export class MegaRuntime {
 		this.cachedGameState = undefined;
 	}
 
-	/** S31: player level for game mode. STUB — returns 1 until S33 wires the
-	 *  real scoring hook (compaction count / cache-hit milestones). */
+	/** S33: player level for game mode — floor(log2(turns+1))+1 (gentle).
+	 *  Defensive: non-finite/negative collapses to 1 (never NaN). */
 	private getTurnLevel(): number {
-		return 1;
+		return turnLevel(this.currentTurn);
+	}
+
+	/** S33: arm the transient MEGA CACHE flare so the next snapshot() copies it
+	 *  into widgetData and the widget renders the oopsie gag for one cycle. */
+	armMegaCacheFlare(peakPct: number): void {
+		this.megaCacheFlare = true;
+		this.megaCacheFlarePct = peakPct;
 	}
 
 	/** Build the sync onTier callback that paints the live per-tier trace. */

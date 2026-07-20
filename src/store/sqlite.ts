@@ -21,3 +21,4 @@ export * from "./sqlite/raw-transcript.js";
 export * from "./sqlite/dedup-mirror.js";
 export * from "./sqlite/maintenance.js";
 export * from "./sqlite/game-state.js";
+export * from "./sqlite/game-scores.js";

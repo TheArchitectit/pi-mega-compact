@@ -243,6 +243,18 @@ export function initSchema(db: DatabaseSync): void {
       tui_display_mode   TEXT NOT NULL DEFAULT 'full'
                           CHECK(tui_display_mode IN ('full','minimal'))
     );
+    -- S33 game mode: per-repo leaderboard metrics. One row per recorded event
+    -- (turn_end / session_compact); leaderboard() derives rankings. 'repos' is
+    -- derived (COUNT DISTINCT, never recorded). Local SQLite (PREVENT-PI-004).
+    CREATE TABLE IF NOT EXISTS game_scores (
+      repo_root TEXT NOT NULL,
+      metric    TEXT NOT NULL CHECK(metric IN ('cache','dedupe','turns','repos','mega_cache')),
+      ts        INTEGER NOT NULL,
+      value     REAL NOT NULL,
+      meta      TEXT,
+      PRIMARY KEY(repo_root, metric, ts)
+    ) WITHOUT ROWID;
+    CREATE INDEX IF NOT EXISTS idx_game_scores_metric_ts ON game_scores(metric, ts);
   `);
   // Idempotent column migrations. `CREATE TABLE IF NOT EXISTS` is a no-op on a
   // pre-existing table, so new columns added to context_chunks after a store was

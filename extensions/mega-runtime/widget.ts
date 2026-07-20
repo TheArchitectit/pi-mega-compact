@@ -225,6 +225,8 @@ export interface WidgetData {
 	/** MEGA CACHE flare armed (fires at cachePct >= 100 + gameMode on). Adds the
 	 *  ANSI MEGA CACHE banner + the oopsie gag to the header. */
 	megaCacheFlare?: boolean;
+	/** The peak cache % that armed the flare (for the oopsie toast text). */
+	megaCacheFlarePct?: number;
 }
 
 // ── buildWidgetLines ───────────────────────────────────────────────────────

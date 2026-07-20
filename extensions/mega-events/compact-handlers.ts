@@ -19,6 +19,8 @@ import {
 import { estimateBlockTokens } from "../../src/tokens.js";
 import { type MegaRuntime } from "../mega-runtime.js";
 import type { MegaConfig } from "../mega-config.js";
+import { recordScore, getDedupStats } from "../../src/store/sqlite.js";
+import { resolveRepoRoot } from "../mega-config.js";
 
 /**
  * Build a minimal fallback compaction so pi never runs its throwing compact().
@@ -160,5 +162,27 @@ export function registerCompactHandlers(
 				sessionId: runtime.rt.sessionId,
 				at: runtime.rt.lastCompactAt,
 			});
+
+			// S33: game-mode dedupe scoring — record the DELTA of cumulative dedup
+			// collapses since the last compact (leaderboard SUMs the deltas). Gated
+			// behind game_mode_on (no scoring when off). Best-effort + non-fatal (G6).
+			try {
+				if (runtime.getCachedGameState().game_mode_on) {
+					const ds = getDedupStats(runtime.currentStateDir);
+					const delta = ds.deduped - runtime.lastDedupCollapsed;
+					runtime.lastDedupCollapsed = ds.deduped;
+					if (delta > 0) {
+						const repo = resolveRepoRoot(_ctx.cwd) ?? runtime.currentStateDir;
+						recordScore(runtime.currentStateDir, {
+							repo_root: repo,
+							metric: "dedupe",
+							value: delta,
+							meta: { compactCount: runtime.rt.compactCount },
+						});
+					}
+				}
+			} catch {
+				/* non-fatal: scoring must never break compaction */
+			}
 		});
 }
