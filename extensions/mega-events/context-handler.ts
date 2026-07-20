@@ -184,7 +184,9 @@ export function registerContextHandler(
 				runtime.diagLiveTrimFires++; // trim view returned this call (replay counts as a fire)
 				runtime.diagLiveTrimReplays++;
 				runtime.snapshot(ctx);
-				return { messages: [runtime.trimCache.summaryAgentMsg, ...recent] };
+				// v0.8.7: shallow-copy the cached summary so pi's transformContext can't
+				// mutate the shared reference across replays (audit P3).
+				return { messages: [{ ...runtime.trimCache.summaryAgentMsg }, ...recent] };
 			}
 			// else: context grew enough → fall through to re-compact (cache is stale)
 		}
@@ -308,7 +310,21 @@ export function registerContextHandler(
 			// replay it verbatim (stabilizing the KV-cache prefix) instead of
 			// regenerating a fresh summary + sentinel every fire.
 			runtime.trimCache = {
-				checkpointId: ran.result.checkpointId ?? `epoch-${runtime.rt.lastCompactAt ?? Date.now()}`,
+				// v0.8.7: key the replay cache on the STABLE epoch signal
+				// (rt.lastCheckpointId) instead of ran.result.checkpointId, which is
+				// dedup-volatile: on a re-compact that dedups onto a DIFFERENT existing
+				// checkpoint, result.checkpointId is the matched id (engine.ts:188) while
+				// lastCheckpointId is only updated on a genuinely new checkpoint
+				// (compact.ts:100-104). Keying on result.checkpointId would make
+				// trimCache.checkpointId != rt.lastCheckpointId forever after that
+				// dedup fire, disabling replay for the rest of the epoch (the
+				// alternating cache-miss that 0.8.6 meant to fix). Prefer the stable
+				// signal; fall back to result.checkpointId then the epoch timestamp
+				// only for the no-checkpoint edge case.
+				checkpointId:
+					runtime.rt.lastCheckpointId ??
+					ran.result.checkpointId ??
+					`epoch-${runtime.rt.lastCompactAt ?? Date.now()}`,
 				cut,
 				summaryAgentMsg,
 				ctxPct: pct ?? null,

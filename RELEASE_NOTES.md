@@ -1,5 +1,34 @@
 # Release Notes — pi-mega-compact
 
+## v0.8.7 (2026-07-21)
+
+Cache-stability fix (cont.): close the P2 gap the v0.8.6 audit found in the
+live-trim replay cache.
+
+### Fixed
+
+- **Key the live-trim replay cache on the stable epoch signal**
+  (`rt.lastCheckpointId`) instead of the dedup-volatile `result.checkpointId`.
+  On a re-compact (after context grew ≥10% / token-basis) that **dedups onto a
+  DIFFERENT existing checkpoint**, `result.checkpointId` is the matched id
+  (engine.ts:188) while `lastCheckpointId` is only updated on a genuinely new
+  checkpoint (compact.ts:100-104). Keying the cache on `result.checkpointId`
+  made `trimCache.checkpointId != rt.lastCheckpointId` for the rest of the epoch
+  after such a dedup fire, so the replay condition never matched again and
+  `runCompact` re-ran every gated fire — the alternating cache-miss could
+  silently persist in that path on 0.8.6. The cache is now keyed on the stable
+  `lastCheckpointId` (falling back to `result.checkpointId` then the epoch
+  timestamp only for the no-checkpoint edge case), so a dedup re-fire onto a
+  different checkpoint no longer invalidates replay for the epoch.
+- **Shallow-copy the cached summary message on replay** so pi's
+  `transformContext` can't mutate the shared `summaryAgentMsg` reference across
+  replays (audit P3).
+- **Tests**: added `extensions/mega-cache-replay.test.ts` — a REPLAY test
+  (≥2 gated context events within one epoch replay verbatim, byte-identical
+  returned messages) and a DEDUP-on-different-checkpoint test (a re-compact that
+  L0-contentHash-dedups onto an older checkpoint still replays the next gated
+  event instead of re-running `runCompact`).
+
 ## v0.8.6 (2026-07-21)
 
 Fix the **cache-prefix-thrash regression** (the user-reported "alternating cache
