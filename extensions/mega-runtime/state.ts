@@ -27,7 +27,9 @@ import {
 	getCompactCount,
 	getRecallInjected,
 	getCacheHitTokensSaved,
+	getGameState,
 	type ModelSnapshot,
+	type GameState,
 } from "../../src/store/sqlite.js";
 import { detectCrossRepoDrift } from "../../src/driftDetection.js";
 import {
@@ -54,6 +56,7 @@ import {
 	type TickerEntry,
 	type WidgetData,
 } from "./widget.js";
+import { getTheme } from "../../src/config/themes.js";
 
 export class MegaRuntime {
 	config: MegaConfig;
@@ -134,6 +137,12 @@ export class MegaRuntime {
 	// Cached cross-repo drift status (recomputed at most every 30s — it opens the
 	// machine-wide registry DB, so we don't want to do it on every render frame).
 	private driftCache: { at: number; status: "ok" | "warn" } | null = null;
+	// S31: cached game-mode state (game_mode_on/theme/tui_display_mode). Lazily
+	// read from the game_state SQLite row on the first widget render, then
+	// memoized until bumpGameState() evicts it (called by /mega-game after a
+	// write) so the widget picks up theme/mode/level changes live without
+	// re-querying the DB on every render frame.
+	private cachedGameState: GameState | undefined;
 
 	/**
 	 * DIAG counters for the "team run doesn't relieve context" investigation.
@@ -520,6 +529,12 @@ export class MegaRuntime {
 			const driftStatus = this.driftStatus();
 			const agentsActive = this.activeAgents > 0;
 
+			// S31: game-mode state for the widget (theme/mode/level + MEGA CACHE).
+			// Pulled from the cached game_state row; cachePct is the REAL dedup hit
+			// rate (may exceed 100% — that's the MEGA CACHE trigger). megaCacheFlare
+			// is false for now (S33.4 scoring hook arms it when cachePct > 100).
+			const gs = this.getCachedGameState();
+			const cachePct = st.dedupHitRate * 100;
 			this.widgetData = {
 				version: ownVersion(),
 				tierLabel,
@@ -551,6 +566,13 @@ export class MegaRuntime {
 				lastWhy: this.lastWhy,
 				tierTrace: this.tierTrace,
 				pulsing: this.pulsing,
+				// S31 game-mode fields:
+				gameMode: gs.game_mode_on,
+				theme: getTheme(gs.theme) ? gs.theme : "transparent",
+				tuiMode: gs.tui_display_mode,
+				level: this.getTurnLevel(),
+				cachePct,
+				megaCacheFlare: false,
 			};
 			// Auto-fit: register a factory so pi re-renders the panel at the REAL
 			// terminal width every frame (tui.columns), instead of guessing with
@@ -743,6 +765,39 @@ export class MegaRuntime {
 	/** S21: state dir of the currently bound repo (where memories live). */
 	getStateDir(): string {
 		return this.currentStateDir;
+	}
+
+	/** S31: the cached game-mode state (game_mode_on/theme/tui_display_mode).
+	 *  Lazily read from the game_state SQLite row on the first call, then
+	 *  memoized until `bumpGameState()` evicts it. Reading is non-throwing
+	 *  (getGameState returns DEFAULT_GAME_STATE on any error), so the widget
+	 *  can call this on every render safely. */
+	getCachedGameState(): GameState {
+		if (!this.cachedGameState) {
+			try {
+				this.cachedGameState = getGameState(this.currentStateDir);
+			} catch {
+				this.cachedGameState = {
+					game_mode_on: false,
+					theme: "transparent",
+					tui_display_mode: "full",
+				};
+			}
+		}
+		return this.cachedGameState;
+	}
+
+	/** S31: evict the cached game-mode state so the next widget render re-reads
+	 *  the game_state row. Called by /mega-game after every setGameState() so
+	 *  the panel picks up theme/mode/toggle changes live. */
+	bumpGameState(): void {
+		this.cachedGameState = undefined;
+	}
+
+	/** S31: player level for game mode. STUB — returns 1 until S33 wires the
+	 *  real scoring hook (compaction count / cache-hit milestones). */
+	private getTurnLevel(): number {
+		return 1;
 	}
 
 	/** Build the sync onTier callback that paints the live per-tier trace. */

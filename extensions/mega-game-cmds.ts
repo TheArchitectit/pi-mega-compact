@@ -58,6 +58,7 @@ export function registerGameCommands(pi: ExtensionAPI, runtime: MegaRuntime): vo
       // /mega-game on|off
       if (sub === "on" || sub === "off") {
         const s = setGameState({ game_mode_on: sub === "on" }, stateDir);
+        runtime.bumpGameState();
         ctx.ui.notify(`[mega-game] game mode ${s.game_mode_on ? "ON" : "off"}`);
         return;
       }
@@ -83,6 +84,7 @@ export function registerGameCommands(pi: ExtensionAPI, runtime: MegaRuntime): vo
           return;
         }
         const s = setGameState({ theme: id }, stateDir);
+        runtime.bumpGameState();
         ctx.ui.notify(`[mega-game] theme → ${s.theme} (${getTheme(s.theme)?.label ?? ""})`);
         return;
       }
@@ -95,6 +97,7 @@ export function registerGameCommands(pi: ExtensionAPI, runtime: MegaRuntime): vo
           return;
         }
         const s = setGameState({ tui_display_mode: arg }, stateDir);
+        runtime.bumpGameState();
         ctx.ui.notify(`[mega-game] tui → ${s.tui_display_mode}`);
         return;
       }

@@ -29,7 +29,7 @@ type Harness = {
 function makeHarness(stateDir: string): Harness {
   const commands: Record<string, Cmd> = {};
   const notifies: string[] = [];
-  const runtime = { bindRepo: () => {}, currentStateDir: stateDir };
+  const runtime = { bindRepo: () => {}, currentStateDir: stateDir, bumpGameState: () => {} };
   const ctx = {
     cwd: stateDir,
     ui: { notify: (s: string) => notifies.push(s) },
