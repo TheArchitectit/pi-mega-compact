@@ -415,6 +415,85 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
       return;
     }
 
+    // /api/perf — v0.8.8 Perf dashboard tab. GET returns rolling-window
+    // aggregates over perf_samples: per-kind p50/p95 (turn/provider latency,
+    // tps avg, db recompute, disk write), latest rss/heap, cpu user/sys delta,
+    // cache hit %, plus the diag recompute/skip/replay counts (read from
+    // dashboard.json snapshot if available). The dashboard server is a detached
+    // child with no MegaRuntime ref, so it reads perf_samples via a require()'d
+    // sqlite helper (same pattern as /api/game-scores). Unknown/invalid params
+    // are clamped (never throw). Non-GET -> 405. PREVENT-PI-004: loopback.
+    if (req.url?.startsWith("/api/perf")) {
+      const pfReq = createRequire(import.meta.url);
+      const { readPerfSamples } = pfReq("../../src/store/sqlite.js") as typeof import("../../src/store/sqlite.js");
+      if (req.method !== "GET") {
+        res.writeHead(405, { "Content-Type": "application/json" }); // guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
+        res.end(JSON.stringify({ error: "method_not_allowed" }));
+        return;
+      }
+      try {
+        const url = new URL(req.url, "http://x"); // guardrails-allow PREVENT-PI-004: localhost dashboard URL base (loopback-only)
+        let minutes = Number(url.searchParams.get("minutes") ?? "30");
+        if (!Number.isFinite(minutes) || minutes <= 0) minutes = 30;
+        minutes = Math.min(minutes, 1440); // cap at 24h
+        const sinceTs = Date.now() - minutes * 60_000;
+        const rows = readPerfSamples(stateDir, sinceTs); // guardrails-allow PREVENT-PI-004: local SQLite read (loopback dashboard)
+        const byKind = new Map<string, number[]>();
+        for (const r of rows) {
+          let arr = byKind.get(r.kind);
+          if (!arr) { arr = []; byKind.set(r.kind, arr); }
+          arr.push(r.value);
+        }
+        // Nearest-rank percentile (ceil(p/100*n)-1, clamped). Code-controlled,
+        // never user input (PREVENT-002 safe).
+        function pct(arr: number[], p: number): number {
+          if (!arr.length) return 0;
+          const s = [...arr].sort((a, b) => a - b);
+          const idx = Math.min(s.length - 1, Math.max(0, Math.ceil((p / 100) * s.length) - 1));
+          return s[idx];
+        }
+        function avg(arr: number[]): number {
+          if (!arr.length) return 0;
+          return arr.reduce((a, b) => a + b, 0) / arr.length;
+        }
+        // rows are ASC by ts, so the last pushed value is the most recent.
+        function latest(arr: number[]): number {
+          return arr.length ? arr[arr.length - 1] : 0;
+        }
+        const get = (k: string): number[] => byKind.get(k) ?? [];
+        // diag counters live in the runtime-written dashboard.json (the server is
+        // a detached child with no MegaRuntime ref). Read defensively — absent
+        // until the first snapshot() write (PREVENT-001: assign before access).
+        let diag: { ctxFastGate: number; liveTrimFires: number; liveTrimReplays: number } | null = null;
+        try {
+          const raw = readFileSync(snapshotPath, "utf-8");
+          const parsed = JSON.parse(raw) as { diag?: { ctxFastGate: number; liveTrimFires: number; liveTrimReplays: number } };
+          if (parsed && typeof parsed === "object" && parsed.diag) diag = parsed.diag;
+        } catch { /* dashboard.json not written yet */ }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          updatedAt: new Date().toISOString(),
+          windowMinutes: minutes,
+          sampleCount: rows.length,
+          turn_latency_ms: { p50: pct(get("turn_latency_ms"), 50), p95: pct(get("turn_latency_ms"), 95), n: get("turn_latency_ms").length },
+          provider_latency_ms: { p50: pct(get("provider_latency_ms"), 50), p95: pct(get("provider_latency_ms"), 95), n: get("provider_latency_ms").length },
+          tps: { avg: avg(get("tps")), n: get("tps").length },
+          cache_hit_pct: { avg: avg(get("cache_hit_pct")), latest: latest(get("cache_hit_pct")), n: get("cache_hit_pct").length },
+          db_recompute_ms: { p50: pct(get("db_recompute_ms"), 50), p95: pct(get("db_recompute_ms"), 95), n: get("db_recompute_ms").length },
+          disk_write_ms: { p50: pct(get("disk_write_ms"), 50), p95: pct(get("disk_write_ms"), 95), n: get("disk_write_ms").length },
+          rss_mb: { latest: latest(get("rss_mb")), n: get("rss_mb").length },
+          heap_mb: { latest: latest(get("heap_mb")), n: get("heap_mb").length },
+          cpu_user_ms: { latest: latest(get("cpu_user_ms")), n: get("cpu_user_ms").length },
+          cpu_sys_ms: { latest: latest(get("cpu_sys_ms")), n: get("cpu_sys_ms").length },
+          diag,
+        }));
+      } catch (e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "perf_unavailable", detail: String(e) }));
+      }
+      return;
+    }
+
     // /api/achievements — S35 achievement tiles. GET returns the 9 seeded rows
     // {id,title,description,icon,hidden,unlocked_at}. The dashboard server is a
     // detached child with no MegaRuntime ref, so it reads game_achievements via

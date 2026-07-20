@@ -189,6 +189,7 @@ export function dashboardHtml(tierName: string): string {
   <button class="tab" data-tab="active">Active Repos</button>
   <button class="tab" data-tab="summary">Summary</button>
   <button class="tab" data-tab="game">Game Mode</button>
+  <button class="tab" data-tab="perf">Perf</button>
 </nav>
 
 <!-- Current repo (existing single-repo view) -->
@@ -441,6 +442,18 @@ export function dashboardHtml(tierName: string): string {
     <div class="lb-card"><h3>MEGA CACHE trophies</h3><table><tbody id="lb-mega_cache"><tr><td colspan="2" class="repo-none">loading…</td></tr></tbody></table></div>
   </div>
   <div id="game-empty">No scores yet — run a session with game mode on.</div>
+</div>
+
+<!-- Perf (v0.8.8) — live local instrumentation -->
+<div class="tab-panel" id="panel-perf">
+  <div class="grid">
+    <div class="card"><h2>Model latency</h2><div class="stat-grid"><span class="label">Turn p50</span><span class="value" id="pf-turn-p50">—</span><span class="label">Turn p95</span><span class="value" id="pf-turn-p95">—</span><span class="label">Provider p50</span><span class="value" id="pf-prov-p50">—</span><span class="label">Provider p95</span><span class="value" id="pf-prov-p95">—</span></div></div>
+    <div class="card"><h2>Throughput</h2><div class="stat-grid"><span class="label">TPS (avg)</span><span class="value" id="pf-tps">—</span><span class="label">Cache hit %</span><span class="value" id="pf-cache">—</span></div></div>
+    <div class="card"><h2>Process</h2><div class="stat-grid"><span class="label">RSS</span><span class="value" id="pf-rss">—</span><span class="label">Heap</span><span class="value" id="pf-heap">—</span><span class="label">CPU user/sys</span><span class="value" id="pf-cpu">—</span></div></div>
+    <div class="card"><h2>Snapshot cost</h2><div class="stat-grid"><span class="label">DB recompute p50</span><span class="value" id="pf-db-p50">—</span><span class="label">DB recompute p95</span><span class="value" id="pf-db-p95">—</span><span class="label">Disk write p50</span><span class="value" id="pf-disk">—</span></div></div>
+    <div class="card"><h2>TUI lag proxy</h2><div class="stat-grid"><span class="label">Live-trim fires</span><span class="value" id="pf-recompute">—</span><span class="label">Cache replays</span><span class="value" id="pf-replays">—</span><span class="label">Fast-gate skips</span><span class="value" id="pf-skips">—</span></div><div class="meter-sub">skip vs recompute vs replay cadence</div></div>
+  </div>
+  <div class="updated" id="perf-updated">waiting for data</div>
 </div>
 
 <script>
@@ -1000,9 +1013,40 @@ export function dashboardHtml(tierName: string): string {
     }).catch(function() {});
   }
 
+  // --- Perf tab (v0.8.8) — live local instrumentation ----------------------
+  var perfPollTimer = null;
+  function pollPerf() {
+    fetch('/api/perf?minutes=30').then(function(r) { return r.ok ? r.json() : null; }).then(function(d) { // guardrails-allow PREVENT-PI-004: browser-side fetch in dashboard HTML template (not Node runtime)
+      if (!d) return;
+      var el = document.getElementById('perf-updated');
+      if (el) el.textContent = d.sampleCount + ' samples \u00b7 updated ' + (d.updatedAt || '');
+      function setText(id, txt) { var e = document.getElementById(id); if (e) e.textContent = txt; }
+      function fmtMs(v) { return v == null ? '\u2014' : (v >= 100 ? Math.round(v) + 'ms' : v.toFixed(1) + 'ms'); }
+      function fmtNum(v, dec) { return v == null ? '\u2014' : (typeof v === 'number' ? v.toFixed(dec) : '\u2014'); }
+      setText('pf-turn-p50', fmtMs(d.turn_latency_ms && d.turn_latency_ms.p50));
+      setText('pf-turn-p95', fmtMs(d.turn_latency_ms && d.turn_latency_ms.p95));
+      setText('pf-prov-p50', fmtMs(d.provider_latency_ms && d.provider_latency_ms.p50));
+      setText('pf-prov-p95', fmtMs(d.provider_latency_ms && d.provider_latency_ms.p95));
+      setText('pf-tps', fmtNum(d.tps && d.tps.avg, 1));
+      setText('pf-cache', (d.cache_hit_pct && typeof d.cache_hit_pct.avg === 'number') ? fmtNum(d.cache_hit_pct.avg, 1) + '%' : '\u2014');
+      setText('pf-rss', (d.rss_mb && typeof d.rss_mb.latest === 'number') ? fmtNum(d.rss_mb.latest, 1) + ' MB' : '\u2014');
+      setText('pf-heap', (d.heap_mb && typeof d.heap_mb.latest === 'number') ? fmtNum(d.heap_mb.latest, 1) + ' MB' : '\u2014');
+      setText('pf-cpu', (d.cpu_user_ms && d.cpu_sys_ms) ? (fmtNum(d.cpu_user_ms.latest,1) + ' / ' + fmtNum(d.cpu_sys_ms.latest,1) + ' ms') : '\u2014');
+      setText('pf-db-p50', fmtMs(d.db_recompute_ms && d.db_recompute_ms.p50));
+      setText('pf-db-p95', fmtMs(d.db_recompute_ms && d.db_recompute_ms.p95));
+      setText('pf-disk', fmtMs(d.disk_write_ms && d.disk_write_ms.p50));
+      var diag = d.diag || {};
+      setText('pf-recompute', diag.liveTrimFires != null ? String(diag.liveTrimFires) : '\u2014');
+      setText('pf-replays', diag.liveTrimReplays != null ? String(diag.liveTrimReplays) : '\u2014');
+      setText('pf-skips', diag.ctxFastGate != null ? String(diag.ctxFastGate) : '\u2014');
+    }).catch(function() {});
+  }
+  function startPerfPoll() { if (perfPollTimer) return; pollPerf(); perfPollTimer = setInterval(pollPerf, 2000); }
+  function stopPerfPoll() { if (perfPollTimer) { clearInterval(perfPollTimer); perfPollTimer = null; } }
+
   // --- Tab switching ------------------------------------------------------
   var tabs = document.querySelectorAll('.tab');
-  var panels = { current: 'panel-current', all: 'panel-all', active: 'panel-active', summary: 'panel-summary', game: 'panel-game' };
+  var panels = { current: 'panel-current', all: 'panel-all', active: 'panel-active', summary: 'panel-summary', game: 'panel-game', perf: 'panel-perf' };
   for (var i = 0; i < tabs.length; i++) {
     tabs[i].addEventListener('click', function() {
       var name = this.getAttribute('data-tab');
@@ -1017,6 +1061,7 @@ export function dashboardHtml(tierName: string): string {
       if (name === 'all' || name === 'summary') pollIndex();
       if (name === 'active') pollServers();
       if (name === 'game') { renderGameScores(); renderAchievements(); }
+      if (name === 'perf') startPerfPoll(); else stopPerfPoll();
     });
   }
 })();

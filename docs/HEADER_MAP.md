@@ -411,6 +411,17 @@
 | ACCEPTANCE | 237 | 226 |
 | ROLLBACK | 258 | 247 |
 
+## v0.8.8 Perf dashboard (new feature)
+
+| File | Purpose |
+|------|---------|
+| `src/store/sqlite/perf-samples.ts` | `perf_samples` table accessors: `recordPerfSample` / `readPerfSamples` (parameterized SQL, pi-agnostic). |
+| `extensions/mega-events/perf-handler.ts` | Local event capture: turn/provider latency, TPS, cache hit %, 5s cpu/mem interval. |
+| `extensions/mega-runtime/state.ts` | `MegaRuntime.ensurePerfInterval` + snapshot() db_recompute_ms/disk_write_ms instrumentation + `diag` in the snapshot payload. |
+| `extensions/mega-dashboard.ts` | `Dashboard.lastWriteMs` getter (writeFileSync duration) + `diag` field on `DashboardSnapshot`. |
+| `extensions/dashboard-server/server.ts` | `GET /api/perf` rolling-window aggregates (p50/p95, latest, diag counts). |
+| `extensions/dashboard-server/html.ts` | Perf tab button + `#panel-perf` cards + 2s active-only polling. |
+
 ## docs/specs/postmortem-already-compacted-race.md
 
 | Section | Line | Offset |

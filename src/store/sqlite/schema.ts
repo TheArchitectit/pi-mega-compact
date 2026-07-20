@@ -267,6 +267,20 @@ export function initSchema(db: DatabaseSync): void {
       icon        TEXT,
       unlocked_at INTEGER NULL
     ) WITHOUT ROWID;
+
+    -- v0.8.8 Perf dashboard: append-only local instrumentation samples (one row
+    -- per turn / provider round-trip / 5s cpu-mem tick / snapshot-recompute).
+    -- Drives the dashboard Perf tab. Local SQLite (PREVENT-PI-004); parameterized
+    -- accessors in perf-samples.ts (PREVENT-002).
+    CREATE TABLE IF NOT EXISTS perf_samples (
+      id    INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts    INTEGER NOT NULL,
+      kind  TEXT NOT NULL,
+      value REAL NOT NULL,
+      meta  TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_perf_samples_ts ON perf_samples(ts);
+    CREATE INDEX IF NOT EXISTS idx_perf_samples_kind_ts ON perf_samples(kind, ts);
   `);
   // Idempotent column migrations. `CREATE TABLE IF NOT EXISTS` is a no-op on a
   // pre-existing table, so new columns added to context_chunks after a store was

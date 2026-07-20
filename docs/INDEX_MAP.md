@@ -114,7 +114,7 @@
 
 ---
 
-## RESEARCH
+## PERF DASHBOARD (v0.8.8)\n\n| Keyword | Document | Location |\n| --------- | ---------- | ---------- |\n| Perf tab, live instrumentation, model latency, TPS, cache hit %, CPU/mem, snapshot cost | [dashboard-server/server.ts](../extensions/dashboard-server/server.ts) + [dashboard-server/html.ts](../extensions/dashboard-server/html.ts) | extensions/dashboard-server/ |\n| perf_samples table, recordPerfSample, readPerfSamples | [sqlite/perf-samples.ts](../src/store/sqlite/perf-samples.ts) | src/store/sqlite/ |\n| perf event capture (turn/provider latency, 5s cpu/mem interval) | [mega-events/perf-handler.ts](../extensions/mega-events/perf-handler.ts) | extensions/mega-events/ |\n| snapshot() recompute + disk-write cost instrumentation, Dashboard.lastWriteMs | [mega-runtime/state.ts](../extensions/mega-runtime/state.ts) + [mega-dashboard.ts](../extensions/mega-dashboard.ts) | extensions/ |\n| GET /api/perf (rolling p50/p95 aggregates, diag counts) | [dashboard-server/server.ts](../extensions/dashboard-server/server.ts) | extensions/dashboard-server/ |\n\n## RESEARCH
 
 | Keyword | Document | Location |
 |---------|----------|----------|

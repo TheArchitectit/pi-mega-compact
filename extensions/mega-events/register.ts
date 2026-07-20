@@ -12,6 +12,7 @@ import { registerSessionHandlers } from "./session-handlers.js";
 import { registerAgentHandlers } from "./agent-handlers.js";
 import { registerContextHandler } from "./context-handler.js";
 import { registerCompactHandlers } from "./compact-handlers.js";
+import { registerPerfHandler } from "./perf-handler.js";
 
 /**
  * DIAG accessor for the headless test harness: the most recently constructed
@@ -34,4 +35,5 @@ export function registerEventHandlers(
 	registerAgentHandlers(pi, runtime, config);
 	registerContextHandler(pi, runtime, config);
 	registerCompactHandlers(pi, runtime, config);
+	registerPerfHandler(pi, runtime);
 }

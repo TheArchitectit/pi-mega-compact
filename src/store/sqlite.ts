@@ -23,3 +23,4 @@ export * from "./sqlite/maintenance.js";
 export * from "./sqlite/game-state.js";
 export * from "./sqlite/game-scores.js";
 export * from "./sqlite/game-achievements.js";
+export * from "./sqlite/perf-samples.js";

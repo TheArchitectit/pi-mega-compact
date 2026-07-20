@@ -28,6 +28,7 @@ import {
 	getRecallInjected,
 	getCacheHitTokensSaved,
 	getGameState,
+	recordPerfSample,
 	type ModelSnapshot,
 	type GameState,
 } from "../../src/store/sqlite.js";
@@ -164,6 +165,12 @@ export class MegaRuntime {
 	// Last explain-why line (dedup reason / anchor-kept / superseded), surfaced
 	// while fresh.
 	lastWhy: string | undefined = undefined;
+	// v0.8.8 Perf dashboard instrumentation: turn/provider start timestamps +
+	// the 5s cpu/mem interval handle (one per MegaRuntime, cleared in dispose()).
+	perfTurnStart = 0;
+	perfProviderStart = 0;
+	perfCpuInterval: ReturnType<typeof setInterval> | undefined;
+	private perfCpuBaseline: { user: number; sys: number } | undefined;
 
 	// Context tracking for the dashboard (updated in the context handler).
 	lastCtxTokens: number | null = null;
@@ -385,6 +392,7 @@ export class MegaRuntime {
 			this.renderWidget(ctx);
 			return;
 		}
+		const perfT0 = performance.now();
 		const st = this.store.stats(this.rt.sessionId);
 		const repo = this.store.repoStats();
 		const di = this.store.dataInvariant();
@@ -540,7 +548,13 @@ export class MegaRuntime {
 				cacheHit: { sessionSec: sec(this.rt.cacheHitTokens), totalSec: sec(cacheHitsTotalTokens) },
 			},
 			model,
+			diag: {
+				ctxFastGate: this.diagCtxFastGate,
+				liveTrimFires: this.diagLiveTrimFires,
+				liveTrimReplays: this.diagLiveTrimReplays,
+			},
 		} as DashboardSnapshot);
+		const perfDiskMs = this.dashboard.lastWriteMs;
 
 		// Live stats widget above the editor
 		if (ctx) {
@@ -708,6 +722,12 @@ export class MegaRuntime {
 		}
 		// v0.8.5: record the material-change signature computed at the top so the
 		// next snapshot() can skip this whole body when nothing material changed.
+		try {
+			recordPerfSample(this.currentStateDir, "db_recompute_ms", performance.now() - perfT0);
+			recordPerfSample(this.currentStateDir, "disk_write_ms", perfDiskMs);
+		} catch {
+			/* non-fatal: perf instrumentation never blocks the agent */
+		}
 		this.lastSnapshotSig = sig;
 	}
 
@@ -981,6 +1001,43 @@ export class MegaRuntime {
 			this.gameStateWatcher = undefined;
 			this.gameStateWatchDir = undefined;
 		}
+		// v0.8.8: stop the cpu/mem sampling interval on teardown. Re-armed lazily
+		// by ensurePerfInterval() on the next turn_start.
+		if (this.perfCpuInterval) {
+			clearInterval(this.perfCpuInterval);
+			this.perfCpuInterval = undefined;
+			this.perfCpuBaseline = undefined;
+		}
+	}
+
+	/** v0.8.8: (re)start the 5s cpu/mem sampling interval (idempotent). One per
+	 *  MegaRuntime; cleared in dispose(). Samples process.cpuUsage() (user/sys
+	 *  delta vs the last tick → ms) + process.memoryUsage() (rss/heap → MB) and
+	 *  records them as perf_samples. unref'd so it never keeps the process alive
+	 *  on its own. Non-fatal: any failure is swallowed (instrumentation never
+	 *  blocks the agent). PREVENT-PI-004: local process stats + SQLite only. */
+	ensurePerfInterval(): void {
+		if (this.perfCpuInterval) return;
+		this.perfCpuBaseline = undefined; // first tick sets the baseline (no delta)
+		this.perfCpuInterval = setInterval(() => {
+			try {
+				const dir = this.currentStateDir;
+				const cpu = process.cpuUsage();
+				const mem = process.memoryUsage();
+				if (this.perfCpuBaseline) {
+					const du = (cpu.user - this.perfCpuBaseline.user) / 1000; // μs → ms
+					const ds = (cpu.system - this.perfCpuBaseline.sys) / 1000;
+					recordPerfSample(dir, "cpu_user_ms", Math.max(0, du));
+					recordPerfSample(dir, "cpu_sys_ms", Math.max(0, ds));
+				}
+				this.perfCpuBaseline = { user: cpu.user, sys: cpu.system };
+				recordPerfSample(dir, "rss_mb", mem.rss / 1_000_000);
+				recordPerfSample(dir, "heap_mb", mem.heapUsed / 1_000_000);
+			} catch {
+				/* non-fatal */
+			}
+		}, 5000);
+		this.perfCpuInterval.unref?.();
 	}
 
 	/** S31: the cached game-mode state (game_mode_on/theme/tui_display_mode).

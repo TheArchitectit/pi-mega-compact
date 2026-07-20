@@ -139,6 +139,13 @@ export interface DashboardSnapshot {
     inputRate: number;     // USD per input token (Model.cost)
     outputRate: number;    // USD per output token (Model.cost)
   };
+  /** v0.8.8 Perf dashboard: live diag counters (skip vs recompute vs replay)
+   *  for the Perf tab's "TUI lag proxy" cards. Optional for back-compat. */
+  diag?: {
+    ctxFastGate: number;
+    liveTrimFires: number;
+    liveTrimReplays: number;
+  };
 }
 
 export class Dashboard {
@@ -151,9 +158,19 @@ export class Dashboard {
     this.eventsPath = join(stateDir, "events.log");
   }
 
+  /** v0.8.8: duration (ms) of the last dashboard.json write — read by
+   *  MegaRuntime.snapshot() to record a `disk_write_ms` perf sample without
+   *  wrapping the giant snapshot object literal at the call site. */
+  private _lastWriteMs = 0;
+  get lastWriteMs(): number {
+    return this._lastWriteMs;
+  }
+
   /** Write a full state snapshot (atomically replaces previous). */
   snapshot(data: DashboardSnapshot): void {
+    const t = performance.now();
     writeFileSync(this.snapshotPath, JSON.stringify(data, null, 2) + "\n");
+    this._lastWriteMs = performance.now() - t;
   }
 
   /** Append a timestamped JSONL event line. */

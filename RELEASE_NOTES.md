@@ -1,5 +1,51 @@
 # Release Notes — pi-mega-compact
 
+## v0.8.8 (2026-07-21)
+
+New **Perf dashboard tab** — live, local-only instrumentation so you can see the
+real cost of compaction + the model round-trip while you work. Additive only;
+does not touch the v0.8.6/0.8.7 cache-stability code.
+
+### Added
+
+- **Perf tab** in the localhost dashboard (`/dashboard`) with six metric groups:
+  model endpoint latency (turn + provider p50/p95), throughput (TPS avg +
+  cache-hit %), process RSS/heap/CPU, snapshot recompute + disk-write cost
+  (p50/p95), and a TUI-lag proxy (live-trim fires vs cache replays vs fast-gate
+  skips). Polled on a 2s interval only while the tab is active.
+- **`perf_samples` SQLite table** (append-only, idempotent `CREATE TABLE IF NOT
+  EXISTS` migration) + pi-agnostic accessors `recordPerfSample` /
+  `readPerfSamples` in `src/store/sqlite/perf-samples.ts` (parameterized SQL,
+  PREVENT-002; no `any`, PREVENT-011). Exported via the `src/store/sqlite.ts`
+  barrel.
+- **Local event capture** (`extensions/mega-events/perf-handler.ts`): turn_start
+  stamps a wall-clock start; turn_end records `turn_latency_ms` + `tps` +
+  `cache_hit_pct` from the assistant message `usage`; before_provider_request →
+  after_provider_response records `provider_latency_ms`; a 5s `setInterval`
+  records `rss_mb` / `heap_mb` / `cpu_user_ms` / `cpu_sys_ms`. All capture is
+  try/catch (non-fatal — instrumentation never blocks the agent). The interval is
+  `unref`'d and cleared in `MegaRuntime.dispose()`, re-armed lazily on the next
+  turn_start.
+- **Snapshot cost instrumentation**: `MegaRuntime.snapshot()` now records
+  `db_recompute_ms` (whole recompute body) + `disk_write_ms` (the
+  `writeFileSync(dashboard.json)` duration, via a new `Dashboard.lastWriteMs`
+  getter) **only on the 0.8.5 material-change RECOMPUTE path** — the cheap skip
+  path adds zero cost.
+- **`GET /api/perf`** endpoint (rolling window, default 30 min, clamped to 24h)
+  returning per-kind p50/p95 + latest + the diag counts (read from
+  `dashboard.json`).
+- **Docs**: `docs/INDEX_MAP.md` + `docs/HEADER_MAP.md` entries for the perf tab,
+  `perf_samples` table, and `/api/perf`.
+
+### Constraints honored
+
+- PREVENT-PI-004: zero runtime network — all instrumentation is `Date.now` /
+  `performance.now` / `process.cpuUsage` / `process.memoryUsage` + local SQLite.
+  The `/api/perf` endpoint lives in the optional, user-triggered localhost
+  dashboard server (loopback-only, audited inline annotations).
+- Cost: one `perf_samples` row per turn (3 metrics) + one per 5s cpu/mem tick +
+  two per snapshot recompute (skipped on the fast path).
+
 ## v0.8.7 (2026-07-21)
 
 Cache-stability fix (cont.): close the P2 gap the v0.8.6 audit found in the
