@@ -121,7 +121,7 @@ Reviewed against: [docs/AGENT_GUARDRAILS.md](../AGENT_GUARDRAILS.md),
 - [ ] **S31.2** `widget.ts` full mode: existing layout, but colors come from `getTheme(theme).ansi`. Background fill skipped when theme=`transparent` (accent fg only).
 - [ ] **S31.3** `widget.ts` minimal mode: one line `LVL n │ cache NN%` (level + cache %). No bars/flair. Level always shown.
 - [ ] **S31.4** Level display: derive turn level (see S33 for the level formula; S31 renders the number S33 produces). **If S33 not landed yet**, render level from a placeholder `getTurnLevel(db)` stub returning 1 — S33 replaces the stub.
-- [ ] **S31.5** MEGA CACHE effect: when cache % ≥ 100, render the cache segment with `ansi.mega` + a `MEGA CACHE` text flare. Use the S30.0 characterization: if overshoot is a real ratio, show the actual %; if it was a NaN bug, show `100%+` (fixed calc) + MEGA label. Width-safe (respect `truncateToWidth`).
+- [ ] **S31.5** MEGA CACHE effect + oopsie gag: when cache % ≥ 100, render the cache segment with `ansi.mega` + a `MEGA CACHE` text flare. Use the S30.0 characterization: it's a real ratio (cross-repo injected IDs / this-session checkpoints), so show the actual % (e.g. `117%`). **Oopsie gag (§3b):** when a transient `megaCacheFlare` flag is set on the turn (set by the S33.4 scoring hook when `cachePct > 100`), render a one-line toast `oopsie! cache went to NNN% — MEGA CACHE 🥧` in `ansi.mega` for that turn only — flares once, then the widget returns to normal on the next render (the flag is consumed). Width-safe (respect `truncateToWidth`).
 - [ ] **S31.6** Guard: when `game_mode_on=false`, widget renders **without** game-mode flair (level hidden, no MEGA CACHE) but still respects theme colors (theme is independent of game_mode).
 - [ ] **S31.7** Tests: snapshot matrix (6 themes × 2 modes × 2 states) — assert ANSI codes present/absent, width ≤ terminal, no bg fill for transparent.
 - [ ] **S31.8** Gate green.
@@ -176,7 +176,7 @@ Reviewed against: [docs/AGENT_GUARDRAILS.md](../AGENT_GUARDRAILS.md),
 - [ ] **S33.1** `game_scores` DDL: `(repo_root TEXT, metric TEXT NOT NULL, ts INTEGER NOT NULL, value REAL NOT NULL, meta TEXT, PRIMARY KEY(repo_root, metric, ts))` + index on `(metric, ts)`.
 - [ ] **S33.2** `recordScore` / `leaderboard` — parameterized. `leaderboard(metric, {repoRoot?, limit})` returns sorted rows. `metric ∈ {'cache','dedupe','turns','repos','mega_cache'}`.
 - [ ] **S33.3** `src/game/scoring.ts`: `turnLevel(n)` = `Math.floor(Math.log2(n+1))+1` (1,2,2,3,… gentle); `isMegaCache(pct)` = `pct >= 100`; `cacheScore(hits,lookups)` = `lookups>0 ? hits/lookups*100 : 0` (fixes the NaN QA3 root cause if present).
-- [ ] **S33.4** Hook `turn_end` (agent-handlers): increment turn count, record `turns` score (value=turn count, meta=model id), read cache hit/lookups from the existing metrics, record `cache` score per repo. If `isMegaCache` → record `mega_cache` trophy row (QA10).
+- [ ] **S33.4** Hook `turn_end` (agent-handlers): increment turn count, record `turns` score (value=turn count, meta=model id), read cache hit/lookups from the existing metrics, record `cache` score per repo. If `isMegaCache(cachePct)` → record `mega_cache` trophy row (QA10) with `meta` carrying the peak overshoot % + turn ts; **and when `cachePct > 100`** (the real ratio >1 from S30.0), set the transient `megaCacheFlare` flag on the turn (§3b) so the S31.5 widget + S34.2 dashboard render the "oopsie" gag for that turn. The `mega_cache` row IS the "Opie's Wild Ride" unlock (§3b) — `metric='mega_cache'`, `meta={peakPct, firstSeenTs}`.
 - [ ] **S33.5** Hook `session_compact` (compact-handlers): read dedup chunks/bytes saved from the dedup tier counters, record `dedupe` score (cumulative — `value` is the delta, leaderboard sums).
 - [ ] **S33.6** `repos` metric: derived (not recorded per event) — `leaderboard('repos')` computes `COUNT(DISTINCT repo_root)` from `game_scores` + the global index (QA11). No new storage.
 - [ ] **S33.7** All hooks gated behind `game_mode_on===true` (no scoring when game mode off).
@@ -204,7 +204,9 @@ Reviewed against: [docs/AGENT_GUARDRAILS.md](../AGENT_GUARDRAILS.md),
 
 **Pre-defined TODOs:**
 - [ ] **S34.1** Tab + panel: per-metric leaderboards (cache per repo, dedupe global, turns global, repos badge). Render via `GET /api/game-scores`.
-- [ ] **S34.2** MEGA CACHE banner: when `mega_cache` trophy rows exist for the active repo, show a banner + CSS flash (§3 effect flavor).
+- [ ] **S34.2** MEGA CACHE banner + **Opie's Wild Ride** hidden unlock (§3b):
+  - **Transient oopsie gag:** when the `megaCacheFlare` flag is set on the latest turn, show a transient toast `oopsie! cache went to NNN% — MEGA CACHE 🥧` with the CSS mega-flash keyframe, auto-dismissing.
+  - **Hidden unlock tile ("🏆 Opie's Wild Ride"):** HIDDEN until a `mega_cache` trophy row exists for this repo — no locked tile, no `???` teaser, no hint on a fresh install. Once the first overshoot happens, render a `🏆 Opie's Wild Ride` tile showing the best (highest) peak % across all sessions + when it first happened (from `game_scores` `mega_cache` `meta`). It stays (one-time unlock). `/mega-game` bare status stays terse — the unlock only surfaces in the dashboard, not the TUI command output.
 - [ ] **S34.3** Turn-level display in the dashboard: show level per recent turn (from `game_scores` `turns`/meta).
 - [ ] **S34.4** Level-up animation: dashboard — CSS keyframe pulse on the cache bar when a new level is hit (client compares last-seen level). TUI — S31's ANSI blink fires on the level-up turn.
 - [ ] **S34.5** `GET /api/game-scores?metric=<m>&limit=<n>` → JSON rows; `metric` validated against the allow-list (no SQL injection — parameterized anyway, G3).
@@ -235,6 +237,7 @@ Cross-cutting TODOs (apply to every sprint):
 - [ ] All tests use `MEGACOMPACT_STATE_DIR` (G7).
 - [ ] Every new dashboard `fetch`/http line annotated `// guardrails-allow PREVENT-PI-004:` (G1/G2).
 - [ ] Every async path has `.catch()` / try-catch (G6).
+- [ ] **Hidden-until-triggered invariant (§3b "Opie's Wild Ride"):** the unlock tile/dashboard copy is rendered ONLY when a `mega_cache` trophy row exists. A fresh install (no overshoot yet) shows nothing about it — no locked tile, no teaser. Gate this with a `hasMegaCacheTrophy()` check, not a feature flag.
 
 ---
 

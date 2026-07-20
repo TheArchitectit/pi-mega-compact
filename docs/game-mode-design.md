@@ -52,6 +52,52 @@ dashboard shows a **scorecard per category**:
     `MEGA CACHE` text flare (lightning bolt glyph where width-safe).
   - No external assets — pure code (CSS keyframes + ANSI escapes).
 
+## 3b. MEGA CACHE overshoot — "oopsie" alert + hidden unlock
+
+When the cache hit % overshoots 100% (the real ratio >1 characterized in
+§3 — cross-repo recall inflating the numerator), fire **two** things, both
+**hidden until they happen** (they never show in the dashboard or TUI on a
+fresh install):
+
+1. **Transient "oopsie" gag** (per-overshoot, not persisted as a banner):
+   - TUI: a one-line toast on the widget for that turn —
+     `oopsie! cache went to 117% — MEGA CACHE 🥧` (ANSI mega color, flares
+     once, then the widget returns to normal on the next render).
+   - Dashboard: a transient toast/banner on the Game Mode tab for that turn —
+     same copy, CSS mega-flash keyframe, auto-dismisses.
+   - No mascot character — it's playful slang, not a named voice. The 🥧 emoji
+     is the only "face".
+
+2. **Hidden unlock — "Opie's Wild Ride"** (persisted trophy, the name only
+   appears once it's been triggered at least once):
+   - A `game_scores` row with `metric='mega_cache'` and `meta` carrying the
+     peak overshoot % + the turn ts (QA10 already decided the trophy row;
+     this names it).
+   - Before the first overshoot ever happens: the dashboard Game Mode tab and
+     the `/mega-game` status show **nothing** about it — no locked tile, no
+     "???" teaser, no hint it exists. It's a true secret.
+   - After the first overshoot: a **"🏆 Opie's Wild Ride"** tile/banner
+     appears on the Game Mode tab with the peak % + when it first happened.
+     It stays (it's a one-time unlock) and can show the best (highest) peak
+     across all sessions.
+   - `/mega-game` bare status stays terse — the unlock only surfaces in the
+     dashboard, not the TUI command output (keeps the command clean).
+
+Why both: the gag is the *moment* (rewards the overshoot when it happens),
+the unlock is the *trophy* (proof it happened, persists for bragging rights).
+The hidden-until-triggered rule makes it a real easter egg — a user who
+never overshoots never knows it's there.
+
+Implementation home (cross-references the sprint plan):
+- Scoring hook (S33.4): when `isMegaCache(cachePct)` and `cachePct > 100`,
+  record the `mega_cache` trophy row with the peak % + ts, and set a
+  transient `megaCacheFlare` flag on the turn (consumed by the widget +
+  dashboard render for that turn only).
+- TUI widget (S31.5): render the one-line oopsie gag when the flare is set.
+- Dashboard (S34.2): the MEGA CACHE banner shows the oopsie gag on the
+  triggering turn; the "Opie's Wild Ride" tile is hidden until a `mega_cache`
+  trophy row exists, then shows peak % + first-seen ts.
+
 ## 4. Levels on turns
 
 - Every new turn -> the cache bar does a little **level-up** animation.

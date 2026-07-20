@@ -328,13 +328,14 @@
 | Goal | 9 | 0 |
 | Scoring model | 17 | 0 |
 | MEGA CACHE | 30 | 0 |
-| Levels on turns | 44 | 0 |
-| Theme system | 50 | 0 |
-| Toggle panel | 73 | 0 |
-| State storage | 96 | 0 |
-| Dashboard | 105 | 0 |
-| Open implementation questions | 113 | 0 |
-| Future | 131 | 0 |
+| MEGA CACHE overshoot — oopsie alert + Opie's Wild Ride hidden unlock | 55 | 0 |
+| Levels on turns | 101 | 0 |
+| Theme system | 108 | 0 |
+| Toggle panel | 131 | 0 |
+| State storage | 153 | 0 |
+| Dashboard | 162 | 0 |
+| Open implementation questions | 170 | 0 |
+| Future | 189 | 0 |
 
 ## src/ (v0.5.0 source index)
 
