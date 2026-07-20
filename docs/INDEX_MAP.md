@@ -133,3 +133,29 @@
 | scoring helpers (turnLevel, evaluateAchievements) | [game/scoring.ts](../src/game/scoring.ts) | src/game/ |
 | /api/game-scores, /api/game-state, /api/achievements (loopback) | [dashboard-server/server.ts](../extensions/dashboard-server/server.ts) | extensions/dashboard-server/ |
 | GET /api/game-scores, /api/achievements, /api/game-state | [dashboard-server/server.ts](../extensions/dashboard-server/server.ts) | extensions/dashboard-server/ |
+
+---
+
+## DASHBOARD REWRITE (React frontend sprints)
+
+| Keyword | Document | Location |
+| --------- | ---------- | ---------- |
+| **A1: API contract, typed endpoints, EndpointDef** | [specs/sprint-A1-api-contract.md](specs/sprint-A1-api-contract.md) | docs/specs/ |
+| **B1: React scaffold, Vite, SSE hook, API client** | [specs/sprint-B1-react-scaffold.md](specs/sprint-B1-react-scaffold.md) | docs/specs/ |
+| **C1: core tabs, Overview, Events, context gauge** | [specs/sprint-C1-core-tabs.md](specs/sprint-C1-core-tabs.md) | docs/specs/ |
+| **C2: repos table, metrics, perf charts, drill-down** | [specs/sprint-C2-repos-metrics.md](specs/sprint-C2-repos-metrics.md) | docs/specs/ |
+| **C3: config tab, game mode settings, theme picker** | [specs/sprint-C3-config.md](specs/sprint-C3-config.md) | docs/specs/ |
+| **D1: resilience, offline banner, retry, stale indicator** | [specs/sprint-D1-resilience.md](specs/sprint-D1-resilience.md) | docs/specs/ |
+| **D2: observability, diagnostics panel, health check** | [specs/sprint-D2-observability.md](specs/sprint-D2-observability.md) | docs/specs/ |
+| **D3: docs + release, tester guide, migration** | [specs/sprint-D3-docs-release.md](specs/sprint-D3-docs-release.md) | docs/specs/ |
+| **T1: tailscale remote access, auth, CSRF** | [specs/sprint-T1-tailscale.md](specs/sprint-T1-tailscale.md) | docs/specs/ |
+| API contracts — barrel (deprecated, re-exports from api-contracts/) | [dashboard-server/api-contracts.ts](../extensions/dashboard-server/api-contracts.ts) | extensions/dashboard-server/ |
+| API contracts — index barrel (all domain re-exports) | [dashboard-server/api-contracts/index.ts](../extensions/dashboard-server/api-contracts/index.ts) | extensions/dashboard-server/api-contracts/ |
+| API contracts — core types (EndpointDef, SSE events) | [dashboard-server/api-contracts/core.ts](../extensions/dashboard-server/api-contracts/core.ts) | extensions/dashboard-server/api-contracts/ |
+| API contracts — snapshot (snapshot, trigger, compaction) | [dashboard-server/api-contracts/snapshot.ts](../extensions/dashboard-server/api-contracts/snapshot.ts) | extensions/dashboard-server/api-contracts/ |
+| API contracts — multi-repo (repos, indexes, drift, diff) | [dashboard-server/api-contracts/multi-repo.ts](../extensions/dashboard-server/api-contracts/multi-repo.ts) | extensions/dashboard-server/api-contracts/ |
+| API contracts — game (game state, rituals, themes) | [dashboard-server/api-contracts/game.ts](../extensions/dashboard-server/api-contracts/game.ts) | extensions/dashboard-server/api-contracts/ |
+| API contracts — infrastructure (health, perf, rate-limit, diagnostics) | [dashboard-server/api-contracts/infrastructure.ts](../extensions/dashboard-server/api-contracts/infrastructure.ts) | extensions/dashboard-server/api-contracts/ |
+| React App shell (tabs, error boundary, lazy imports) | [dashboard-client/src/App.tsx](../extensions/dashboard-client/src/App.tsx) | extensions/dashboard-client/src/ |
+| useApi hook (typed fetch, retry, stale detection) | [dashboard-client/src/hooks/useApi.ts](../extensions/dashboard-client/src/hooks/useApi.ts) | extensions/dashboard-client/src/hooks/ |
+| useSSE hook (event stream, reconnect, backoff) | [dashboard-client/src/hooks/useSSE.ts](../extensions/dashboard-client/src/hooks/useSSE.ts) | extensions/dashboard-client/src/hooks/ |

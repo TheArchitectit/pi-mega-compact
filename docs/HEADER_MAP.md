@@ -435,3 +435,197 @@
 | Why It Slipped Through | 191 | 183 |
 | Validation | 208 | 200 |
 | Action Items | 224 | 216 |
+
+## docs/specs/sprint-A1-api-contract.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 11 | 0 |
+| PROBLEM STATEMENT | 22 | 11 |
+| SCOPE BOUNDARY | 29 | 18 |
+| EXECUTION DIRECTIONS | 38 | 27 |
+| QA VERIFICATION ROUND | 57 | 46 |
+| ACCEPTANCE CRITERIA | 70 | 59 |
+| ROLLBACK PROCEDURE | 79 | 68 |
+
+## docs/specs/sprint-B1-react-scaffold.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 11 | 0 |
+| PROBLEM STATEMENT | 25 | 14 |
+| SCOPE BOUNDARY | 30 | 19 |
+| EXECUTION DIRECTIONS | 47 | 36 |
+| QA VERIFICATION ROUND | 67 | 56 |
+| ACCEPTANCE CRITERIA | 80 | 69 |
+| ROLLBACK PROCEDURE | 90 | 79 |
+
+## docs/specs/sprint-C1-core-tabs.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 11 | 0 |
+| PROBLEM STATEMENT | 22 | 11 |
+| SCOPE BOUNDARY | 25 | 14 |
+| EXECUTION DIRECTIONS | 38 | 27 |
+| QA VERIFICATION ROUND | 55 | 44 |
+| ACCEPTANCE CRITERIA | 68 | 57 |
+| ROLLBACK PROCEDURE | 76 | 65 |
+
+## docs/specs/sprint-C2-repos-metrics.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 11 | 0 |
+| PROBLEM STATEMENT | 22 | 11 |
+| SCOPE BOUNDARY | 25 | 14 |
+| EXECUTION DIRECTIONS | 36 | 25 |
+| QA VERIFICATION ROUND | 51 | 40 |
+| ACCEPTANCE CRITERIA | 62 | 51 |
+| ROLLBACK PROCEDURE | 70 | 59 |
+
+## docs/specs/sprint-C3-config.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 11 | 0 |
+| PROBLEM STATEMENT | 24 | 13 |
+| SCOPE BOUNDARY | 27 | 16 |
+| EXECUTION DIRECTIONS | 38 | 27 |
+| QA VERIFICATION ROUND | 52 | 41 |
+| ACCEPTANCE CRITERIA | 63 | 52 |
+| ROLLBACK PROCEDURE | 71 | 60 |
+
+## docs/specs/sprint-D1-resilience.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 11 | 0 |
+| PROBLEM STATEMENT | 23 | 12 |
+| SCOPE BOUNDARY | 26 | 15 |
+| EXECUTION DIRECTIONS | 39 | 28 |
+| QA VERIFICATION ROUND | 57 | 46 |
+| ACCEPTANCE CRITERIA | 70 | 59 |
+| ROLLBACK PROCEDURE | 80 | 69 |
+
+## docs/specs/sprint-D2-observability.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 11 | 0 |
+| PROBLEM STATEMENT | 22 | 11 |
+| SCOPE BOUNDARY | 25 | 14 |
+| EXECUTION DIRECTIONS | 34 | 23 |
+| QA VERIFICATION ROUND | 47 | 36 |
+| ACCEPTANCE CRITERIA | 58 | 47 |
+| ROLLBACK PROCEDURE | 66 | 55 |
+
+## docs/specs/sprint-D3-docs-release.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 11 | 0 |
+| PROBLEM STATEMENT | 21 | 10 |
+| SCOPE BOUNDARY | 24 | 13 |
+| EXECUTION DIRECTIONS | 35 | 24 |
+| QA VERIFICATION ROUND | 48 | 37 |
+| ACCEPTANCE CRITERIA | 58 | 47 |
+| ROLLBACK PROCEDURE | 67 | 56 |
+
+## docs/specs/sprint-T1-tailscale.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 11 | 0 |
+| PROBLEM STATEMENT | 26 | 15 |
+| SCOPE BOUNDARY | 29 | 18 |
+| EXECUTION DIRECTIONS | 42 | 31 |
+| QA VERIFICATION ROUND | 60 | 49 |
+| ACCEPTANCE CRITERIA | 73 | 62 |
+| ROLLBACK PROCEDURE | 84 | 73 |
+
+## extensions/dashboard-server/api-contracts.ts (DEPRECATED — re-export barrel)
+
+| Section | Purpose |
+|---------|----------|
+| Re-exports | All types re-exported from api-contracts/index.js for backward compat |
+
+## extensions/dashboard-server/api-contracts/core.ts
+
+| Section | Line |
+|---------|------|
+| EndpointDef + HttpMethod | 10 |
+| SseCompactStart | 25 |
+| SseCompactEnd | 31 |
+| SseCompactTrigger | 42 |
+| SseCompactSkip | 50 |
+| SseTierChanged | 55 |
+| SseModelChanged | 62 |
+| SsePressureLifted | 70 |
+| SseCheckpointPersisted | 76 |
+| SseRecallInject | 82 |
+| SseAnchorsUpdated | 90 |
+| SseConfigUpdated | 96 |
+| SseConfigPreset | 102 |
+| SseCrewPresenceChanged | 108 |
+| SseCrewTurnChanged | 114 |
+| SseCrewBanditChosen | 120 |
+
+## extensions/dashboard-server/api-contracts/snapshot.ts
+
+| Section | Line |
+|---------|------|
+| SnapshotResponse | 10 |
+| TriggerResponse | 82 |
+| CompressionTotalsResponse | 91 |
+| CompactHistoryEntry | 102 |
+| CompactionRequest + CompactionResponse | 115 |
+
+## extensions/dashboard-server/api-contracts/multi-repo.ts
+
+| Section | Line |
+|---------|------|
+| RepoListItem | 10 |
+| RepoSnapshotEntry + RepoSnapshotMap | 20 |
+| IndexesIndexRow | 38 |
+| IndexesSummaryResponse | 57 |
+| IndexesDiffEntry + DiffRequest | 67 |
+| SnapshotLike + DiffResponse | 79 |
+| UpdateRepoConfigRequest | 96 |
+
+## extensions/dashboard-server/api-contracts/game.ts
+
+| Section | Line |
+|---------|------|
+| GameConfig + GameStateResponse | 10 |
+| GameRitualStage | 30 |
+| SseGameRitualStart | 38 |
+| SseGameRitualStage | 45 |
+| SseGameRitualEnd | 52 |
+| SseGameModeChanged | 59 |
+| SseGameRender | 65 |
+
+## extensions/dashboard-server/api-contracts/infrastructure.ts
+
+| Section | Line |
+|---------|------|
+| InfraHealthResponse | 10 |
+| InfraPerfSampleResponse | 18 |
+| InfraRateLimitStatus + InfraRateLimitResponse | 49 |
+| ContextLevelState | 59 |
+| TierOverrideState | 73 |
+| FallbackState | 83 |
+| RepeatInjectionState | 95 |
+| SupersedeGatingState | 119 |
+| MinHashBandState | 143 |
+
+## extensions/dashboard-server/api-contracts/index.ts
+
+| Section | Line |
+|---------|------|
+| Core re-exports | 10 |
+| Snapshot re-exports | 28 |
+| Multi-repo re-exports | 37 |
+| Game re-exports | 50 |
+| Infrastructure re-exports | 60 |
+| SseEvent composite union | 75 |
