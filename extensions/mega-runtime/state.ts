@@ -97,6 +97,12 @@ export class MegaRuntime {
 	// when cachePct > 100). Copied into widgetData.megaCacheFlare on the next
 	// snapshot() so the widget renders the oopsie gag, then reset (one cycle).
 	megaCacheFlare = false;
+	/** v0.8.3: ambient effect state for animated panel borders keyed off
+	 *  status transitions (level-up, mega-cache overshoot, achievement unlock,
+	 *  compaction start). Threaded into widgetData as `activeEffect`; the widget
+	 *  computes the per-frame phase from startedAt vs Date.now() (non-expired).
+	 *  Null when idle/expired. */
+	activeEffect: { type: "pulse" | "flash"; role: "accent" | "mega" | "red"; startedAt: number; durationMs: number } | null = null;
 	megaCacheFlarePct = 0;
 	levelUpFlare = false;
 	lastLevel = 0;
@@ -575,7 +581,11 @@ export class MegaRuntime {
 			const gs = this.getCachedGameState();
 			// S34: derive the level-up flare from the turn count each snapshot.
 			const curLevel = this.getTurnLevel();
-			if (curLevel > this.lastLevel) this.levelUpFlare = true;
+			if (curLevel > this.lastLevel) {
+				this.levelUpFlare = true;
+				// v0.8.3: arm a pulse border effect to celebrate the level-up.
+				this.setEffect("pulse", "accent", 1500);
+			}
 			const cachePct = st.dedupHitRate * 100;
 			this.widgetData = {
 				version: ownVersion(),
@@ -619,6 +629,9 @@ export class MegaRuntime {
 				levelUpFlare: this.levelUpFlare,
 				achievementFlare: this.achievementFlare,
 				achievementFlareTitles: this.achievementFlareTitles,
+				// v0.8.3: ambient border effect — threaded live so the widget can
+				// compute the per-frame phase and render animated borders.
+				activeEffect: this.activeEffect,
 			};
 			// S33: consume the flare after copying it into widgetData so it fires
 			// for exactly one render cycle (the gag flares once, then clears).
@@ -633,6 +646,19 @@ export class MegaRuntime {
 			// (mirrors the megaCacheFlare/levelUpFlare one-shot semantics).
 			this.achievementFlare = false;
 			this.achievementFlareTitles = [];
+			// v0.8.3: expire the ambient border effect once its time window has
+			// elapsed. SEPARATE from the one-shot flares above (those are per-cycle
+			// consumes; activeEffect is time-windowed and cleared when Date.now()
+			// crosses startedAt + durationMs). The widget also defends this per-frame
+			// (effectBorderSgr returns '' once expired), so this is bookkeeping to
+			// free the slot and prevent a stale effect lingering between snapshots.
+			if (
+				this.activeEffect &&
+				Date.now() - this.activeEffect.startedAt >=
+					this.activeEffect.durationMs
+			) {
+				this.activeEffect = null;
+			}
 			// Auto-fit: register a factory so pi re-renders the panel at the REAL
 			// terminal width every frame (tui.columns), instead of guessing with
 			// process.stdout.columns. buildWidgetLines reads this.widgetData live.
@@ -915,18 +941,37 @@ export class MegaRuntime {
 	}
 
 	/** S33: arm the transient MEGA CACHE flare so the next snapshot() copies it
-	 *  into widgetData and the widget renders the oopsie gag for one cycle. */
+	 *  into widgetData and the widget renders the oopsie gag for one cycle.
+	 *  v0.8.3: also arm a 'flash' ambient effect on the panel borders (mega
+	 *  color) for 1.2s. */
 	armMegaCacheFlare(peakPct: number): void {
 		this.megaCacheFlare = true;
 		this.megaCacheFlarePct = peakPct;
+		this.setEffect("flash", "mega", 1200);
 	}
 
 	/** S35: arm the transient achievement-unlock flare with the newly-unlocked
 	 *  titles so the next snapshot() copies them into widgetData and the widget
-	 *  renders the one-time unlock toast for one render cycle. */
+	 *  renders the one-time unlock toast for one render cycle.
+	 *  v0.8.3: also arm a 'pulse' ambient effect on the panel borders (accent
+	 *  color) for 2s to celebrate the unlock. */
 	armAchievementFlare(titles: string[]): void {
 		this.achievementFlare = true;
 		this.achievementFlareTitles = titles;
+		this.setEffect("pulse", "accent", 2000);
+	}
+
+	/** v0.8.3: arm an ambient border effect (animated pulse/flash on the panel
+	 *  borders). Replaces any in-flight effect (last call wins — a later event
+	 *  like a level-up during an achievement pulse simply overrides). The widget
+	 *  reads activeEffect each frame and computes the per-frame phase from
+	 *  startedAt vs Date.now(); it renders '' once the window elapses. */
+	setEffect(
+		type: "pulse" | "flash",
+		role: "accent" | "mega" | "red",
+		durationMs: number,
+	): void {
+		this.activeEffect = { type, role, startedAt: Date.now(), durationMs };
 	}
 
 	/** Build the sync onTier callback that paints the live per-tier trace. */

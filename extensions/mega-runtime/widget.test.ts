@@ -162,6 +162,56 @@ describe("buildWidgetLines (S31)", () => {
 });
 
 
+describe("buildWidgetLines ambient border effect (v0.8.3)", () => {
+  const effBase = (overrides: Partial<WidgetData> = {}): WidgetData => baseWd({
+    theme: DEFAULT_THEME, tuiMode: "full", gameMode: true, level: 1, cachePct: 42, ...overrides,
+  });
+  const isBorder = (l: string): boolean => l.includes("─");
+
+  it("activeEffect (pulse, mid-window) -> border lines carry a 256-color fg SGR", () => {
+    const ae = { type: "pulse" as const, role: "accent" as const, startedAt: Date.now() - 250, durationMs: 2000 };
+    const lines = buildWidgetLines(effBase({ activeEffect: ae }), WIDTH, 0);
+    const borders = lines.filter(isBorder);
+    assert.ok(borders.length >= 2, "has top + bottom borders");
+    for (const b of borders) {
+      assert.ok(b.includes("\x1b[38;5;"), `border carries 256-color fg: ${JSON.stringify(b)}`);
+    }
+  });
+
+  it("activeEffect null -> plain borders, no 38;5 fg SGR on border lines", () => {
+    const lines = buildWidgetLines(effBase({ activeEffect: null }), WIDTH, 0);
+    const borders = lines.filter(isBorder);
+    for (const b of borders) {
+      assert.ok(!b.includes("\x1b[38;5;"), `no effect SGR on plain border: ${JSON.stringify(b)}`);
+    }
+  });
+
+  it("expired activeEffect -> plain borders (per-frame expiry enforced)", () => {
+    const ae = { type: "pulse" as const, role: "accent" as const, startedAt: Date.now() - 5000, durationMs: 1000 };
+    const lines = buildWidgetLines(effBase({ activeEffect: ae }), WIDTH, 0);
+    const borders = lines.filter(isBorder);
+    for (const b of borders) {
+      assert.ok(!b.includes("\x1b[38;5;"), `expired effect -> plain border: ${JSON.stringify(b)}`);
+    }
+  });
+
+  it("activeEffect border lines are width-safe (pulse, minimal + full)", () => {
+    for (const tuiMode of ["minimal", "full"] as const) {
+      const ae = { type: "pulse" as const, role: "mega" as const, startedAt: Date.now() - 100, durationMs: 2000 };
+      const lines = buildWidgetLines(effBase({ activeEffect: ae, tuiMode }), 60, 0);
+      for (const l of lines) assert.ok(visibleWidth(l) <= 60, `width safe (${tuiMode}): ${visibleWidth(l)}`);
+    }
+  });
+
+  it("flash effect mid-window border carries the full base index SGR", () => {
+    // Force an 'on' phase of the 120ms alternate by starting just now.
+    const ae = { type: "flash" as const, role: "red" as const, startedAt: Date.now(), durationMs: 1200 };
+    const lines = buildWidgetLines(effBase({ activeEffect: ae }), WIDTH, 0);
+    const borders = lines.filter(isBorder);
+    assert.ok(borders.some((b) => b.includes("\x1b[38;5;203m")), `flash-on phase uses red base 203`);
+  });
+});
+
 describe("buildWidgetLines achievement flare (S35)", () => {
   const achBase = (overrides: Partial<WidgetData> = {}): WidgetData => baseWd({
     theme: DEFAULT_THEME, tuiMode: "full", gameMode: true, level: 1, cachePct: 42, ...overrides,

@@ -36,6 +36,16 @@ import { THEMES, THEME_IDS, getTheme, isValidTheme, nextTheme, DEFAULT_THEME } f
 /** Notify/usage tag + command name. Primary surface is /mega-compact-settings. */
 const TAG = "mega-compact-settings";
 
+/** Apply a game_state mutation to the live TUI: evict the memoized cache
+ *  (bumpGameState) THEN recompute the widget snapshot (snapshot(ctx)) so the
+ *  panel picks up the new theme/mode/toggle immediately — no pi restart needed.
+ *  snapshot() re-reads the (evicted) game_state into widgetData and re-registers
+ *  the widget factory. Order matters: bump first, snapshot second. */
+function applyChange(ctx: ExtensionContext, runtime: MegaRuntime): void {
+  runtime.bumpGameState();
+  runtime.snapshot(ctx);
+}
+
 /** Format the current state as a human-readable status line set. */
 function fmtState(s: GameState): string[] {
   return [
@@ -88,7 +98,7 @@ async function handleSettings(
   // on|off
   if (sub === "on" || sub === "off") {
     const s = setGameState({ game_mode_on: sub === "on" }, stateDir);
-    runtime.bumpGameState();
+    applyChange(ctx, runtime);
     ctx.ui.notify(`[${TAG}] game mode ${s.game_mode_on ? "ON" : "off"}`);
     return;
   }
@@ -114,7 +124,7 @@ async function handleSettings(
       return;
     }
     const s = setGameState({ theme: id }, stateDir);
-    runtime.bumpGameState();
+    applyChange(ctx, runtime);
     ctx.ui.notify(`[${TAG}] theme → ${s.theme} (${getTheme(s.theme)?.label ?? ""})`);
     return;
   }
@@ -127,7 +137,7 @@ async function handleSettings(
       return;
     }
     const s = setGameState({ tui_display_mode: arg }, stateDir);
-    runtime.bumpGameState();
+    applyChange(ctx, runtime);
     ctx.ui.notify(`[${TAG}] tui → ${s.tui_display_mode}`);
     return;
   }
@@ -160,7 +170,7 @@ async function runInteractiveMenu(
     if (choice === toggleLabel) {
       const next = !s.game_mode_on;
       setGameState({ game_mode_on: next }, stateDir);
-      runtime.bumpGameState();
+      applyChange(ctx, runtime);
       ctx.ui.notify(`[${TAG}] game mode ${next ? "ON" : "off"}`, "info");
       continue;
     }
@@ -203,7 +213,7 @@ async function themeSubmenu(
   }
   if (id && id !== s.theme) {
     setGameState({ theme: id }, stateDir);
-    runtime.bumpGameState();
+    applyChange(ctx, runtime);
     ctx.ui.notify(`[${TAG}] theme → ${id} (${getTheme(id)?.label ?? ""})`, "info");
   }
 }
@@ -225,7 +235,7 @@ async function tuiSubmenu(
   const mode = choice.split(/\s+/)[0];
   if (mode === "full" || mode === "minimal") {
     setGameState({ tui_display_mode: mode }, stateDir);
-    runtime.bumpGameState();
+    applyChange(ctx, runtime);
     ctx.ui.notify(`[${TAG}] tui → ${mode}`, "info");
   }
 }

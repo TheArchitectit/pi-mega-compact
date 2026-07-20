@@ -24,15 +24,23 @@ type Harness = {
   commands: Record<string, Cmd>;
   notifies: string[];
   ctx: any;
+  snapshotCalls: number[];
 };
 
 function makeHarness(
   stateDir: string,
   select?: (title: string, options: string[]) => Promise<string | undefined>,
+  snapshotSpy?: () => void,
 ): Harness {
   const commands: Record<string, Cmd> = {};
   const notifies: string[] = [];
-  const runtime = { bindRepo: () => {}, currentStateDir: stateDir, bumpGameState: () => {} };
+  const snapshotCalls: number[] = [];
+  const runtime = {
+    bindRepo: () => {},
+    currentStateDir: stateDir,
+    bumpGameState: () => {},
+    snapshot: () => { snapshotCalls.push(1); snapshotSpy?.(); },
+  };
   const ctx = {
     cwd: stateDir,
     ui: { notify: (s: string) => notifies.push(s), ...(select ? { select } : {}) },
@@ -48,7 +56,7 @@ function makeHarness(
     registerGameCommands: (pi: unknown, runtime: unknown) => void;
   };
   mod.registerGameCommands(fakePi, runtime);
-  return { commands, notifies, ctx };
+  return { commands, notifies, ctx, snapshotCalls };
 }
 
 describe("/mega-compact-settings (S30; /mega-game alias)", () => {
@@ -113,6 +121,17 @@ describe("/mega-compact-settings (S30; /mega-game alias)", () => {
     await h.commands["mega-compact-settings"].handler("", h.ctx);
     assert.equal(getGameState().theme, "retro");
     assert.ok(h.notifies.some((l) => l.includes("theme → retro")));
+  });
+
+  it("menu toggle calls runtime.snapshot() so the widget refreshes live", async () => {
+    const seq = ["Turn game mode ON", "Done"];
+    let i = 0;
+    const h = makeHarness(dir, () => Promise.resolve(seq[i++] ?? undefined));
+    h.notifies.length = 0;
+    h.snapshotCalls.length = 0;
+    await h.commands["mega-compact-settings"].handler("", h.ctx);
+    assert.equal(getGameState().game_mode_on, true);
+    assert.ok(h.snapshotCalls.length >= 1, "snapshot() called so widget refreshes live");
   });
 
   it("on enables game mode and persists", async () => {

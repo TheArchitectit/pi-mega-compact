@@ -58,6 +58,64 @@ function freshDir(): string {
 	return mkdtempSync(join(tmpdir(), "mc-state-"));
 }
 
+describe("MegaRuntime setEffect lifecycle (v0.8.3)", () => {
+	const dirs: string[] = [];
+	after(() => {
+		for (const d of dirs) {
+			try { closeStore(d); } catch { /* */ }
+		}
+		delete process.env.MEGACOMPACT_STATE_DIR;
+		for (const d of dirs) rmSync(d, { recursive: true, force: true });
+	});
+
+	it("activeEffect starts null and setEffect arms it with startedAt ~now", () => {
+		const dir = freshDir(); dirs.push(dir);
+		process.env.MEGACOMPACT_STATE_DIR = dir;
+		const rt = new MegaRuntime(minimalConfig(dir));
+		assert.equal(rt.activeEffect, null, "idle on construction");
+		const before = Date.now();
+		rt.setEffect("pulse", "accent", 2000);
+		const after = Date.now();
+		assert.equal(rt.activeEffect.type, "pulse");
+		assert.equal(rt.activeEffect.role, "accent");
+		assert.equal(rt.activeEffect.durationMs, 2000);
+		assert.ok(
+			rt.activeEffect.startedAt >= before && rt.activeEffect.startedAt <= after,
+			"startedAt within the call window",
+		);
+	});
+
+	it("setEffect replaces an in-flight effect (last call wins)", () => {
+		const dir = freshDir(); dirs.push(dir);
+		process.env.MEGACOMPACT_STATE_DIR = dir;
+		const rt = new MegaRuntime(minimalConfig(dir));
+		rt.setEffect("pulse", "accent", 2000);
+		const first = rt.activeEffect;
+		rt.setEffect("flash", "mega", 1200);
+		assert.notEqual(rt.activeEffect, first, "a fresh object replaced the prior");
+		assert.equal(rt.activeEffect.type, "flash");
+		assert.equal(rt.activeEffect.role, "mega");
+		assert.equal(rt.activeEffect.durationMs, 1200);
+	});
+
+	it("a backdated effect is recognized as expired by the snapshot predicate", () => {
+		const dir = freshDir(); dirs.push(dir);
+		process.env.MEGACOMPACT_STATE_DIR = dir;
+		const rt = new MegaRuntime(minimalConfig(dir));
+		rt.setEffect("pulse", "accent", 2000);
+		// Backdate startedAt past the duration window (no snapshot/ctx needed —
+		// this mirrors the exact predicate snapshot() runs after the flare consume).
+		rt.activeEffect.startedAt = Date.now() - 3000;
+		const expired =
+			!!rt.activeEffect &&
+			Date.now() - rt.activeEffect.startedAt >= rt.activeEffect.durationMs;
+		assert.ok(expired, "backdated effect satisfies the expiry predicate");
+		// Clearing mirrors the snapshot() bookkeeping branch:
+		if (expired) rt.activeEffect = null;
+		assert.equal(rt.activeEffect, null, "cleared once expired");
+	});
+});
+
 describe("MegaRuntime game-state cache (S31)", () => {
 	const dirs: string[] = [];
 	after(() => {

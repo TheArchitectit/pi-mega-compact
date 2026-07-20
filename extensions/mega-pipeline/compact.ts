@@ -79,6 +79,7 @@ function doCompact(
   runtime: MegaRuntime,
 ): RunCompactResult {
   runtime.pulsing = true; // animate the status line while the (sync) pipeline runs
+  runtime.setEffect?.("pulse", "accent", 1500); // v0.8.3: ambient border pulse during compaction
   // S21.2: reset the per-compaction memory-op counter so the post-compact
   // consolidate pass only fires when memory rows actually changed during the
   // compaction window (turn_end → auto-review may have written some).

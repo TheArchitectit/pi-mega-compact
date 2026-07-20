@@ -128,6 +128,51 @@ function panelBar(width: number, ch = "─", panelBg: string = DEFAULT_PANEL_BG)
 	return truncateToWidth(panelBg + ch.repeat(Math.max(0, width)), width, "", false) + "\x1b[0m";
 }
 
+// ── v0.8.3: ambient border-effect helpers ───────────────────────────────
+// The panel borders animate when an `activeEffect` is armed (level-up,
+// mega-cache overshoot, achievement unlock, compaction start). Two modes:
+//   • pulse — a sine ramp on a 256-color base (accent=51 / mega=214 / red=203):
+//     the base index is scaled by sin(π·t) so the border swells 0→peak→0 over
+//     the duration, then returns to '' (idle). 256-color indices are clamped
+//     to 0–255 defensively (the bases are all ≤214 so the clamp rarely bites).
+//   • flash — a 120ms hard on/off alternate using the base index at full.
+// Returns '' when idle, expired, or elapsed<0 (clock skew) so non-effect
+// renders are byte-identical to the pre-effect panel (S31 matrix stays green).
+const EFFECT_BASE: Record<"accent" | "mega" | "red", number> = {
+	accent: 51,
+	mega: 214,
+	red: 203,
+};
+
+/** Resolve the per-frame border-fg SGR for an active effect. '' when idle or
+ *  expired (the widget's real per-frame expiry enforcer — snapshot-level clear
+ *  is just bookkeeping since snapshot is event-driven). */
+function effectBorderSgr(
+	ae: NonNullable<WidgetData["activeEffect"]> | null,
+	now: number,
+): string {
+	if (!ae) return "";
+	const elapsed = now - ae.startedAt;
+	if (elapsed < 0 || elapsed >= ae.durationMs) return "";
+	const base = EFFECT_BASE[ae.role];
+	if (ae.type === "flash") {
+		// 120ms hard alternate: on (full base) / off (no SGR).
+		return Math.floor(elapsed / 120) % 2 === 0 ? `\x1b[38;5;${base}m` : "";
+	}
+	// pulse: sine ramp 0 → peak → 0 over the duration.
+	const t = elapsed / ae.durationMs;
+	const amp = Math.sin(Math.PI * t); // 0 at start/end, 1 at midpoint
+	const idx = Math.max(0, Math.min(255, Math.round(base * amp)));
+	return `\x1b[38;5;${idx}m`;
+}
+
+/** Prepend the effect border SGR to a panel bar line. The SGR is a pure-fg
+ *  escape (zero visible width), so it never perturbs truncateToWidth's width
+ *  math — the bar's own `\x1b[0m` tail resets both fg + bg. No-op when sgr=''. */
+function effectBar(bar: string, sgr: string): string {
+	return sgr ? sgr + bar : bar;
+}
+
 /** Token-count formatter: M at/above 1e6, k at/above 1e3, raw below.
  *  5,472,700 → "5.5mil", 24,100 → "24.1k", 142 → "142". */
 function fmtTokens(x: number): string {
@@ -231,6 +276,15 @@ export interface WidgetData {
 	/** S35: achievement-unlock flare -- renders a one-line toast for one cycle. */
 	achievementFlare?: boolean;
 	achievementFlareTitles?: string[];
+	/** v0.8.3: ambient animated border effect (null when idle/expired). The
+	 *  widget computes the per-frame phase from startedAt vs Date.now() and
+	 *  renders a pulse/flash on the panel borders; '' once the window elapses. */
+	activeEffect?: {
+		type: "pulse" | "flash";
+		role: "accent" | "mega" | "red";
+		startedAt: number;
+		durationMs: number;
+	} | null;
 }
 
 // ── buildWidgetLines ───────────────────────────────────────────────────────
@@ -250,11 +304,16 @@ export function buildWidgetLines(
 	// every panelLine/panelBar/wrapLine so the bg stays continuous and the width
 	// guard (truncateToWidth) still holds for transparent themes.
 	const panelBg = wd?.theme ? panelBgFor(wd.theme) : DEFAULT_PANEL_BG;
+	// v0.8.3: resolve the animated border SGR once per render. '' when idle,
+	// expired, or wd is null (warm-up) — so non-effect renders are byte-identical
+	// to the pre-effect panel (the existing S31 matrix tests stay green).
+	const now = Date.now();
+	const borderSgr = effectBorderSgr(wd?.activeEffect ?? null, now);
 	if (!wd) {
 		return [
-			panelBar(width, "─", panelBg),
+			effectBar(panelBar(width, "─", panelBg), borderSgr),
 			panelLine(" mega-compact: warming up…", width, panelBg),
-			panelBar(width, "─", panelBg),
+			effectBar(panelBar(width, "─", panelBg), borderSgr),
 		];
 	}
 	// S31: minimal TUI mode — a single content line `LVL n | cache NN%` flanked
@@ -276,9 +335,9 @@ export function buildWidgetLines(
 				? `${accent}${wd.gameMode && wd.levelUpFlare ? "\x1b[5m" : ""}LVL ${lvl}${wd.gameMode && wd.levelUpFlare ? "\x1b[0m" : ""}${sgrReset(accent)} ${C.dim}|${C.reset} cache ${cacheStr}${megaFlare}`
 				: `cache ${cacheStr}${megaFlare}`;
 		return [
-			panelBar(width, "─", panelBg),
+			effectBar(panelBar(width, "─", panelBg), borderSgr),
 			panelLine(` ${body}`, width, panelBg),
-			panelBar(width, "─", panelBg),
+			effectBar(panelBar(width, "─", panelBg), borderSgr),
 		];
 	}
 	const pulse = wd.pulsing
@@ -312,7 +371,7 @@ export function buildWidgetLines(
 	// Wrap to terminal width and pad each line
 	const wrapped = wrapLine(content, width - 2, panelBg); // 2-char indent
 	const lines: string[] = [
-		panelBar(width, "─", panelBg),
+		effectBar(panelBar(width, "─", panelBg), borderSgr),
 		...wrapped.map((l) => panelLine(l, width, panelBg)),
 	];
 	// L4 — agents block (S27, count + status; per-agent tokens gated on P0)
@@ -354,6 +413,6 @@ export function buildWidgetLines(
 		lines.push(panelLine(`   ${accentSgr}🏆 Achievement unlocked: ${titlesStr}${sgrReset(accentSgr)}`, width, panelBg));
 	}
 	// bottom border
-	lines.push(panelBar(width, "─", panelBg));
+	lines.push(effectBar(panelBar(width, "─", panelBg), borderSgr));
 	return lines;
 }
