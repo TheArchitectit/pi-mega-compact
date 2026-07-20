@@ -208,16 +208,16 @@ leaderboards + MEGA CACHE + level-up animation + the Opie hidden unlock.)
 - `docs/INDEX_MAP.md` + `docs/HEADER_MAP.md` — add the new spec + tab.
 
 **Pre-defined TODOs:**
-- [ ] **S34.1** Tab + panel: per-metric leaderboards (cache per repo, dedupe global, turns global, repos badge). Render via `GET /api/game-scores`.
-- [ ] **S34.2** MEGA CACHE banner + **Opie's Wild Ride** hidden unlock (§3b):
+- [x] **S34.1** Tab + panel: per-metric leaderboards (cache per repo, dedupe global, turns global, repos badge). Render via `GET /api/game-scores`.
+- [x] **S34.2** MEGA CACHE banner + **Opie's Wild Ride** hidden unlock (§3b):
   - **Transient oopsie gag:** when the `megaCacheFlare` flag is set on the latest turn, show a transient toast `oopsie! cache went to NNN% — MEGA CACHE 🥧` with the CSS mega-flash keyframe, auto-dismissing.
   - **Hidden unlock tile ("🏆 Opie's Wild Ride"):** HIDDEN until a `mega_cache` trophy row exists for this repo — no locked tile, no `???` teaser, no hint on a fresh install. Once the first overshoot happens, render a `🏆 Opie's Wild Ride` tile showing the best (highest) peak % across all sessions + when it first happened (from `game_scores` `mega_cache` `meta`). It stays (one-time unlock). `/mega-game` bare status stays terse — the unlock only surfaces in the dashboard, not the TUI command output.
-- [ ] **S34.3** Turn-level display in the dashboard: show level per recent turn (from `game_scores` `turns`/meta).
-- [ ] **S34.4** Level-up animation: dashboard — CSS keyframe pulse on the cache bar when a new level is hit (client compares last-seen level). TUI — S31's ANSI blink fires on the level-up turn.
-- [ ] **S34.5** `GET /api/game-scores?metric=<m>&limit=<n>` → JSON rows; `metric` validated against the allow-list (no SQL injection — parameterized anyway, G3).
-- [ ] **S34.6** Empty state: "No scores yet — run a session with game mode on."
+- [x] **S34.3** Turn-level display in the dashboard: show level per recent turn (from `game_scores` `turns`/meta).
+- [x] **S34.4** Level-up animation: dashboard — CSS keyframe pulse on the cache bar when a new level is hit (client compares last-seen level). TUI — S31's ANSI blink fires on the level-up turn.
+- [x] **S34.5** `GET /api/game-scores?metric=<m>&limit=<n>` → JSON rows; `metric` validated against the allow-list (no SQL injection — parameterized anyway, G3).
+- [x] **S34.6** Empty state: "No scores yet — run a session with game mode on."
 - [ ] **S34.7** (moved to S35.10) — release notes + CHANGELOG + INDEX_MAP/HEADER_MAP updates ship with the achievements sprint so game-mode releases as one unit.
-- [ ] **S34.8** Full gate green; `guardrails-scan` + `semantic-scan` clean; manual dashboard + TUI smoke test for the High Score tab + Opie hidden unlock.
+- [x] **S34.8** Full gate green; `guardrails-scan` + `semantic-scan` clean; manual dashboard + TUI smoke test for the High Score tab + Opie hidden unlock.
 
 **Acceptance:** High Score tab shows live leaderboards after a session; MEGA CACHE banner fires on ≥100%; level-up animates; `/mega-game` + settings strip both work; gate green.
 **Rollback:** `git revert <sha>` — tab is additive; scores/table remain but are unused (drop in a follow-up if needed).
@@ -271,7 +271,7 @@ Total: 52 TODOs across S30–S35.
 - **S31:** 8 todos (S31.1–S31.8) — ✅ DONE (commits `98a9b3f` + `a0d9b5c`). cache + full/minimal mode + level stub + MEGA CACHE flare + oopsie gag + game-mode-off guard + 48-case test matrix + bindRepo eviction (audit P2).
 - **S32:** 8 todos (S32.1–S32.8) — ✅ DONE (commits `60b7f73` + `fa8cc20`). CSS-var skin (transparent-default parity) + settings strip (game-mode/theme/tui selects) + GET/PUT /api/game-state (non-object guard) + fs.watch cross-process eviction + 8 test cases (incl. P1 null/array regression). Gate green (495/495).
 - **S33:** 9 todos (S33.1–S33.9) — ✅ DONE (commit `e4ac3ec`). game_scores DDL + recordScore/leaderboard (nextTs monotonic, split repoFilter) + pure scoring helpers + turn_end/session_compact hooks (incl. mega_cache trophy + megaCacheFlare) + game_mode_on gate + 9 test cases. Gate green (507/507).
-- **S34:** 9 todos (S34.1–S34.9) — tab, banner + Opie hidden unlock, levels, animations, API, empty state. (Release notes/maps moved to S35.)
+- **S34:** 9 todos (S34.1–S34.8) — ✅ DONE (commit `05d6550`). Game Mode tab + leaderboards (cache/dedupe/turns/mega_cache + repos badge) + MEGA CACHE banner + Opie hidden unlock tile + transient oopsie toast (cross-process, detects new mega_cache trophy row) + level-up CSS pulse + ANSI blink + GET /api/game-scores (metric validation, limit clamp, 400/405) + empty state. Gate green (514/514). (S34.7 release notes moved to S35.10.)
 - **S35:** 11 todos (S35.1–S35.11) — achievements DDL, accessors, evaluateAchievements, hook wiring, TUI toast, dashboard tiles, /api/achievements, /mega-game achievements, tests, release notes + maps, gate.
 
 Cross-cutting TODOs (apply to every sprint):
