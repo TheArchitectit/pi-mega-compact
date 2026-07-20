@@ -49,7 +49,7 @@ const POOL = Math.max(
 // files running at once can collide on the same base port (EADDRINUSE), so they
 // run one-at-a-time. Keep this lane SERIAL and run it LAST (see main()).
 const DASHBOARD_GLOB =
-	/(^|\/)dashboard-server\.test\.js$|(^|\/)mega-compact\.test\.js$/;
+	/(^|\/)dashboard-server(?:-s32)?\.test\.js$|(^|\/)mega-compact\.test\.js$/;
 
 /** Recursively collect every dist/**\/*.test.js file. */
 function collectTestFiles(dir) {

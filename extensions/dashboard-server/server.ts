@@ -327,6 +327,14 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
             res.end(JSON.stringify({ error: "invalid_json" }));
             return;
           }
+        // Reject valid-but-non-object JSON (null/[]/42) — dereferencing
+        // patch.game_mode_on would throw an unhandled TypeError inside this
+        // 'end' listener and crash the detached server (audit P1: loopback DoS).
+        if (typeof patch !== "object" || patch === null || Array.isArray(patch)) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid_patch_object" }));
+          return;
+        }
         // Validate the patch fields (unknown keys ignored; invalid values -> 400).
         const clean: { game_mode_on?: boolean; theme?: string; tui_display_mode?: "full" | "minimal" } = {};
         let bad = false;

@@ -103,6 +103,42 @@ describe("S32 /api/game-state", () => {
     assert.equal(getGameState(dir).theme, before, "row unchanged after invalid PUT");
   });
 
+  test("PUT body 'null' (valid-but-non-object JSON) -> 400, server stays up (audit P1)", async () => {
+    const dir = freshDir("dash-gs-nullobj-");
+    setGameState({ theme: "amber-mono" }, dir);
+    const before = getGameState(dir).theme;
+    await withServer("19335", dir, async (port) => {
+      // A valid-JSON-but-non-object body must NOT crash the detached server
+      // (audit P1: unhandled TypeError on patch.game_mode_on deref).
+      const res = await fetch(`http://localhost:${port}/api/game-state`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(null),
+      });
+      assert.equal(res.status, 400, "non-object JSON -> 400, not a crash");
+      const body = (await res.json()) as { error: string };
+      assert.equal(body.error, "invalid_patch_object");
+      // Server must still be up — a follow-up GET must succeed.
+      const follow = await fetch(`http://localhost:${port}/api/game-state`);
+      assert.equal(follow.status, 200, "server survived the non-object PUT");
+    });
+    assert.equal(getGameState(dir).theme, before, "row unchanged after non-object PUT");
+  });
+
+  test("PUT body '[]' (array) -> 400, server stays up", async () => {
+    const dir = freshDir("dash-gs-arr-");
+    await withServer("19336", dir, async (port) => {
+      const res = await fetch(`http://localhost:${port}/api/game-state`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify([]),
+      });
+      assert.equal(res.status, 400);
+      const follow = await fetch(`http://localhost:${port}/api/game-state`);
+      assert.equal(follow.status, 200, "server survived the array PUT");
+    });
+  });
+
   test("PUT {tui_display_mode:'minimal'} round-trips", async () => {
     const dir = freshDir("dash-gs-tui-");
     await withServer("19333", dir, async (port) => {
