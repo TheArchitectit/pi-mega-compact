@@ -30,7 +30,7 @@ All nine dashboard-migration sprint specs are authored and committed:
 | Sprint | Spec | Focus | Status |
 | --- | --- | --- | --- |
 | A1 | [`sprint-A1-api-contract.md`](docs/specs/sprint-A1-api-contract.md) | API contract, typed endpoints, `EndpointDef` | ✅ spec written, ✅ impl DONE (v0.8.9) |
-| B1 | [`sprint-B1-react-scaffold.md`](docs/specs/sprint-B1-react-scaffold.md) | React scaffold, Vite, SSE hook, API client | ✅ spec written, 🟡 scaffold present |
+| B1 | [`sprint-B1-react-scaffold.md`](docs/specs/sprint-B1-react-scaffold.md) | React scaffold, Vite, SSE hook, API client | ✅ spec written, ✅ impl DONE (v0.8.9) |
 | C1 | [`sprint-C1-core-tabs.md`](docs/specs/sprint-C1-core-tabs.md) | Core tabs: Overview, Events, context gauge | ✅ spec written, ⬜ impl TODO |
 | C2 | [`sprint-C2-repos-metrics.md`](docs/specs/sprint-C2-repos-metrics.md) | Repos table, metrics, perf charts, drill-down | ✅ spec written, ⬜ impl TODO |
 | C3 | [`sprint-C3-config.md`](docs/specs/sprint-C3-config.md) | Config tab, game-mode settings, theme picker | ✅ spec written, ⬜ impl TODO |
@@ -80,15 +80,21 @@ The composite `SseEvent` union (all 20 core + game events) is composed in `index
 - Scope adds: `extensions/mega-events/perf-handler.ts` (flag non-2xx `after_provider_response` as `provider_failure`), `extensions/dashboard-server/server.ts` (`/api/diag` returning provider failure count + rate + last status), and `DiagnosticsPanel.tsx` (provider-failure row, green/red).
 - Execution directions add a `PROVFAIL` step and acceptance/rollback checkboxes for failure flagging, `/api/diag`, and the DiagnosticsPanel surface.
 
-### 1.7 B1 React scaffold (partial, work-in-progress)
+### 1.7 B1 React scaffold — ✅ COMPLETE
 
-Untracked scaffold files present under `extensions/dashboard-client/src/` (excluded from the TS build per §1.3):
+The React + Vite scaffold is fully built and served by the dashboard server:
 
-- `App.tsx` — dashboard shell, tab routing, header, `ErrorBoundary`/`TabBar`/`LoadingSpinner` imports (components not yet created).
-- `hooks/useApi.ts` — generic typed fetch hook with polling + mount-safety; retry/stale marked `SPRINT-D1-REMAINING`.
-- `hooks/useSSE.ts` — `EventSource` hook with ring buffer + reconnect; exponential backoff marked `SPRINT-D1-REMAINING`.
+- `dashboard-client/` is a standalone Vite + React + TypeScript sub-project (own `package.json`, `tsconfig.json`, `vite.config.ts`, `.gitignore`). Dev deps: react 18, vite 5, @vitejs/plugin-react, typescript 5. Build artifacts (`dist/`, `node_modules/`) are git-ignored.
+- `src/main.tsx` + `index.html` — React entry, StrictMode, `#root` mount.
+- `src/App.tsx` — shell: header (title + tier pill + version), `TabBar` (Overview|Repos|Events|Config|Metrics), lazy-loaded tab routing, `ErrorBoundary` + `Suspense`.
+- `src/components/` — `ErrorBoundary` (catch render errors + reload), `TabBar` (role=tablist), `LoadingSpinner`.
+- `src/api/client.ts` — typed fetch wrappers for all 13 A1 endpoints using the `ENDPOINTS` registry; `ApiError` on non-2xx; relative paths only (loopback, PREVENT-PI-004).
+- `src/tabs/` — 5 B1 stubs (Overview shows tier; others placeholder, marked `SPRINT-C1/C2/C3-REMAINING`).
+- `src/hooks/useApi.ts` + `src/hooks/useSSE.ts` — pre-existing scaffold hooks retained; retry/backoff/stale still marked `SPRINT-D1-REMAINING`.
+- `server.ts` — Sprint B1 static-serve: multi-candidate `clientDist` resolution (dist build + dev layouts); `serveClientAsset` serves real assets with correct MIME + SPA fallback (`index.html`) for unknown non-`/api/*` routes; falls back to legacy `html.ts` when client dist absent. CORS tightened from wildcard `*` to localhost/127.0.0.1 origins only.
+- Root `package.json` — `build:dashboard` script added.
 
-These are 🟡 SCAFFOLD — real content but incomplete (missing `components/`, `tabs/`, Vite config, build pipeline). They are staged in this commit as B1 starting point.
+Gate green: build, `build:dashboard` (45 modules, 147KB main + 5 lazy chunks), 589 tests/0 fail, lint, regression_check, guardrails-scan. Smoke: `GET /` serves React `#root`; `/assets/*.js` → `text/javascript`; `/api/snapshot` → JSON; `/repos` SPA fallback → `#root`.
 
 ---
 
@@ -110,15 +116,20 @@ Completed in v0.8.9 on `game-mode`. Deliverables:
 
 **Next unblocker:** Sprint B1 (React scaffold completion).
 
-### 2.2 Sprint B1 — React scaffold completion 🟡→⬜
+### 2.2 Sprint B1 — React scaffold completion ✅ DONE
 
 Spec: [`sprint-B1-react-scaffold.md`](docs/specs/sprint-B1-react-scaffold.md)
 
-- [ ] Vite config + `dashboard-client/package.json` + dev/build scripts.
-- [ ] Create missing components referenced by `App.tsx`: `components/ErrorBoundary.tsx`, `components/TabBar.tsx`, `components/LoadingSpinner.tsx`.
-- [ ] Create tab stubs: `tabs/OverviewTab.tsx`, `tabs/ReposTab.tsx`, `tabs/EventsTab.tsx`, `tabs/ConfigTab.tsx`, `tabs/MetricsTab.tsx`.
-- [ ] Wire `useApi` + `useSSE` into the shell; verify `/api/snapshot` + `/api/events` connectivity.
-- [ ] Build pipeline produces a static bundle the dashboard server can serve.
+Completed in v0.8.9 on `game-mode` (see §1.7 for full deliverable list).
+
+- [x] Vite config + `dashboard-client/package.json` + dev/build scripts.
+- [x] Created missing components: `ErrorBoundary.tsx`, `TabBar.tsx`, `LoadingSpinner.tsx`.
+- [x] Created tab stubs: `OverviewTab.tsx`, `ReposTab.tsx`, `EventsTab.tsx`, `ConfigTab.tsx`, `MetricsTab.tsx`.
+- [x] Wired `useApi` + `useSSE` into the shell; `/api/snapshot` fetched via typed `fetchSnapshot()`; `/api/events` consumed by `useSSE`.
+- [x] Build pipeline produces a static bundle the dashboard server serves (SPA fallback + asset MIME types).
+- [x] `html.ts` fallback preserved when client dist absent.
+
+**Next:** Sprint C1 (core tabs — real Overview/Events content, context gauge).
 
 ### 2.3 Sprint C1 — Core tabs ⬜
 
