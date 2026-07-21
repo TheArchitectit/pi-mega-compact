@@ -2,7 +2,7 @@
  * dashboard-client/src/App.tsx — Dashboard shell layout.
  *
  * SPRINT-B1: React scaffold with tab routing, header, error boundary.
- * SPRINT-C1+: tabs wired progressively.
+ * SPRINT-C1+: tabs wired progressively with real content.
  */
 
 import React, { useState, useCallback } from 'react';
@@ -10,9 +10,10 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { TabBar } from './components/TabBar';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { useApi } from './hooks/useApi';
-import type { SnapshotResponse } from '../../dashboard-server/api-contracts';
+import { fetchSnapshot } from './api/client';
+import type { SnapshotResponse } from '@contracts';
 
-// Tab components — imported lazily in production; direct import for simplicity.
+// Tab components — lazy-loaded. Stubs in B1; real content lands in C1/C2/C3.
 const OverviewTab = React.lazy(() => import('./tabs/OverviewTab'));
 const ReposTab = React.lazy(() => import('./tabs/ReposTab'));
 const EventsTab = React.lazy(() => import('./tabs/EventsTab'));
@@ -34,7 +35,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
 export default function App(): React.ReactElement {
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const { data: snapshot, loading, error } = useApi<SnapshotResponse>(
-    useCallback(() => fetch('/api/snapshot').then(r => r.json()), [])
+    useCallback(() => fetchSnapshot(), [])
   );
 
   const tier = snapshot?.tier ?? 'unknown';
@@ -46,7 +47,7 @@ export default function App(): React.ReactElement {
         <header className="dashboard-header">
           <h1>
             mega-compact dashboard
-n            <span className="tier">{tier}</span>
+            <span className="tier">{tier}</span>
             {version && <span className="version-pill">{version}</span>}
           </h1>
         </header>

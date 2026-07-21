@@ -32,7 +32,7 @@ export function useApi<T>(
   fetchFn: () => Promise<T>,
   options: UseApiOptions = {}
 ): UseApiResult<T> {
-  const { pollInterval = 0, maxRetries = 0 } = options;
+  const { pollInterval = 0 } = options;
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);

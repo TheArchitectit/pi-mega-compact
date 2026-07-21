@@ -21,12 +21,14 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
   // detect a stale server (started by an older build) and replace it on
   // upgrade instead of reuse it.
   let SERVER_VERSION = "0.0.0";
+  // `here` is hoisted out of the version-detection try block so the
+  // dashboard-client dist path (Sprint B1) can reuse it without recompute.
+  const here = dirname(fileURLToPath(import.meta.url));
   try {
     // Since v0.7.9 (8821ef3) dashboard-server.js lives at
     // <pkg>/dist/extensions/dashboard-server/, so package.json is THREE levels
     // up. Keep the two- and one-level-up candidates as fallbacks for flatter
     // dev-checkout layouts. Guard each candidate so a missing file is skipped.
-    const here = dirname(fileURLToPath(import.meta.url));
     const candidates = [
       join(here, "..", "..", "..", "package.json"),
       join(here, "..", "..", "package.json"),
@@ -49,6 +51,54 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
   const snapshotPath = join(stateDir, "dashboard.json");
   const eventsPath = join(stateDir, "events.log");
   setLogPath(join(stateDir, "dashboard.log"));
+
+  // ── React client build (Sprint B1) ────────────────────────────────────
+  // If the Vite-built dashboard-client bundle is present, serve it as the
+  // dashboard UI (SPA fallback for all non-/api/* routes). If absent, fall
+  // back to the legacy inline html.ts template. Candidate paths cover both
+  // the dist/ build layout and a flat dev checkout (mirrors the package.json
+  // candidate pattern above).
+  const clientDistCandidates = [
+    join(here, "..", "dashboard-client", "dist"),            // dist/extensions/dashboard-client/dist
+    join(here, "..", "..", "dashboard-client", "dist"),      // dist/dashboard-client/dist (flat)
+    join(here, "..", "..", "..", "extensions", "dashboard-client", "dist"), // repo-root extensions/dashboard-client/dist (dist build)
+    join(here, "..", "dashboard-client", "dist"),            // dev: extensions/dashboard-server/../dashboard-client/dist
+  ];
+  const clientDist = clientDistCandidates.find(p => existsSync(join(p, "index.html"))) ?? clientDistCandidates[0];
+  const clientIndexHtml = join(clientDist, "index.html");
+  const hasClientBuild = existsSync(clientIndexHtml);
+  if (hasClientBuild) log("client build present", { clientDist });
+
+  // guardrails-allow PREVENT-PI-004: read-only static file serving from the local dashboard-client/dist bundle (loopback-only UI).
+  const serveClientAsset = (reqPath: string, res: ServerResponse): boolean => {
+    if (!hasClientBuild) return false;
+    // Normalize: strip query, prevent path traversal, map "/" to index.html.
+    const clean = reqPath.split("?")[0];
+    if (clean.includes("..")) return false;
+    const rel = clean === "/" || clean === "" ? "index.html" : clean.replace(/^\//, "");
+    const file = join(clientDist, rel);
+    if (!file.startsWith(clientDist) || !existsSync(file)) {
+      // SPA fallback: unknown non-asset routes serve index.html (client-side routing).
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(readFileSync(clientIndexHtml));
+      return true;
+    }
+    const ext = rel.slice(rel.lastIndexOf(".") + 1);
+    const types: Record<string, string> = {
+      html: "text/html; charset=utf-8",
+      js: "text/javascript",
+      css: "text/css",
+      json: "application/json",
+      svg: "image/svg+xml",
+      png: "image/png",
+      ico: "image/x-icon",
+      map: "application/json",
+    };
+    res.writeHead(200, { "Content-Type": types[ext] ?? "application/octet-stream" });
+    res.end(readFileSync(file));
+    return true;
+  };
+
   log("launch invoked", { stateDir });
 
   // ── Existing server? ───────────────────────────────────────────────────────
@@ -119,9 +169,13 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
   }
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-    // guardrails-allow PREVENT-PI-004: optional, user-triggered /dashboard localhost server (loopback-only) — CORS open for local browser access
-    // CORS for local access
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    // guardrails-allow PREVENT-PI-004: optional, user-triggered /dashboard localhost server (loopback-only) — CORS restricted to same-origin localhost browsers.
+    // CORS for local access — restricted to loopback origins (the dashboard server only binds to localhost).
+    const origin = req.headers.origin;
+    if (typeof origin === "string" && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Vary", "Origin");
+    }
     res.setHeader("Access-Control-Allow-Methods", "GET, PUT, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
@@ -132,6 +186,9 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
     }
 
     if (req.url === "/" || req.url === "/index.html") {
+      // Sprint B1: prefer the React client build when present; fall back to the
+      // legacy inline html.ts template when the client dist is absent.
+      if (serveClientAsset("/", res)) return;
       const tier = readSnapshot(snapshotPath).tier;
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(dashboardHtml(tier));
@@ -517,7 +574,11 @@ export async function launchDashboardServer(stateDir: string): Promise<{ port: n
       return;
     }
 
-    // Fallback — serve the dashboard
+    // Fallback — serve the React client build (SPA route) or legacy dashboard.
+    // Non-/api/* GETs hit here: serve client assets if built, else inline HTML.
+    if (req.method === "GET" && req.url && !req.url.startsWith("/api/") && serveClientAsset(req.url, res)) {
+      return;
+    }
     const tier = readSnapshot(snapshotPath).tier;
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(dashboardHtml(tier));
