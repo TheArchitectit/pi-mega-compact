@@ -1,126 +1,11 @@
 /**
- * dashboard-client/src/styles.css — minimal dashboard shell styles.
+ * dashboard-client/src/styles/overview-events.css — Sprint C1 tab styles.
  *
- * Functional styling only; theme picker arrives in Sprint C3.
+ * Overview tab (cards, context gauge, compression, trigger, session) +
+ * Events tab (SSE stream, filters, event rows). Depends on tokens in base.css.
  */
 
-:root {
-	--bg: #0d1117;
-	--panel: #161b22;
-	--border: #30363d;
-	--text: #e6edf3;
-	--muted: #8b949e;
-	--accent: #58a6ff;
-	--ok: #3fb950;
-	--warn: #d29922;
-	--err: #f85149;
-	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-
-* {
-	box-sizing: border-box;
-}
-
-body {
-	margin: 0;
-	background: var(--bg);
-	color: var(--text);
-	font-size: 14px;
-}
-
-.dashboard-app {
-	max-width: 1200px;
-	margin: 0 auto;
-	padding: 16px;
-}
-
-.dashboard-header h1 {
-	font-size: 18px;
-	font-weight: 600;
-	margin: 0 0 12px;
-}
-
-.dashboard-header .tier,
-.dashboard-header .version-pill {
-	display: inline-block;
-	margin-left: 8px;
-	padding: 2px 8px;
-	font-size: 12px;
-	border-radius: 10px;
-	background: var(--panel);
-	border: 1px solid var(--border);
-	color: var(--muted);
-}
-
-.dashboard-header .tier {
-	color: var(--accent);
-}
-
-.tab-bar {
-	display: flex;
-	gap: 4px;
-	border-bottom: 1px solid var(--border);
-	margin-bottom: 16px;
-}
-
-.tab-bar button {
-	background: none;
-	border: none;
-	color: var(--muted);
-	padding: 8px 14px;
-	cursor: pointer;
-	font-size: 13px;
-	border-bottom: 2px solid transparent;
-}
-
-.tab-bar button.active {
-	color: var(--text);
-	border-bottom-color: var(--accent);
-}
-
-.tab-bar button:hover {
-	color: var(--text);
-}
-
-.dashboard-content {
-	min-height: 400px;
-}
-
-.loading-spinner {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: 48px;
-	color: var(--muted);
-}
-
-.error-fallback {
-	padding: 24px;
-	border: 1px solid var(--err);
-	border-radius: 8px;
-	background: rgba(248, 81, 73, 0.08);
-}
-
-.error-fallback button {
-	margin-top: 12px;
-	padding: 6px 14px;
-	background: var(--panel);
-	border: 1px solid var(--border);
-	color: var(--text);
-	border-radius: 6px;
-	cursor: pointer;
-}
-
-.tab-stub {
-	padding: 32px;
-	color: var(--muted);
-	border: 1px dashed var(--border);
-	border-radius: 8px;
-	text-align: center;
-}
-
-/* ─── Sprint C1: Overview + Events tabs ───────────────────────────────── */
-
+/* Overview layout */
 .overview-tab {
 	display: flex;
 	flex-direction: column;
@@ -194,7 +79,7 @@ body {
 	color: var(--muted);
 }
 
-/* Stat grid */
+/* Stat grid (shared by CompressionCard + SessionInfo) */
 .stat-grid {
 	display: grid;
 	grid-template-columns: repeat(3, 1fr);

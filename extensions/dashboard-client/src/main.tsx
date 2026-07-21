@@ -7,7 +7,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
-import "./styles.css";
+import "./styles/base.css";
+import "./styles/overview-events.css";
+import "./styles/repos-metrics.css";
 
 const rootEl = document.getElementById("root");
 if (!rootEl) {

@@ -1,0 +1,119 @@
+/**
+ * dashboard-client/src/styles/repos-metrics.css — Sprint C2 tab styles.
+ *
+ * Repos tab (summary tiles, sortable table, detail modal) + Metrics tab
+ * (model badge, perf chart bars, resource gauges). Depends on base.css tokens.
+ */
+
+/* Summary tiles */
+.summary-tiles {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+	gap: 10px;
+	margin-bottom: 16px;
+}
+.tile {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 12px 14px;
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+}
+.tile-label { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+.tile-value { font-size: 20px; font-weight: 600; }
+.tile-highlight .tile-value { color: var(--ok); }
+
+/* Repo table */
+.repo-table-wrap { overflow-x: auto; }
+.repo-search {
+	width: 100%;
+	padding: 8px 10px;
+	margin-bottom: 10px;
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	color: var(--text);
+	font-size: 13px;
+}
+.repo-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.repo-table th { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+.repo-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.repo-table tr { cursor: pointer; }
+.repo-table tbody tr:hover { background: var(--panel); }
+.sort-header {
+	background: none; border: none; color: var(--muted);
+	font-size: 12px; font-weight: 600; cursor: pointer; padding: 0;
+}
+.sort-header.active-asc, .sort-header.active-desc { color: var(--text); }
+.sort-arrow { color: var(--accent); }
+.repo-name { font-weight: 600; }
+.repo-model { color: var(--muted); }
+.repo-empty { text-align: center; color: var(--muted); padding: 24px; }
+
+/* Repo detail modal */
+.modal-backdrop {
+	position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+	display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.modal-card {
+	background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+	padding: 20px 24px; max-width: 560px; width: 90%; max-height: 80vh; overflow-y: auto;
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; }
+.modal-header h2 { margin: 0; font-size: 18px; }
+.modal-close {
+	background: none; border: none; color: var(--muted); font-size: 22px;
+	cursor: pointer; padding: 0 4px;
+}
+.modal-close:hover { color: var(--text); }
+.modal-path { font-size: 11px; color: var(--muted); margin: 4px 0 12px; word-break: break-all; }
+.modal-grid {
+	display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px;
+}
+.modal-stat { display: flex; flex-direction: column; gap: 2px; }
+.modal-label { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+.modal-value { font-size: 16px; font-weight: 600; }
+.modal-highlight .modal-value { color: var(--ok); }
+.modal-card h3 { font-size: 13px; color: var(--muted); margin: 16px 0 6px; }
+.modal-dl { display: grid; grid-template-columns: 130px 1fr; gap: 4px 12px; margin: 0; }
+.modal-dl dt { color: var(--muted); font-size: 12px; }
+.modal-dl dd { margin: 0; font-size: 13px; }
+
+/* Model badge */
+.model-badge {
+	display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+	padding: 12px 14px; background: var(--panel); border: 1px solid var(--border);
+	border-radius: 8px; margin-bottom: 12px;
+}
+.model-name { font-size: 15px; font-weight: 600; }
+.model-provider { color: var(--accent); font-size: 13px; }
+.model-provider-id { color: var(--muted); font-size: 11px; }
+.model-rates { margin-left: auto; display: flex; gap: 12px; }
+.model-rates .rate { font-size: 12px; color: var(--muted); }
+
+/* Perf chart */
+.perf-chart { display: flex; flex-direction: column; gap: 12px; }
+.perf-header { display: flex; justify-content: space-between; align-items: center; }
+.perf-header h3 { margin: 0; font-size: 13px; color: var(--muted); }
+.perf-window { font-size: 11px; color: var(--muted); }
+.perf-grid, .perf-resources {
+	display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px;
+}
+.perf-resources { padding-top: 10px; border-top: 1px solid var(--border); }
+.perf-metric { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; }
+.perf-label { font-size: 11px; color: var(--muted); }
+.perf-value { font-size: 15px; font-weight: 600; }
+.perf-bar-track { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+.perf-bar-fill { height: 100%; transition: width 0.4s ease; }
+.perf-blue .perf-bar-fill { background: var(--accent); }
+.perf-purple .perf-bar-fill { background: #d2a8ff; }
+.perf-green .perf-bar-fill { background: var(--ok); }
+.perf-yellow .perf-bar-fill { background: var(--warn); }
+.perf-diag { display: flex; flex-wrap: wrap; gap: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
+
+@media (max-width: 768px) {
+	.modal-grid { grid-template-columns: 1fr 1fr; }
+	.model-rates { margin-left: 0; width: 100%; }
+}

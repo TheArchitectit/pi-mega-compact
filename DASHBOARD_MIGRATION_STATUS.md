@@ -32,7 +32,7 @@ All nine dashboard-migration sprint specs are authored and committed:
 | A1 | [`sprint-A1-api-contract.md`](docs/specs/sprint-A1-api-contract.md) | API contract, typed endpoints, `EndpointDef` | ✅ spec written, ✅ impl DONE (v0.8.9) |
 | B1 | [`sprint-B1-react-scaffold.md`](docs/specs/sprint-B1-react-scaffold.md) | React scaffold, Vite, SSE hook, API client | ✅ spec written, ✅ impl DONE (v0.8.9) |
 | C1 | [`sprint-C1-core-tabs.md`](docs/specs/sprint-C1-core-tabs.md) | Core tabs: Overview, Events, context gauge | ✅ spec written, ✅ impl DONE (v0.8.9) |
-| C2 | [`sprint-C2-repos-metrics.md`](docs/specs/sprint-C2-repos-metrics.md) | Repos table, metrics, perf charts, drill-down | ✅ spec written, ⬜ impl TODO |
+| C2 | [`sprint-C2-repos-metrics.md`](docs/specs/sprint-C2-repos-metrics.md) | Repos table, metrics, perf charts, drill-down | ✅ spec written, ✅ impl DONE (v0.8.9) |
 | C3 | [`sprint-C3-config.md`](docs/specs/sprint-C3-config.md) | Config tab, game-mode settings, theme picker | ✅ spec written, ⬜ impl TODO |
 | D1 | [`sprint-D1-resilience.md`](docs/specs/sprint-D1-resilience.md) | Resilience: offline banner, retry, stale indicator | ✅ spec written, ⬜ impl TODO |
 | D2 | [`sprint-D2-observability.md`](docs/specs/sprint-D2-observability.md) | Observability, diagnostics panel, health, **provider-failure hook** | ✅ spec written (scope expanded), ⬜ impl TODO |
@@ -151,13 +151,25 @@ Gate green: build, `build:dashboard` (51 modules; Overview 5KB + Events 4KB chun
 
 **Next:** Sprint C2 (repos table + metrics/perf charts).
 
-### 2.4 Sprint C2 — Repos & metrics ⬜
+### 2.4 Sprint C2 — Repos & metrics ✅ DONE
 
 Spec: [`sprint-C2-repos-metrics.md`](docs/specs/sprint-C2-repos-metrics.md)
 
-- [ ] Repos table (`/api/repos`, `/api/index`).
-- [ ] Metrics + perf charts (`/api/perf`).
-- [ ] Drill-down into a single repo snapshot.
+Completed in v0.8.9 on `game-mode`.
+
+- [x] **ReposTab** — fetches `/api/repos` + `/api/summary` (10s poll); renders `SummaryTiles` + `RepoTable`; row click opens `RepoDetailModal`; empty states for no repos / no search match.
+- [x] **SummaryTiles** — 4 aggregate tiles: total repos, active (24h), total checkpoints, total tokens saved (highlighted).
+- [x] **RepoTable** — sortable columns (name, model, checkpoints, saved, last compacted, sessions); client-side sort (click header toggles asc/desc, default lastCompactedAt DESC); case-insensitive substring search by displayName; nulls-last sort UX.
+- [x] **RepoDetailModal** — full `/api/index` row drill-down: token breakdown (kept/dropped/saved), model info (provider, rates, context window, max tokens, reasoning), activity timestamps, compressed bytes; backdrop-click + Escape-key close.
+- [x] **MetricsTab** — fetches `/api/perf` (30min window, 10s poll) + `/api/snapshot` (for model); renders `ModelBadge` + `PerfChart`.
+- [x] **ModelBadge** — model name + provider + provider id + input/output token rates.
+- [x] **PerfChart** — stat-card chart: turn/provider latency p50/p95 bars, TPS avg, cache hit avg/latest, DB recompute + disk write p95; resource gauges (RSS, heap, CPU user/sys); diagnostic counters (fast-gate fires, live trim fires/replays).
+- [x] **CSS split** — `styles.css` monolith (548 lines) split into `styles/base.css` (121), `styles/overview-events.css` (318), `styles/repos-metrics.css` (119) — all under 500, two under 300, per doc-length guideline. `main.tsx` imports all three.
+- [x] All components use typed A1/C2 contracts (`IndexesIndexRow`, `IndexesSummaryResponse`, `PerfResponse`, `SummaryResponse`).
+
+Gate green: build, `build:dashboard` (56 modules; Repos 6.9KB + Metrics 4.7KB chunks vs 0.2KB stubs), 589 tests/0 fail, lint, regression_check, guardrails.
+
+**Next:** Sprint C3 (config form + theme picker).
 
 ### 2.5 Sprint C3 — Config ⬜
 
