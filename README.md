@@ -6,10 +6,10 @@ sessions into a **local SQLite store** and offers **deduped inline recall** — 
 running **locally inside the extension**, with **no remote MCP server** and
 **zero network calls at runtime** (PREVENT-PI-004).
 
-> **Status - v0.7.9.** Storage uses the built-in `node:sqlite` backend
-> (`DatabaseSync`, Node >=22.13): zero native build step, fully local, and zero
-> network at runtime. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the full
-> changelog.
+> **Status - v0.8.14.** The React dashboard (8 tabs, responsive scaling from
+> 1280×720 to 4K) now ships in the npm tarball alongside the fallback html.ts.
+> Game Mode adds themes, levels, achievements, and leaderboards. See
+> [RELEASE_NOTES.md](RELEASE_NOTES.md) for the full changelog.
 
 ---
 
@@ -19,7 +19,9 @@ running **locally inside the extension**, with **no remote MCP server** and
 - **Two-layer compaction** - a non-destructive live summary every LLM call, plus durable checkpoints that relieve context mid-run (not just at the end).
 - **Vector store + dedup** - each checkpoint is embedded and stored locally; an L0->L2 + RAPTOR cascade collapses duplicate work so storage and recall stay lean.
 - **Automatic recall** - the most relevant checkpoints are re-inlined on resume or branch switch; cross-repo memory-RAG augments a thin store with decisions from other repos.
-- **Live dashboard** - a localhost-only view of token usage, store stats, savings, per-repo activity, and an **Active Repos tab** that shows every currently-open session (last 30 minutes) side by side — so running multiple sessions at once is visible in one place.
+- **Game Mode** - optional progression layer with 6 themes, player levels (one per turn-doubling), 9 achievements (8 visible + 1 hidden easter-egg), and per-metric leaderboards. Toggle with `/mega-compact-settings`.
+- **Live dashboard** - React-based 8-tab dashboard (Overview, Repos, Events, Config, Metrics, Cache, Game, Achievements) with responsive scaling from laptop (1280×720) to ultrawide/4K. Active Repos tab shows every currently-open session side by side.
+- **Perf metrics** - Model latency (turn/provider p50/p95), throughput (TPS/cache hit %), process (RSS/heap/CPU), snapshot cost (DB recompute/disk write), and TUI lag proxy — all polled on a 2s interval while the dashboard is open.
 - **Database maintenance** - `/mega-db-*` commands plus best-effort auto-maintenance on session start.
 
 ## Table of contents
@@ -246,6 +248,7 @@ The commands (slash commands inside pi):
 | --- | --- |
 | `/mega-compact [summary...]` | Manually compact the current session. A summary arg is used verbatim; otherwise the COLLAPSE heuristics build one. Persists a `chkpt_xxx`. |
 | `/mega-compact off` | Disable auto-compaction for this session. |
+| `/mega-compact-settings [on\|off\|theme [id\|next]\|tui [full\|minimal]\|achievements]` | Toggle game mode, pick a theme, switch TUI display mode, list unlocked achievements. (Alias: `/mega-game`.) |
 | `/mega-status` | Show config + current context usage + store stats (checkpoint count, dedup rate, tokens saved) + the **installed version**. |
 | `/mega-recall [query]` | Semantic-search the local store, dedupe against the current window, and inline the top-K relevant checkpoints. No query → uses your latest message. `--cross-repo` searches all repos. |
 | `/mega-memory save <text>` / `save <category> <text>` / `list` / `search <query>` / `forget <text>` / `consolidate` | Manage durable memories (decisions, facts, preferences) written by auto-review and recalled as RAG context. Also `/m` shortform. |
@@ -267,13 +270,23 @@ The commands (slash commands inside pi):
 
 The **tier** you see in the toolbar and dashboard is a *live pressure band* (`low` → `medium` → `high` → `ultra` → `mega`) that climbs automatically as your context window fills and falls back as it's relieved — it is driven by `currentTokens / effectiveThreshold`, not a manual setting. The base compaction *threshold* is set by `MEGACOMPACT_TIER` at startup as a **% of the model context window** (`low` 50% · `medium` 60% · `high` 70% · `ultra` 70% · `mega` 75%; default `low`) — the fire point is `tierPct × contextWindow`, so it always lands below pi's native ~80% auto-compaction (any model size). The old static token amounts (50k/100k/200k/1M/10M) are now only the boot fallback used before the first context event reports a window. `/mega-tier` was removed in v0.7.6. Higher pressure also deepens the live trim and reviews durable memory more often — the whole system reacts as one.
 
+### Game Mode
+
+Optional progression layer (toggle with `/mega-compact-settings on`):
+
+- **6 themes** — transparent (default), neon, retro, ocean, forest, cyber. CSS-variable skins for the TUI widget and dashboard.
+- **Player levels** — one level per turn-doubling (`turnLevel(n) = floor(log2(n+1))+1`). Level-up fires a one-cycle ANSI blink on the TUI + a CSS pulse on the dashboard.
+- **Achievements** — 9 total (8 visible + 1 hidden easter-egg). Unlock conditions: First Compact, Compact Streak (5 in one session), Turn Veteran (25 turns), Level 5, Dedupe Master (100 chunks), Repo Explorer (3 repos), Night Owl (00:00–05:00), Flawless (exactly 100% cache), and Opie's Wild Ride (hidden: push cache past 100%).
+- **Leaderboards** — per-metric (Cache %, Dedupe collapsed, Turns LVL, MEGA CACHE trophies) with repos badge. Stored in SQLite `game_scores`.
+- **MEGA CACHE easter-egg** — when the dedup hit rate exceeds 100% (real ratio > 1), a transient "oopsie" toast fires (TUI + dashboard) and the hidden Opie achievement unlocks.
+
 ### Live stats widget
 
 Above the pi editor the extension shows a compact widget:
 
 ```
- ⚡ high·low v0.7.9 │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
-   ◐ armed │ dedup: 92% │ saved: 45k tok
+ ⚡ high·low v0.8.14 │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
+   ◐ armed │ dedup: 92% │ saved: 45k tok │ LVL 4
 ```
 
 - **Version** — the installed npm version (read from `package.json` at runtime),
@@ -285,6 +298,7 @@ Above the pi editor the extension shows a compact widget:
 - **Trigger state** — ○ idle, ◐ armed, ● ready
 - **Dedup hit rate** — % of checkpoints collapsed as duplicates
 - **Active agents / turn** — sub-agent count and conversation turn (when > 0)
+- **LVL** — player level (one per turn-doubling; game mode only)
 
 > **DB housekeeping** — `/mega-db-stats` / `prune` / `vacuum` / `check` / `reconcile`
 > give you manual control over the SQLite store. In addition, a best-effort
@@ -365,20 +379,20 @@ store. It reads the machine-wide `repo_registry`
 (`~/.mega-compact-index/index.sqlite`) plus the current repo's own `node:sqlite`
 store.
 
-### Tabs
+### Tabs (React dashboard)
 
-- **Current repo** — the live single-session view: context-window gauge, trigger
-  status, the Vector Store (checkpoints / dropped / kept / freed / injected /
-  dedup / collapsed), the repo-wide aggregate, the Data Safety card, the live
-  Model & Cost Savings card, and crew/agent activity.
-- **All repos** — a machine-wide table aggregated from `repo_registry`
-  (`GET /api/index`): one row per repo with checkpoints, tokens saved,
-  compressed-originals, last-compacted, and active model. Each row opens a
-  per-repo detail modal. Currently-open sessions are badged **active** (see
-  below).
-- **Summary** — machine-wide header tiles plus a **savings-by-model** table
-  (tokens in/out/freed, context window, $ saved) grouped by the model you were
-  running.
+The dashboard (started with `/mega-dashboard`) now ships as a React SPA with 8 tabs, responsive scaling from 1280×720 to 4K:
+
+- **Overview** — context-window gauge (green/yellow/red), trigger status (armed/ready/idle), Vector Store (9 fields + compression bar), Repo (all sessions, 7 fields), Data Safety shield (regions retained, dedup %), Configuration (tier/preset/threshold), Model & Cost Savings ($, rates), Crew/Agents (active agents/turn/status), "What these numbers mean" legend.
+- **Repos** — All Repositories table, Active Repos live table, Savings by Model table, per-repo detail modal, summary tiles.
+- **Events** — live SSE stream with category filter (all/compact/recall/config/crew/game).
+- **Config** — game mode toggle, theme picker (6 themes), TUI display mode (full/minimal), read-only config display.
+- **Metrics** — model latency (turn/provider p50/p95), throughput (TPS/cache hit %), process (RSS/heap/CPU), snapshot cost (DB recompute/disk write), TUI lag proxy. Per-model cache status table.
+- **Cache** — Cache Hits (session/total), Tokens Saved (session/total), Compactions (session/total), Time Saved (session/total).
+- **Game** — MEGA CACHE banner, Opie unlock tile, leaderboards (Cache %, Dedupe collapsed, Turns LVL, MEGA CACHE trophies), repos badge, achievements sub-section.
+- **Achievements** — achievement tiles grid with unlock states, toast area.
+
+The older html.ts fallback (1071 lines, all data) is retained for environments without the React build.
 
 ### Active Repos tab
 
