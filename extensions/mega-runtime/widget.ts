@@ -14,6 +14,7 @@
 // off-by-one can trip the strict `> width` guard. (Fix for the
 // `Rendered line N exceeds terminal width (W > W-1)` crash.)
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { getTheme, DEFAULT_THEME } from "../../src/config/themes.js";
 
 // ── ANSI palette ───────────────────────────────────────────────────────────
 // The pi TUI's Text component preserves ANSI escape codes (see wrapTextWithAnsi),
@@ -43,16 +44,47 @@ const PULSE = ["◐", "◓", "◑", "◒"];
 // real terminal width with a background fill. NOTE: C.reset is a FULL SGR
 // reset, so we re-apply the panel bg after every reset to keep the background
 // continuous under colored text (and under pi's own trailing reset).
-const PANEL_BG = "\x1b[48;5;236m"; // dark slate panel background
-const PANEL_RST = "\x1b[0m" + PANEL_BG; // reset fg but retain panel bg
+/** Default panel background (dark slate). Used when no theme is threaded or
+ *  the theme is transparent (no bg fill). Parametrized per-render via the
+ *  `panelTheme` arg so game-mode themes can restyle the panel background.
+ *  A transparent theme yields `""` so panelLine/panelBar still call
+ *  truncateToWidth (the width guard holds — empty prefix adds zero cells). */
+const DEFAULT_PANEL_BG = "\x1b[48;5;236m"; // dark slate panel background
+
+/** Resolve the panel-background SGR prefix for a theme id. Transparent themes
+ *  (bg=null) and unknown themes yield `""` (no bg fill) — the width guard in
+ *  panelLine/panelBar still applies via truncateToWidth. */
+function panelBgFor(theme: string | undefined): string {
+	if (!theme || theme === DEFAULT_THEME) return "";
+	const t = getTheme(theme);
+	const bg = t?.ansi.bg;
+	return bg ? `\x1b[${bg}m` : "";
+}
+
+/** Resolve a theme ANSI accent/mega/fg SGR prefix (`\x1b[<params>m`) for the
+ *  given role. Falls back to `""` (no SGR) for transparent/unknown themes so
+ *  game-mode text still renders in the default fg without color noise. */
+function themeAnsi(theme: string | undefined, role: "fg" | "accent" | "mega"): string {
+	const t = theme ? getTheme(theme) : undefined;
+	const params = t?.ansi[role];
+	return params ? `\x1b[${params}m` : "";
+}
+
+/** Emit a full SGR reset, OR `""` if `sgr` is empty (transparent theme). Keeps
+ *  the panel bg continuous by NOT clobbering it with a bare reset when the
+ *  accent/mega prefix was a no-op. */
+function sgrReset(sgr: string): string {
+	return sgr ? "\x1b[0m" : "";
+}
 
 // (Visible-width measurement is delegated to pi-tui's `visibleWidth` — imported
 // above — so our width math can never diverge from pi-tui's render-width check.)
 
 /** Wrap a string (with ANSI codes) to fit within `maxWidth` visible chars.
  *  Splits at │ separators or whitespace when possible. */
-function wrapLine(text: string, maxWidth: number): string[] {
+function wrapLine(text: string, maxWidth: number, panelBg: string): string[] {
 	if (maxWidth <= 0) return [text];
+	const panelRst = "\x1b[0m" + panelBg;
 	const result: string[] = [];
 	let current = "";
 	let currentW = 0;
@@ -60,7 +92,7 @@ function wrapLine(text: string, maxWidth: number): string[] {
 	const segments = text.split("│");
 	for (let i = 0; i < segments.length; i++) {
 		const seg = (i > 0 ? "│" : "") + segments[i];
-		const segW = visibleWidth(PANEL_BG + seg.replace(/\x1b\[0m/g, PANEL_RST));
+		const segW = visibleWidth(panelBg + seg.replace(/\x1b\[0m/g, panelRst));
 		if (currentW + segW <= maxWidth || currentW === 0) {
 			current += seg;
 			currentW += segW;
@@ -74,11 +106,12 @@ function wrapLine(text: string, maxWidth: number): string[] {
 	return result;
 }
 
-function panelLine(content: string, width: number): string {
+function panelLine(content: string, width: number, panelBg: string = DEFAULT_PANEL_BG): string {
 	if (width <= 0) return "";
+	const panelRst = "\x1b[0m" + panelBg;
 	// Apply the panel background; swap every inner full-reset for a reset that
 	// re-applies the bg so the fill stays continuous under colored text.
-	const withBg = PANEL_BG + content.replace(/\x1b\[0m/g, PANEL_RST);
+	const withBg = panelBg + content.replace(/\x1b\[0m/g, panelRst);
 	// truncateToWidth(line, width, "", true) returns EXACTLY `width` visible cells
 	// (by pi-tui's measure), ANSI-preserved, space-padded. It hard-clips overflow
 	// — so even a segment wider than `width` (or a width-rule mismatch) can never
@@ -87,12 +120,57 @@ function panelLine(content: string, width: number): string {
 }
 
 /** A full-width hairline bar (top/bottom border of the panel). */
-function panelBar(width: number, ch = "─"): string {
+function panelBar(width: number, ch = "─", panelBg: string = DEFAULT_PANEL_BG): string {
 	// `─` (U+2500) is narrow (1 cell) in both our measure and pi-tui's, so a
 	// `ch.repeat(width)` bar is exactly `width` cells and already passes the
 	// `> width` guard. truncateToWidth is belt-and-suspenders in case `ch` is
 	// ever swapped for a wide/fullwidth character.
-	return truncateToWidth(PANEL_BG + ch.repeat(Math.max(0, width)), width, "", false) + "\x1b[0m";
+	return truncateToWidth(panelBg + ch.repeat(Math.max(0, width)), width, "", false) + "\x1b[0m";
+}
+
+// ── v0.8.3: ambient border-effect helpers ───────────────────────────────
+// The panel borders animate when an `activeEffect` is armed (level-up,
+// mega-cache overshoot, achievement unlock, compaction start). Two modes:
+//   • pulse — a sine ramp on a 256-color base (accent=51 / mega=214 / red=203):
+//     the base index is scaled by sin(π·t) so the border swells 0→peak→0 over
+//     the duration, then returns to '' (idle). 256-color indices are clamped
+//     to 0–255 defensively (the bases are all ≤214 so the clamp rarely bites).
+//   • flash — a 120ms hard on/off alternate using the base index at full.
+// Returns '' when idle, expired, or elapsed<0 (clock skew) so non-effect
+// renders are byte-identical to the pre-effect panel (S31 matrix stays green).
+const EFFECT_BASE: Record<"accent" | "mega" | "red", number> = {
+	accent: 51,
+	mega: 214,
+	red: 203,
+};
+
+/** Resolve the per-frame border-fg SGR for an active effect. '' when idle or
+ *  expired (the widget's real per-frame expiry enforcer — snapshot-level clear
+ *  is just bookkeeping since snapshot is event-driven). */
+function effectBorderSgr(
+	ae: NonNullable<WidgetData["activeEffect"]> | null,
+	now: number,
+): string {
+	if (!ae) return "";
+	const elapsed = now - ae.startedAt;
+	if (elapsed < 0 || elapsed >= ae.durationMs) return "";
+	const base = EFFECT_BASE[ae.role];
+	if (ae.type === "flash") {
+		// 120ms hard alternate: on (full base) / off (no SGR).
+		return Math.floor(elapsed / 120) % 2 === 0 ? `\x1b[38;5;${base}m` : "";
+	}
+	// pulse: sine ramp 0 → peak → 0 over the duration.
+	const t = elapsed / ae.durationMs;
+	const amp = Math.sin(Math.PI * t); // 0 at start/end, 1 at midpoint
+	const idx = Math.max(0, Math.min(255, Math.round(base * amp)));
+	return `\x1b[38;5;${idx}m`;
+}
+
+/** Prepend the effect border SGR to a panel bar line. The SGR is a pure-fg
+ *  escape (zero visible width), so it never perturbs truncateToWidth's width
+ *  math — the bar's own `\x1b[0m` tail resets both fg + bg. No-op when sgr=''. */
+function effectBar(bar: string, sgr: string): string {
+	return sgr ? sgr + bar : bar;
 }
 
 /** Token-count formatter: M at/above 1e6, k at/above 1e3, raw below.
@@ -177,6 +255,36 @@ export interface WidgetData {
 	lastWhy: string | undefined;
 	tierTrace: string | undefined;
 	pulsing: boolean;
+	// ── S31: game-mode theming + display modes + level + MEGA CACHE flare ──
+	/** Game mode on (shows level + MEGA CACHE flare; hides them when off). */
+	gameMode?: boolean;
+	/** Theme id (src/config/themes). Drives the panel bg + accent/mega ANSI. */
+	theme?: string;
+	/** TUI display mode: 'full' (default) = the full stats panel; 'minimal' = a
+	 *  one-line `LVL n | cache NN%` view flanked by panel bars. */
+	tuiMode?: "full" | "minimal";
+	/** Player level (game-mode). Stub = 1 until S33 wires the real scoring. */
+	level?: number;
+	/** Cache hit rate as a percent (0..100+, may exceed 100 → MEGA CACHE). */
+	cachePct?: number;
+	/** MEGA CACHE flare armed (fires at cachePct >= 100 + gameMode on). Adds the
+	 *  ANSI MEGA CACHE banner + the oopsie gag to the header. */
+	megaCacheFlare?: boolean;
+	/** The peak cache % that armed the flare (for the oopsie toast text). */
+	megaCacheFlarePct?: number;
+	levelUpFlare?: boolean;
+	/** S35: achievement-unlock flare -- renders a one-line toast for one cycle. */
+	achievementFlare?: boolean;
+	achievementFlareTitles?: string[];
+	/** v0.8.3: ambient animated border effect (null when idle/expired). The
+	 *  widget computes the per-frame phase from startedAt vs Date.now() and
+	 *  renders a pulse/flash on the panel borders; '' once the window elapses. */
+	activeEffect?: {
+		type: "pulse" | "flash";
+		role: "accent" | "mega" | "red";
+		startedAt: number;
+		durationMs: number;
+	} | null;
 }
 
 // ── buildWidgetLines ───────────────────────────────────────────────────────
@@ -191,20 +299,64 @@ export function buildWidgetLines(
 	width: number,
 	activeAgents: number,
 ): string[] {
+	// Resolve the panel background from the threaded theme (transparent → "",
+	// unknown → default dark slate). Computed once per render; threaded into
+	// every panelLine/panelBar/wrapLine so the bg stays continuous and the width
+	// guard (truncateToWidth) still holds for transparent themes.
+	const panelBg = wd?.theme ? panelBgFor(wd.theme) : DEFAULT_PANEL_BG;
+	// v0.8.3: resolve the animated border SGR once per render. '' when idle,
+	// expired, or wd is null (warm-up) — so non-effect renders are byte-identical
+	// to the pre-effect panel (the existing S31 matrix tests stay green).
+	const now = Date.now();
+	const borderSgr = effectBorderSgr(wd?.activeEffect ?? null, now);
 	if (!wd) {
 		return [
-			panelBar(width, "─"),
-			panelLine(" mega-compact: warming up…", width),
-			panelBar(width, "─"),
+			effectBar(panelBar(width, "─", panelBg), borderSgr),
+			panelLine(" mega-compact: warming up…", width, panelBg),
+			effectBar(panelBar(width, "─", panelBg), borderSgr),
+		];
+	}
+	// S31: minimal TUI mode — a single content line `LVL n | cache NN%` flanked
+	// by panel bars. Built through the same panelLine/panelBar helpers so the
+	// width guard + theme bg apply identically to the full panel. Level is shown
+	// only when game mode is on (otherwise just the cache %).
+	if (wd.tuiMode === "minimal") {
+		const lvl = wd.gameMode ? wd.level ?? 1 : undefined;
+		const cachePct = wd.cachePct ?? 0;
+		const cacheStr = `${Math.round(cachePct * 10) / 10}%`;
+		const accent = themeAnsi(wd.theme, "accent");
+		const mega = themeAnsi(wd.theme, "mega");
+		const megaFlare =
+			wd.gameMode && wd.megaCacheFlare && cachePct >= 100
+				? ` ${mega}MEGA CACHE${sgrReset(mega)}`
+				: "";
+		const body =
+			lvl != null
+				? `${accent}${wd.gameMode && wd.levelUpFlare ? "\x1b[5m" : ""}LVL ${lvl}${wd.gameMode && wd.levelUpFlare ? "\x1b[0m" : ""}${sgrReset(accent)} ${C.dim}|${C.reset} cache ${cacheStr}${megaFlare}`
+				: `cache ${cacheStr}${megaFlare}`;
+		return [
+			effectBar(panelBar(width, "─", panelBg), borderSgr),
+			panelLine(` ${body}`, width, panelBg),
+			effectBar(panelBar(width, "─", panelBg), borderSgr),
 		];
 	}
 	const pulse = wd.pulsing
 		? `${C.cyan}${PULSE[Math.floor(Date.now() / 250) % PULSE.length]}${C.reset} `
 		: "";
 	const sep = ` ${C.dim}│${C.reset} `;
+	// S31: game-mode header prefix — `LVL n` (accent) prepended to content[0],
+	// and a MEGA CACHE flare (mega ansi) + oopsie gag appended when armed. Both
+	// hidden when game mode is off (keeps the legacy panel byte-for-byte).
+	const lvlPrefix = wd.gameMode
+		? `${themeAnsi(wd.theme, "accent")}${wd.gameMode && wd.levelUpFlare ? "\x1b[5m" : ""}LVL ${wd.level ?? 1}${wd.gameMode && wd.levelUpFlare ? "\x1b[0m" : ""}${sgrReset(themeAnsi(wd.theme, "accent"))} `
+		: "";
+	const megaFlareSuffix =
+		wd.gameMode && wd.megaCacheFlare && (wd.cachePct ?? 0) >= 100
+			? `${sep}${themeAnsi(wd.theme, "mega")}MEGA CACHE! (oops, you cached so hard the dedup caught fire)${sgrReset(themeAnsi(wd.theme, "mega"))}`
+			: "";
 	// Build one long content line — let terminal wrap it naturally
 	const content = [
-		`${C.amber}⚡ ${wd.tierLabel}${C.reset} v${C.bold}${wd.version}${C.reset} ${ramp(wd.ctxPct, 20)} ${C.bold}${wd.pctStr}${C.reset} ${wd.tokStr}/${wd.maxStr}`,
+		`${lvlPrefix}${C.amber}⚡ ${wd.tierLabel}${C.reset} v${C.bold}${wd.version}${C.reset} ${ramp(wd.ctxPct, 20)} ${C.bold}${wd.pctStr}${C.reset} ${wd.tokStr}/${wd.maxStr}${megaFlareSuffix}`,
 		wd.triggerLabel,
 		`${C.cyan}${wd.modelStr}${C.reset}`,
 		`${wd.chk} chk${wd.agentStr}${wd.turnStr}`,
@@ -217,10 +369,10 @@ export function buildWidgetLines(
 		`${C.gray}compact${C.reset} ${sinceCompactStr(wd.sinceCompact)}`,
 	].join(sep);
 	// Wrap to terminal width and pad each line
-	const wrapped = wrapLine(content, width - 2); // 2-char indent
+	const wrapped = wrapLine(content, width - 2, panelBg); // 2-char indent
 	const lines: string[] = [
-		panelBar(width, "─"),
-		...wrapped.map((l) => panelLine(l, width)),
+		effectBar(panelBar(width, "─", panelBg), borderSgr),
+		...wrapped.map((l) => panelLine(l, width, panelBg)),
 	];
 	// L4 — agents block (S27, count + status; per-agent tokens gated on P0)
 	if (wd.agentsActive) {
@@ -228,12 +380,13 @@ export function buildWidgetLines(
 			panelLine(
 				`   ${C.cyan}🤖 ${activeAgents} active${wd.turnStr}${C.reset}`,
 				width,
+				panelBg,
 			),
 		);
 	}
 	// L5 — live ticker / activity (♻ deduped … why, or tier trace, or pulsing)
 	if (wd.tierTrace && wd.fresh) {
-		lines.push(panelLine(`   ${pulse}${wd.tierTrace}`, width));
+		lines.push(panelLine(`   ${pulse}${wd.tierTrace}`, width, panelBg));
 	} else if (wd.ticker.length > 0) {
 		const step = Math.floor(Date.now() / 250);
 		const idx = wd.ticker.length - 1 - (step % wd.ticker.length);
@@ -247,12 +400,19 @@ export function buildWidgetLines(
 			panelLine(
 				`   ${wd.fresh ? C.teal : C.dim}${head}${why}${more}${C.reset}`,
 				width,
+				panelBg,
 			),
 		);
 	} else if (wd.pulsing) {
-		lines.push(panelLine(`   ${pulse}${C.teal}compacting…${C.reset}`, width));
+		lines.push(panelLine(`   ${pulse}${C.teal}compacting…${C.reset}`, width, panelBg));
+	}
+	// S35: achievement-unlock toast (one-line, accent) -- fires for one render cycle.
+	if (wd.gameMode && wd.achievementFlare && wd.achievementFlareTitles?.length) {
+		const accentSgr = themeAnsi(wd.theme, "accent");
+		const titlesStr = wd.achievementFlareTitles.join(", ");
+		lines.push(panelLine(`   ${accentSgr}🏆 Achievement unlocked: ${titlesStr}${sgrReset(accentSgr)}`, width, panelBg));
 	}
 	// bottom border
-	lines.push(panelBar(width, "─"));
+	lines.push(effectBar(panelBar(width, "─", panelBg), borderSgr));
 	return lines;
 }

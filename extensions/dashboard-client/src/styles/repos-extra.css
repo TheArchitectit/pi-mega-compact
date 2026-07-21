@@ -1,0 +1,99 @@
+/**
+ * dashboard-client/src/styles/repos-extra.css — Active repos + Savings by Model.
+ *
+ * Styles for ActiveReposTable and SavingsByModelTable components.
+ * Does NOT modify repos-metrics.css (per task constraint).
+ * Responsive: tables scroll horizontally on narrow screens.
+ */
+
+/* Section headers within Repos tab */
+.section-header {
+	font-size: 13px;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: var(--muted);
+	margin: 20px 0 10px;
+	font-weight: 600;
+}
+
+/* Horizontal scroll wrapper for wide tables */
+.table-scroll {
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+/* Shared table styles for active-repos and savings tables */
+.active-repos-table,
+.savings-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+
+.active-repos-table th,
+.savings-table th {
+	text-align: left;
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--border);
+	white-space: nowrap;
+}
+
+.active-repos-table th.num,
+.savings-table th.num {
+	text-align: right;
+}
+
+.active-repos-table td,
+.savings-table td {
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--border);
+	white-space: nowrap;
+}
+
+.active-repos-table td.num,
+.savings-table td.num {
+	text-align: right;
+	font-family: monospace;
+}
+
+.active-repos-table tbody tr:hover,
+.savings-table tbody tr:hover {
+	background: var(--panel);
+}
+
+/* Model cell emphasis */
+.savings-table .repo-model {
+	font-weight: 600;
+}
+
+/* Empty-state row */
+.repo-empty {
+	text-align: center;
+	color: var(--muted);
+	padding: 24px;
+}
+
+/* Section spacing */
+.active-repos-section {
+	margin-bottom: 8px;
+}
+
+.savings-by-model {
+	margin-bottom: 16px;
+}
+
+/* Responsive: ensure tables have min-width so columns don't crush */
+@media (max-width: 640px) {
+	.active-repos-table {
+		min-width: 900px;
+	}
+	.savings-table {
+		min-width: 1200px;
+	}
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+	.savings-table {
+		min-width: 1000px;
+	}
+}

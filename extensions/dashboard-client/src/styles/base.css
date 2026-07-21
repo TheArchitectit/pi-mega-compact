@@ -1,0 +1,189 @@
+/**
+ * dashboard-client/src/styles/base.css — shell + theme tokens + layout primitives.
+ *
+ * Shared by all tabs. Theme picker (Sprint C3) will override these tokens.
+ * Responsive: scales from 400px narrow to 4K ultrawide.
+ */
+
+:root {
+	--bg: #0d1117;
+	--panel: #161b22;
+	--border: #30363d;
+	--text: #e6edf3;
+	--muted: #8b949e;
+	--accent: #58a6ff;
+	--ok: #3fb950;
+	--warn: #d29922;
+	--err: #f85149;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	font-size: clamp(13px, 0.9vw, 16px);
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--text);
+}
+
+.dashboard-app {
+	max-width: min(1600px, 96vw);
+	margin: 0 auto;
+	padding: clamp(8px, 2vw, 24px);
+}
+
+/* Responsive container — scales fluidly from narrow to ultrawide */
+.card-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+	gap: clamp(8px, 1.5vw, 16px);
+}
+
+.dashboard-header h1 {
+	font-size: clamp(16px, 1.4vw, 22px);
+	font-weight: 600;
+	margin: 0 0 clamp(8px, 1vw, 16px);
+}
+
+.dashboard-header .tier,
+.dashboard-header .version-pill {
+	display: inline-block;
+	margin-left: 8px;
+	padding: 2px 8px;
+	font-size: clamp(10px, 0.8vw, 12px);
+	border-radius: 10px;
+	background: var(--panel);
+	border: 1px solid var(--border);
+	color: var(--muted);
+}
+
+.dashboard-header .tier {
+	color: var(--accent);
+}
+
+.tab-bar {
+	display: flex;
+	gap: 4px;
+	border-bottom: 1px solid var(--border);
+	margin-bottom: clamp(8px, 1vw, 16px);
+	overflow-x: auto;
+	flex-wrap: nowrap;
+}
+
+.tab-bar button {
+	background: none;
+	border: none;
+	color: var(--muted);
+	padding: 8px 14px;
+	cursor: pointer;
+	font-size: clamp(12px, 0.85vw, 14px);
+	border-bottom: 2px solid transparent;
+	white-space: nowrap;
+}
+
+.tab-bar button.active {
+	color: var(--text);
+	border-bottom-color: var(--accent);
+}
+
+.tab-bar button:hover {
+	color: var(--text);
+}
+
+.dashboard-content {
+	min-height: 400px;
+}
+
+.loading-spinner {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 48px;
+	color: var(--muted);
+}
+
+.error-fallback {
+	padding: 24px;
+	border: 1px solid var(--err);
+	border-radius: 8px;
+	background: rgba(248, 81, 73, 0.08);
+}
+
+.error-fallback button {
+	margin-top: 12px;
+	padding: 6px 14px;
+	background: var(--panel);
+	border: 1px solid var(--border);
+	color: var(--text);
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+.tab-stub {
+	padding: 32px;
+	color: var(--muted);
+	border: 1px dashed var(--border);
+	border-radius: 8px;
+	text-align: center;
+}
+
+/* Tables: horizontal scroll on narrow screens */
+.repos {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: clamp(12px, 0.8vw, 14px);
+}
+
+.repos th,
+.repos td {
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--border-soft, var(--border));
+	text-align: left;
+}
+
+.repos th {
+	background: var(--bg);
+	position: sticky;
+	top: 0;
+}
+
+.table-wrap {
+	overflow-x: auto;
+}
+
+/* Narrow screens: single column */
+@media (max-width: 640px) {
+	.card-grid {
+		grid-template-columns: 1fr;
+	}
+	.tab-bar button {
+		padding: 6px 10px;
+		font-size: 12px;
+	}
+}
+
+/* Medium screens: 2 columns */
+@media (min-width: 641px) and (max-width: 1024px) {
+	.card-grid {
+		grid-template-columns: repeat(2, 1fr);
+	}
+}
+
+/* Wide screens: 3-4 columns */
+@media (min-width: 1025px) {
+	.card-grid {
+		grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+	}
+}
+
+@media (min-width: 1601px) {
+	.dashboard-app {
+		max-width: min(1800px, 96vw);
+	}
+	.card-grid {
+		grid-template-columns: repeat(4, 1fr);
+	}
+}

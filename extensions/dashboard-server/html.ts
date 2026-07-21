@@ -3,100 +3,172 @@
  */
 
 import { dashboardServerVersion } from "./state.js";
+import { THEMES, DEFAULT_THEME, themeDataBlock } from "../../src/config/themes.js";
+
+// Server-side injection of every theme's :root[data-theme="<id>"] CSS-var
+// override block so the client can switch themes instantly by setting
+// document.documentElement.dataset.theme. PREVENT-PI-004: pure local, no network.
+const THEME_STYLE_BLOCKS = THEMES.map(themeDataBlock).join("\n");
+const THEME_OPTIONS = THEMES.map((t) => `<option value="${t.id}">${t.label}</option>`).join("");
 
 export function dashboardHtml(tierName: string): string {
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="${DEFAULT_THEME}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>mega-compact dashboard</title>
 <style>
+  /* S32: CSS-variable skin. Base :root holds the CURRENT hardcoded hexes so the
+     default (data-theme="transparent") is visually identical to the pre-S32
+     dashboard. Each :root[data-theme="<id>"] block (injected below from
+     src/config/themes.ts) overrides the 4 theme vars (--bg/--fg/--accent/--mega).
+     Non-theme palette tokens (card bg, borders, muted text, meter colors) stay
+     fixed so visual parity is preserved under the transparent default. */
+  :root {
+    --bg: #0d1117;          /* page background (transparent theme -> transparent) */
+    --fg: #c9d1d9;          /* default foreground */
+    --accent: #3fb950;      /* accent (bars, ok values, on-bullets) */
+    --mega: #f0883e;        /* MEGA CACHE highlight */
+    --fg-strong: #f0f6fc;   /* headings, strong values */
+    --muted: #8b949e;       /* labels, sub-text */
+    --dim: #484f58;         /* timestamps, empty states */
+    --card-bg: #161b22;     /* card / events / table background */
+    --border: #30363d;      /* card / table borders */
+    --border-soft: #21262d; /* meter track, ev borders, table row borders */
+    --blue: #1f6feb;        /* tier pill, active tab */
+    --green-bar: #238636;   /* green meter fill, safe border */
+    --yellow-bar: #d29922;  /* yellow meter fill, na-bullet */
+    --red-bar: #f85149;     /* red meter fill, offline banner */
+    --purple: #a371f7;      /* recall events, repo model, cost h2 */
+    --purple-pill: #6e40c9; /* model pill bg */
+    --hover-row: #1c2128;   /* table row hover */
+    --link: #58a6ff;        /* repo-link hover */
+    --th-bg: #0d1117;       /* table header background */
+  }
+  /* html backdrop keeps the page dark even when --bg is transparent (transparent
+     theme) so there's no white flash — visually identical to the pre-S32 fill. */
+  html { background: #0d1117; }
+  ${THEME_STYLE_BLOCKS}
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #0d1117; color: #c9d1d9; padding: 24px; line-height: 1.5; }
-  h1 { font-size: 20px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; color: #f0f6fc; }
-  h1 .tier { background: #1f6feb; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: .5px; }
-  h1 .version-pill { background: #30363d; color: #8b949e; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: var(--bg); color: var(--fg); padding: 24px; line-height: 1.5; }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; color: var(--fg-strong); }
+  h1 .tier { background: var(--blue); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: .5px; }
+  h1 .version-pill { background: var(--border); color: var(--muted); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
-  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
-  .card.safe { border-color: #238636; }
-  .card.safe h2 { color: #3fb950; }
-  .safe-note { font-size: 12px; color: #8b949e; margin: 12px 0 0; line-height: 1.5; }
-  .value.ok { color: #3fb950; }
+  .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .card.safe { border-color: var(--green-bar); }
+  .card.safe h2 { color: var(--accent); }
+  .safe-note { font-size: 12px; color: var(--muted); margin: 12px 0 0; line-height: 1.5; }
+  .value.ok { color: var(--accent); }
   .label {
     cursor: help;
-    border-bottom: 1px dotted #484f58;
+    border-bottom: 1px dotted var(--dim);
   }
   .card.legend { grid-column: 1 / -1; }
-  .legend-list { margin: 0; padding-left: 18px; color: #c9d1d9; }
+  .legend-list { margin: 0; padding-left: 18px; color: var(--fg); }
   .legend-list li { margin-bottom: 8px; line-height: 1.5; }
-  .legend-list b { color: #f0f6fc; }
-  .legend-note { font-size: 12px; color: #8b949e; margin: 12px 0 0; font-style: italic; }
-  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #8b949e; margin-bottom: 12px; font-weight: 600; }
-  .meter-track { background: #21262d; border-radius: 4px; height: 20px; overflow: hidden; margin: 8px 0; }
+  .legend-list b { color: var(--fg-strong); }
+  .legend-note { font-size: 12px; color: var(--muted); margin: 12px 0 0; font-style: italic; }
+  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 12px; font-weight: 600; }
+  .meter-track { background: var(--border-soft); border-radius: 4px; height: 20px; overflow: hidden; margin: 8px 0; }
   .meter-fill { height: 100%; border-radius: 4px; transition: width .6s ease; min-width: 2px; }
-  .meter-green { background: #238636; }
-  .meter-yellow { background: #d29922; }
-  .meter-red { background: #f85149; }
-  .meter-label { font-size: 24px; font-weight: 700; color: #f0f6fc; }
-  .meter-sub { font-size: 12px; color: #8b949e; }
+  .meter-green { background: var(--green-bar); }
+  .meter-yellow { background: var(--yellow-bar); }
+  .meter-red { background: var(--red-bar); }
+  .meter-label { font-size: 24px; font-weight: 700; color: var(--fg-strong); }
+  .meter-sub { font-size: 12px; color: var(--muted); }
   .status-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 14px; }
   .status-row .bullet { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .bullet-on { background: #3fb950; box-shadow: 0 0 6px #3fb95088; }
-  .bullet-off { background: #484f58; }
-  .bullet-na { background: #d29922; }
-  .state-text { font-size: 13px; color: #8b949e; margin-top: 8px; font-family: monospace; }
+  .bullet-on { background: var(--accent); box-shadow: 0 0 6px #3fb95088; }
+  .bullet-off { background: var(--dim); }
+  .bullet-na { background: var(--yellow-bar); }
+  .state-text { font-size: 13px; color: var(--muted); margin-top: 8px; font-family: monospace; }
   .stat-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 14px; }
-  .stat-grid .label { color: #8b949e; }
-  .stat-grid .value { color: #f0f6fc; font-weight: 600; font-family: monospace; }
+  .stat-grid .label { color: var(--muted); }
+  .stat-grid .value { color: var(--fg-strong); font-weight: 600; font-family: monospace; }
   .conf-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 14px; }
-  .conf-grid .label { color: #8b949e; }
-  .conf-grid .value { color: #f0f6fc; font-family: monospace; }
-  .events { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
-  .events h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #8b949e; margin-bottom: 12px; font-weight: 600; }
+  .conf-grid .label { color: var(--muted); }
+  .conf-grid .value { color: var(--fg-strong); font-family: monospace; }
+  .events { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .events h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 12px; font-weight: 600; }
   .events-wrap { max-height: 240px; overflow-y: auto; font-family: monospace; font-size: 12px; }
-  .ev { padding: 3px 0; border-bottom: 1px solid #21262d; display: flex; gap: 8px; align-items: baseline; }
+  .ev { padding: 3px 0; border-bottom: 1px solid var(--border-soft); display: flex; gap: 8px; align-items: baseline; }
   .ev:last-child { border-bottom: none; }
   .ev-type { font-weight: 700; min-width: 70px; text-align: right; }
-  .ev-type-compact { color: #3fb950; }
-  .ev-type-recall { color: #a371f7; }
-  .ev-time { color: #484f58; font-size: 10px; min-width: 80px; }
-  .ev-detail { color: #8b949e; flex: 1; }
-  .updated { font-size: 11px; color: #484f58; margin-top: 16px; text-align: right; }
-  .empty { color: #484f58; font-style: italic; font-size: 13px; padding: 8px 0; }
-  .offline-banner { background: #f8514922; border: 1px solid #f85149; border-radius: 6px; padding: 10px 16px; margin-bottom: 16px; font-size: 13px; color: #f85149; display: none; }
+  .ev-type-compact { color: var(--accent); }
+  .ev-type-recall { color: var(--purple); }
+  .ev-time { color: var(--dim); font-size: 10px; min-width: 80px; }
+  .ev-detail { color: var(--muted); flex: 1; }
+  .updated { font-size: 11px; color: var(--dim); margin-top: 16px; text-align: right; }
+  .empty { color: var(--dim); font-style: italic; font-size: 13px; padding: 8px 0; }
+  .offline-banner { background: #f8514922; border: 1px solid var(--red-bar); border-radius: 6px; padding: 10px 16px; margin-bottom: 16px; font-size: 13px; color: var(--red-bar); display: none; }
   .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
-  .tab { background: #161b22; color: #8b949e; border: 1px solid #30363d; border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s ease; }
-  .tab:hover { color: #c9d1d9; border-color: #484f58; }
-  .tab.active { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+  .tab { background: var(--card-bg); color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s ease; }
+  .tab:hover { color: var(--fg); border-color: var(--dim); }
+  .tab.active { background: var(--blue); color: #fff; border-color: var(--blue); }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
+  /* S32: header settings strip (game-mode toggle + theme + TUI display-mode) */
+  .settings-strip { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; padding: 10px 14px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+  .settings-strip label { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+  .settings-strip input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+  .settings-strip select { background: var(--th-bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 13px; cursor: pointer; }
+  .settings-strip select:hover { border-color: var(--dim); }
   .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 20px; }
-  .summary-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
-  .summary-card .num { font-size: 24px; font-weight: 700; color: #f0f6fc; }
-  .summary-card .lbl { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: .5px; margin-top: 4px; }
-  table.repos { width: 100%; border-collapse: collapse; background: #161b22; border: 1px solid #30363d; border-radius: 8px; overflow: hidden; }
-  table.repos th, table.repos td { text-align: left; padding: 10px 14px; font-size: 13px; border-bottom: 1px solid #21262d; }
-  table.repos th { color: #8b949e; text-transform: uppercase; letter-spacing: .5px; font-size: 11px; background: #0d1117; }
-  table.repos td.num { font-family: monospace; color: #f0f6fc; text-align: right; }
+  .summary-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .summary-card .num { font-size: 24px; font-weight: 700; color: var(--fg-strong); }
+  .summary-card .lbl { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-top: 4px; }
+  table.repos { width: 100%; border-collapse: collapse; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  table.repos th, table.repos td { text-align: left; padding: 10px 14px; font-size: 13px; border-bottom: 1px solid var(--border-soft); }
+  table.repos th { color: var(--muted); text-transform: uppercase; letter-spacing: .5px; font-size: 11px; background: var(--th-bg); }
+  table.repos td.num { font-family: monospace; color: var(--fg-strong); text-align: right; }
   table.repos tr:last-child td { border-bottom: none; }
-  table.repos tr:hover td { background: #1c2128; }
-  .repo-model { color: #a371f7; }
-  .repo-none { color: #484f58; font-style: italic; }
-  .updated { font-size: 11px; color: #484f58; margin-top: 16px; text-align: right; }
-  .model-pill { background: #6e40c9; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: .5px; }
-  .card.cost h2 { color: #a371f7; }
-  .cost-usd { font-size: 22px; font-weight: 700; color: #3fb950; }
-  .cost-sub { font-size: 12px; color: #8b949e; margin-top: 4px; }
+  table.repos tr:hover td { background: var(--hover-row); }
+  .repo-model { color: var(--purple); }
+  .repo-none { color: var(--dim); font-style: italic; }
+  .updated { font-size: 11px; color: var(--dim); margin-top: 16px; text-align: right; }
+  .model-pill { background: var(--purple-pill); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: .5px; }
+  .card.cost h2 { color: var(--purple); }
+  .cost-usd { font-size: 22px; font-weight: 700; color: var(--accent); }
+  .cost-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
   .repo-link { cursor: pointer; }
-  .repo-link:hover td { color: #58a6ff; }
+  .repo-link:hover td { color: var(--link); }
   .repo-detail { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 50; }
   .repo-detail.open { display: flex; }
-  .repo-detail-box { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 24px; width: 560px; max-width: 92vw; max-height: 86vh; overflow-y: auto; }
-  .repo-detail-box h2 { font-size: 14px; color: #f0f6fc; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
-  .repo-close { cursor: pointer; color: #8b949e; font-size: 20px; line-height: 1; border: none; background: none; padding: 0 4px; }
-  .repo-close:hover { color: #f0f6fc; }
-  .repo-path { font-size: 11px; color: #484f58; word-break: break-all; margin: -8px 0 12px; }
+  .repo-detail-box { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 24px; width: 560px; max-width: 92vw; max-height: 86vh; overflow-y: auto; }
+  .repo-detail-box h2 { font-size: 14px; color: var(--fg-strong); margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+  .repo-close { cursor: pointer; color: var(--muted); font-size: 20px; line-height: 1; border: none; background: none; padding: 0 4px; }
+  .repo-close:hover { color: var(--fg-strong); }
+  .repo-path { font-size: 11px; color: var(--dim); word-break: break-all; margin: -8px 0 12px; }
+  /* S34: Game Mode tab — leaderboards, MEGA CACHE banner, Opie unlock tile */
+  #panel-game .game-leaderboards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  #panel-game .lb-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  #panel-game .lb-card h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-bottom: 10px; font-weight: 600; }
+  #panel-game table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  #panel-game td { padding: 4px 8px; border-bottom: 1px solid var(--border-soft); }
+  #panel-game td.num { text-align: right; font-family: monospace; color: var(--fg-strong); font-weight: 600; }
+  #panel-game .lb-meta { color: var(--muted); font-size: 11px; margin-left: 6px; }
+  #panel-game .repos-badge { display: inline-block; background: var(--blue); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+  #mega-cache-banner { display: none; background: var(--mega); color: #1a1006; font-weight: 700; padding: 10px 14px; border-radius: 8px; margin: 12px 0; }
+  .achievement-tile { display: none; background: linear-gradient(135deg, #f0883e, #ffd700); color: #1a1006; font-weight: 700; padding: 12px 16px; border-radius: 8px; margin: 12px 0; box-shadow: 0 0 16px #f0883e88; }
+  .achievement-tile .ach-detail { display: block; font-weight: 500; font-size: 12px; margin-top: 4px; }
+  #mega-cache-toast { display: none; position: fixed; top: 16px; left: 50%; transform: translateX(-50%); background: var(--mega); color: #1a1006; font-weight: 700; padding: 10px 18px; border-radius: 8px; z-index: 1000; box-shadow: 0 4px 20px #0008; }
+  #mega-cache-toast.show { display: block; animation: mega-flash 0.6s ease-in-out 2; }
+  .level-up { animation: level-up-pulse 1.2s ease-in-out; }
+  #game-empty { color: var(--dim); font-style: italic; padding: 12px 0; }
+  @keyframes level-up-pulse { 0%{transform:scale(1)} 50%{transform:scale(1.08); filter:brightness(1.3)} 100%{transform:scale(1)} }
+  @keyframes mega-flash { 0%{background:transparent} 25%{background:var(--mega-bg, gold)} 100%{background:transparent} }
+  /* S35: achievements tile row + unlock toast */
+  .ach-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; margin: 8px 0 16px; }
+  .ach-tile { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 12px; background: var(--card-bg); }
+  .ach-tile.unlocked { background: linear-gradient(135deg, #f0883e, #ffd700); color: #1a1006; font-weight: 700; box-shadow: 0 0 12px #f0883e66; }
+  .ach-tile.locked { opacity: .55; }
+  .ach-tile.just-unlocked { animation: ach-unlock-pulse 0.6s ease-out; }
+  .ach-tile .ach-detail { display: block; font-weight: 500; font-size: 11px; margin-top: 3px; }
+  #ach-toast { display: none; position: fixed; top: 16px; left: 50%; transform: translateX(-50%); background: var(--blue); color: #fff; font-weight: 700; padding: 10px 18px; border-radius: 8px; z-index: 1000; box-shadow: 0 4px 20px #0008; }
+  #ach-toast.show { display: block; }
+  @keyframes ach-unlock-pulse { 0%{transform:scale(.9);opacity:.4} 60%{transform:scale(1.05)} 100%{transform:scale(1);opacity:1} }
 </style>
 </head>
 <body>
@@ -105,11 +177,19 @@ export function dashboardHtml(tierName: string): string {
 
 <h1><span>mega-compact</span><span class="tier" id="hdr-tier">${tierName}</span><span class="version-pill">v${dashboardServerVersion}</span><span class="model-pill" id="hdr-model">—</span></h1>
 
+<div class="settings-strip">
+  <label title="Turn game mode on/off (themes the widget + dashboard)"><input type="checkbox" id="set-game-mode"> Game mode</label>
+  <label title="Visual theme (applies instantly)">Theme <select id="set-theme">${THEME_OPTIONS}</select></label>
+  <label title="TUI widget display density">TUI <select id="set-tui-mode"><option value="full">Full</option><option value="minimal">Minimal</option></select></label>
+</div>
+
 <nav class="tabs">
   <button class="tab active" data-tab="current">Current repo</button>
   <button class="tab" data-tab="all">All repos</button>
   <button class="tab" data-tab="active">Active Repos</button>
   <button class="tab" data-tab="summary">Summary</button>
+  <button class="tab" data-tab="game">Game Mode</button>
+  <button class="tab" data-tab="perf">Perf</button>
 </nav>
 
 <!-- Current repo (existing single-repo view) -->
@@ -237,7 +317,7 @@ export function dashboardHtml(tierName: string): string {
   <div class="events-wrap" id="events"><div class="empty">connecting…</div></div>
 </div>
 
-<h2 style="margin-top:24px;font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px">All Repositories</h2>
+<h2 style="margin-top:24px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">All Repositories</h2>
 <table class="repos">
   <thead>
     <tr>
@@ -319,7 +399,7 @@ export function dashboardHtml(tierName: string): string {
     <div class="summary-card"><div class="num" id="sm-bytes">0 B</div><div class="lbl">Compressed-Original</div></div>
   </div>
 
-  <h2 style="margin-top:24px;font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px">Savings by Model</h2>
+  <h2 style="margin-top:24px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Savings by Model</h2>
   <p class="legend-note" style="margin-bottom:10px">How much context &amp; cost mega-compact has reclaimed, grouped by the model you were running. Compression ratio reflects workload/content, not model quality.</p>
   <table class="repos">
     <thead>
@@ -344,6 +424,36 @@ export function dashboardHtml(tierName: string): string {
   <p class="legend-note" style="margin-top:8px">Tokens In = Σ original region tokens dropped by compaction. Tokens Out = Σ compacted summary tokens still retained in context. Freed = Tokens In − Tokens Out (net context reclaimed). Ctx Window / Max Out / Reas. come from the latest captured model snapshot for each repo.</p>
 
   <div class="updated" id="sm-updated"></div>
+</div>
+
+<!-- Game Mode (S34) — high-score leaderboards, MEGA CACHE banner, Opie unlock -->
+<div class="tab-panel" id="panel-game">
+  <h2 style="font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">High Scores</h2>
+  <div id="mega-cache-banner"></div>
+  <div id="mega-cache-toast"></div>
+  <div class="achievement-tile" id="opie-tile"></div>
+  <h3 style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:16px">Achievements</h3>
+  <div id="ach-toast"></div>
+  <div id="ach-tiles" class="ach-tiles">loading…</div>
+  <div class="game-leaderboards">
+    <div class="lb-card"><h3>Cache % <span class="repos-badge" id="repos-badge"></span></h3><table><tbody id="lb-cache"><tr><td colspan="2" class="repo-none">loading…</td></tr></tbody></table></div>
+    <div class="lb-card"><h3>Dedupe (collapsed)</h3><table><tbody id="lb-dedupe"><tr><td colspan="2" class="repo-none">loading…</td></tr></tbody></table></div>
+    <div class="lb-card"><h3>Turns <span id="turns-level"></span></h3><table><tbody id="lb-turns"><tr><td colspan="2" class="repo-none">loading…</td></tr></tbody></table></div>
+    <div class="lb-card"><h3>MEGA CACHE trophies</h3><table><tbody id="lb-mega_cache"><tr><td colspan="2" class="repo-none">loading…</td></tr></tbody></table></div>
+  </div>
+  <div id="game-empty">No scores yet — run a session with game mode on.</div>
+</div>
+
+<!-- Perf (v0.8.8) — live local instrumentation -->
+<div class="tab-panel" id="panel-perf">
+  <div class="grid">
+    <div class="card"><h2>Model latency</h2><div class="stat-grid"><span class="label">Turn p50</span><span class="value" id="pf-turn-p50">—</span><span class="label">Turn p95</span><span class="value" id="pf-turn-p95">—</span><span class="label">Provider p50</span><span class="value" id="pf-prov-p50">—</span><span class="label">Provider p95</span><span class="value" id="pf-prov-p95">—</span></div></div>
+    <div class="card"><h2>Throughput</h2><div class="stat-grid"><span class="label">TPS (avg)</span><span class="value" id="pf-tps">—</span><span class="label">Cache hit %</span><span class="value" id="pf-cache">—</span></div></div>
+    <div class="card"><h2>Process</h2><div class="stat-grid"><span class="label">RSS</span><span class="value" id="pf-rss">—</span><span class="label">Heap</span><span class="value" id="pf-heap">—</span><span class="label">CPU user/sys</span><span class="value" id="pf-cpu">—</span></div></div>
+    <div class="card"><h2>Snapshot cost</h2><div class="stat-grid"><span class="label">DB recompute p50</span><span class="value" id="pf-db-p50">—</span><span class="label">DB recompute p95</span><span class="value" id="pf-db-p95">—</span><span class="label">Disk write p50</span><span class="value" id="pf-disk">—</span></div></div>
+    <div class="card"><h2>TUI lag proxy</h2><div class="stat-grid"><span class="label">Live-trim fires</span><span class="value" id="pf-recompute">—</span><span class="label">Cache replays</span><span class="value" id="pf-replays">—</span><span class="label">Fast-gate skips</span><span class="value" id="pf-skips">—</span></div><div class="meter-sub">skip vs recompute vs replay cadence</div></div>
+  </div>
+  <div class="updated" id="perf-updated">waiting for data</div>
 </div>
 
 <script>
@@ -518,7 +628,11 @@ export function dashboardHtml(tierName: string): string {
     fetch('/api/snapshot').then(function(r) { return r.json(); }).then(renderSnapshot).catch(function() {}); // guardrails-allow PREVENT-PI-004: browser-side fetch in dashboard HTML template (not Node runtime)
   }
   pollSnapshot();
+  renderGameScores();
+  renderAchievements();
   setInterval(pollSnapshot, 2000);
+  setInterval(renderGameScores, 2000);
+  setInterval(renderAchievements, 2000);
 
   // SSE for events
   function connectSSE() {
@@ -733,9 +847,206 @@ export function dashboardHtml(tierName: string): string {
   pollServers();
   setInterval(pollServers, 5000);
 
+  // --- Game-mode settings strip (S32) -------------------------------------
+  // Polls GET /api/game-state and applies the row to the settings controls +
+  // the document theme. On any control change, PUTs a partial patch back. The
+  // dashboard server is a detached child with no MegaRuntime ref, so it reads /
+  // writes the game_state SQLite row directly; the in-process MegaRuntime picks
+  // up the change via its fs.watch cache-eviction watcher (S32).
+  var gmCheckbox = document.getElementById('set-game-mode');
+  var gmTheme = document.getElementById('set-theme');
+  var gmTui = document.getElementById('set-tui-mode');
+
+  function applyGameState(gs) {
+    if (!gs) return;
+    if (gs.theme) document.documentElement.dataset.theme = gs.theme;
+    if (gmCheckbox) gmCheckbox.checked = !!gs.game_mode_on;
+    if (gmTheme) gmTheme.value = gs.theme || 'transparent';
+    if (gmTui) gmTui.value = gs.tui_display_mode || 'full';
+  }
+  function pollGameState() {
+    fetch('/api/game-state').then(function(r) { return r.json(); }).then(applyGameState).catch(function() {}); // guardrails-allow PREVENT-PI-004: browser-side fetch in dashboard HTML template (not Node runtime)
+  }
+  function putGameState(patch) {
+    fetch('/api/game-state', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) }).then(function(r) { return r.json(); }).then(applyGameState).catch(function() {}); // guardrails-allow PREVENT-PI-004: browser-side fetch in dashboard HTML template (not Node runtime)
+  }
+  if (gmCheckbox) gmCheckbox.addEventListener('change', function() { putGameState({ game_mode_on: gmCheckbox.checked }); });
+  if (gmTheme) gmTheme.addEventListener('change', function() { putGameState({ theme: gmTheme.value }); });
+  if (gmTui) gmTui.addEventListener('change', function() { putGameState({ tui_display_mode: gmTui.value }); });
+  pollGameState();
+  setInterval(pollGameState, 5000);
+
+  // --- Game Mode leaderboards (S34) ----------------------------------------
+  // Polls GET /api/game-scores per metric, renders the per-repo leaderboard
+  // tables, the MEGA CACHE banner, the hidden Opie's Wild Ride unlock tile, and
+  // the transient oopsie toast (fires when a NEW mega_cache trophy row appears
+  // since the last poll). Browser-side fetch only (PREVENT-PI-004).
+  var GAME_METRICS = ['cache', 'dedupe', 'turns', 'mega_cache'];
+  var GAME_EMPTY = true;
+  var lastMegaTs = 0;
+  var lastMaxLevel = 0;
+  function fmtPct(v) { return (Math.round(v * 10) / 10) + '%'; }
+  function fmtDate(ts) { return ts ? new Date(ts).toLocaleString() : '—'; }
+  function trophyMeta(m) { try { return (m && typeof m === 'object') ? m : {}; } catch (e) { return {}; } }
+  function renderGameScores() {
+    var results = {};
+    var pending = GAME_METRICS.length + 1; // metrics + repos badge
+    function done() {
+      if (--pending > 0) return;
+      var cache = results['cache'] || [];
+      if (cache.length) GAME_EMPTY = false;
+      document.getElementById('lb-cache').innerHTML = cache.map(function(r) {
+        return '<tr><td title="' + sanitize(r.repo_root) + '">' + sanitize(r.repo_root.split('/').pop()) + '</td><td class="num">' + sanitize(String(r.value)) + '</td></tr>';
+      }).join('') || '<tr><td colspan="2" class="repo-none">no data</td></tr>';
+      var dedupe = results['dedupe'] || [];
+      if (dedupe.length) GAME_EMPTY = false;
+      document.getElementById('lb-dedupe').innerHTML = dedupe.map(function(r) {
+        return '<tr><td title="' + sanitize(r.repo_root) + '">' + sanitize(r.repo_root.split('/').pop()) + '</td><td class="num">' + sanitize(String(r.value)) + '</td></tr>';
+      }).join('') || '<tr><td colspan="2" class="repo-none">no data</td></tr>';
+      var turns = results['turns'] || [];
+      var maxTurns = turns.reduce(function(mx, r) { return Math.max(mx, r.value); }, 0);
+      var lvl = Math.floor(Math.log2(maxTurns + 1)) + 1;
+      var lvlEl = document.getElementById('turns-level');
+      if (lvlEl) lvlEl.textContent = 'LVL ' + lvl;
+      if (turns.length) GAME_EMPTY = false;
+      // level-up pulse: when max level increases vs last poll, pulse the cache bar
+      if (lvl > lastMaxLevel && lastMaxLevel > 0) {
+        var bar = document.getElementById('ctx-bar');
+        if (bar) { bar.classList.add('level-up'); setTimeout(function() { bar.classList.remove('level-up'); }, 1200); }
+      }
+      if (lvl > lastMaxLevel) lastMaxLevel = lvl;
+      document.getElementById('lb-turns').innerHTML = turns.map(function(r) {
+        return '<tr><td title="' + sanitize(r.repo_root) + '">' + sanitize(r.repo_root.split('/').pop()) + '</td><td class="num">' + sanitize(String(r.value)) + '</td></tr>';
+      }).join('') || '<tr><td colspan="2" class="repo-none">no data</td></tr>';
+      // mega_cache trophies + banner + Opie tile + transient toast
+      var mega = results['mega_cache'] || [];
+      var megaBody = document.getElementById('lb-mega_cache');
+      if (megaBody) {
+        megaBody.innerHTML = mega.map(function(r) {
+          var m = trophyMeta(r.meta);
+          var fs = m.firstSeenTs || m.firstSeen || r.ts;
+          var extra = fs ? ' <span class="lb-meta">' + sanitize(fmtDate(fs)) + '</span>' : '';
+          return '<tr><td title="' + sanitize(r.repo_root) + '">' + sanitize(r.repo_root.split('/').pop()) + '</td><td class="num">' + sanitize(fmtPct(r.value)) + extra + '</td></tr>';
+        }).join('') || '<tr><td colspan="2" class="repo-none">no trophies yet</td></tr>';
+      }
+      var banner = document.getElementById('mega-cache-banner');
+      var tile = document.getElementById('opie-tile');
+      var best = null, firstSeen = null;
+      mega.forEach(function(r) {
+        if (best == null || r.value > best) best = r.value;
+        var m = trophyMeta(r.meta);
+        var fs = m.firstSeenTs || m.firstSeen || r.ts;
+        if (firstSeen == null || fs < firstSeen) firstSeen = fs;
+      });
+      if (banner) {
+        if (best != null && best > 100) {
+          banner.style.display = 'block';
+          banner.textContent = '🥧 MEGA CACHE! peak ' + fmtPct(best) + ' — first reached ' + fmtDate(firstSeen);
+        } else { banner.style.display = 'none'; }
+      }
+      if (tile) {
+        if (best != null && best > 100) {
+          tile.style.display = 'block';
+          tile.className = 'achievement-tile unlocked';
+          tile.innerHTML = '🏆 Opie\\'s Wild Ride<span class="ach-detail">best ' + sanitize(fmtPct(best)) + ' · first ' + sanitize(fmtDate(firstSeen)) + '</span>';
+        } else { tile.style.display = 'none'; tile.className = 'achievement-tile'; }
+      }
+      // transient oopsie toast: a NEW mega_cache trophy row since the last poll
+      var maxTs = mega.reduce(function(mx, r) { return Math.max(mx, r.ts); }, 0);
+      var newRow = mega.find(function(r) { return r.ts > lastMegaTs && r.value > 100; });
+      if (lastMegaTs && newRow) {
+        var toast = document.getElementById('mega-cache-toast');
+        if (toast) {
+          toast.textContent = 'oopsie! cache went to ' + Math.round(newRow.value) + '% — MEGA CACHE 🥧';
+          toast.classList.add('show');
+          setTimeout(function() { toast.classList.remove('show'); }, 4000);
+        }
+      }
+      if (maxTs > lastMegaTs) lastMegaTs = maxTs;
+      // empty state
+      var emptyEl = document.getElementById('game-empty');
+      if (emptyEl) emptyEl.style.display = GAME_EMPTY ? 'block' : 'none';
+    }
+    GAME_METRICS.forEach(function(m) {
+      fetch('/api/game-scores?metric=' + encodeURIComponent(m) + '&limit=25').then(function(r) { return r.ok ? r.json() : []; }).then(function(rows) { results[m] = rows || []; }).catch(function() { results[m] = []; }).then(done);
+    });
+    fetch('/api/game-scores?metric=repos&limit=1').then(function(r) { return r.ok ? r.json() : []; }).then(function(rows) {
+      var badge = document.getElementById('repos-badge');
+      if (badge) badge.textContent = ((rows && rows.length) ? rows[0].value : 0) + ' repos';
+      if (rows && rows.length && rows[0].value > 0) GAME_EMPTY = false;
+    }).catch(function() {}).then(done);
+  }
+
+  // --- Achievements tile row (S35) ------------------------------------------
+  // Polls GET /api/achievements; renders the tile row (hidden+locked render
+  // NOTHING; unlocked show icon+title+date; visible-but-locked show ??? teaser)
+  // and fires a transient toast when a newly-unlocked achievement appears.
+  // Browser-side fetch only (PREVENT-PI-004).
+  var lastAchMaxTs = 0;
+  function renderAchievements() {
+    fetch('/api/achievements').then(function(r) { return r.ok ? r.json() : []; }).then(function(rows) { // guardrails-allow PREVENT-PI-004: browser-side fetch in dashboard HTML template (not Node runtime)
+      var box = document.getElementById('ach-tiles');
+      if (!box) return;
+      var html = '';
+      var maxTs = 0;
+      (rows || []).forEach(function(a) {
+        if (a.hidden === 1 && a.unlocked_at == null) return; // hidden invariant: render nothing
+        if (a.unlocked_at != null) {
+          var isNew = a.unlocked_at > lastAchMaxTs && lastAchMaxTs > 0;
+          maxTs = Math.max(maxTs, a.unlocked_at);
+          html += '<div class="ach-tile unlocked' + (isNew ? ' just-unlocked' : '') + '">' + sanitize(a.icon || '') + ' ' + sanitize(a.title) + '<span class="ach-detail">unlocked ' + sanitize(fmtDate(a.unlocked_at)) + '</span></div>';
+        } else {
+          html += '<div class="ach-tile locked">??? ' + sanitize(a.title) + '</div>';
+        }
+      });
+      box.innerHTML = html || '<span class="repo-none">no achievements yet</span>';
+      var newly = (rows || []).filter(function(a) { return a.unlocked_at != null && a.unlocked_at > lastAchMaxTs; });
+      if (lastAchMaxTs && newly.length) {
+        var toast = document.getElementById('ach-toast');
+        if (toast) {
+          toast.textContent = newly.map(function(a) { return (a.icon || '') + ' ' + a.title; }).join(', ') + ' unlocked!';
+          toast.classList.add('show');
+          setTimeout(function() { toast.classList.remove('show'); }, 4000);
+        }
+      }
+      if (maxTs > lastAchMaxTs) lastAchMaxTs = maxTs;
+    }).catch(function() {});
+  }
+
+  // --- Perf tab (v0.8.8) — live local instrumentation ----------------------
+  var perfPollTimer = null;
+  function pollPerf() {
+    fetch('/api/perf?minutes=30').then(function(r) { return r.ok ? r.json() : null; }).then(function(d) { // guardrails-allow PREVENT-PI-004: browser-side fetch in dashboard HTML template (not Node runtime)
+      if (!d) return;
+      var el = document.getElementById('perf-updated');
+      if (el) el.textContent = d.sampleCount + ' samples \u00b7 updated ' + (d.updatedAt || '');
+      function setText(id, txt) { var e = document.getElementById(id); if (e) e.textContent = txt; }
+      function fmtMs(v) { return v == null ? '\u2014' : (v >= 100 ? Math.round(v) + 'ms' : v.toFixed(1) + 'ms'); }
+      function fmtNum(v, dec) { return v == null ? '\u2014' : (typeof v === 'number' ? v.toFixed(dec) : '\u2014'); }
+      setText('pf-turn-p50', fmtMs(d.turn_latency_ms && d.turn_latency_ms.p50));
+      setText('pf-turn-p95', fmtMs(d.turn_latency_ms && d.turn_latency_ms.p95));
+      setText('pf-prov-p50', fmtMs(d.provider_latency_ms && d.provider_latency_ms.p50));
+      setText('pf-prov-p95', fmtMs(d.provider_latency_ms && d.provider_latency_ms.p95));
+      setText('pf-tps', fmtNum(d.tps && d.tps.avg, 1));
+      setText('pf-cache', (d.cache_hit_pct && typeof d.cache_hit_pct.avg === 'number') ? fmtNum(d.cache_hit_pct.avg, 1) + '%' : '\u2014');
+      setText('pf-rss', (d.rss_mb && typeof d.rss_mb.latest === 'number') ? fmtNum(d.rss_mb.latest, 1) + ' MB' : '\u2014');
+      setText('pf-heap', (d.heap_mb && typeof d.heap_mb.latest === 'number') ? fmtNum(d.heap_mb.latest, 1) + ' MB' : '\u2014');
+      setText('pf-cpu', (d.cpu_user_ms && d.cpu_sys_ms) ? (fmtNum(d.cpu_user_ms.latest,1) + ' / ' + fmtNum(d.cpu_sys_ms.latest,1) + ' ms') : '\u2014');
+      setText('pf-db-p50', fmtMs(d.db_recompute_ms && d.db_recompute_ms.p50));
+      setText('pf-db-p95', fmtMs(d.db_recompute_ms && d.db_recompute_ms.p95));
+      setText('pf-disk', fmtMs(d.disk_write_ms && d.disk_write_ms.p50));
+      var diag = d.diag || {};
+      setText('pf-recompute', diag.liveTrimFires != null ? String(diag.liveTrimFires) : '\u2014');
+      setText('pf-replays', diag.liveTrimReplays != null ? String(diag.liveTrimReplays) : '\u2014');
+      setText('pf-skips', diag.ctxFastGate != null ? String(diag.ctxFastGate) : '\u2014');
+    }).catch(function() {});
+  }
+  function startPerfPoll() { if (perfPollTimer) return; pollPerf(); perfPollTimer = setInterval(pollPerf, 2000); }
+  function stopPerfPoll() { if (perfPollTimer) { clearInterval(perfPollTimer); perfPollTimer = null; } }
+
   // --- Tab switching ------------------------------------------------------
   var tabs = document.querySelectorAll('.tab');
-  var panels = { current: 'panel-current', all: 'panel-all', active: 'panel-active', summary: 'panel-summary' };
+  var panels = { current: 'panel-current', all: 'panel-all', active: 'panel-active', summary: 'panel-summary', game: 'panel-game', perf: 'panel-perf' };
   for (var i = 0; i < tabs.length; i++) {
     tabs[i].addEventListener('click', function() {
       var name = this.getAttribute('data-tab');
@@ -749,6 +1060,8 @@ export function dashboardHtml(tierName: string): string {
       }
       if (name === 'all' || name === 'summary') pollIndex();
       if (name === 'active') pollServers();
+      if (name === 'game') { renderGameScores(); renderAchievements(); }
+      if (name === 'perf') startPerfPoll(); else stopPerfPoll();
     });
   }
 })();

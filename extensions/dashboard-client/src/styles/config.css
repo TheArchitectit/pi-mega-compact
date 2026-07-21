@@ -1,0 +1,149 @@
+/**
+ * dashboard-client/src/styles/config.css — Config tab + category filter styles.
+ *
+ * Kept under 300 lines per project doc-length guideline.
+ */
+
+/* ── Config tab layout ──────────────────────────────────────────────────── */
+
+.config-tab {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.config-settings,
+.config-display {
+	padding: 14px 16px;
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+}
+
+.config-settings h3,
+.config-display h3 {
+	margin: 0 0 12px;
+	font-size: clamp(12px, 1vw, 14px);
+	color: var(--muted);
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+}
+
+/* ── Settings strip ─────────────────────────────────────────────────────── */
+
+.settings-row {
+	margin-bottom: 10px;
+}
+
+.settings-row:last-child {
+	margin-bottom: 0;
+}
+
+.settings-row label {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: clamp(13px, 0.9vw, 15px);
+	color: var(--text);
+	cursor: pointer;
+}
+
+.settings-row select {
+	padding: 4px 8px;
+	font-size: clamp(12px, 0.85vw, 14px);
+	background: var(--bg);
+	color: var(--text);
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	cursor: pointer;
+}
+
+.settings-row select:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.settings-row input[type="checkbox"] {
+	width: 16px;
+	height: 16px;
+	cursor: pointer;
+}
+
+/* ── Config display grid ────────────────────────────────────────────────── */
+
+.config-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+	gap: 10px;
+}
+
+.config-item {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	padding: 8px 10px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+}
+
+.config-label {
+	font-size: clamp(11px, 0.75vw, 13px);
+	color: var(--muted);
+	text-transform: uppercase;
+	letter-spacing: 0.4px;
+}
+
+.config-value {
+	font-size: clamp(13px, 1vw, 16px);
+	font-weight: 600;
+	color: var(--text);
+}
+
+/* ── Event category filter ──────────────────────────────────────────────── */
+
+.event-category-filter {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	align-items: center;
+}
+
+.category-chip {
+	padding: 3px 10px;
+	font-size: clamp(11px, 0.75vw, 13px);
+	border: 1px solid var(--border);
+	background: var(--bg);
+	color: var(--muted);
+	border-radius: 12px;
+	cursor: pointer;
+	text-transform: capitalize;
+	transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.category-chip:hover {
+	color: var(--text);
+}
+
+.category-chip.active {
+	color: var(--text);
+	border-color: var(--accent);
+	background: var(--panel);
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+	.config-grid {
+		grid-template-columns: 1fr;
+	}
+	.settings-row label {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 4px;
+	}
+	.settings-row select {
+		width: 100%;
+	}
+}

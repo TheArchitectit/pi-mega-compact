@@ -83,14 +83,16 @@ export function registerContextHandler(
 	// Legacy: MEGACOMPACT_LEGACY_DURABLE_TRIM=true restores the v0.4.28 ctx.compact
 	// path (kept one release as rollback).
 	pi.on("context", async (event: ContextEvent, ctx: ExtensionContext) => {
-		if (!config.auto) return;
 		const usage = ctx.getContextUsage();
 		const pct = usage?.percent;
-		// Always track context for the dashboard, even if we return early below.
+		// Always track context for the dashboard/widget, even when auto is off.
+		// (v0.8 regression: !config.auto gate sat above this, leaving ctx stats
+		// null -> widget '?% / ?/?' when auto disabled. Track first, THEN gate.)
 		runtime.lastCtxTokens = usage?.tokens ?? null;
 		runtime.lastCtxPercent = pct ?? null;
 		runtime.lastCtxWindow = usage?.contextWindow ?? 0;
 		runtime.snapshot(ctx);
+		if (!config.auto) return;
 
 		const messages = event.messages;
 		const view = runtime.engineView(messages);
@@ -154,6 +156,40 @@ export function registerContextHandler(
 			return;
 		}
 		runtime.debounceUntil = now + 2000;
+
+		// v0.8.6 cache-stability: replay the cached trim view when still in the
+		// same compaction epoch AND context hasn't grown enough to warrant a
+		// re-compact. This stabilizes the provider KV-cache prefix (the summary +
+		// cut are reused verbatim) instead of regenerating a fresh summary +
+		// sentinel every fire, which invalidated the prefix on every other turn
+		// (the alternating cache-miss regression). Re-compact only when context
+		// grew >=10% of the window (percent basis) or >=50% of the effective
+		// threshold (token basis, when percent is unavailable). The cached `cut`
+		// is only valid while the transcript grows within the epoch — it is
+		// cleared on session_compact (durable truncation) + resetRuntime, so we
+		// never replay a stale cut into a truncated transcript (PREVENT-PI-001/002).
+		const RECOMPACT_PCT_DELTA = 10;
+		if (
+			runtime.trimCache &&
+			runtime.trimCache.checkpointId === runtime.rt.lastCheckpointId &&
+			runtime.trimCache.cut <= messages.length
+		) {
+			const grewEnough =
+				pct != null && runtime.trimCache.ctxPct != null
+					? pct - runtime.trimCache.ctxPct >= RECOMPACT_PCT_DELTA
+					: currentTokens - (runtime.trimCache.ctxTokens ?? 0) >=
+							runtime.effectiveThreshold * 0.5;
+			if (!grewEnough) {
+				const recent = messages.slice(runtime.trimCache.cut); // guardrails-allow PREVENT-PI-002: cached `cut` was sanitized once by computeLiveTrimCut (src/boundary.ts) and replayed verbatim; the transcript only grows within an epoch (cache is cleared on durable truncation), so the preserved run still starts on a toolPair-safe index.
+				runtime.diagLiveTrimFires++; // trim view returned this call (replay counts as a fire)
+				runtime.diagLiveTrimReplays++;
+				runtime.snapshot(ctx);
+				// v0.8.7: shallow-copy the cached summary so pi's transformContext can't
+				// mutate the shared reference across replays (audit P3).
+				return { messages: [{ ...runtime.trimCache.summaryAgentMsg }, ...recent] };
+			}
+			// else: context grew enough → fall through to re-compact (cache is stale)
+		}
 
 		// Adaptive compression (Fix E): scale compression strength + keepFrom depth
 		// with how close we are to the model context limit. Null-safe: when the
@@ -264,9 +300,36 @@ export function registerContextHandler(
 			const summaryAgentMsg = {
 				role: "user" as const,
 				content: summaryMsg.text,
-				timestamp: Date.now(),
+				// v0.8.6: stable timestamp across the epoch (NOT Date.now()) so the
+				// summary message bytes — and thus the KV-cache prefix — don't drift
+				// on every replay within the same compaction epoch.
+				timestamp: runtime.rt.lastCompactAt ?? Date.now(),
 			} as unknown as AgentMessage;
 			const recent = messages.slice(cut); // guardrails-allow PREVENT-PI-002: `cut` is the pre-sanitized `compactedFrom` produced by src/boundary.ts computeDropRange, so the preserved run begins on a toolPair-safe index.
+			// v0.8.6: cache the trim view so subsequent gated calls in this epoch
+			// replay it verbatim (stabilizing the KV-cache prefix) instead of
+			// regenerating a fresh summary + sentinel every fire.
+			runtime.trimCache = {
+				// v0.8.7: key the replay cache on the STABLE epoch signal
+				// (rt.lastCheckpointId) instead of ran.result.checkpointId, which is
+				// dedup-volatile: on a re-compact that dedups onto a DIFFERENT existing
+				// checkpoint, result.checkpointId is the matched id (engine.ts:188) while
+				// lastCheckpointId is only updated on a genuinely new checkpoint
+				// (compact.ts:100-104). Keying on result.checkpointId would make
+				// trimCache.checkpointId != rt.lastCheckpointId forever after that
+				// dedup fire, disabling replay for the rest of the epoch (the
+				// alternating cache-miss that 0.8.6 meant to fix). Prefer the stable
+				// signal; fall back to result.checkpointId then the epoch timestamp
+				// only for the no-checkpoint edge case.
+				checkpointId:
+					runtime.rt.lastCheckpointId ??
+					ran.result.checkpointId ??
+					`epoch-${runtime.rt.lastCompactAt ?? Date.now()}`,
+				cut,
+				summaryAgentMsg,
+				ctxPct: pct ?? null,
+				ctxTokens: currentTokens,
+			};
 			runtime.snapshot(ctx);
 			// DIAG (team-run relief): confirm the live trim actually fires + how big
 			// the window still is. The return is non-durable (per-LLM-call only), so

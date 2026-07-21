@@ -1,5 +1,7 @@
 node_modules/
 dist/
+!extensions/dashboard-client/dist/
+!extensions/dashboard-client/dist/**
 *.log
 .env
 .env.*
@@ -39,3 +41,5 @@ mega-compact-vector/
 !.crew/graphs/
 !.crew/artifacts/.gitkeep
 !.crew/graphs/.gitkeep
+# agent temp scratch dir
+tmp/

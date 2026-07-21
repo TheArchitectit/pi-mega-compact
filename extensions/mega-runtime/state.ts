@@ -27,7 +27,10 @@ import {
 	getCompactCount,
 	getRecallInjected,
 	getCacheHitTokensSaved,
+	getGameState,
+	recordPerfSample,
 	type ModelSnapshot,
+	type GameState,
 } from "../../src/store/sqlite.js";
 import { detectCrossRepoDrift } from "../../src/driftDetection.js";
 import {
@@ -54,6 +57,9 @@ import {
 	type TickerEntry,
 	type WidgetData,
 } from "./widget.js";
+import { getTheme } from "../../src/config/themes.js";
+import { watch, type FSWatcher } from "node:fs";
+import { turnLevel } from "../../src/game/scoring.js";
 
 export class MegaRuntime {
 	config: MegaConfig;
@@ -82,12 +88,48 @@ export class MegaRuntime {
 		cacheHitTokens: 0,
 		lengthStopPending: false,
 	};
+	// v0.8.6 cache-stability: the cached live-trim view for the current
+	// compaction epoch. Set after a fresh runCompact + computeLiveTrimCut, and
+	// replayed verbatim on subsequent gated context events in the SAME epoch
+	// (same checkpointId) so the provider KV-cache prefix stays stable instead
+	// of being invalidated by a freshly regenerated summary + sentinel every
+	// fire. Invalidated on session restart (resetRuntime) and on any native
+	// durable compaction (session_compact) that truncates the transcript.
+	trimCache: {
+		checkpointId: string;
+		cut: number;
+		summaryAgentMsg: AgentMessage;
+		ctxPct: number | null;
+		ctxTokens: number | null;
+	} | null = null;
 	debounceUntil = 0;
 	// S16: debounce for the agent_end resume nudge (avoid busy-loops).
 	resumeNudgeUntil = 0;
 	// Agent tracking for real-time widget updates
 	activeAgents = 0;
 	currentTurn = 0;
+	// S33: transient MEGA CACHE flare flag (armed by the turn_end scoring hook
+	// when cachePct > 100). Copied into widgetData.megaCacheFlare on the next
+	// snapshot() so the widget renders the oopsie gag, then reset (one cycle).
+	megaCacheFlare = false;
+	/** v0.8.3: ambient effect state for animated panel borders keyed off
+	 *  status transitions (level-up, mega-cache overshoot, achievement unlock,
+	 *  compaction start). Threaded into widgetData as `activeEffect`; the widget
+	 *  computes the per-frame phase from startedAt vs Date.now() (non-expired).
+	 *  Null when idle/expired. */
+	activeEffect: { type: "pulse" | "flash"; role: "accent" | "mega" | "red"; startedAt: number; durationMs: number } | null = null;
+	megaCacheFlarePct = 0;
+	levelUpFlare = false;
+	lastLevel = 0;
+	// S35: transient achievement-unlock flare (armed by the scoring hooks after
+	// evaluateAndUnlockAchievements returns newly-unlocked titles). Copied into
+	// widgetData.achievementFlare on the next snapshot() so the widget renders the
+	// unlock toast, then reset (one cycle — mirrors megaCacheFlare/levelUpFlare).
+	achievementFlare = false;
+	achievementFlareTitles: string[] = [];
+	// S33: last cumulative dedup-collapsed count seen by the session_compact
+	// hook, so we only record the DELTA as the dedupe score (leaderboard sums).
+	lastDedupCollapsed = 0;
 	// Recall block produced by auto-inline (resume/branch) that the next
 	// before_agent_start should prepend to the system prompt. Unset after use.
 	pendingRecallBlock: string | undefined;
@@ -123,6 +165,12 @@ export class MegaRuntime {
 	// Last explain-why line (dedup reason / anchor-kept / superseded), surfaced
 	// while fresh.
 	lastWhy: string | undefined = undefined;
+	// v0.8.8 Perf dashboard instrumentation: turn/provider start timestamps +
+	// the 5s cpu/mem interval handle (one per MegaRuntime, cleared in dispose()).
+	perfTurnStart = 0;
+	perfProviderStart = 0;
+	perfCpuInterval: ReturnType<typeof setInterval> | undefined;
+	private perfCpuBaseline: { user: number; sys: number } | undefined;
 
 	// Context tracking for the dashboard (updated in the context handler).
 	lastCtxTokens: number | null = null;
@@ -131,9 +179,37 @@ export class MegaRuntime {
 
 	// Latest computed widget payload (recomputed per snapshot, rendered per frame).
 	widgetData: WidgetData | null = null;
+	// v0.8.5: material-change signature from the last full snapshot() body. When
+	// the next snapshot()'s signature matches, the expensive recompute (6 sync
+	// SQLite opens) + writeFileSync(dashboard.json) are skipped — only the
+	// (already-registered) widget factory is refreshed. Kills the per-event
+	// main-thread block during typing/idle streaming with no material change.
+	private lastSnapshotSig: string | null = null;
+	// v0.8.5: bumped whenever the cached game-state memo is evicted (bumpGameState
+	// for in-process /mega-game writes, the fs.watch callback for cross-process
+	// dashboard-server writes, and bindRepo on repo switch) so the snapshot gate
+	// invalidates and the widget re-reads theme/mode after the change.
+	private gameStateBump = 0;
 	// Cached cross-repo drift status (recomputed at most every 30s — it opens the
 	// machine-wide registry DB, so we don't want to do it on every render frame).
 	private driftCache: { at: number; status: "ok" | "warn" } | null = null;
+	// S31: cached game-mode state (game_mode_on/theme/tui_display_mode). Lazily
+	// read from the game_state SQLite row on the first widget render, then
+	// memoized until bumpGameState() evicts it (called by /mega-game after a
+	// write) so the widget picks up theme/mode/level changes live without
+	// re-querying the DB on every render frame.
+	private cachedGameState: GameState | undefined;
+	// S32: fs.watch on the current repo's sqlite.db so cross-process writes
+	// (e.g. the dashboard server's PUT /api/game-state, which runs as a detached
+	// child with no MegaRuntime ref) evict the cached game-state memo. Without
+	// this, /mega-game's in-process bumpGameState() is the only eviction trigger
+	// and the widget would keep showing stale theme/mode/toggle after a dashboard
+	// edit until a restart. The watcher tracks currentStateDir — closed + re-opened
+	// by ensureGameStateWatcher() on every bindRepo repo switch. Non-fatal: any
+	// fs.watch failure (missing file / platform issue) is swallowed; the next
+	// getCachedGameState() snapshot re-queries the DB anyway.
+	private gameStateWatcher?: FSWatcher;
+	private gameStateWatchDir?: string;
 
 	/**
 	 * DIAG counters for the "team run doesn't relieve context" investigation.
@@ -144,6 +220,7 @@ export class MegaRuntime {
 	 * updated and cost nothing).
 	 */
 	diagLiveTrimFires = 0; // context handler returned a trimmed view
+	diagLiveTrimReplays = 0; // v0.8.6: trim view returned via cached replay (skipped re-compact)
 	diagBeforeCompactFires = 0; // session_before_compact handler entered
 	diagBeforeCompactSupplied = 0; // session_before_compact supplied our trim
 	diagAgentEndIdle = 0; // agent_end with activeAgents===0
@@ -235,6 +312,7 @@ export class MegaRuntime {
 		});
 		this.dashboard = new Dashboard(config.stateDir);
 		this.currentStateDir = config.stateDir;
+		this.ensureGameStateWatcher();
 	}
 
 	// ---- per-repo binding -----------------------------------------------------
@@ -252,6 +330,16 @@ export class MegaRuntime {
 		if (key === this.activeRepoRoot) return dir;
 		this.activeRepoRoot = key;
 		this.currentStateDir = dir;
+		// S31 audit P2: bindRepo switched currentStateDir but left cachedGameState
+		// memoized -> the widget kept showing the previous repo's theme/mode/toggle
+		// until /mega-game or a restart. The game_state row is per-repo (per
+		// stateDir), so evict the memo on every repo switch; the next widget render
+		// re-queries lazily via getCachedGameState().
+		this.cachedGameState = undefined;
+		this.gameStateBump++;
+		// S32: re-target the fs.watch cache-eviction watcher at the NEW stateDir's
+		// sqlite.db so cross-process writes (dashboard server) still evict the memo.
+		this.ensureGameStateWatcher();
 		this.store = new VectorStore({
 			dedupSim: this.config.dedupSim,
 			stateDir: dir,
@@ -289,6 +377,22 @@ export class MegaRuntime {
 	/** Collect live state and write it to disk (+ paint the above-editor widget). */
 	snapshot(ctx?: ExtensionContext): void {
 		if (ctx) this.bindRepo(ctx.cwd);
+		// v0.8.5: gate the expensive body (6 sync SQLite opens +
+		// writeFileSync(dashboard.json)) behind a cheap material-change signature.
+		// During typing / idle / no-compaction streaming, the 'context' event
+		// fires repeatedly with NO material change — skip the recompute + write and
+		// just re-register the (live) widget factory, which reads the cached
+		// widgetData every frame. This removes the per-event main-thread block
+		// WITHOUT changing write timing, so tests that read dashboard.json
+		// synchronously after a compaction still see it written (compaction changes
+		// compactCount/tokensSaved → the signature changes → the full recompute +
+		// write runs).
+		const sig = this.materialSig();
+		if (ctx && this.widgetData && this.lastSnapshotSig === sig) {
+			this.renderWidget(ctx);
+			return;
+		}
+		const perfT0 = performance.now();
 		const st = this.store.stats(this.rt.sessionId);
 		const repo = this.store.repoStats();
 		const di = this.store.dataInvariant();
@@ -444,7 +548,13 @@ export class MegaRuntime {
 				cacheHit: { sessionSec: sec(this.rt.cacheHitTokens), totalSec: sec(cacheHitsTotalTokens) },
 			},
 			model,
+			diag: {
+				ctxFastGate: this.diagCtxFastGate,
+				liveTrimFires: this.diagLiveTrimFires,
+				liveTrimReplays: this.diagLiveTrimReplays,
+			},
 		} as DashboardSnapshot);
+		const perfDiskMs = this.dashboard.lastWriteMs;
 
 		// Live stats widget above the editor
 		if (ctx) {
@@ -520,6 +630,19 @@ export class MegaRuntime {
 			const driftStatus = this.driftStatus();
 			const agentsActive = this.activeAgents > 0;
 
+			// S31: game-mode state for the widget (theme/mode/level + MEGA CACHE).
+			// Pulled from the cached game_state row; cachePct is the REAL dedup hit
+			// rate (may exceed 100% — that's the MEGA CACHE trigger). megaCacheFlare
+			// is false for now (S33.4 scoring hook arms it when cachePct > 100).
+			const gs = this.getCachedGameState();
+			// S34: derive the level-up flare from the turn count each snapshot.
+			const curLevel = this.getTurnLevel();
+			if (curLevel > this.lastLevel) {
+				this.levelUpFlare = true;
+				// v0.8.3: arm a pulse border effect to celebrate the level-up.
+				this.setEffect("pulse", "accent", 1500);
+			}
+			const cachePct = st.dedupHitRate * 100;
 			this.widgetData = {
 				version: ownVersion(),
 				tierLabel,
@@ -551,12 +674,61 @@ export class MegaRuntime {
 				lastWhy: this.lastWhy,
 				tierTrace: this.tierTrace,
 				pulsing: this.pulsing,
+				// S31 game-mode fields:
+				gameMode: gs.game_mode_on,
+				theme: getTheme(gs.theme) ? gs.theme : "transparent",
+				tuiMode: gs.tui_display_mode,
+				level: this.getTurnLevel(),
+				cachePct,
+				megaCacheFlare: this.megaCacheFlare,
+				megaCacheFlarePct: this.megaCacheFlarePct,
+				levelUpFlare: this.levelUpFlare,
+				achievementFlare: this.achievementFlare,
+				achievementFlareTitles: this.achievementFlareTitles,
+				// v0.8.3: ambient border effect — threaded live so the widget can
+				// compute the per-frame phase and render animated borders.
+				activeEffect: this.activeEffect,
 			};
+			// S33: consume the flare after copying it into widgetData so it fires
+			// for exactly one render cycle (the gag flares once, then clears).
+			this.megaCacheFlare = false;
+			this.megaCacheFlarePct = 0;
+
+			// S34: consume the level-up flare after one render cycle (mirrors the
+			// megaCacheFlare one-shot semantics), and advance lastLevel.
+			this.levelUpFlare = false;
+			this.lastLevel = curLevel;
+			// S35: consume the achievement-unlock flare after one render cycle
+			// (mirrors the megaCacheFlare/levelUpFlare one-shot semantics).
+			this.achievementFlare = false;
+			this.achievementFlareTitles = [];
+			// v0.8.3: expire the ambient border effect once its time window has
+			// elapsed. SEPARATE from the one-shot flares above (those are per-cycle
+			// consumes; activeEffect is time-windowed and cleared when Date.now()
+			// crosses startedAt + durationMs). The widget also defends this per-frame
+			// (effectBorderSgr returns '' once expired), so this is bookkeeping to
+			// free the slot and prevent a stale effect lingering between snapshots.
+			if (
+				this.activeEffect &&
+				Date.now() - this.activeEffect.startedAt >=
+					this.activeEffect.durationMs
+			) {
+				this.activeEffect = null;
+			}
 			// Auto-fit: register a factory so pi re-renders the panel at the REAL
 			// terminal width every frame (tui.columns), instead of guessing with
 			// process.stdout.columns. buildWidgetLines reads this.widgetData live.
 			this.renderWidget(ctx);
 		}
+		// v0.8.5: record the material-change signature computed at the top so the
+		// next snapshot() can skip this whole body when nothing material changed.
+		try {
+			recordPerfSample(this.currentStateDir, "db_recompute_ms", performance.now() - perfT0);
+			recordPerfSample(this.currentStateDir, "disk_write_ms", perfDiskMs);
+		} catch {
+			/* non-fatal: perf instrumentation never blocks the agent */
+		}
+		this.lastSnapshotSig = sig;
 	}
 
 	/** Register the above-editor widget as a width-aware factory so pi re-renders
@@ -577,6 +749,35 @@ export class MegaRuntime {
 			}),
 			{ placement: "aboveEditor" },
 		);
+	}
+
+	/** v0.8.5: cheap material-change signature over live runtime fields (no
+	 *  SQLite). Two snapshots with the same signature produce identical
+	 *  dashboard.json + widgetData, so the 6 synchronous SQLite opens + the
+	 *  writeFileSync(dashboard.json) can be skipped. Built from in-memory state
+	 *  only; gameStateBump covers cross-process game_state edits (fs.watch) +
+	 *  in-process /mega-game writes (bumpGameState) + repo switches (bindRepo).
+	 *  The transient flare flags are included so a one-shot flare forces the
+	 *  recompute that renders (then clears) it for exactly one cycle. */
+	private materialSig(): string {
+		const rt = this.rt;
+		const ae = this.activeEffect;
+		return JSON.stringify([
+			this.lastCtxTokens, this.lastCtxPercent, this.lastCtxWindow,
+			this.activeAgents, this.currentTurn,
+			rt.compactCount, rt.tokensSaved, rt.dedupSkips, rt.dedupAttempts,
+			rt.recallInjections, rt.cacheHitTokens, rt.persistedThisSession,
+			rt.lastCheckpointId ?? null, rt.lastCompactedFrom, rt.lastCompactedTokens,
+			this.statusKey ?? null,
+			this.currentModel?.modelId ?? null, this.currentModel?.provider ?? null,
+			ae ? `${ae.type}:${ae.role}:${ae.startedAt}` : null,
+			this.gameStateBump,
+			this.megaCacheFlare, this.megaCacheFlarePct,
+			this.levelUpFlare, this.achievementFlare,
+			this.achievementFlareTitles.join("|"),
+			this.tierTrace ?? null, this.lastWhy ?? null, this.pulsing,
+			this.ticker.length,
+		]);
 	}
 
 	/** Active embedder name for the memory-store line (Trigram default / MiniLM). */
@@ -629,6 +830,7 @@ export class MegaRuntime {
 			cacheHitTokens: 0,
 			lengthStopPending: false,
 	};
+		this.trimCache = null; // v0.8.6: never replay a stale trim into a new session
 		this.statusKey = undefined;
 		this.activeAgents = 0;
 		this.currentTurn = 0;
@@ -638,6 +840,10 @@ export class MegaRuntime {
 		this.pulsing = false;
 		this.savedGoal = 50_000;
 		this.lastWhy = undefined;
+		// S31 audit P2: symmetry with bindRepo — a reset can coincide with a context
+		// that re-binds the repo, so drop the memo too. Cheap; the next
+		// getCachedGameState() re-queries lazily.
+		this.cachedGameState = undefined;
 	}
 
 	/**
@@ -743,6 +949,163 @@ export class MegaRuntime {
 	/** S21: state dir of the currently bound repo (where memories live). */
 	getStateDir(): string {
 		return this.currentStateDir;
+	}
+
+	/** S32: (re)target the fs.watch cache-eviction watcher at the current
+	 *  stateDir's sqlite.db. Called from the constructor + every bindRepo repo
+	 *  switch so the watcher always tracks the NEW repo's db file. If a watcher
+	 *  already exists for this dir, no-op; if the dir changed, close the old one
+	 *  first. fs.watch can throw on a missing file / platform issues — wrapped
+	 *  non-fatal; the next getCachedGameState() re-queries the DB anyway. */
+	private ensureGameStateWatcher(): void {
+		if (this.gameStateWatcher && this.gameStateWatchDir === this.currentStateDir) {
+			return;
+		}
+		if (this.gameStateWatcher) {
+			try { this.gameStateWatcher.close(); } catch { /* non-fatal */ }
+			this.gameStateWatcher = undefined;
+			this.gameStateWatchDir = undefined;
+		}
+		try {
+			// Watch the state DIR (not just sqlite.db) and filter by filename.
+			// Why: the store is WAL-mode (openStore sets PRAGMA journal_mode=WAL).
+			// Cross-process writes (dashboard server child) append to sqlite.db-wal
+			// and do NOT modify sqlite.db until a checkpoint — and a long-lived
+			// parent connection (VectorStore + dashboard readers) keeps the WAL
+			// uncheckpointed, so a watcher on sqlite.db alone never fires and
+			// cachedGameState stays stale (theme stuck after a dashboard edit).
+			// Watching the dir + matching sqlite.db* catches the main db, the -wal
+			// sidecar, and -shm, so the memo evicts on any cross-process write. The
+			// filter also excludes events.log / *.log noise in the same dir.
+			this.gameStateWatcher = watch(
+				this.currentStateDir,
+				(_eventType, filename) => {
+					if (typeof filename === "string" && filename.startsWith("sqlite.db")) {
+						this.cachedGameState = undefined;
+						this.gameStateBump++;
+					}
+				},
+			);
+			this.gameStateWatchDir = this.currentStateDir;
+		} catch {
+			/* non-fatal: missing dir / platform issue — next snapshot re-queries */
+		}
+	}
+
+	/** S32: release the fs.watch game-state watcher. Called when the runtime is
+	 *  torn down (no existing dispose path — the process exit reclaims the fd,
+	 *  but explicit close is correct for any in-process reload / test reuse). */
+	dispose(): void {
+		if (this.gameStateWatcher) {
+			try { this.gameStateWatcher.close(); } catch { /* non-fatal */ }
+			this.gameStateWatcher = undefined;
+			this.gameStateWatchDir = undefined;
+		}
+		// v0.8.8: stop the cpu/mem sampling interval on teardown. Re-armed lazily
+		// by ensurePerfInterval() on the next turn_start.
+		if (this.perfCpuInterval) {
+			clearInterval(this.perfCpuInterval);
+			this.perfCpuInterval = undefined;
+			this.perfCpuBaseline = undefined;
+		}
+	}
+
+	/** v0.8.8: (re)start the 5s cpu/mem sampling interval (idempotent). One per
+	 *  MegaRuntime; cleared in dispose(). Samples process.cpuUsage() (user/sys
+	 *  delta vs the last tick → ms) + process.memoryUsage() (rss/heap → MB) and
+	 *  records them as perf_samples. unref'd so it never keeps the process alive
+	 *  on its own. Non-fatal: any failure is swallowed (instrumentation never
+	 *  blocks the agent). PREVENT-PI-004: local process stats + SQLite only. */
+	ensurePerfInterval(): void {
+		if (this.perfCpuInterval) return;
+		this.perfCpuBaseline = undefined; // first tick sets the baseline (no delta)
+		this.perfCpuInterval = setInterval(() => {
+			try {
+				const dir = this.currentStateDir;
+				const cpu = process.cpuUsage();
+				const mem = process.memoryUsage();
+				if (this.perfCpuBaseline) {
+					const du = (cpu.user - this.perfCpuBaseline.user) / 1000; // μs → ms
+					const ds = (cpu.system - this.perfCpuBaseline.sys) / 1000;
+					recordPerfSample(dir, "cpu_user_ms", Math.max(0, du));
+					recordPerfSample(dir, "cpu_sys_ms", Math.max(0, ds));
+				}
+				this.perfCpuBaseline = { user: cpu.user, sys: cpu.system };
+				recordPerfSample(dir, "rss_mb", mem.rss / 1_000_000);
+				recordPerfSample(dir, "heap_mb", mem.heapUsed / 1_000_000);
+			} catch {
+				/* non-fatal */
+			}
+		}, 5000);
+		this.perfCpuInterval.unref?.();
+	}
+
+	/** S31: the cached game-mode state (game_mode_on/theme/tui_display_mode).
+	 *  Lazily read from the game_state SQLite row on the first call, then
+	 *  memoized until `bumpGameState()` evicts it. Reading is non-throwing
+	 *  (getGameState returns DEFAULT_GAME_STATE on any error), so the widget
+	 *  can call this on every render safely. */
+	getCachedGameState(): GameState {
+		if (!this.cachedGameState) {
+			try {
+				this.cachedGameState = getGameState(this.currentStateDir);
+			} catch {
+				this.cachedGameState = {
+					game_mode_on: false,
+					theme: "transparent",
+					tui_display_mode: "full",
+				};
+			}
+		}
+		return this.cachedGameState;
+	}
+
+	/** S31: evict the cached game-mode state so the next widget render re-reads
+	 *  the game_state row. Called by /mega-game after every setGameState() so
+	 *  the panel picks up theme/mode/toggle changes live. */
+	bumpGameState(): void {
+		this.cachedGameState = undefined;
+		this.gameStateBump++;
+	}
+
+	/** S33: player level for game mode — floor(log2(turns+1))+1 (gentle).
+	 *  Defensive: non-finite/negative collapses to 1 (never NaN). */
+	private getTurnLevel(): number {
+		return turnLevel(this.currentTurn);
+	}
+
+	/** S33: arm the transient MEGA CACHE flare so the next snapshot() copies it
+	 *  into widgetData and the widget renders the oopsie gag for one cycle.
+	 *  v0.8.3: also arm a 'flash' ambient effect on the panel borders (mega
+	 *  color) for 1.2s. */
+	armMegaCacheFlare(peakPct: number): void {
+		this.megaCacheFlare = true;
+		this.megaCacheFlarePct = peakPct;
+		this.setEffect("flash", "mega", 1200);
+	}
+
+	/** S35: arm the transient achievement-unlock flare with the newly-unlocked
+	 *  titles so the next snapshot() copies them into widgetData and the widget
+	 *  renders the one-time unlock toast for one render cycle.
+	 *  v0.8.3: also arm a 'pulse' ambient effect on the panel borders (accent
+	 *  color) for 2s to celebrate the unlock. */
+	armAchievementFlare(titles: string[]): void {
+		this.achievementFlare = true;
+		this.achievementFlareTitles = titles;
+		this.setEffect("pulse", "accent", 2000);
+	}
+
+	/** v0.8.3: arm an ambient border effect (animated pulse/flash on the panel
+	 *  borders). Replaces any in-flight effect (last call wins — a later event
+	 *  like a level-up during an achievement pulse simply overrides). The widget
+	 *  reads activeEffect each frame and computes the per-frame phase from
+	 *  startedAt vs Date.now(); it renders '' once the window elapses. */
+	setEffect(
+		type: "pulse" | "flash",
+		role: "accent" | "mega" | "red",
+		durationMs: number,
+	): void {
+		this.activeEffect = { type, role, startedAt: Date.now(), durationMs };
 	}
 
 	/** Build the sync onTier callback that paints the live per-tier trace. */

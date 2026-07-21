@@ -59,6 +59,8 @@
 | S27 spec (tiered % compaction threshold — `tierPct × contextWindow`; fires below pi native ~80% auto-compact for any model size; reconciles dual-basis pressure flicker) | [specs/s27-tiered-percent-threshold.md](specs/s27-tiered-percent-threshold.md) | docs/ |
 | **S28 spec (max-output-token auto-continue — detect `stopReason==='length'` + reuse S16 debounced resume-nudge; no new compact call, PREVENT-PI-003/004 safe)** | [specs/s28-max-output-token-auto-continue.md](specs/s28-max-output-token-auto-continue.md) | docs/specs/ |
 | **S29 spec (percent-based auto-compact trigger — gate on context %, not under-reported token counts; `MEGACOMPACT_AUTO_PCT_TRIGGER` override; pct-null token fallback preserves S27)** | [specs/s29-percent-auto-trigger.md](specs/s29-percent-auto-trigger.md) | docs/specs/ |
+| **game-mode design spec v0.2 (gamified stats: per-metric leaderboards, MEGA CACHE, 6 themes, 3-toggle panel, minimalist TUI)** | [game-mode-design.md](game-mode-design.md) | docs/ |
+| **game-mode QA review + sprint plan S30–S35 (guardrail adherence, 12 QA findings, 52 pre-defined TODOs; S31 ✅ DONE)** | [specs/game-mode-sprint-plan.md](specs/game-mode-sprint-plan.md) | docs/specs/ |
 | **S27 spec (db mirror: byte-stable prompt cache via raw transcript mirror + deterministic epoch nonce)** | [specs/sprint-27-db-mirror-cache-stability.md](specs/sprint-27-db-mirror-cache-stability.md) | docs/ |
 | **S27 sprint plan (tasks 5–9: context hook, dedup pipeline, recall demotion, tests, DB maintenance /commands)** | [specs/sprint-27-db-mirror-implementation.md](specs/sprint-27-db-mirror-implementation.md) | docs/ |
 | **post-mortem: "Already compacted" / "Auto compaction failed" race (agent_end vs native _checkCompaction)** | [specs/postmortem-already-compacted-race.md](specs/postmortem-already-compacted-race.md) | docs/specs/ |
@@ -112,8 +114,48 @@
 
 ---
 
-## RESEARCH
+## PERF DASHBOARD (v0.8.8)\n\n| Keyword | Document | Location |\n| --------- | ---------- | ---------- |\n| Perf tab, live instrumentation, model latency, TPS, cache hit %, CPU/mem, snapshot cost | [dashboard-server/server.ts](../extensions/dashboard-server/server.ts) + [dashboard-server/html.ts](../extensions/dashboard-server/html.ts) | extensions/dashboard-server/ |\n| perf_samples table, recordPerfSample, readPerfSamples | [sqlite/perf-samples.ts](../src/store/sqlite/perf-samples.ts) | src/store/sqlite/ |\n| perf event capture (turn/provider latency, 5s cpu/mem interval) | [mega-events/perf-handler.ts](../extensions/mega-events/perf-handler.ts) | extensions/mega-events/ |\n| snapshot() recompute + disk-write cost instrumentation, Dashboard.lastWriteMs | [mega-runtime/state.ts](../extensions/mega-runtime/state.ts) + [mega-dashboard.ts](../extensions/mega-dashboard.ts) | extensions/ |\n| GET /api/perf (rolling p50/p95 aggregates, diag counts) | [dashboard-server/server.ts](../extensions/dashboard-server/server.ts) | extensions/dashboard-server/ |\n\n## RESEARCH
 
 | Keyword | Document | Location |
 |---------|----------|----------|
 | pi API constraints, extension mechanics, reference algorithms | [RESEARCH.md](../RESEARCH.md) | repo root |
+
+---
+
+## GAME MODE
+
+| Keyword | Document | Location |
+| --------- | ---------- | ---------- |
+| game mode, /mega-compact-settings, themes, TUI widget, achievements | [specs/game-mode-sprint-plan.md](specs/game-mode-sprint-plan.md) | docs/specs/ |
+| game-mode design (§3b oopsie, §9b achievements, themes) | [game-mode-design.md](game-mode-design.md) | docs/ |
+| themes (6 palettes, hex+ANSI) | [config/themes.ts](../src/config/themes.ts) | src/config/ |
+| game_scores / game_state / game_achievements tables | [sqlite/schema.ts](../src/store/sqlite/schema.ts) | src/store/sqlite/ |
+| scoring helpers (turnLevel, evaluateAchievements) | [game/scoring.ts](../src/game/scoring.ts) | src/game/ |
+| /api/game-scores, /api/game-state, /api/achievements (loopback) | [dashboard-server/server.ts](../extensions/dashboard-server/server.ts) | extensions/dashboard-server/ |
+| GET /api/game-scores, /api/achievements, /api/game-state | [dashboard-server/server.ts](../extensions/dashboard-server/server.ts) | extensions/dashboard-server/ |
+
+---
+
+## DASHBOARD REWRITE (React frontend sprints)
+
+| Keyword | Document | Location |
+| --------- | ---------- | ---------- |
+| **A1: API contract, typed endpoints, EndpointDef** | [specs/sprint-A1-api-contract.md](specs/sprint-A1-api-contract.md) | docs/specs/ |
+| **B1: React scaffold, Vite, SSE hook, API client** | [specs/sprint-B1-react-scaffold.md](specs/sprint-B1-react-scaffold.md) | docs/specs/ |
+| **C1: core tabs, Overview, Events, context gauge** | [specs/sprint-C1-core-tabs.md](specs/sprint-C1-core-tabs.md) | docs/specs/ |
+| **C2: repos table, metrics, perf charts, drill-down** | [specs/sprint-C2-repos-metrics.md](specs/sprint-C2-repos-metrics.md) | docs/specs/ |
+| **C3: config tab, game mode settings, theme picker** | [specs/sprint-C3-config.md](specs/sprint-C3-config.md) | docs/specs/ |
+| **D1: resilience, offline banner, retry, stale indicator** | [specs/sprint-D1-resilience.md](specs/sprint-D1-resilience.md) | docs/specs/ |
+| **D2: observability, diagnostics panel, health check** | [specs/sprint-D2-observability.md](specs/sprint-D2-observability.md) | docs/specs/ |
+| **D3: docs + release, tester guide, migration** | [specs/sprint-D3-docs-release.md](specs/sprint-D3-docs-release.md) | docs/specs/ |
+| **T1: tailscale remote access, auth, CSRF** | [specs/sprint-T1-tailscale.md](specs/sprint-T1-tailscale.md) | docs/specs/ |
+| API contracts — barrel (deprecated, re-exports from api-contracts/) | [dashboard-server/api-contracts.ts](../extensions/dashboard-server/api-contracts.ts) | extensions/dashboard-server/ |
+| API contracts — index barrel (all domain re-exports) | [dashboard-server/api-contracts/index.ts](../extensions/dashboard-server/api-contracts/index.ts) | extensions/dashboard-server/api-contracts/ |
+| API contracts — core types (EndpointDef, SSE events) | [dashboard-server/api-contracts/core.ts](../extensions/dashboard-server/api-contracts/core.ts) | extensions/dashboard-server/api-contracts/ |
+| API contracts — snapshot (snapshot, trigger, compaction) | [dashboard-server/api-contracts/snapshot.ts](../extensions/dashboard-server/api-contracts/snapshot.ts) | extensions/dashboard-server/api-contracts/ |
+| API contracts — multi-repo (repos, indexes, drift, diff) | [dashboard-server/api-contracts/multi-repo.ts](../extensions/dashboard-server/api-contracts/multi-repo.ts) | extensions/dashboard-server/api-contracts/ |
+| API contracts — game (game state, rituals, themes) | [dashboard-server/api-contracts/game.ts](../extensions/dashboard-server/api-contracts/game.ts) | extensions/dashboard-server/api-contracts/ |
+| API contracts — infrastructure (health, perf, rate-limit, diagnostics) | [dashboard-server/api-contracts/infrastructure.ts](../extensions/dashboard-server/api-contracts/infrastructure.ts) | extensions/dashboard-server/api-contracts/ |
+| React App shell (tabs, error boundary, lazy imports) | [dashboard-client/src/App.tsx](../extensions/dashboard-client/src/App.tsx) | extensions/dashboard-client/src/ |
+| useApi hook (typed fetch, retry, stale detection) | [dashboard-client/src/hooks/useApi.ts](../extensions/dashboard-client/src/hooks/useApi.ts) | extensions/dashboard-client/src/hooks/ |
+| useSSE hook (event stream, reconnect, backoff) | [dashboard-client/src/hooks/useSSE.ts](../extensions/dashboard-client/src/hooks/useSSE.ts) | extensions/dashboard-client/src/hooks/ |

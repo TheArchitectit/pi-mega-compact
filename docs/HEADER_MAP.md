@@ -305,6 +305,40 @@
 
 ---
 
+## docs/specs/game-mode-sprint-plan.md (docs/specs/game-mode-sprint-plan.md)
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Guardrail Adherence Review | 13 | 0 |
+| QA Review of the v0.2 Spec | 33 | 0 |
+| Sprint Roadmap (S30–S35) | 55 | 0 |
+| S30 Foundation: state + themes + command | 67 | 0 |
+| S31 TUI widget theming + display modes + level | 109 | 0 |
+| S32 Dashboard CSS-variable skin + settings strip | 135 | 0 |
+| S33 Scoring schema + hooks | 169 | 0 |
+| S34 High Score dashboard tab + animations + release | 191 | 0 |
+| S35 Achievements system (capstone) | 228 | 0 |
+| Consolidated Pre-Defined TODO Ledger | 267 | 0 |
+| Resolved Open Questions | 289 | 0 |
+| Deferred (future phases) | 303 | 0 |
+
+## docs/game-mode-design.md (docs/game-mode-design.md)
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Goal | 9 | 0 |
+| Scoring model | 17 | 0 |
+| MEGA CACHE | 30 | 0 |
+| MEGA CACHE overshoot — oopsie alert + Opie's Wild Ride hidden unlock | 55 | 0 |
+| Levels on turns | 101 | 0 |
+| Theme system | 108 | 0 |
+| Toggle panel | 131 | 0 |
+| State storage | 153 | 0 |
+| Dashboard | 162 | 0 |
+| Open implementation questions | 170 | 0 |
+| Achievements (S35) | 189 | 0 |
+| Future | 223 | 0 |
+
 ## src/ (v0.5.0 source index)
 
 | File | Purpose (sprint) |
@@ -377,6 +411,17 @@
 | ACCEPTANCE | 237 | 226 |
 | ROLLBACK | 258 | 247 |
 
+## v0.8.8 Perf dashboard (new feature)
+
+| File | Purpose |
+|------|---------|
+| `src/store/sqlite/perf-samples.ts` | `perf_samples` table accessors: `recordPerfSample` / `readPerfSamples` (parameterized SQL, pi-agnostic). |
+| `extensions/mega-events/perf-handler.ts` | Local event capture: turn/provider latency, TPS, cache hit %, 5s cpu/mem interval. |
+| `extensions/mega-runtime/state.ts` | `MegaRuntime.ensurePerfInterval` + snapshot() db_recompute_ms/disk_write_ms instrumentation + `diag` in the snapshot payload. |
+| `extensions/mega-dashboard.ts` | `Dashboard.lastWriteMs` getter (writeFileSync duration) + `diag` field on `DashboardSnapshot`. |
+| `extensions/dashboard-server/server.ts` | `GET /api/perf` rolling-window aggregates (p50/p95, latest, diag counts). |
+| `extensions/dashboard-server/html.ts` | Perf tab button + `#panel-perf` cards + 2s active-only polling. |
+
 ## docs/specs/postmortem-already-compacted-race.md
 
 | Section | Line | Offset |
@@ -390,3 +435,203 @@
 | Why It Slipped Through | 191 | 183 |
 | Validation | 208 | 200 |
 | Action Items | 224 | 216 |
+
+## docs/specs/sprint-A1-api-contract.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 12 | 0 |
+| PROBLEM STATEMENT | 25 | 13 |
+| SCOPE BOUNDARY | 33 | 21 |
+| EXECUTION DIRECTIONS | 48 | 36 |
+| QA VERIFICATION ROUND | 75 | 63 |
+| ACCEPTANCE CRITERIA | 90 | 78 |
+| ROLLBACK PROCEDURE | 100 | 88 |
+
+## docs/specs/sprint-B1-react-scaffold.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 12 | 0 |
+| PROBLEM STATEMENT | 25 | 13 |
+| SCOPE BOUNDARY | 33 | 21 |
+| EXECUTION DIRECTIONS | 58 | 46 |
+| QA VERIFICATION ROUND | 92 | 80 |
+| ACCEPTANCE CRITERIA | 107 | 95 |
+| ROLLBACK PROCEDURE | 119 | 107 |
+
+## docs/specs/sprint-C1-core-tabs.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 12 | 0 |
+| PROBLEM STATEMENT | 24 | 12 |
+| SCOPE BOUNDARY | 30 | 18 |
+| EXECUTION DIRECTIONS | 49 | 37 |
+| QA VERIFICATION ROUND | 81 | 69 |
+| ACCEPTANCE CRITERIA | 96 | 84 |
+| ROLLBACK PROCEDURE | 106 | 94 |
+
+## docs/specs/sprint-C2-repos-metrics.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 12 | 0 |
+| PROBLEM STATEMENT | 23 | 11 |
+| SCOPE BOUNDARY | 29 | 17 |
+| EXECUTION DIRECTIONS | 48 | 36 |
+| QA VERIFICATION ROUND | 73 | 61 |
+| ACCEPTANCE CRITERIA | 86 | 74 |
+| ROLLBACK PROCEDURE | 96 | 84 |
+
+## docs/specs/sprint-C3-config.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 12 | 0 |
+| PROBLEM STATEMENT | 24 | 12 |
+| SCOPE BOUNDARY | 30 | 18 |
+| EXECUTION DIRECTIONS | 47 | 35 |
+| QA VERIFICATION ROUND | 67 | 55 |
+| ACCEPTANCE CRITERIA | 80 | 68 |
+| ROLLBACK PROCEDURE | 90 | 78 |
+
+## docs/specs/sprint-D1-resilience.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 12 | 0 |
+| PROBLEM STATEMENT | 24 | 12 |
+| SCOPE BOUNDARY | 30 | 18 |
+| EXECUTION DIRECTIONS | 50 | 38 |
+| QA VERIFICATION ROUND | 88 | 76 |
+| ACCEPTANCE CRITERIA | 102 | 90 |
+| ROLLBACK PROCEDURE | 114 | 102 |
+
+## docs/specs/sprint-D2-observability.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 12 | 0 |
+| PROBLEM STATEMENT | 23 | 11 |
+| SCOPE BOUNDARY | 31 | 19 |
+| EXECUTION DIRECTIONS | 48 | 36 |
+| QA VERIFICATION ROUND | 82 | 70 |
+| ACCEPTANCE CRITERIA | 98 | 86 |
+| ROLLBACK PROCEDURE | 111 | 99 |
+
+## docs/specs/sprint-D3-docs-release.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 12 | 0 |
+| PROBLEM STATEMENT | 22 | 10 |
+| SCOPE BOUNDARY | 28 | 16 |
+| EXECUTION DIRECTIONS | 46 | 34 |
+| QA VERIFICATION ROUND | 75 | 63 |
+| ACCEPTANCE CRITERIA | 87 | 75 |
+| ROLLBACK PROCEDURE | 99 | 87 |
+
+## docs/specs/sprint-T1-tailscale.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| SAFETY PROTOCOLS | 12 | 0 |
+| PROBLEM STATEMENT | 25 | 13 |
+| SCOPE BOUNDARY | 31 | 19 |
+| EXECUTION DIRECTIONS | 50 | 38 |
+| QA VERIFICATION ROUND | 87 | 75 |
+| ACCEPTANCE CRITERIA | 102 | 90 |
+| ROLLBACK PROCEDURE | 115 | 103 |
+
+## extensions/dashboard-server/api-contracts.ts (DEPRECATED — re-export barrel)
+
+| Section | Purpose |
+|---------|----------|
+| Re-exports | All types re-exported from api-contracts/index.js for backward compat |
+
+## extensions/dashboard-server/api-contracts/core.ts
+
+| Section | Line |
+|---------|------|
+| EndpointDef + HttpMethod | 14 |
+| SseCompactStart | 24 |
+| SseCompactEnd | 31 |
+| SseCompactTrigger | 42 |
+| SseCompactSkip | 50 |
+| SseTierChanged | 56 |
+| SseModelChanged | 64 |
+| SsePressureLifted | 72 |
+| SseCheckpointPersisted | 79 |
+| SseRecallInject | 86 |
+| SseAnchorsUpdated | 94 |
+| SseConfigUpdated | 101 |
+| SseConfigPreset | 108 |
+| SseCrewPresenceChanged | 114 |
+| SseCrewTurnChanged | 121 |
+| SseCrewBanditChosen | 128 |
+
+## extensions/dashboard-server/api-contracts/snapshot.ts
+
+| Section | Line |
+|---------|------|
+| SnapshotResponse | 11 |
+| TriggerResponse | 102 |
+| CompressionTotalsResponse | 112 |
+| CompactHistoryEntry | 125 |
+| CompactionRequest | 142 |
+| CompactionResponse | 147 |
+
+## extensions/dashboard-server/api-contracts/multi-repo.ts
+
+| Section | Line |
+|---------|------|
+| RepoListItem | 12 |
+| RepoSnapshotEntry | 23 |
+| RepoSnapshotMap | 38 |
+| IndexesIndexRow | 42 |
+| IndexesSummaryResponse | 64 |
+| IndexesDiffEntry | 75 |
+| DiffRequest | 85 |
+| SnapshotLike | 91 |
+| DiffResponse | 103 |
+| UpdateRepoConfigRequest | 110 |
+
+## extensions/dashboard-server/api-contracts/game.ts
+
+| Section | Line |
+|---------|------|
+| GameConfig | 12 |
+| GameStateResponse | 20 |
+| GameRitualStage | 31 |
+| SseGameRitualStart | 40 |
+| SseGameRitualStage | 47 |
+| SseGameRitualEnd | 55 |
+| SseGameModeChanged | 62 |
+| SseGameRender | 68 |
+
+## extensions/dashboard-server/api-contracts/infrastructure.ts
+
+| Section | Line |
+|---------|------|
+| InfraHealthResponse | 13 |
+| InfraPerfSampleResponse | 22 |
+| InfraRateLimitStatus | 58 |
+| InfraRateLimitResponse | 63 |
+| ContextLevelState | 69 |
+| TierOverrideState | 82 |
+| FallbackState | 91 |
+| RepeatInjectionState | 102 |
+| SupersedeGatingState | 133 |
+| MinHashBandState | 155 |
+
+## extensions/dashboard-server/api-contracts/index.ts
+
+| Section | Line |
+|---------|------|
+| Core re-exports | 11 |
+| Snapshot re-exports | 32 |
+| Multi-repo re-exports | 42 |
+| Game re-exports | 56 |
+| Infrastructure re-exports | 68 |
+| SseEvent composite union | 109 |

@@ -1,0 +1,27 @@
+{
+  "name": "pi-mega-compact-dashboard-client",
+  "version": "0.8.9",
+  "private": true,
+  "type": "module",
+  "description": "React + Vite frontend for the pi-mega-compact dashboard server (Sprint B1 scaffold).",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true
+  }
+}

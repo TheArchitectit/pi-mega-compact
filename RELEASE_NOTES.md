@@ -1,5 +1,242 @@
 # Release Notes — pi-mega-compact
 
+## v0.8.14 (2026-07-21)
+
+**React dashboard parity with responsive scaling.** The old static `html.ts` dashboard (1071 lines, all data visible) is now fully replicated in React with 8 tabs, and the layout scales fluidly from narrow laptop (1280×720) to ultrawide/4K.
+
+### Added
+
+- **8 Dashboard tabs (full parity):**
+  - **Overview** — Context Window gauge (green/yellow/red thresholds), Trigger Status (armed/ready/idle bullets), Vector Store (9 fields + compression bar), Repo (all sessions, 7 fields), Data Safety shield (regions retained, compressed-original, dedup %), Configuration (tier/preset/threshold/fast gate/auto/anchor), Model & Cost Savings ($, rates), Crew/Agents (active agents/turn/status), "What these numbers mean" legend.
+  - **Repos** — All Repositories table, Active Repos live table, Savings by Model table, per-repo detail modal, summary tiles.
+  - **Events** — Live SSE stream with category filter (all/compact/recall/config/crew/game).
+  - **Config** — Game mode toggle, theme picker (6 themes), TUI display mode (full/minimal), read-only config display.
+  - **Metrics** — Model latency (turn/provider p50/p95), throughput (TPS/cache hit %), process (RSS/heap/CPU), snapshot cost (DB recompute/disk write), TUI lag proxy. Per-model cache status table.
+  - **Cache** — Cache Hits (session/total), Tokens Saved (session/total), Compactions (session/total), Time Saved (session/total).
+  - **Game** — MEGA CACHE banner, Opie unlock tile, leaderboards (Cache %, Dedupe collapsed, Turns LVL, MEGA CACHE trophies), repos badge, achievements sub-section.
+  - **Achievements** — Achievement tiles grid with unlock states, toast area.
+
+- **Responsive scaling:** Fluid container (`max-width: min(1600px, 96vw)`), auto-fit grid cards (`repeat(auto-fit, minmax(320px, 1fr))`), `clamp()` fonts (13–16px base, 16–22px headers), media breakpoints (≤640px 1-col, 641–1024px 2-col, 1025–1600px 3-col, >1600px 4-col), tables with horizontal scroll on narrow screens. No fixed `max-width: 1200px` — scales from 400px to 4K.
+
+- **Provider failure tracking (D2):** `perf-handler.ts` flags non-2xx `after_provider_response` as `provider_failure`, `/api/diag` exposes count/rate/last status, DiagnosticsPanel shows red when failures > 0.
+
+- **Diagnostics panel (D2):** Slide-in panel (⚙ icon) showing server version/uptime, API timing (p50/p95), SSE status, data freshness, provider failure row.
+
+- **Resilience (D1):** `useApi` retries 3× with exponential backoff (base 500ms), `useSSE` reconnects with backoff (1s→2s→4s→8s, max 30s), OfflineBanner + StaleIndicator in header.
+
+- **Auth + Tailscale (T1):** `/api/csrf` endpoint, CSRF middleware on PUT/POST, Tailscale integration (`TAILSCALE_ENABLED=1`).
+
+- **CSRF protection:** All state-changing requests include `X-CSRF-Token` header.
+
+### Changed
+
+- **`extensions/dashboard-client/.gitignore`** — removed `dist/` exclusion so the React build ships in the npm tarball (was the root cause of "old dashboard" bug).
+
+### Technical
+
+- **Files:** 8 tabs + 27 components, all <300 lines (500-line cap honored). No `any` types. Only relative-path `fetch`. No server modifications (all API wrappers existed).
+
+## v0.8.8 (2026-07-21)
+
+New **Perf dashboard tab** — live, local-only instrumentation so you can see the
+real cost of compaction + the model round-trip while you work. Additive only;
+does not touch the v0.8.6/0.8.7 cache-stability code.
+
+### Added
+
+- **Perf tab** in the localhost dashboard (`/dashboard`) with six metric groups:
+  model endpoint latency (turn + provider p50/p95), throughput (TPS avg +
+  cache-hit %), process RSS/heap/CPU, snapshot recompute + disk-write cost
+  (p50/p95), and a TUI-lag proxy (live-trim fires vs cache replays vs fast-gate
+  skips). Polled on a 2s interval only while the tab is active.
+- **`perf_samples` SQLite table** (append-only, idempotent `CREATE TABLE IF NOT
+  EXISTS` migration) + pi-agnostic accessors `recordPerfSample` /
+  `readPerfSamples` in `src/store/sqlite/perf-samples.ts` (parameterized SQL,
+  PREVENT-002; no `any`, PREVENT-011). Exported via the `src/store/sqlite.ts`
+  barrel.
+- **Local event capture** (`extensions/mega-events/perf-handler.ts`): turn_start
+  stamps a wall-clock start; turn_end records `turn_latency_ms` + `tps` +
+  `cache_hit_pct` from the assistant message `usage`; before_provider_request →
+  after_provider_response records `provider_latency_ms`; a 5s `setInterval`
+  records `rss_mb` / `heap_mb` / `cpu_user_ms` / `cpu_sys_ms`. All capture is
+  try/catch (non-fatal — instrumentation never blocks the agent). The interval is
+  `unref`'d and cleared in `MegaRuntime.dispose()`, re-armed lazily on the next
+  turn_start.
+- **Snapshot cost instrumentation**: `MegaRuntime.snapshot()` now records
+  `db_recompute_ms` (whole recompute body) + `disk_write_ms` (the
+  `writeFileSync(dashboard.json)` duration, via a new `Dashboard.lastWriteMs`
+  getter) **only on the 0.8.5 material-change RECOMPUTE path** — the cheap skip
+  path adds zero cost.
+- **`GET /api/perf`** endpoint (rolling window, default 30 min, clamped to 24h)
+  returning per-kind p50/p95 + latest + the diag counts (read from
+  `dashboard.json`).
+- **Docs**: `docs/INDEX_MAP.md` + `docs/HEADER_MAP.md` entries for the perf tab,
+  `perf_samples` table, and `/api/perf`.
+
+### Constraints honored
+
+- PREVENT-PI-004: zero runtime network — all instrumentation is `Date.now` /
+  `performance.now` / `process.cpuUsage` / `process.memoryUsage` + local SQLite.
+  The `/api/perf` endpoint lives in the optional, user-triggered localhost
+  dashboard server (loopback-only, audited inline annotations).
+- Cost: one `perf_samples` row per turn (3 metrics) + one per 5s cpu/mem tick +
+  two per snapshot recompute (skipped on the fast path).
+
+## v0.8.7 (2026-07-21)
+
+Cache-stability fix (cont.): close the P2 gap the v0.8.6 audit found in the
+live-trim replay cache.
+
+### Fixed
+
+- **Key the live-trim replay cache on the stable epoch signal**
+  (`rt.lastCheckpointId`) instead of the dedup-volatile `result.checkpointId`.
+  On a re-compact (after context grew ≥10% / token-basis) that **dedups onto a
+  DIFFERENT existing checkpoint**, `result.checkpointId` is the matched id
+  (engine.ts:188) while `lastCheckpointId` is only updated on a genuinely new
+  checkpoint (compact.ts:100-104). Keying the cache on `result.checkpointId`
+  made `trimCache.checkpointId != rt.lastCheckpointId` for the rest of the epoch
+  after such a dedup fire, so the replay condition never matched again and
+  `runCompact` re-ran every gated fire — the alternating cache-miss could
+  silently persist in that path on 0.8.6. The cache is now keyed on the stable
+  `lastCheckpointId` (falling back to `result.checkpointId` then the epoch
+  timestamp only for the no-checkpoint edge case), so a dedup re-fire onto a
+  different checkpoint no longer invalidates replay for the epoch.
+- **Shallow-copy the cached summary message on replay** so pi's
+  `transformContext` can't mutate the shared `summaryAgentMsg` reference across
+  replays (audit P3).
+- **Tests**: added `extensions/mega-cache-replay.test.ts` — a REPLAY test
+  (≥2 gated context events within one epoch replay verbatim, byte-identical
+  returned messages) and a DEDUP-on-different-checkpoint test (a re-compact that
+  L0-contentHash-dedups onto an older checkpoint still replays the next gated
+  event instead of re-running `runCompact`).
+
+## v0.8.6 (2026-07-21)
+
+Fix the **cache-prefix-thrash regression** (the user-reported "alternating cache
+miss every other turn" on v0.8.3). Once past the tier threshold, every context
+event surviving the 2000ms debounce (1) re-ran `runCompact`/`compactSession`
+regenerating a fresh summary + cut each fire, (2) appended a `MARKER_TYPE`
+sentinel to the real transcript every fire (unconditional — not gated on a
+genuinely new checkpoint), and (3) synthesized a fresh `summaryAgentMsg` with
+`timestamp: Date.now()` + drifting summary text + a growing recent slice every
+fire. Each of these invalidated the provider KV-cache prefix, so the model
+re-processed the whole window on every other turn (alternating cache miss).
+
+### Fixed (headline)
+
+- **Live-trim now replays a stable summary + cut within a compaction epoch.**
+  After a fresh `runCompact` + `computeLiveTrimCut`, the trimmed view (summary
+  `AgentMessage` + cut index + context %/tokens) is cached on `MegaRuntime`
+  (`trimCache`). Subsequent gated context events in the SAME epoch (same
+  `checkpointId`) replay that cached view verbatim instead of regenerating —
+  the model still sees a compacted window every call (the S16 design is
+  preserved), but the expensive recompute is skipped and the KV-cache prefix
+  stays stable. The summary message's `timestamp` is now the stable
+  `lastCompactAt` instead of `Date.now()`, so the prefix bytes don't drift.
+- **Re-compact only when context grew enough.** The replay short-circuits
+  (skips `runCompact`) only while context hasn't grown materially: re-compact
+  fires when context grew ≥10% of the window (percent basis) or ≥50% of the
+  effective threshold (token basis, when percent is unavailable). This bounds
+  re-compaction to genuine growth instead of every debounce-elapsed event.
+- **MARKER sentinel gated to real new checkpoints.** `pi.appendEntry(MARKER_TYPE, …)`
+  in `compact.ts` now only fires when `!result.deduped` (a genuinely new
+  checkpoint was created), matching the RAPTOR + vector-index blocks above it.
+  This stops sentinel accumulation on dedup re-fires that bloated the
+  transcript and perturbed the cache prefix.
+- **Cache invalidation on durable truncation + session restart.** `trimCache`
+  is cleared on `session_compact` (any native durable compaction that truncates
+  the transcript — the cached cut would be stale against the new transcript)
+  and on `resetRuntime` (session restart), so a stale trim is never replayed
+  into a truncated/changed transcript. PREVENT-PI-001 (anchor floor) and
+  PREVENT-PI-002 (no split toolCall/toolResult pair) hold: the cached cut is
+  computed once via the boundary-safe `computeLiveTrimCut` and replayed
+  verbatim while the transcript only grows, and it is dropped the moment the
+  transcript is truncated.
+
+### Diagnostics
+
+- New `MegaRuntime.diagLiveTrimReplays` counter (next to `diagLiveTrimFires`)
+  counts trim views served from the cache (replays). `diagLiveTrimFires` still
+  increments on every gated call that returns a trim view (fresh or replay),
+  so the team-run relief assertion (`diagLiveTrimFires > 0`) is unchanged.
+
+## v0.8.5 (2026-07-20)
+
+Fix the **typing-lag / main-thread-blocking leak** found in the perf-audit
+follow-up. The `context` event handler called `runtime.snapshot(ctx)`
+unconditionally on every fire, and each `snapshot()` run did ~6 synchronous
+SQLite opens plus a synchronous `writeFileSync(dashboard.json)` — all on the
+single main JS thread. During active streaming / steer / follow-up, `context`
+fires repeatedly with no material change, and each call blocked the thread on
+sync DB+disk IO → TUI keystrokes queued, the widget stuttered, typing felt
+laggy. This was an in-process main-thread contention leak, not a heap leak.
+
+### Fixed (headline)
+
+- **Snapshot gating (the real fix).** `snapshot()` now computes a cheap
+  material-change signature (context tokens/percent/window, turn count, active
+  agents, compaction count, tokens saved, dedup/recall counters, status key,
+  model id, active ambient effect, game-state bump, the transient flares, the
+  tier trace, the ticker length) over in-memory runtime state — **no SQLite**.
+  When the signature matches the last snapshot, the 6 sync SQLite opens + the
+  `writeFileSync(dashboard.json)` are skipped entirely and only the (already
+  registered) widget factory is refreshed. The widget reads `widgetData` live
+  every frame, so the display stays correct. Compaction changes
+  `compactCount`/`tokensSaved` → the signature changes → the full recompute +
+  write runs, so the dashboard still updates on every compaction.
+- **`dispose()` wired to `session_shutdown`.** `pi.on("session_shutdown", () =>
+  runtime.dispose())` releases the `fs.watch` game-state watcher handle on
+  session teardown (audit P3). pi's ExtensionAPI exposes no extension-unload
+  event and no `"shutdown"` event (the factory return value is ignored), so
+  `session_shutdown` is the closest valid teardown signal. `dispose()` is
+  idempotent, and the next `snapshot()` re-opens the watcher lazily via
+  `bindRepo()` → `ensureGameStateWatcher()`, so the handle no longer lingers
+  across reloads and there is no per-session fd accumulation.
+
+### Why not async coalescing?
+
+The dashboard write stays **synchronous**. Many tests read `dashboard.json`
+  synchronously right after triggering `snapshot`; making the write async would
+  race them. The gating above already means the sync write only fires when
+  something material changed — the correct cadence — so the per-keystroke /
+  per-event blocking is gone without introducing async races. The detached
+  dashboard server polls on 1s, so the reduced write rate is invisible to it.
+
+No migration required. Tests: 540+ (all green). Upgrade with `pi update
+  --extensions` (npm only).
+
+## v0.8.0 (unreleased) — Game Mode
+
+The **Game Mode** release (sprints S30–S35) ships a full progression layer on top of compaction: a `/mega-compact-settings` command (with `/mega-game` as a backward-compat alias), six themes, a minimal/full TUI widget with player levels + the MEGA CACHE overshoot easter egg, a dashboard Game Mode / High Score tab with live leaderboards, and a 9-achievement system (8 visible + 1 hidden easter egg = Opie's Wild Ride). All local-only (PREVENT-PI-004); additive — no migration.
+
+### Added (headline)
+
+- **`/mega-compact-settings` command.** Toggle game mode on/off, pick a theme, switch TUI display mode, and list unlocked achievements: `/mega-compact-settings [on|off|theme [id|next]|tui [full|minimal]|achievements]` (the `/mega-game` alias still works). State persists in a new `game_state` SQLite row (global across repos).
+- **Six themes** (`src/config/themes.ts`): transparent (default), neon, retro, ocean, forest, cyber. Concrete hex+ANSI palettes threaded through the widget + dashboard as CSS variables.
+- **TUI widget (full + minimal).** Full mode: the legacy stats panel themed + a `LVL n` accent prefix (level-up ANSI blink) + a MEGA CACHE flare (the oopsie gag: "oops, you cached so hard the dedup caught fire"). Minimal mode: one-line `LVL n | cache NN%`. Both hidden when game mode is off (legacy panel byte-for-byte).
+- **Player levels.** `turnLevel(n) = floor(log2(n+1))+1` — one level per doubling of turns. Level-up fires a one-cycle ANSI blink on the TUI + a CSS pulse on the dashboard cache bar.
+- **MEGA CACHE easter egg (§3b).** When the dedup hit rate exceeds 100% (real ratio > 1), two hidden-until-triggered effects fire: (1) a transient per-turn oopsie toast (TUI + dashboard), and (2) a persisted `mega_cache` trophy row that unlocks the "🏆 Opie's Wild Ride" hidden tile. Before the first overshoot: nothing — no locked tile, no `???` teaser.
+- **Dashboard Game Mode tab (S34).** Per-metric leaderboards (cache per-repo, dedupe global, turns global, repos badge), a MEGA CACHE banner, the Opie hidden-unlock tile, a transient oopsie toast, level-up CSS pulse, + `GET /api/game-scores?metric=<m>&limit=<n>` (metric validated against the allow-list, 400/405 guarded, loopback-only).
+- **Scoring (S33).** `game_scores` table + `recordScore`/`leaderboard` + `turn_end`/`session_compact` hooks (turns, cache, dedupe-delta, mega_cache trophy). All gated behind `game_mode_on`; best-effort + non-fatal.
+- **Achievements system (S35).** `game_achievements` table seeded with 9 achievements on first open (idempotent). A pure `evaluateAchievements(scores)` fn evaluates the 9 conditions over the leaderboard aggregates; newly-unlocked fire a one-time toast (TUI ANSI accent + dashboard tile pulse). Hidden achievements render NOTHING until unlocked (`hidden=1 AND unlocked_at IS NULL`) — same invariant as Opie. `GET /api/achievements` serves the tile row; `/mega-compact-settings achievements` (alias `/mega-game achievements`) lists unlocks tersely.
+
+### Achievement list
+
+| id | title | condition |
+| ---- | ------- | ----------- |
+| first_compact | 👶 First Compact | Compact a conversation once |
+| compact_streak | 🔥 Compact Streak | Compact 5 times in one session |
+| turn_veteran | 🏃 Turn Veteran | Reach 25 turns in a repo |
+| level_five | ⭐ Level 5 | Reach player level 5 (15 turns) |
+| dedupe_master | 🗜️ Dedupe Master | Collapse 100 chunks total |
+| repo_explorer | 🌍 Repo Explorer | Use game mode across 3 repos |
+| night_owl | 🦉 Night Owl | Record a score 00:00–05:00 local |
+| flawless | 💯 Flawless | Hit exactly 100% cache with no overshoot |
+| opie_wild_ride | 🏆 Opie's Wild Ride *(hidden)* | Push the cache past 100% |
+
+No migration required — all additions are new SQLite tables + additive endpoints. Tests: 540+ (was 514). Upgrade with `pi update --extensions` (npm only).
+
 ## v0.7.9 (2026-07-19)
 
 Fix the **TUI width-overflow crash** (`Rendered line N exceeds terminal width (W > W-1)`) that took down the pi session whenever the mega-compact status widget rendered — plus the guardrails compliance release, two `/mega-status` + commands audit-fix rounds, and five no-behavior-change refactor splits of oversized files, all landed since v0.7.8.

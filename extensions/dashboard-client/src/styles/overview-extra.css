@@ -1,0 +1,170 @@
+/**
+ * dashboard-client/src/styles/overview-extra.css — styles for new Overview cards.
+ *
+ * Covers: VectorStoreCard, RepoAllSessionsCard, DataSafetyCard,
+ * ConfigSummaryCard, CacheStatusPerModel (Model & Cost), SessionInfo (Crew),
+ * CacheHitsCard, TimeSavedCard, LegendCard, compression meters, bullet-na.
+ * Does NOT modify overview-events.css (integration phase handles that).
+ */
+
+/* Overview card grid — allow cards to wrap naturally */
+.overview-card-grid {
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+}
+
+/* Stat rows (shared layout for all new cards) */
+.ov-stat-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	padding: 4px 0;
+	border-bottom: 1px solid var(--border);
+	font-size: clamp(13px, 1vw, 17px);
+}
+.ov-stat-label {
+	color: var(--muted);
+	font-size: 12px;
+	cursor: help;
+}
+.ov-stat-value {
+	font-weight: 600;
+	color: var(--text);
+	font-family: monospace;
+}
+.ov-value-ok {
+	color: var(--ok) !important;
+}
+
+/* Compression meter (Vector Store + Repo cards) */
+.ov-compression-meter {
+	margin-top: 10px;
+}
+.meter-track {
+	height: clamp(6px, 0.6vw, 10px);
+	background: var(--bg);
+	border-radius: 5px;
+	overflow: hidden;
+	border: 1px solid var(--border);
+}
+.meter-fill {
+	height: 100%;
+	transition: width 0.4s ease;
+	border-radius: 4px;
+}
+.meter-green {
+	background: var(--ok);
+}
+.meter-yellow {
+	background: var(--warn);
+}
+.meter-red {
+	background: var(--err);
+}
+.meter-sub {
+	display: block;
+	margin-top: 4px;
+	font-size: 11px;
+	color: var(--muted);
+}
+
+/* Trigger status: na (yellow) bullet */
+.bullet-na .bullet-dot {
+	background: var(--warn);
+	box-shadow: 0 0 6px var(--warn);
+}
+.bullet-na .bullet-label {
+	color: var(--warn);
+}
+.trigger-state-text {
+	margin: 6px 0 0;
+	font-size: 12px;
+	color: var(--muted);
+}
+
+/* Data safety card */
+.data-safety-card .safe-note {
+	margin: 10px 0 0;
+	padding: 8px;
+	font-size: 11px;
+	color: var(--muted);
+	background: rgba(63, 185, 80, 0.06);
+	border-radius: 6px;
+	border: 1px solid rgba(63, 185, 80, 0.2);
+}
+
+/* Model & Cost Savings card */
+.model-cost-card .ov-cost-usd {
+	font-size: clamp(16px, 1.4vw, 22px);
+	font-weight: 700;
+	color: #a371f7;
+	margin-bottom: 2px;
+}
+.model-cost-card .ov-cost-sub {
+	font-size: 12px;
+	color: var(--muted);
+	margin-bottom: 8px;
+}
+
+/* Crew / Agents card */
+.crew-card .ov-stat-value {
+	font-family: inherit;
+}
+
+/* Legend card — full width */
+.legend-card {
+	grid-column: 1 / -1;
+}
+.legend-card details {
+	cursor: pointer;
+}
+.legend-card summary {
+	font-size: 13px;
+	color: var(--muted);
+	font-weight: 600;
+	margin-bottom: 4px;
+}
+.legend-list {
+	margin: 8px 0;
+	padding-left: 20px;
+	font-size: 12px;
+	color: var(--muted);
+	line-height: 1.6;
+}
+.legend-list li {
+	margin-bottom: 4px;
+}
+.legend-list b {
+	color: var(--text);
+}
+.legend-note {
+	font-size: 11px;
+	color: var(--dim);
+	font-style: italic;
+}
+
+/* Cache tab layout */
+.cache-tab {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+/* Responsive breakpoints */
+@media (max-width: 640px) {
+	.overview-card-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+@media (min-width: 1025px) {
+	.overview-card-grid {
+		grid-template-columns: repeat(3, 1fr);
+	}
+}
+
+@media (min-width: 1601px) {
+	.overview-card-grid {
+		grid-template-columns: repeat(4, 1fr);
+		font-size: clamp(13px, 0.9vw, 16px);
+	}
+}
