@@ -1,6 +1,6 @@
 {
   "name": "pi-mega-compact",
-  "version": "0.8.8",
+  "version": "0.8.14",
   "description": "Layered, local, vector-backed context compressor for pi — supersede/collapse/cluster compaction with deduped inline recall.",
   "type": "module",
   "license": "BSD-2-Clause",
@@ -25,6 +25,7 @@
   "files": [
     "dist",
     "extensions",
+    "extensions/dashboard-client/dist",
     "src",
     "README.md",
     "LICENSE"
@@ -46,7 +47,7 @@
     "test": "npm run build && node scripts/run-tests.mjs",
     "guardrails": "python3 scripts/regression_check.py --all || node scripts/guardrails-scan.mjs || node scripts/semantic-scan.mjs",
     "precommit": "bash .claude/hooks/pre-commit.sh",
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "npm run build && npm run build:dashboard",
     "postinstall": "npm rebuild @mongodb-js/zstd || true"
   },
   "peerDependencies": {

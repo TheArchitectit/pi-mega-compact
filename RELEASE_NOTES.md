@@ -1,5 +1,41 @@
 # Release Notes — pi-mega-compact
 
+## v0.8.14 (2026-07-21)
+
+**React dashboard parity with responsive scaling.** The old static `html.ts` dashboard (1071 lines, all data visible) is now fully replicated in React with 8 tabs, and the layout scales fluidly from narrow laptop (1280×720) to ultrawide/4K.
+
+### Added
+
+- **8 Dashboard tabs (full parity):**
+  - **Overview** — Context Window gauge (green/yellow/red thresholds), Trigger Status (armed/ready/idle bullets), Vector Store (9 fields + compression bar), Repo (all sessions, 7 fields), Data Safety shield (regions retained, compressed-original, dedup %), Configuration (tier/preset/threshold/fast gate/auto/anchor), Model & Cost Savings ($, rates), Crew/Agents (active agents/turn/status), "What these numbers mean" legend.
+  - **Repos** — All Repositories table, Active Repos live table, Savings by Model table, per-repo detail modal, summary tiles.
+  - **Events** — Live SSE stream with category filter (all/compact/recall/config/crew/game).
+  - **Config** — Game mode toggle, theme picker (6 themes), TUI display mode (full/minimal), read-only config display.
+  - **Metrics** — Model latency (turn/provider p50/p95), throughput (TPS/cache hit %), process (RSS/heap/CPU), snapshot cost (DB recompute/disk write), TUI lag proxy. Per-model cache status table.
+  - **Cache** — Cache Hits (session/total), Tokens Saved (session/total), Compactions (session/total), Time Saved (session/total).
+  - **Game** — MEGA CACHE banner, Opie unlock tile, leaderboards (Cache %, Dedupe collapsed, Turns LVL, MEGA CACHE trophies), repos badge, achievements sub-section.
+  - **Achievements** — Achievement tiles grid with unlock states, toast area.
+
+- **Responsive scaling:** Fluid container (`max-width: min(1600px, 96vw)`), auto-fit grid cards (`repeat(auto-fit, minmax(320px, 1fr))`), `clamp()` fonts (13–16px base, 16–22px headers), media breakpoints (≤640px 1-col, 641–1024px 2-col, 1025–1600px 3-col, >1600px 4-col), tables with horizontal scroll on narrow screens. No fixed `max-width: 1200px` — scales from 400px to 4K.
+
+- **Provider failure tracking (D2):** `perf-handler.ts` flags non-2xx `after_provider_response` as `provider_failure`, `/api/diag` exposes count/rate/last status, DiagnosticsPanel shows red when failures > 0.
+
+- **Diagnostics panel (D2):** Slide-in panel (⚙ icon) showing server version/uptime, API timing (p50/p95), SSE status, data freshness, provider failure row.
+
+- **Resilience (D1):** `useApi` retries 3× with exponential backoff (base 500ms), `useSSE` reconnects with backoff (1s→2s→4s→8s, max 30s), OfflineBanner + StaleIndicator in header.
+
+- **Auth + Tailscale (T1):** `/api/csrf` endpoint, CSRF middleware on PUT/POST, Tailscale integration (`TAILSCALE_ENABLED=1`).
+
+- **CSRF protection:** All state-changing requests include `X-CSRF-Token` header.
+
+### Changed
+
+- **`extensions/dashboard-client/.gitignore`** — removed `dist/` exclusion so the React build ships in the npm tarball (was the root cause of "old dashboard" bug).
+
+### Technical
+
+- **Files:** 8 tabs + 27 components, all <300 lines (500-line cap honored). No `any` types. Only relative-path `fetch`. No server modifications (all API wrappers existed).
+
 ## v0.8.8 (2026-07-21)
 
 New **Perf dashboard tab** — live, local-only instrumentation so you can see the
@@ -188,7 +224,7 @@ The **Game Mode** release (sprints S30–S35) ships a full progression layer on 
 ### Achievement list
 
 | id | title | condition |
-|----|-------|-----------|
+| ---- | ------- | ----------- |
 | first_compact | 👶 First Compact | Compact a conversation once |
 | compact_streak | 🔥 Compact Streak | Compact 5 times in one session |
 | turn_veteran | 🏃 Turn Veteran | Reach 25 turns in a repo |
@@ -200,7 +236,6 @@ The **Game Mode** release (sprints S30–S35) ships a full progression layer on 
 | opie_wild_ride | 🏆 Opie's Wild Ride *(hidden)* | Push the cache past 100% |
 
 No migration required — all additions are new SQLite tables + additive endpoints. Tests: 540+ (was 514). Upgrade with `pi update --extensions` (npm only).
-
 
 ## v0.7.9 (2026-07-19)
 

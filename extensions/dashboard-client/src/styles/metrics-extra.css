@@ -1,0 +1,69 @@
+/**
+ * dashboard-client/src/styles/metrics-extra.css — Perf card grid for Metrics tab.
+ *
+ * Builds on the perf-metric classes from repos-metrics.css. Adds the
+ * 5-card grid layout with titled cards (model latency, throughput,
+ * process, snapshot cost, TUI lag proxy).
+ */
+
+.perf-cards-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+	gap: 12px;
+	margin-top: 12px;
+}
+
+.perf-card {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 14px;
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+}
+
+.perf-card-title {
+	margin: 0 0 4px;
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: var(--muted);
+}
+
+.perf-card-body {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.perf-card-note {
+	font-size: 11px;
+	color: var(--muted);
+	font-style: italic;
+	margin-top: 2px;
+}
+
+/* Inherit perf-metric layout from repos-metrics.css but make them
+   borderless inside cards to avoid double borders. */
+.perf-card-body .perf-metric {
+	padding: 6px 8px;
+	background: transparent;
+	border: none;
+	border-radius: 0;
+}
+
+.perf-footer {
+	font-size: 11px;
+	color: var(--muted);
+	margin-top: 10px;
+	padding-top: 8px;
+	border-top: 1px solid var(--border);
+}
+
+@media (max-width: 640px) {
+	.perf-cards-grid {
+		grid-template-columns: 1fr;
+	}
+}

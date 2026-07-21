@@ -1,0 +1,265 @@
+/**
+ * dashboard-client/src/styles/game-achievements.css — Game + Achievements styles.
+ *
+ * Covers: MEGA CACHE banner, mega-cache toast, opie achievement-tile,
+ * game leaderboards (2×2 grid), lvl badge, repos badge, game empty state,
+ * achievement tiles grid, ach-toast, just-unlocked animation.
+ * All responsive via clamp()/auto-fit — no fixed px.
+ */
+
+/* ── Game-specific color tokens ──────────────────────────────────────── */
+:root {
+	--mega: #f0883e;
+	--mega-gold: #ffd700;
+	--game-blue: #1f6feb;
+	--game-purple: #a371f7;
+}
+
+/* ── Game tab container ──────────────────────────────────────────────── */
+.game-tab {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.game-mode-on {
+	/* Accent vars applied when game mode is on; themes set via data-theme */
+	--accent: var(--mega);
+}
+
+/* ── MEGA CACHE banner ───────────────────────────────────────────────── */
+.mega-cache-banner {
+	display: block;
+	background: linear-gradient(
+		135deg,
+		var(--mega),
+		var(--mega-gold)
+	);
+	color: #1a1006;
+	font-weight: 700;
+	padding: 10px 14px;
+	border-radius: 8px;
+	margin: 12px 0;
+	font-size: clamp(13px, 1vw, 16px);
+	animation: mega-banner-shimmer 3s ease-in-out infinite;
+}
+
+@keyframes mega-banner-shimmer {
+	0%, 100% { filter: brightness(1); }
+	50% { filter: brightness(1.15); }
+}
+
+/* ── Mega-cache toast ───────────────────────────────────────────────── */
+.mega-cache-toast {
+	display: none;
+	position: fixed;
+	top: 16px;
+	left: 50%;
+	transform: translateX(-50%);
+	background: var(--mega);
+	color: #1a1006;
+	font-weight: 700;
+	padding: 10px 18px;
+	border-radius: 8px;
+	z-index: 1000;
+	box-shadow: 0 4px 20px #0008;
+	max-width: 92vw;
+}
+.mega-cache-toast.show {
+	display: block;
+	animation: mega-flash 0.6s ease-in-out 2;
+}
+@keyframes mega-flash {
+	0% { background: transparent; }
+	25% { background: var(--mega-gold); }
+	100% { background: transparent; }
+}
+
+/* ── Opie achievement tile ───────────────────────────────────────────── */
+.achievement-tile {
+	display: none;
+	background: linear-gradient(135deg, var(--mega), var(--mega-gold));
+	color: #1a1006;
+	font-weight: 700;
+	padding: 12px 16px;
+	border-radius: 8px;
+	margin: 12px 0;
+	box-shadow: 0 0 16px #f0883e88;
+	font-size: clamp(13px, 1vw, 16px);
+}
+.achievement-tile.unlocked {
+	display: block;
+}
+.achievement-tile .ach-detail {
+	display: block;
+	font-weight: 500;
+	font-size: 12px;
+	margin-top: 4px;
+}
+
+/* ── Game leaderboards (2×2 grid) ────────────────────────────────────── */
+.game-leaderboards {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 16px;
+	margin-top: 16px;
+}
+.lb-card {
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 14px;
+}
+.lb-card h3 {
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: var(--muted);
+	margin: 0 0 10px;
+	font-weight: 600;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+.lb-card table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+.lb-card td {
+	padding: 4px 8px;
+	border-bottom: 1px solid var(--border);
+}
+.lb-card td.num {
+	text-align: right;
+	font-family: monospace;
+	color: var(--text);
+	font-weight: 600;
+}
+.lb-card .lb-meta {
+	color: var(--muted);
+	font-size: 11px;
+	margin-left: 6px;
+}
+.lb-empty {
+	color: var(--muted);
+	font-size: 12px;
+	padding: 8px 0;
+}
+
+/* ── LVL badge (Turns leaderboard) ───────────────────────────────────── */
+.lvl-badge {
+	display: inline-block;
+	background: var(--game-blue);
+	color: #fff;
+	font-size: 11px;
+	font-weight: 700;
+	padding: 2px 8px;
+	border-radius: 10px;
+	margin-left: 8px;
+}
+
+/* ── Repos badge ─────────────────────────────────────────────────────── */
+.repos-badge-line {
+	margin-top: 8px;
+}
+.repos-badge {
+	display: inline-block;
+	background: var(--game-blue);
+	color: #fff;
+	font-size: 11px;
+	font-weight: 700;
+	padding: 2px 8px;
+	border-radius: 10px;
+}
+
+/* ── Game empty state ────────────────────────────────────────────────── */
+.game-empty {
+	color: var(--muted);
+	font-style: italic;
+	padding: 12px 0;
+}
+
+/* ── Achievement tiles grid ──────────────────────────────────────────── */
+.ach-section {
+	position: relative;
+}
+.ach-tiles {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+	gap: 8px;
+	margin: 8px 0 16px;
+}
+.ach-tile {
+	padding: 10px 12px;
+	border-radius: 8px;
+	border: 1px solid var(--border);
+	font-size: 12px;
+	background: var(--panel);
+}
+.ach-tile.unlocked {
+	background: linear-gradient(135deg, var(--mega), var(--mega-gold));
+	color: #1a1006;
+	font-weight: 700;
+	box-shadow: 0 0 12px #f0883e66;
+}
+.ach-tile.locked {
+	opacity: 0.55;
+}
+.ach-tile.just-unlocked {
+	animation: ach-unlock-pulse 0.6s ease-out;
+}
+.ach-tile .ach-detail {
+	display: block;
+	font-weight: 500;
+	font-size: 11px;
+	margin-top: 3px;
+}
+@keyframes ach-unlock-pulse {
+	0% { transform: scale(0.9); opacity: 0.4; }
+	60% { transform: scale(1.05); }
+	100% { transform: scale(1); opacity: 1; }
+}
+
+/* ── Achievement toast ───────────────────────────────────────────────── */
+.ach-toast {
+	display: none;
+	position: fixed;
+	top: 16px;
+	left: 50%;
+	transform: translateX(-50%);
+	background: var(--game-blue);
+	color: #fff;
+	font-weight: 700;
+	padding: 10px 18px;
+	border-radius: 8px;
+	z-index: 1000;
+	box-shadow: 0 4px 20px #0008;
+	max-width: 92vw;
+}
+.ach-toast.show {
+	display: block;
+}
+
+/* ── Achievements tab container ──────────────────────────────────────── */
+.achievements-tab {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+.achievements-tab h2 {
+	font-size: clamp(16px, 1.4vw, 22px);
+	margin: 0;
+}
+
+/* ── Responsive breakpoints ──────────────────────────────────────────── */
+@media (max-width: 640px) {
+	.game-leaderboards {
+		grid-template-columns: 1fr;
+	}
+}
+@media (min-width: 1601px) {
+	.game-leaderboards {
+		gap: 20px;
+	}
+}

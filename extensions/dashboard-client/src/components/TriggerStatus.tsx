@@ -1,7 +1,11 @@
 /**
  * dashboard-client/src/components/TriggerStatus.tsx — trigger armed/ready status.
  *
- * Two bullets (armed, ready) + threshold display + fast-gate %.
+ * Two bullets (Armed, Ready) + state text.
+ * Ready bullet shows "na" (yellow) when not armed.
+ * State text: ready → "THRESHOLD EXCEEDED — compacting next event",
+ * armed → "past fast gate — monitoring token count",
+ * idle → "idle — below fast gate".
  */
 
 import type React from "react";
@@ -19,15 +23,19 @@ export interface TriggerStatusProps {
 	fastGatePct: number;
 }
 
+type BulletState = "on" | "off" | "na";
+
 function Bullet({
-	on,
+	state,
 	label,
 }: {
-	on: boolean;
+	state: BulletState;
 	label: string;
 }): React.ReactElement {
+	const cls =
+		state === "on" ? "bullet-on" : state === "na" ? "bullet-na" : "bullet-off";
 	return (
-		<div className={`bullet ${on ? "bullet-on" : "bullet-off"}`}>
+		<div className={`bullet ${cls}`}>
 			<span className="bullet-dot" aria-hidden="true" />
 			<span className="bullet-label">{label}</span>
 		</div>
@@ -37,26 +45,30 @@ function Bullet({
 export function TriggerStatus({
 	armed,
 	ready,
-	currentTokens,
-	thresholdTokens,
-	fastGatePct,
 }: TriggerStatusProps): React.ReactElement {
-	const cur =
-		currentTokens !== null && currentTokens !== undefined
-			? currentTokens.toLocaleString()
-			: "unknown";
+	// tr-armed: on if armed, off if not
+	// tr-ready: on if ready, na (yellow) if not armed, off if armed but not ready
+	const armedState: BulletState = armed ? "on" : "off";
+	const readyState: BulletState = ready
+		? "on"
+		: !armed
+			? "na"
+			: "off";
+
+	const stateText = ready
+		? "THRESHOLD EXCEEDED — compacting next event"
+		: armed
+			? "past fast gate — monitoring token count"
+			: "idle — below fast gate";
+
 	return (
 		<div className="card trigger-status">
-			<h3>Trigger</h3>
+			<h3>Trigger Status</h3>
 			<div className="bullet-row">
-				<Bullet on={armed} label="Armed" />
-				<Bullet on={ready} label="Ready" />
+				<Bullet state={armedState} label="Armed" />
+				<Bullet state={readyState} label="Ready" />
 			</div>
-			<p className="trigger-detail">
-				Threshold: {thresholdTokens.toLocaleString()} tokens
-			</p>
-			<p className="trigger-detail">Current: {cur} tokens</p>
-			<p className="trigger-detail">Fast gate: {fastGatePct}%</p>
+			<p className="trigger-state-text">{stateText}</p>
 		</div>
 	);
 }

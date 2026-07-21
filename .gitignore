@@ -1,5 +1,7 @@
 node_modules/
 dist/
+!extensions/dashboard-client/dist/
+!extensions/dashboard-client/dist/**
 *.log
 .env
 .env.*

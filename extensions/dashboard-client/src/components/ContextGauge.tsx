@@ -1,8 +1,9 @@
 /**
  * dashboard-client/src/components/ContextGauge.tsx — token usage meter.
  *
- * Color-coded percent fill bar: green <60%, yellow 60–80%, red >80%.
- * Sublabel: "{tokens} / {contextWindow} tokens ({percent}%)".
+ * Color-coded percent fill bar: green <70%, yellow 70–89%, red ≥90%.
+ * Sublabel: "{tokens} / {contextWindow} tokens".
+ * Shows percentage as "{pct}%" in the header.
  */
 
 import type React from "react";
@@ -17,15 +18,9 @@ export interface ContextGaugeProps {
 }
 
 function severityClass(percent: number): string {
-	if (percent >= 80) return "gauge-red";
-	if (percent >= 60) return "gauge-yellow";
+	if (percent >= 90) return "gauge-red";
+	if (percent >= 70) return "gauge-yellow";
 	return "gauge-green";
-}
-
-function formatTokens(n: number): string {
-	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-	if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-	return String(n);
 }
 
 export function ContextGauge({
@@ -34,16 +29,17 @@ export function ContextGauge({
 	contextWindow,
 }: ContextGaugeProps): React.ReactElement {
 	const pct = percent ?? 0;
-	const fillWidth = Math.max(0, Math.min(100, pct));
+	const fillWidth = Math.max(pct, 1);
 	const cls = severityClass(pct);
-	const label =
+	const tokStr =
 		tokens !== null && tokens !== undefined
-			? `${formatTokens(tokens)} / ${formatTokens(contextWindow)} tokens (${pct.toFixed(1)}%)`
-			: `${formatTokens(contextWindow)} window (usage unknown)`;
+			? tokens.toLocaleString()
+			: "?";
+	const label = `${tokStr} / ${contextWindow.toLocaleString()} tokens`;
 
 	return (
 		<div className="card context-gauge">
-			<h3>Context</h3>
+			<h3>Context Window — {pct}%</h3>
 			<div
 				className={`gauge-bar ${cls}`}
 				role="meter"

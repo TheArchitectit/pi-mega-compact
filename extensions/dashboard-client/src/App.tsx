@@ -19,10 +19,19 @@ const ReposTab = React.lazy(() => import("./tabs/ReposTab"));
 const EventsTab = React.lazy(() => import("./tabs/EventsTab"));
 const ConfigTab = React.lazy(() => import("./tabs/ConfigTab"));
 const MetricsTab = React.lazy(() => import("./tabs/MetricsTab"));
+const CacheTab = React.lazy(() => import("./tabs/CacheTab"));
+const GameTab = React.lazy(() => import("./tabs/GameTab"));
+const AchievementsTab = React.lazy(() => import("./tabs/AchievementsTab"));
 
-// SPRINT-C2/C3-REMAINING: GameTab, DiagnosticsPanel lazy imports.
-
-export type TabId = "overview" | "repos" | "events" | "config" | "metrics";
+export type TabId =
+	| "overview"
+	| "repos"
+	| "events"
+	| "config"
+	| "metrics"
+	| "cache"
+	| "game"
+	| "achievements";
 
 const TABS: Array<{ id: TabId; label: string }> = [
 	{ id: "overview", label: "Overview" },
@@ -30,6 +39,9 @@ const TABS: Array<{ id: TabId; label: string }> = [
 	{ id: "events", label: "Events" },
 	{ id: "config", label: "Config" },
 	{ id: "metrics", label: "Metrics" },
+	{ id: "cache", label: "Cache" },
+	{ id: "game", label: "Game" },
+	{ id: "achievements", label: "Achievements" },
 ];
 
 export default function App(): React.ReactElement {
@@ -73,7 +85,9 @@ export default function App(): React.ReactElement {
 						{activeTab === "events" && <EventsTab />}
 						{activeTab === "config" && <ConfigTab />}
 						{activeTab === "metrics" && <MetricsTab />}
-						{/* SPRINT-C2/C3-REMAINING: Game tab, diagnostics panel */}
+						{activeTab === "cache" && <CacheTab />}
+						{activeTab === "game" && <GameTab />}
+						{activeTab === "achievements" && <AchievementsTab />}
 					</React.Suspense>
 				</main>
 			</div>
