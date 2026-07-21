@@ -40,7 +40,7 @@
 These are pi-extension invariants; `scripts/guardrails-scan.mjs` scans for violations:
 
 | Rule | Severity | Meaning |
-|------|----------|---------|
+| ------ | ---------- | --------- |
 | PREVENT-PI-001 | error | Never drop messages without the anchor-floor guard (preserve recent N). |
 | PREVENT-PI-002 | error | Never split a toolCall/toolResult pair at a compaction boundary. |
 | PREVENT-PI-003 | error | Never inject compacted context as `role:"system"` — use the `before_agent_start` systemPrompt prepend. |
@@ -74,3 +74,5 @@ Additional guardrails (from template): PREVENT-001 (JSON.parse without null chec
 * **Sprints**: per-sprint full specs live in `docs/specs/` following the SPRINT_GUIDE structure (Header / Safety / Problem / Scope / Execution / Acceptance / Rollback).
 * **Tester guide**: see `TESTER_GUIDE.md` (repo root) for manual testing checklist + bug report template.
 * **Release notes**: see `RELEASE_NOTES.md` (repo root) for user-facing release notes + migration guide.
+* **Roadmap**: see `ROADMAP.md` (repo root) for consolidated P1/P2 deferred work.
+* **Backlog**: see `BACKLOG.md` (repo root) for detailed backlog items.
