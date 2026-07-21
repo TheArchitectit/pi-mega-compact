@@ -31,7 +31,7 @@ All nine dashboard-migration sprint specs are authored and committed:
 | --- | --- | --- | --- |
 | A1 | [`sprint-A1-api-contract.md`](docs/specs/sprint-A1-api-contract.md) | API contract, typed endpoints, `EndpointDef` | ✅ spec written, ✅ impl DONE (v0.8.9) |
 | B1 | [`sprint-B1-react-scaffold.md`](docs/specs/sprint-B1-react-scaffold.md) | React scaffold, Vite, SSE hook, API client | ✅ spec written, ✅ impl DONE (v0.8.9) |
-| C1 | [`sprint-C1-core-tabs.md`](docs/specs/sprint-C1-core-tabs.md) | Core tabs: Overview, Events, context gauge | ✅ spec written, ⬜ impl TODO |
+| C1 | [`sprint-C1-core-tabs.md`](docs/specs/sprint-C1-core-tabs.md) | Core tabs: Overview, Events, context gauge | ✅ spec written, ✅ impl DONE (v0.8.9) |
 | C2 | [`sprint-C2-repos-metrics.md`](docs/specs/sprint-C2-repos-metrics.md) | Repos table, metrics, perf charts, drill-down | ✅ spec written, ⬜ impl TODO |
 | C3 | [`sprint-C3-config.md`](docs/specs/sprint-C3-config.md) | Config tab, game-mode settings, theme picker | ✅ spec written, ⬜ impl TODO |
 | D1 | [`sprint-D1-resilience.md`](docs/specs/sprint-D1-resilience.md) | Resilience: offline banner, retry, stale indicator | ✅ spec written, ⬜ impl TODO |
@@ -131,13 +131,25 @@ Completed in v0.8.9 on `game-mode` (see §1.7 for full deliverable list).
 
 **Next:** Sprint C1 (core tabs — real Overview/Events content, context gauge).
 
-### 2.3 Sprint C1 — Core tabs ⬜
+### 2.3 Sprint C1 — Core tabs ✅ DONE
 
 Spec: [`sprint-C1-core-tabs.md`](docs/specs/sprint-C1-core-tabs.md)
 
-- [ ] Overview tab: tier, model, context gauge, anchor floor.
-- [ ] Events tab: live SSE event stream (via `useSSE`).
-- [ ] Context gauge widget.
+Completed in v0.8.9 on `game-mode`.
+
+- [x] **OverviewTab** — 4-card grid (ContextGauge, CompressionCard, TriggerStatus, SessionInfo) consuming typed `SnapshotResponse` fields; header with tier pill + last-updated timestamp. Polls `/api/snapshot` every 5s (wired in `App.tsx` via `useApi({pollInterval:5000})`).
+- [x] **EventsTab** — live SSE stream via `useSSE` hook + `EventStream` component; connection-status dot (connected/connecting/disconnected/error) + event count.
+- [x] **ContextGauge** — color-coded percent fill bar (green <60%, yellow 60–80%, red >80%); sublabel `{tokens} / {contextWindow} tokens ({percent}%)`; K/M token formatting.
+- [x] **CompressionCard** — stat grid: tokens in/out, freed (highlighted green), compression %, dedup %.
+- [x] **TriggerStatus** — armed/ready bullets (glow when on), threshold + current tokens, fast-gate %.
+- [x] **SessionInfo** — state badge (idle/compacting colored), persisted tag, checkpoints, tokens saved, dedup hit rate.
+- [x] **EventStream** — type-filter chips (all / compact_start / compact_end / recall_inject / checkpoint_persisted), colored type badges (per-type palette), expandable JSON detail row, ring-buffer render window (last 200 of 500) to keep DOM light, timestamp formatting.
+- [x] Responsive: 1-column card grid + compacted event rows at ≤768px.
+- [x] All components use typed A1 contracts (`SnapshotResponse`, `SseEvent`).
+
+Gate green: build, `build:dashboard` (51 modules; Overview 5KB + Events 4KB chunks vs 0.2KB stubs), 589 tests/0 fail, lint, regression_check, guardrails-scan.
+
+**Next:** Sprint C2 (repos table + metrics/perf charts).
 
 ### 2.4 Sprint C2 — Repos & metrics ⬜
 

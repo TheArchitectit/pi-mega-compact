@@ -3,5 +3,5 @@
  */
 
 export function LoadingSpinner(): React.ReactElement {
-  return <div className="loading-spinner">Loading…</div>;
+	return <div className="loading-spinner">Loading…</div>;
 }

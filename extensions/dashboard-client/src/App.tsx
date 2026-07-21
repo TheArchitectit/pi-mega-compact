@@ -5,64 +5,78 @@
  * SPRINT-C1+: tabs wired progressively with real content.
  */
 
-import React, { useState, useCallback } from 'react';
-import { ErrorBoundary } from './components/ErrorBoundary';
-import { TabBar } from './components/TabBar';
-import { LoadingSpinner } from './components/LoadingSpinner';
-import { useApi } from './hooks/useApi';
-import { fetchSnapshot } from './api/client';
-import type { SnapshotResponse } from '@contracts';
+import React, { useState, useCallback } from "react";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { TabBar } from "./components/TabBar";
+import { LoadingSpinner } from "./components/LoadingSpinner";
+import { useApi } from "./hooks/useApi";
+import { fetchSnapshot } from "./api/client";
+import type { SnapshotResponse } from "@contracts";
 
-// Tab components — lazy-loaded. Stubs in B1; real content lands in C1/C2/C3.
-const OverviewTab = React.lazy(() => import('./tabs/OverviewTab'));
-const ReposTab = React.lazy(() => import('./tabs/ReposTab'));
-const EventsTab = React.lazy(() => import('./tabs/EventsTab'));
-const ConfigTab = React.lazy(() => import('./tabs/ConfigTab'));
-const MetricsTab = React.lazy(() => import('./tabs/MetricsTab'));
+// Tab components — lazy-loaded. C1 fills Overview + Events; C2/C3 fill the rest.
+const OverviewTab = React.lazy(() => import("./tabs/OverviewTab"));
+const ReposTab = React.lazy(() => import("./tabs/ReposTab"));
+const EventsTab = React.lazy(() => import("./tabs/EventsTab"));
+const ConfigTab = React.lazy(() => import("./tabs/ConfigTab"));
+const MetricsTab = React.lazy(() => import("./tabs/MetricsTab"));
 
-// SPRINT-C1-REMAINING: GameTab, DiagnosticsPanel lazy imports.
+// SPRINT-C2/C3-REMAINING: GameTab, DiagnosticsPanel lazy imports.
 
-export type TabId = 'overview' | 'repos' | 'events' | 'config' | 'metrics';
+export type TabId = "overview" | "repos" | "events" | "config" | "metrics";
 
 const TABS: Array<{ id: TabId; label: string }> = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'repos', label: 'Repos' },
-  { id: 'events', label: 'Events' },
-  { id: 'config', label: 'Config' },
-  { id: 'metrics', label: 'Metrics' },
+	{ id: "overview", label: "Overview" },
+	{ id: "repos", label: "Repos" },
+	{ id: "events", label: "Events" },
+	{ id: "config", label: "Config" },
+	{ id: "metrics", label: "Metrics" },
 ];
 
 export default function App(): React.ReactElement {
-  const [activeTab, setActiveTab] = useState<TabId>('overview');
-  const { data: snapshot, loading, error } = useApi<SnapshotResponse>(
-    useCallback(() => fetchSnapshot(), [])
-  );
+	const [activeTab, setActiveTab] = useState<TabId>("overview");
+	const {
+		data: snapshot,
+		loading,
+		error,
+	} = useApi<SnapshotResponse>(
+		useCallback(() => fetchSnapshot(), []),
+		{
+			// Poll every 5s so Overview stays live without SSE. D1 will add retry/stale.
+			pollInterval: 5000,
+		},
+	);
 
-  const tier = snapshot?.tier ?? 'unknown';
-  const version = snapshot?.model?.name ?? '';
+	const tier = snapshot?.tier ?? "unknown";
+	const version = snapshot?.model?.name ?? "";
 
-  return (
-    <ErrorBoundary>
-      <div className="dashboard-app">
-        <header className="dashboard-header">
-          <h1>
-            mega-compact dashboard
-            <span className="tier">{tier}</span>
-            {version && <span className="version-pill">{version}</span>}
-          </h1>
-        </header>
-        <TabBar tabs={TABS} active={activeTab} onTabChange={setActiveTab} />
-        <main className="dashboard-content">
-          <React.Suspense fallback={<LoadingSpinner />}>
-            {activeTab === 'overview' && <OverviewTab snapshot={snapshot} loading={loading} error={error} />}
-            {activeTab === 'repos' && <ReposTab />}
-            {activeTab === 'events' && <EventsTab />}
-            {activeTab === 'config' && <ConfigTab />}
-            {activeTab === 'metrics' && <MetricsTab />}
-            {/* SPRINT-C1-REMAINING: Game tab, diagnostics panel */}
-          </React.Suspense>
-        </main>
-      </div>
-    </ErrorBoundary>
-  );
+	return (
+		<ErrorBoundary>
+			<div className="dashboard-app">
+				<header className="dashboard-header">
+					<h1>
+						mega-compact dashboard
+						<span className="tier">{tier}</span>
+						{version && <span className="version-pill">{version}</span>}
+					</h1>
+				</header>
+				<TabBar tabs={TABS} active={activeTab} onTabChange={setActiveTab} />
+				<main className="dashboard-content">
+					<React.Suspense fallback={<LoadingSpinner />}>
+						{activeTab === "overview" && (
+							<OverviewTab
+								snapshot={snapshot}
+								loading={loading}
+								error={error}
+							/>
+						)}
+						{activeTab === "repos" && <ReposTab />}
+						{activeTab === "events" && <EventsTab />}
+						{activeTab === "config" && <ConfigTab />}
+						{activeTab === "metrics" && <MetricsTab />}
+						{/* SPRINT-C2/C3-REMAINING: Game tab, diagnostics panel */}
+					</React.Suspense>
+				</main>
+			</div>
+		</ErrorBoundary>
+	);
 }
