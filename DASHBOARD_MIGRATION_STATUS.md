@@ -12,7 +12,7 @@ This document is a *planning + tracking* artifact. The per-sprint authoritative 
 ## Legend
 
 | Marker | Meaning |
-|---|---|
+| --- | --- |
 | ✅ DONE | Spec written and/or implementation merged; gate green. |
 | 🟡 SCAFFOLD | Partial implementation present but not complete / not wired. |
 | ⬜ TODO | Not yet implemented. |
@@ -28,8 +28,8 @@ All planning artifacts for the dashboard rewrite are complete. No dashboard-clie
 All nine dashboard-migration sprint specs are authored and committed:
 
 | Sprint | Spec | Focus | Status |
-|---|---|---|---|
-| A1 | [`sprint-A1-api-contract.md`](docs/specs/sprint-A1-api-contract.md) | API contract, typed endpoints, `EndpointDef` | ✅ spec written, ⬜ impl TODO |
+| --- | --- | --- | --- |
+| A1 | [`sprint-A1-api-contract.md`](docs/specs/sprint-A1-api-contract.md) | API contract, typed endpoints, `EndpointDef` | ✅ spec written, ✅ impl DONE (v0.8.9) |
 | B1 | [`sprint-B1-react-scaffold.md`](docs/specs/sprint-B1-react-scaffold.md) | React scaffold, Vite, SSE hook, API client | ✅ spec written, 🟡 scaffold present |
 | C1 | [`sprint-C1-core-tabs.md`](docs/specs/sprint-C1-core-tabs.md) | Core tabs: Overview, Events, context gauge | ✅ spec written, ⬜ impl TODO |
 | C2 | [`sprint-C2-repos-metrics.md`](docs/specs/sprint-C2-repos-metrics.md) | Repos table, metrics, perf charts, drill-down | ✅ spec written, ⬜ impl TODO |
@@ -44,7 +44,7 @@ All nine dashboard-migration sprint specs are authored and committed:
 The monolithic `extensions/dashboard-server/api-contracts.ts` was decomposed into a typed, domain-structured barrel under `extensions/dashboard-server/api-contracts/`:
 
 | File | Domain |
-|---|---|
+| --- | --- |
 | [`api-contracts/core.ts`](extensions/dashboard-server/api-contracts/core.ts) | `HttpMethod`, `EndpointDef`, all `Sse*` core event types |
 | [`api-contracts/snapshot.ts`](extensions/dashboard-server/api-contracts/snapshot.ts) | `SnapshotResponse`, `TriggerResponse`, `CompressionTotalsResponse`, `CompactHistoryEntry`, `CompactionRequest/Response` |
 | [`api-contracts/multi-repo.ts`](extensions/dashboard-server/api-contracts/multi-repo.ts) | `RepoListItem`, `RepoSnapshotEntry/Map`, `Indexes*`, `DiffRequest/Response`, `UpdateRepoConfigRequest` |
@@ -96,15 +96,19 @@ These are 🟡 SCAFFOLD — real content but incomplete (missing `components/`, 
 
 Implementation order follows the spec dependency chain: **A1 → B1 → C1 → C2 → C3 → D1 → D2 → D3 → T1**.
 
-### 2.1 Sprint A1 — API contract implementation ⬜
+### 2.1 Sprint A1 — API contract implementation ✅ DONE
 
 Spec: [`sprint-A1-api-contract.md`](docs/specs/sprint-A1-api-contract.md)
 
-- [ ] `ENDPOINTS` registry constant in `api-contracts/core.ts` (or dedicated `endpoints.ts`) — single source of truth for all route paths + methods.
-- [ ] `extensions/dashboard-server/types.ts` re-export from `api-contracts/` where shapes overlap; preserve backward compatibility.
-- [ ] `extensions/dashboard-server/api-contracts.test.ts` — compile-time `satisfies` structural tests + runtime JSON-shape validation for each endpoint response.
-- [ ] JSDoc on every exported interface and `EndpointDef`.
-- [ ] Gate green.
+Completed in v0.8.9 on `game-mode`. Deliverables:
+
+- [x] `ENDPOINTS` registry constant in `api-contracts/endpoints.ts` — single source of truth for all 13 API routes (12 paths + PUT `/api/game-state`), each typed as `EndpointDef` / `SseEndpointDef`.
+- [x] `extensions/dashboard-server/types.ts` re-exports `IndexRepo` (as `IndexesIndexRow`) and `SnapshotResponse` from `api-contracts/`; back-compat barrel `api-contracts.ts` preserved.
+- [x] `extensions/dashboard-server/api-contracts.test.ts` — 24 tests: 13 compile-time `satisfies EndpointDef<...>` checks + runtime registry/path cross-reference + per-endpoint JSON payload validation.
+- [x] JSDoc on every exported interface and field across all 6 `api-contracts/*.ts` modules (units documented for numeric fields; enum values for string-literal unions).
+- [x] Gate green: build ✅, 589 tests / 0 fail ✅, lint ✅, regression_check ✅, guardrails-scan ✅.
+
+**Next unblocker:** Sprint B1 (React scaffold completion).
 
 ### 2.2 Sprint B1 — React scaffold completion 🟡→⬜
 

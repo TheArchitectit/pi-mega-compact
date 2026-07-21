@@ -105,6 +105,36 @@ import type {
   SseCrewBanditChosen,
 } from './core.js';
 
+// Endpoints registry (Sprint A1)
+export type {
+  VersionResponse,
+  IndexSummary,
+  IndexFallbackResponse,
+  ReposQuery,
+  ReposResponse,
+  SummaryResponse,
+  DriftSeverity,
+  DriftSignal,
+  RepoDrift,
+  DriftReportResponse,
+  ServerEntry,
+  ServersResponse,
+  PerfPercentile,
+  PerfAverage,
+  PerfLatest,
+  PerfCacheHit,
+  PerfDiag,
+  PerfQuery,
+  PerfResponse,
+  GameScoreRow,
+  GameScoresQuery,
+  AchievementRow,
+  GameStatePatch,
+  SseEndpointDef,
+} from './endpoints.js';
+
+export { ENDPOINTS } from './endpoints.js';
+
 /** Union of all SSE event types the client may receive. */
 export type SseEvent =
   | SseCompactStart
