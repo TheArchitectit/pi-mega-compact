@@ -24,17 +24,20 @@
 
 When the dashboard behaves unexpectedly (slow loads, missing data, stale events), there's no way to diagnose the issue without reading server logs. A diagnostics panel shows API response times, SSE connection health, data freshness, and server version.
 
+Additionally, provider (model endpoint) failures — non-2xx HTTP responses — are recorded only as latency samples carrying a `status` tag; they are not flagged, counted, or surfaced, so silent provider outages stay invisible in the dashboard.
+
 ---
 
 ## SCOPE BOUNDARY
 
 **IN SCOPE (may modify):**
-- `extensions/dashboard-client/src/components/DiagnosticsPanel.tsx` (NEW)
+- `extensions/dashboard-client/src/components/DiagnosticsPanel.tsx` (NEW) — also surfaces provider failures (count, rate, last status) from `/api/diag`.
 - `extensions/dashboard-client/src/components/HealthCheck.tsx` (NEW)
 - `extensions/dashboard-client/src/components/ApiTiming.tsx` (NEW)
 - `extensions/dashboard-client/src/hooks/useDiagnostics.ts` (NEW)
 - `extensions/dashboard-client/src/App.tsx` — add diagnostics toggle.
-- `extensions/dashboard-server/server.ts` — add `/api/health` endpoint (lightweight ping).
+- `extensions/mega-events/perf-handler.ts` — flag non-2xx `after_provider_response` as failures (record `provider_failure` sample + increment counter); latency sample still recorded.
+- `extensions/dashboard-server/server.ts` — add `/api/health` endpoint (lightweight ping) + `/api/diag` endpoint (aggregated diagnostics: timing, SSE health, provider failure count + rate + last status).
 
 **OUT OF SCOPE:**
 - External monitoring integrations.
@@ -62,7 +65,16 @@ When the dashboard behaves unexpectedly (slow loads, missing data, stale events)
              Color: green <100ms, yellow 100-500ms, red >500ms.
 6. TOGGLE    App.tsx: gear icon in header toggles DiagnosticsPanel.
              Panel slides in from right.
-7. TEST      Unit: timing calculations, health check logic.
+7. PROVFAIL  perf-handler.ts: in `after_provider_response`, when `event.status`
+             is absent or not 2xx, record a `provider_failure` sample (latency
+             still recorded) and increment a `provider_failure_count` counter
+             in runtime state. Non-fatal — wrapped in try/catch.
+             server.ts: GET /api/diag → { timing, sse, provider:
+             { failures, rate, last_status, last_ts } }.
+             DiagnosticsPanel.tsx: render provider-failure row — green when
+             failures=0, red with count + last status otherwise.
+8. TEST      Unit: timing calculations, health check logic, failure flagging
+             (2xx → no failure; 500/non-2xx → failure counted).
 ```
 
 ---
@@ -77,6 +89,9 @@ Before proceeding to D3, verify:
 4. **Timing:** API response times update in real-time.
 5. **SSE:** event count increments on each event.
 6. **Toggle:** panel opens/closes smoothly.
+7. **Provider failures:** non-2xx provider response increments failure count.
+8. **/api/diag:** returns provider failure count + rate + last status.
+9. **DiagnosticsPanel:** provider-failure row turns red on simulated 500.
 
 ---
 
@@ -86,6 +101,9 @@ Before proceeding to D3, verify:
 - [ ] Diagnostics panel shows server health, API timing, SSE status.
 - [ ] Health check runs periodically.
 - [ ] Response time tracking with color coding.
+- [ ] Non-2xx provider responses are flagged as failures (count + last status).
+- [ ] /api/diag endpoint exposes provider failure diagnostics.
+- [ ] DiagnosticsPanel surfaces provider failure state (green/red).
 - [ ] All gates green.
 
 ---

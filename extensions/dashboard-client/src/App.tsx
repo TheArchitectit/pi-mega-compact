@@ -1,0 +1,67 @@
+/**
+ * dashboard-client/src/App.tsx — Dashboard shell layout.
+ *
+ * SPRINT-B1: React scaffold with tab routing, header, error boundary.
+ * SPRINT-C1+: tabs wired progressively.
+ */
+
+import React, { useState, useCallback } from 'react';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { TabBar } from './components/TabBar';
+import { LoadingSpinner } from './components/LoadingSpinner';
+import { useApi } from './hooks/useApi';
+import type { SnapshotResponse } from '../../dashboard-server/api-contracts';
+
+// Tab components — imported lazily in production; direct import for simplicity.
+const OverviewTab = React.lazy(() => import('./tabs/OverviewTab'));
+const ReposTab = React.lazy(() => import('./tabs/ReposTab'));
+const EventsTab = React.lazy(() => import('./tabs/EventsTab'));
+const ConfigTab = React.lazy(() => import('./tabs/ConfigTab'));
+const MetricsTab = React.lazy(() => import('./tabs/MetricsTab'));
+
+// SPRINT-C1-REMAINING: GameTab, DiagnosticsPanel lazy imports.
+
+export type TabId = 'overview' | 'repos' | 'events' | 'config' | 'metrics';
+
+const TABS: Array<{ id: TabId; label: string }> = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'repos', label: 'Repos' },
+  { id: 'events', label: 'Events' },
+  { id: 'config', label: 'Config' },
+  { id: 'metrics', label: 'Metrics' },
+];
+
+export default function App(): React.ReactElement {
+  const [activeTab, setActiveTab] = useState<TabId>('overview');
+  const { data: snapshot, loading, error } = useApi<SnapshotResponse>(
+    useCallback(() => fetch('/api/snapshot').then(r => r.json()), [])
+  );
+
+  const tier = snapshot?.tier ?? 'unknown';
+  const version = snapshot?.model?.name ?? '';
+
+  return (
+    <ErrorBoundary>
+      <div className="dashboard-app">
+        <header className="dashboard-header">
+          <h1>
+            mega-compact dashboard
+n            <span className="tier">{tier}</span>
+            {version && <span className="version-pill">{version}</span>}
+          </h1>
+        </header>
+        <TabBar tabs={TABS} active={activeTab} onTabChange={setActiveTab} />
+        <main className="dashboard-content">
+          <React.Suspense fallback={<LoadingSpinner />}>
+            {activeTab === 'overview' && <OverviewTab snapshot={snapshot} loading={loading} error={error} />}
+            {activeTab === 'repos' && <ReposTab />}
+            {activeTab === 'events' && <EventsTab />}
+            {activeTab === 'config' && <ConfigTab />}
+            {activeTab === 'metrics' && <MetricsTab />}
+            {/* SPRINT-C1-REMAINING: Game tab, diagnostics panel */}
+          </React.Suspense>
+        </main>
+      </div>
+    </ErrorBoundary>
+  );
+}

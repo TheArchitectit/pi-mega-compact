@@ -440,109 +440,109 @@
 
 | Section | Line | Offset |
 |---------|------|--------|
-| SAFETY PROTOCOLS | 11 | 0 |
-| PROBLEM STATEMENT | 22 | 11 |
-| SCOPE BOUNDARY | 29 | 18 |
-| EXECUTION DIRECTIONS | 38 | 27 |
-| QA VERIFICATION ROUND | 57 | 46 |
-| ACCEPTANCE CRITERIA | 70 | 59 |
-| ROLLBACK PROCEDURE | 79 | 68 |
+| SAFETY PROTOCOLS | 12 | 0 |
+| PROBLEM STATEMENT | 25 | 13 |
+| SCOPE BOUNDARY | 33 | 21 |
+| EXECUTION DIRECTIONS | 48 | 36 |
+| QA VERIFICATION ROUND | 75 | 63 |
+| ACCEPTANCE CRITERIA | 90 | 78 |
+| ROLLBACK PROCEDURE | 100 | 88 |
 
 ## docs/specs/sprint-B1-react-scaffold.md
 
 | Section | Line | Offset |
 |---------|------|--------|
-| SAFETY PROTOCOLS | 11 | 0 |
-| PROBLEM STATEMENT | 25 | 14 |
-| SCOPE BOUNDARY | 30 | 19 |
-| EXECUTION DIRECTIONS | 47 | 36 |
-| QA VERIFICATION ROUND | 67 | 56 |
-| ACCEPTANCE CRITERIA | 80 | 69 |
-| ROLLBACK PROCEDURE | 90 | 79 |
+| SAFETY PROTOCOLS | 12 | 0 |
+| PROBLEM STATEMENT | 25 | 13 |
+| SCOPE BOUNDARY | 33 | 21 |
+| EXECUTION DIRECTIONS | 58 | 46 |
+| QA VERIFICATION ROUND | 92 | 80 |
+| ACCEPTANCE CRITERIA | 107 | 95 |
+| ROLLBACK PROCEDURE | 119 | 107 |
 
 ## docs/specs/sprint-C1-core-tabs.md
 
 | Section | Line | Offset |
 |---------|------|--------|
-| SAFETY PROTOCOLS | 11 | 0 |
-| PROBLEM STATEMENT | 22 | 11 |
-| SCOPE BOUNDARY | 25 | 14 |
-| EXECUTION DIRECTIONS | 38 | 27 |
-| QA VERIFICATION ROUND | 55 | 44 |
-| ACCEPTANCE CRITERIA | 68 | 57 |
-| ROLLBACK PROCEDURE | 76 | 65 |
+| SAFETY PROTOCOLS | 12 | 0 |
+| PROBLEM STATEMENT | 24 | 12 |
+| SCOPE BOUNDARY | 30 | 18 |
+| EXECUTION DIRECTIONS | 49 | 37 |
+| QA VERIFICATION ROUND | 81 | 69 |
+| ACCEPTANCE CRITERIA | 96 | 84 |
+| ROLLBACK PROCEDURE | 106 | 94 |
 
 ## docs/specs/sprint-C2-repos-metrics.md
 
 | Section | Line | Offset |
 |---------|------|--------|
-| SAFETY PROTOCOLS | 11 | 0 |
-| PROBLEM STATEMENT | 22 | 11 |
-| SCOPE BOUNDARY | 25 | 14 |
-| EXECUTION DIRECTIONS | 36 | 25 |
-| QA VERIFICATION ROUND | 51 | 40 |
-| ACCEPTANCE CRITERIA | 62 | 51 |
-| ROLLBACK PROCEDURE | 70 | 59 |
+| SAFETY PROTOCOLS | 12 | 0 |
+| PROBLEM STATEMENT | 23 | 11 |
+| SCOPE BOUNDARY | 29 | 17 |
+| EXECUTION DIRECTIONS | 48 | 36 |
+| QA VERIFICATION ROUND | 73 | 61 |
+| ACCEPTANCE CRITERIA | 86 | 74 |
+| ROLLBACK PROCEDURE | 96 | 84 |
 
 ## docs/specs/sprint-C3-config.md
 
 | Section | Line | Offset |
 |---------|------|--------|
-| SAFETY PROTOCOLS | 11 | 0 |
-| PROBLEM STATEMENT | 24 | 13 |
-| SCOPE BOUNDARY | 27 | 16 |
-| EXECUTION DIRECTIONS | 38 | 27 |
-| QA VERIFICATION ROUND | 52 | 41 |
-| ACCEPTANCE CRITERIA | 63 | 52 |
-| ROLLBACK PROCEDURE | 71 | 60 |
+| SAFETY PROTOCOLS | 12 | 0 |
+| PROBLEM STATEMENT | 24 | 12 |
+| SCOPE BOUNDARY | 30 | 18 |
+| EXECUTION DIRECTIONS | 47 | 35 |
+| QA VERIFICATION ROUND | 67 | 55 |
+| ACCEPTANCE CRITERIA | 80 | 68 |
+| ROLLBACK PROCEDURE | 90 | 78 |
 
 ## docs/specs/sprint-D1-resilience.md
 
 | Section | Line | Offset |
 |---------|------|--------|
-| SAFETY PROTOCOLS | 11 | 0 |
-| PROBLEM STATEMENT | 23 | 12 |
-| SCOPE BOUNDARY | 26 | 15 |
-| EXECUTION DIRECTIONS | 39 | 28 |
-| QA VERIFICATION ROUND | 57 | 46 |
-| ACCEPTANCE CRITERIA | 70 | 59 |
-| ROLLBACK PROCEDURE | 80 | 69 |
+| SAFETY PROTOCOLS | 12 | 0 |
+| PROBLEM STATEMENT | 24 | 12 |
+| SCOPE BOUNDARY | 30 | 18 |
+| EXECUTION DIRECTIONS | 50 | 38 |
+| QA VERIFICATION ROUND | 88 | 76 |
+| ACCEPTANCE CRITERIA | 102 | 90 |
+| ROLLBACK PROCEDURE | 114 | 102 |
 
 ## docs/specs/sprint-D2-observability.md
 
 | Section | Line | Offset |
 |---------|------|--------|
-| SAFETY PROTOCOLS | 11 | 0 |
-| PROBLEM STATEMENT | 22 | 11 |
-| SCOPE BOUNDARY | 25 | 14 |
-| EXECUTION DIRECTIONS | 34 | 23 |
-| QA VERIFICATION ROUND | 47 | 36 |
-| ACCEPTANCE CRITERIA | 58 | 47 |
-| ROLLBACK PROCEDURE | 66 | 55 |
+| SAFETY PROTOCOLS | 12 | 0 |
+| PROBLEM STATEMENT | 23 | 11 |
+| SCOPE BOUNDARY | 31 | 19 |
+| EXECUTION DIRECTIONS | 48 | 36 |
+| QA VERIFICATION ROUND | 82 | 70 |
+| ACCEPTANCE CRITERIA | 98 | 86 |
+| ROLLBACK PROCEDURE | 111 | 99 |
 
 ## docs/specs/sprint-D3-docs-release.md
 
 | Section | Line | Offset |
 |---------|------|--------|
-| SAFETY PROTOCOLS | 11 | 0 |
-| PROBLEM STATEMENT | 21 | 10 |
-| SCOPE BOUNDARY | 24 | 13 |
-| EXECUTION DIRECTIONS | 35 | 24 |
-| QA VERIFICATION ROUND | 48 | 37 |
-| ACCEPTANCE CRITERIA | 58 | 47 |
-| ROLLBACK PROCEDURE | 67 | 56 |
+| SAFETY PROTOCOLS | 12 | 0 |
+| PROBLEM STATEMENT | 22 | 10 |
+| SCOPE BOUNDARY | 28 | 16 |
+| EXECUTION DIRECTIONS | 46 | 34 |
+| QA VERIFICATION ROUND | 75 | 63 |
+| ACCEPTANCE CRITERIA | 87 | 75 |
+| ROLLBACK PROCEDURE | 99 | 87 |
 
 ## docs/specs/sprint-T1-tailscale.md
 
 | Section | Line | Offset |
 |---------|------|--------|
-| SAFETY PROTOCOLS | 11 | 0 |
-| PROBLEM STATEMENT | 26 | 15 |
-| SCOPE BOUNDARY | 29 | 18 |
-| EXECUTION DIRECTIONS | 42 | 31 |
-| QA VERIFICATION ROUND | 60 | 49 |
-| ACCEPTANCE CRITERIA | 73 | 62 |
-| ROLLBACK PROCEDURE | 84 | 73 |
+| SAFETY PROTOCOLS | 12 | 0 |
+| PROBLEM STATEMENT | 25 | 13 |
+| SCOPE BOUNDARY | 31 | 19 |
+| EXECUTION DIRECTIONS | 50 | 38 |
+| QA VERIFICATION ROUND | 87 | 75 |
+| ACCEPTANCE CRITERIA | 102 | 90 |
+| ROLLBACK PROCEDURE | 115 | 103 |
 
 ## extensions/dashboard-server/api-contracts.ts (DEPRECATED — re-export barrel)
 
@@ -554,78 +554,84 @@
 
 | Section | Line |
 |---------|------|
-| EndpointDef + HttpMethod | 10 |
-| SseCompactStart | 25 |
+| EndpointDef + HttpMethod | 14 |
+| SseCompactStart | 24 |
 | SseCompactEnd | 31 |
 | SseCompactTrigger | 42 |
 | SseCompactSkip | 50 |
-| SseTierChanged | 55 |
-| SseModelChanged | 62 |
-| SsePressureLifted | 70 |
-| SseCheckpointPersisted | 76 |
-| SseRecallInject | 82 |
-| SseAnchorsUpdated | 90 |
-| SseConfigUpdated | 96 |
-| SseConfigPreset | 102 |
-| SseCrewPresenceChanged | 108 |
-| SseCrewTurnChanged | 114 |
-| SseCrewBanditChosen | 120 |
+| SseTierChanged | 56 |
+| SseModelChanged | 64 |
+| SsePressureLifted | 72 |
+| SseCheckpointPersisted | 79 |
+| SseRecallInject | 86 |
+| SseAnchorsUpdated | 94 |
+| SseConfigUpdated | 101 |
+| SseConfigPreset | 108 |
+| SseCrewPresenceChanged | 114 |
+| SseCrewTurnChanged | 121 |
+| SseCrewBanditChosen | 128 |
 
 ## extensions/dashboard-server/api-contracts/snapshot.ts
 
 | Section | Line |
 |---------|------|
-| SnapshotResponse | 10 |
-| TriggerResponse | 82 |
-| CompressionTotalsResponse | 91 |
-| CompactHistoryEntry | 102 |
-| CompactionRequest + CompactionResponse | 115 |
+| SnapshotResponse | 11 |
+| TriggerResponse | 102 |
+| CompressionTotalsResponse | 112 |
+| CompactHistoryEntry | 125 |
+| CompactionRequest | 142 |
+| CompactionResponse | 147 |
 
 ## extensions/dashboard-server/api-contracts/multi-repo.ts
 
 | Section | Line |
 |---------|------|
-| RepoListItem | 10 |
-| RepoSnapshotEntry + RepoSnapshotMap | 20 |
-| IndexesIndexRow | 38 |
-| IndexesSummaryResponse | 57 |
-| IndexesDiffEntry + DiffRequest | 67 |
-| SnapshotLike + DiffResponse | 79 |
-| UpdateRepoConfigRequest | 96 |
+| RepoListItem | 12 |
+| RepoSnapshotEntry | 23 |
+| RepoSnapshotMap | 38 |
+| IndexesIndexRow | 42 |
+| IndexesSummaryResponse | 64 |
+| IndexesDiffEntry | 75 |
+| DiffRequest | 85 |
+| SnapshotLike | 91 |
+| DiffResponse | 103 |
+| UpdateRepoConfigRequest | 110 |
 
 ## extensions/dashboard-server/api-contracts/game.ts
 
 | Section | Line |
 |---------|------|
-| GameConfig + GameStateResponse | 10 |
-| GameRitualStage | 30 |
-| SseGameRitualStart | 38 |
-| SseGameRitualStage | 45 |
-| SseGameRitualEnd | 52 |
-| SseGameModeChanged | 59 |
-| SseGameRender | 65 |
+| GameConfig | 12 |
+| GameStateResponse | 20 |
+| GameRitualStage | 31 |
+| SseGameRitualStart | 40 |
+| SseGameRitualStage | 47 |
+| SseGameRitualEnd | 55 |
+| SseGameModeChanged | 62 |
+| SseGameRender | 68 |
 
 ## extensions/dashboard-server/api-contracts/infrastructure.ts
 
 | Section | Line |
 |---------|------|
-| InfraHealthResponse | 10 |
-| InfraPerfSampleResponse | 18 |
-| InfraRateLimitStatus + InfraRateLimitResponse | 49 |
-| ContextLevelState | 59 |
-| TierOverrideState | 73 |
-| FallbackState | 83 |
-| RepeatInjectionState | 95 |
-| SupersedeGatingState | 119 |
-| MinHashBandState | 143 |
+| InfraHealthResponse | 13 |
+| InfraPerfSampleResponse | 22 |
+| InfraRateLimitStatus | 58 |
+| InfraRateLimitResponse | 63 |
+| ContextLevelState | 69 |
+| TierOverrideState | 82 |
+| FallbackState | 91 |
+| RepeatInjectionState | 102 |
+| SupersedeGatingState | 133 |
+| MinHashBandState | 155 |
 
 ## extensions/dashboard-server/api-contracts/index.ts
 
 | Section | Line |
 |---------|------|
-| Core re-exports | 10 |
-| Snapshot re-exports | 28 |
-| Multi-repo re-exports | 37 |
-| Game re-exports | 50 |
-| Infrastructure re-exports | 60 |
-| SseEvent composite union | 75 |
+| Core re-exports | 11 |
+| Snapshot re-exports | 32 |
+| Multi-repo re-exports | 42 |
+| Game re-exports | 56 |
+| Infrastructure re-exports | 68 |
+| SseEvent composite union | 109 |

@@ -16,5 +16,5 @@
     "types": ["node"]
   },
   "include": ["extensions/**/*.ts", "src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "guardrails-template", "extensions/openclaw-mega-compact.ts"]
+  "exclude": ["node_modules", "dist", "guardrails-template", "extensions/openclaw-mega-compact.ts", "extensions/dashboard-client"]
 }
