@@ -252,8 +252,13 @@ test("auto-trigger (legacy): past threshold persists a chkpt and starts a durabl
 				percent: 100,
 			}),
 		});
-		const res = await h.fire("context", { type: "context", messages }, ctx);
-		// L1->L4 ran: a checkpoint was persisted to the SQLite store + a marker entry written.
+			const res = await h.fire("context", { type: "context", messages }, ctx);
+			// S38.5: the strict race guard (default) defers ctx.compact() via a
+			// setTimeout(500) re-check. The synchronous return is still undefined
+			// (no local drop), but ctx.compact() only lands after the timer — wait
+			// for it before asserting the durable-trim call count.
+			await new Promise((r) => setTimeout(r, 700));
+			// L1->L4 ran: a checkpoint was persisted to the SQLite store + a marker entry written.
 		const { listCheckpoints } = await import("../src/store/sqlite.js");
 		assert.ok(
 			listCheckpoints("sess_ext_001", h.stateDir).length > 0,
@@ -1239,15 +1244,20 @@ test("S28: length_stop + length_stop_continue dashboard events fire on the right
 	assert.equal(h.sendUserMessages.length, 1, "length stop: exactly one nudge");
 });
 
-test("S28: non-length stopReasons do not arm the flag (no nudge, no length_stop event)", async () => {
+test("S28: non-length stopReasons do not arm the length-stop flag (no length_stop event); S38 owns error/aborted retries", async () => {
 	const h = harness();
 	const lowPressureCtx = h.ctx({
 		isIdle: () => true,
 		hasPendingMessages: () => false,
 		getContextUsage: () => ({ tokens: 100, contextWindow: 200000, percent: 0 }),
 	});
-	// Every other pi-ai StopReason must leave the flag unset → no nudge + no event.
+	// S28 contract: every non-length StopReason must leave lengthStopPending unset,
+	// so no length_stop event fires and no length-stop resume nudge is armed.
+	// (S38 separately owns error/aborted — it WILL fire error-retry nudges for those;
+	// this test only asserts the S28 length-stop flag is not armed.)
+	let transientRetries = 0;
 	for (const stopReason of ["tool_use", "error", "aborted"] as const) {
+		const before = h.sendUserMessages.length;
 		await h.fire(
 			"turn_end",
 			{
@@ -1262,11 +1272,22 @@ test("S28: non-length stopReasons do not arm the flag (no nudge, no length_stop 
 			{ type: "agent_end", messages: [] },
 			lowPressureCtx,
 		);
+		// tool_use is success (0 nudges); error/aborted are transient under S38 (1 each).
+		if (stopReason === "tool_use") {
+			assert.equal(
+				h.sendUserMessages.length - before,
+				0,
+				"tool_use (success): no nudge",
+			);
+		} else {
+			transientRetries += h.sendUserMessages.length - before;
+		}
 	}
+	// error + aborted each produced one S38 transient retry nudge (2 total).
 	assert.equal(
-		h.sendUserMessages.length,
-		0,
-		"non-length stopReasons: no nudge",
+		transientRetries,
+		2,
+		"S38 owns error/aborted: 1 transient retry each",
 	);
 	assert.ok(
 		!eventTypes(h.stateDir).includes("length_stop"),
@@ -1614,7 +1635,13 @@ test("S38: MEGACOMPACT_AUTO_RETRY_TRANSIENT_MAX=0 disables transient retries cle
 
 test("S38.5: MEGACOMPACT_RACE_GUARD_STRICT=false reverts to synchronous 10s guard", async () => {
 	const prev = process.env.MEGACOMPACT_RACE_GUARD_STRICT;
+	const prevFloor = process.env.MEGACOMPACT_DURABLE_TRIM_FLOOR;
 	process.env.MEGACOMPACT_RACE_GUARD_STRICT = "false";
+	// The mock session is tiny (~tokens); piCompactWouldNoop() would skip the
+	// durable trim because the transcript is under pi's keepRecentTokens floor.
+	// Lower the floor to 0 (as the legacy auto-trigger test does) so the branch
+	// is entered and we exercise the synchronous vs deferred race-guard paths.
+	process.env.MEGACOMPACT_DURABLE_TRIM_FLOOR = "0";
 	try {
 		const h = harness();
 		// High pressure + idle + over threshold -> durable-trim branch entered.
@@ -1631,24 +1658,35 @@ test("S38.5: MEGACOMPACT_RACE_GUARD_STRICT=false reverts to synchronous 10s guar
 	} finally {
 		if (prev === undefined) delete process.env.MEGACOMPACT_RACE_GUARD_STRICT;
 		else process.env.MEGACOMPACT_RACE_GUARD_STRICT = prev;
+		if (prevFloor === undefined) delete process.env.MEGACOMPACT_DURABLE_TRIM_FLOOR;
+		else process.env.MEGACOMPACT_DURABLE_TRIM_FLOOR = prevFloor;
 	}
 });
 
 test("S38.5: strict (default) defers ctx.compact() via setTimeout re-check", async () => {
-	const h = harness();
-	const hiCtx = h.ctx({
-		isIdle: () => true,
-		hasPendingMessages: () => false,
-		getContextUsage: () => ({ tokens: 200000, contextWindow: 200000, percent: 100 }),
-	});
-	await h.fire("agent_end", { type: "agent_end", messages: [] }, hiCtx);
-	// Strict path defers ctx.compact() 500ms; synchronously no compact call yet.
-	assert.equal(h.compactCalls.length, 0, "strict: ctx.compact() NOT called synchronously (deferred)");
-	// Wait for the deferred callback (500ms + margin) to land.
-	await new Promise((r) => setTimeout(r, 700));
-	// piCompactWouldNoop on the mock branch (last entry is NOT a compaction) -> false,
-	// idle true, sinceCompact huge -> deferred ctx.compact() should fire.
-	assert.ok(h.compactCalls.length >= 1, "strict: deferred ctx.compact() fired after re-check");
+	const prevFloor = process.env.MEGACOMPACT_DURABLE_TRIM_FLOOR;
+	// See the non-strict test above: lower the noop floor so the tiny mock
+	// transcript clears piCompactWouldNoop() and the durable-trim branch runs.
+	process.env.MEGACOMPACT_DURABLE_TRIM_FLOOR = "0";
+	try {
+		const h = harness();
+		const hiCtx = h.ctx({
+			isIdle: () => true,
+			hasPendingMessages: () => false,
+			getContextUsage: () => ({ tokens: 200000, contextWindow: 200000, percent: 100 }),
+		});
+		await h.fire("agent_end", { type: "agent_end", messages: [] }, hiCtx);
+		// Strict path defers ctx.compact() 500ms; synchronously no compact call yet.
+		assert.equal(h.compactCalls.length, 0, "strict: ctx.compact() NOT called synchronously (deferred)");
+		// Wait for the deferred callback (500ms + margin) to land.
+		await new Promise((r) => setTimeout(r, 700));
+		// piCompactWouldNoop on the mock branch (last entry is NOT a compaction) -> false,
+		// idle true, sinceCompact huge -> deferred ctx.compact() should fire.
+		assert.ok(h.compactCalls.length >= 1, "strict: deferred ctx.compact() fired after re-check");
+	} finally {
+		if (prevFloor === undefined) delete process.env.MEGACOMPACT_DURABLE_TRIM_FLOOR;
+		else process.env.MEGACOMPACT_DURABLE_TRIM_FLOOR = prevFloor;
+	}
 });
 
 test("cleanup", async () => {

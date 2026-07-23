@@ -1,6 +1,6 @@
 {
   "name": "pi-mega-compact",
-  "version": "0.8.14",
+  "version": "0.8.15",
   "description": "Layered, local, vector-backed context compressor for pi — supersede/collapse/cluster compaction with deduped inline recall.",
   "type": "module",
   "license": "BSD-2-Clause",
@@ -63,5 +63,8 @@
     "@electric-sql/pglite": "^0.5.4",
     "@electric-sql/pglite-pgvector": "^0.0.5",
     "@mongodb-js/zstd": "^7.0.0"
+  },
+  "allowScripts": {
+    "@mongodb-js/zstd@7.0.0": true
   }
 }
