@@ -42,13 +42,19 @@ function harness() {
   process.env.MEGACOMPACT_DEBUG = "true";
   process.env.MEGACOMPACT_THRESHOLD_TOKENS = "50";
   process.env.MEGACOMPACT_FAST_GATE_PCT = "1";
+  // Strict race-guard mode double-counts diagAgentEndDurable (sync++ at branch
+  // entry + deferred++ in the setTimeout(500) callback = 6, not 3), lands
+  // compactCalls after the synchronous assertions, and leaks timers that hang
+  // `node --test`. The strict deferred path is covered by the two S38.5 tests
+  // in mega-compact.test.ts. Use the synchronous v0.7.4 path here.
+  process.env.MEGACOMPACT_RACE_GUARD_STRICT = "false";
   process.env.MEGACOMPACT_ANCHOR_USER_MESSAGES = "1";
   process.env.MEGACOMPACT_DURABLE_TRIM_FLOOR = "0"; // piCompactWouldNoop must not skip
   process.env.MEGACOMPACT_MEMORY_AUTO_REVIEW = "false";
   process.env.MEGACOMPACT_RAPTOR_ENABLED = "false";
   delete process.env.MEGACOMPACT_LEGACY_DURABLE_TRIM;
 
-  const handlers: Record<string, Function> = {};
+  const handlers: Record<string, Function[]> = {};
   const compactCalls: any[] = [];
 
   function msg(role: string, text: string, toolName?: string): AgentMessage {
@@ -85,8 +91,8 @@ function harness() {
       // Mock ctx.compact() runs pi's flow and fires session_before_compact.
       compact: (opts?: any) => {
         compactCalls.push(opts);
-        if (handlers["session_before_compact"]) {
-          return handlers["session_before_compact"](
+        const _sbc = handlers["session_before_compact"]; if (_sbc && _sbc.length) {
+          return _sbc[0](
             { type: "session_before_compact", reason: "threshold", willRetry: false, signal: undefined, preparation: { firstKeptEntryId: "e2", messagesToSummarize: session.slice(0, 2), tokensBefore: 500 } } as any,
             makeCtx(),
           );
@@ -99,7 +105,7 @@ function harness() {
   }
 
   const pi = {
-    on: (ev: string, h: Function) => { handlers[ev] = h; },
+    on: (ev: string, h: Function) => { if (!handlers[ev]) handlers[ev] = []; handlers[ev].push(h); },
     registerCommand: () => {}, registerTool: () => {}, registerShortcut: () => {},
     registerFlag: () => {}, getFlag: () => undefined, registerMessageRenderer: () => {},
     registerEntryRenderer: () => {}, sendMessage: () => {}, sendUserMessage: () => {},
@@ -114,7 +120,7 @@ function harness() {
   mod.default(pi);
   const { lastRuntime } = require("./mega-events.js") as { lastRuntime: any };
 
-  const fire = (ev: string, event: any, ctx: any) => handlers[ev](event, ctx);
+  const fire = async (ev: string, event: any, ctx: any) => { let r: any; for (const h of handlers[ev] || []) r = await h(event, ctx); return r; };
   return {
     stateDir, handlers, compactCalls, fire, ctx: makeCtx, session,
     runtime: lastRuntime, // MegaRuntime with diag* counters

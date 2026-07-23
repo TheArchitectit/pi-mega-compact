@@ -70,6 +70,25 @@ export interface MegaConfig {
    *  reusing the existing S16 resume-nudge. Default true. Off = silent (the
    *  prior behavior). PREVENT-PI-003: restart via user-role sendUserMessage. */
   autoContinueLengthStop: boolean;
+  /** S38: max retries for transient errors (5xx/429/network/max-output-token
+   *  text that is NOT a length stopReason — S28 owns those). Default 5.
+   *  `0` disables all transient retries (reverts to S28-only). */
+  autoRetryTransientMax: number;
+  /** S38: max retries for permanent errors (auth/config/malformed). Default 1.
+   *  `0` disables permanent-error retries. */
+  autoRetryPermanentMax: number;
+  /** S38.5: strict race-guard — 30s cooldown + deferred ctx.compact() re-check
+   *  (closes the first-race-in-burst window). Default true. `false` reverts to
+   *  the v0.7.4 synchronous 10s-cooldown behavior. */
+  raceGuardStrict: boolean;
+  /** S38.6: max consecutive errors before circuit-breaker trips (stops retrying).
+   *  Default 10. When `errorRetryCount` exceeds this across multiple turns,
+   *  the extension stops retrying until a successful turn resets it. */
+  maxConsecutiveErrors: number;
+  /** S38.7: hard-stop switch — when true, ALL error retries are disabled.
+   *  Default false. Set via env to force S28-only behavior (length-stop continues
+   *  only). */
+  errorRetryHardStop: boolean;
   /** S29: override the auto-compact fire point for tiered configs, as a
    *  fraction of the context window (e.g. 0.85). null = inherit the tier's
    *  tierPct (default; preserves existing fire points). The context-handler
@@ -238,6 +257,11 @@ export function loadConfig(): MegaConfig {
     auto: envBool("MEGACOMPACT_AUTO", true),
     autoInline: envBool("MEGACOMPACT_AUTO_INLINE", true),
     autoContinueLengthStop: envBool("MEGACOMPACT_AUTO_CONTINUE_LENGTH_STOP", true),
+    autoRetryTransientMax: envFlag("MEGACOMPACT_AUTO_RETRY_TRANSIENT_MAX", 5),
+    autoRetryPermanentMax: envFlag("MEGACOMPACT_AUTO_RETRY_PERMANENT_MAX", 1),
+    raceGuardStrict: envBool("MEGACOMPACT_RACE_GUARD_STRICT", true),
+    maxConsecutiveErrors: envFlag("MEGACOMPACT_MAX_CONSECUTIVE_ERRORS", 10),
+    errorRetryHardStop: envBool("MEGACOMPACT_ERROR_RETRY_HARD_STOP", false),
     autoPctTrigger,
     autoInlineK: envFlag("MEGACOMPACT_AUTO_INLINE_K", 3),
     dedupSim: Number(process.env.MEGACOMPACT_DEDUP_SIM ?? "0.9"),

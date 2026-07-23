@@ -87,6 +87,9 @@ export class MegaRuntime {
 		recallInjections: 0,
 		cacheHitTokens: 0,
 		lengthStopPending: false,
+		errorRetryCount: 0,
+		errorRetryUntil: 0,
+		consecutiveErrors: 0,
 	};
 	// v0.8.6 cache-stability: the cached live-trim view for the current
 	// compaction epoch. Set after a fresh runCompact + computeLiveTrimCut, and
@@ -829,8 +832,11 @@ export class MegaRuntime {
 			recallInjections: 0,
 			cacheHitTokens: 0,
 			lengthStopPending: false,
+			errorRetryCount: 0,
+			errorRetryUntil: 0,
+			consecutiveErrors: 0,
 	};
-		this.trimCache = null; // v0.8.6: never replay a stale trim into a new session
+	this.trimCache = null; // v0.8.6: never replay a stale trim into a new session
 		this.statusKey = undefined;
 		this.activeAgents = 0;
 		this.currentTurn = 0;

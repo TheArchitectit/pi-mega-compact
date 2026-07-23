@@ -200,6 +200,15 @@ building.
 > To validate a real install, bump the version, `npm publish`, then
 > `pi update --extensions` on the device. (`.gitignore` rejects `*.tgz` so one can't
 > be committed by accident.)
+>
+> **Releasing (authoritative pipeline):** every release MUST go through
+> `./scripts/deploy.sh <new-version>`. It enforces a clean tree, the full gate
+> (`build` + `test` + `lint` + `regression_check` + `guardrails-scan`), builds the
+> React dashboard, and — critically — verifies `extensions/dashboard-client/dist/index.html`
+> is present AND listed by `npm pack --dry-run` **before** `npm publish`. This is
+> the gate that was missing when v0.8.5 shipped without the dashboard bundle. The
+> script then bumps the version, commits, publishes via npm only, tags, pushes,
+> and prints device-side verification steps. Never publish by hand.
 
 ### Storage
 

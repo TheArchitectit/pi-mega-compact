@@ -436,6 +436,24 @@
 | Validation | 208 | 200 |
 | Action Items | 224 | 216 |
 
+## docs/specs/s38-error-retry.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Problem | 9 | 0 |
+| Safety | 26 | 17 |
+| Architecture | 37 | 28 |
+| Error Classification | 62 | 53 |
+| Sub-Sprints | 85 | 76 |
+| S38.1 — Config + Runtime State | 87 | 78 |
+| S38.2 — Error Classifier + Turn-End Watcher | 99 | 90 |
+| S38.3 — Tests | 116 | 107 |
+| S38.4 — Integration + Ship | 134 | 125 |
+| S38.5 — Strengthen Race Guard (compaction-noop prevention) | 141 | 132 |
+| Config Reference | 190 | 181 |
+| Acceptance Criteria | 201 | 192 |
+| Rollback | 219 | 210 |
+
 ## docs/specs/sprint-A1-api-contract.md
 
 | Section | Line | Offset |

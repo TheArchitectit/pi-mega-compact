@@ -18,6 +18,7 @@ import { recordScore } from "../../src/store/sqlite.js";
 import { evaluateAndUnlockAchievements } from "../../src/store/sqlite/game-achievements.js";
 import { isMegaCache } from "../../src/game/scoring.js";
 import { resolveRepoRoot } from "../mega-config.js";
+import { classifyError, errorRetryBackoffMs } from "./error-classifier.js";
 
 /** Register agent/turn tracking event handlers. */
 export function registerAgentHandlers(
@@ -172,6 +173,7 @@ export function registerAgentHandlers(
 	pi.on("turn_start", async (event, ctx) => {
 		runtime.currentTurn = event.turnIndex;
 		runtime.rt.lengthStopPending = false; // S28: re-arm defensively each user turn
+		runtime.rt.errorRetryCount = 0; // S38: reset error-retry counter each user turn
 		runtime.dashboard.event("turn_start", { turnIndex: event.turnIndex });
 		runtime.snapshot(ctx);
 	});
@@ -257,6 +259,121 @@ export function registerAgentHandlers(
 		) {
 			runtime.rt.lengthStopPending = true;
 			runtime.dashboard.event("length_stop", { turnIndex: event.turnIndex });
+		}
+
+		// S38: broader error-retry safety net. S28 only catches stopReason==='length';
+		// this catches ALL other error types (provider failure, network timeout, 5xx,
+		// 429, auth, compaction-noop) that surface at turn_end. Non-fatal: wrapped in
+		// try/catch so a classifier/retry failure never breaks the agent loop.
+		// PREVENT-PI-003: retry nudge fires via pi.sendUserMessage (user-role).
+		try {
+			// (1) S28 owns length — skip the classifier entirely for it.
+			const sr = (event.message as { stopReason?: string } | undefined)?.stopReason;
+			if (sr === 'length') {
+				// S28 handles; nothing for S38 to do here.
+			} else {
+				const category = classifyError(event.message);
+				if (category === null) {
+					// (3) success / normal flow / unknown-but-non-retryable — reset.
+					runtime.rt.errorRetryCount = 0;
+					runtime.rt.consecutiveErrors = 0; // S38.6: circuit-breaker reset on success
+				} else if (category === 'compaction-noop') {
+					// (4) pi race / manual compact catch — NOT retryable. The compaction
+					// already succeeded via pi's native path; retrying would race again
+					// (FAIL-2026071701). Log a diagnostic, reset the counter, and surface
+					// the original error WITHOUT firing a retry nudge.
+					runtime.rt.errorRetryCount = 0;
+					runtime.rt.consecutiveErrors = 0; // S38.6: circuit-breaker reset
+					runtime.dashboard.event('compaction_noop_diagnostic', {
+						turnIndex: event.turnIndex,
+						sessionId: runtime.rt.sessionId,
+					});
+					runtime.logger.info('compaction-noop-diagnostic', {
+						sessionId: runtime.rt.sessionId,
+						turnIndex: event.turnIndex,
+					});
+				} else {
+					// (5) transient or permanent — retry with exponential backoff.
+					// S38.7: hard-stop switch — bypass ALL retry logic when set.
+					if (config.errorRetryHardStop) {
+						runtime.rt.errorRetryCount = 0;
+						runtime.dashboard.event('error_retry_disabled', {
+							category,
+							turnIndex: event.turnIndex,
+							reason: 'hard-stop',
+						});
+						return; // early exit — no retry
+					}
+					// S38.6: circuit-breaker — stop retrying after too many consecutive errors.
+					runtime.rt.consecutiveErrors++;
+					if (runtime.rt.consecutiveErrors > config.maxConsecutiveErrors) {
+						runtime.dashboard.event('error_retry_circuit_open', {
+							consecutive: runtime.rt.consecutiveErrors,
+							max: config.maxConsecutiveErrors,
+							turnIndex: event.turnIndex,
+						});
+						runtime.logger.warn('error-retry-circuit-open', {
+							sessionId: runtime.rt.sessionId,
+							consecutive: runtime.rt.consecutiveErrors,
+							max: config.maxConsecutiveErrors,
+						});
+						return; // early exit — circuit breaker tripped
+					}
+					const max =
+						category === 'transient'
+							? config.autoRetryTransientMax
+							: config.autoRetryPermanentMax;
+					// max === 0 disables the category entirely (revert to S28-only).
+					if (max <= 0) {
+						runtime.rt.errorRetryCount = 0;
+					} else {
+						runtime.rt.errorRetryCount++;
+						if (runtime.rt.errorRetryCount > max) {
+							// Exhausted — surface the error, reset for the next burst.
+							runtime.dashboard.event('error_retry_exhausted', {
+								category,
+								count: runtime.rt.errorRetryCount,
+								max,
+								turnIndex: event.turnIndex,
+							});
+							runtime.logger.info('error-retry-exhausted', {
+								sessionId: runtime.rt.sessionId,
+								category,
+								count: runtime.rt.errorRetryCount,
+								max,
+							});
+							runtime.rt.errorRetryCount = 0;
+						} else {
+							const now = Date.now();
+							// Debounce: don't fire if a prior retry nudge is still in its
+							// backoff window (prevents a tight turn_end loop from
+							// busy-looping before the backoff elapses).
+							if (now >= runtime.rt.errorRetryUntil) {
+								runtime.rt.errorRetryUntil =
+									now + errorRetryBackoffMs(runtime.rt.errorRetryCount);
+								runtime.dashboard.event('error_retry', {
+									category,
+									count: runtime.rt.errorRetryCount,
+									max,
+									turnIndex: event.turnIndex,
+								});
+								runtime.logger.info('error-retry', {
+									sessionId: runtime.rt.sessionId,
+									category,
+									count: runtime.rt.errorRetryCount,
+									max,
+								});
+								// PREVENT-PI-003: user-role sendUserMessage only.
+								pi.sendUserMessage(
+									'[mega-compact] the last turn ended with an error; please retry.',
+								);
+							}
+						}
+					}
+				}
+			}
+		} catch {
+			/* non-fatal: a classifier/retry failure never breaks the agent loop */
 		}
 	});
 }

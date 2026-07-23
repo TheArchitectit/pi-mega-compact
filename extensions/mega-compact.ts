@@ -38,6 +38,20 @@ import { registerGameCommands } from "./mega-game-cmds.js";
 
 export default function (pi: ExtensionAPI) {
   const config = loadConfig();
+  // S38.9: preflight env validation — check for obviously invalid values at startup.
+  // Non-fatal: log warnings and fall back to defaults.
+  if (config.autoRetryTransientMax < 0) {
+    console.warn('[mega-compact] MEGACOMPACT_AUTO_RETRY_TRANSIENT_MAX must be >= 0; using default 5');
+    config.autoRetryTransientMax = 5;
+  }
+  if (config.autoRetryPermanentMax < 0) {
+    console.warn('[mega-compact] MEGACOMPACT_AUTO_RETRY_PERMANENT_MAX must be >= 0; using default 1');
+    config.autoRetryPermanentMax = 1;
+  }
+  if (config.maxConsecutiveErrors < 1) {
+    console.warn('[mega-compact] MEGACOMPACT_MAX_CONSECUTIVE_ERRORS must be >= 1; using default 10');
+    config.maxConsecutiveErrors = 10;
+  }
   const runtime = new MegaRuntime(config);
   registerEventHandlers(pi, runtime, config);
   registerCommands(pi, runtime, config);

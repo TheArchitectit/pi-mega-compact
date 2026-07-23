@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.8.15 (unreleased) — S38 Error-Retry Safety Net
+
+- **feat(error-retry): S38 error-retry safety net + circuit breaker.** Broader error-retry layer on top of S28 (`stopReason === 'length'`), catching ALL error types (provider failure, network timeout, 5xx, 429, auth, compaction-noop) with classified retry behavior.
+  - **S38.1 — Config + Runtime State.** `autoRetryTransientMax` (default 5), `autoRetryPermanentMax` (default 1), `errorRetryCount`, `errorRetryUntil` runtime counters.
+  - **S38.2 — Error Classifier.** `classifyError()` helper returns 'transient' | 'permanent' | 'compaction-noop' | null. 'compaction-noop' (Already compacted / Nothing to compact / Auto compaction failed) is NOT retried — diagnostic logged, counter reset, error surfaced. S28 owns 'length' exclusively.
+  - **S38.3 — Tests.** 14 new tests for classifier + retry behavior (transient/permanent/compaction-noop classification, max exhaustion, counter reset on success).
+  - **S38.4 — Integration.** CHANGELOG entry + full gate.
+  - **S38.5 — Strengthen Race Guard.** `lastNativeCompactAt` cooldown raised 10s -> 30s; deferred `ctx.compact()` re-checks `piCompactWouldNoop` + idle + cooldown before calling (closes first-race-in-burst window). `MEGACOMPACT_RACE_GUARD_STRICT=false` reverts to v0.7.4 synchronous 10s guard.
+  - **S38.6 — Circuit Breaker.** `maxConsecutiveErrors` (default 10) stops retrying after too many consecutive errors across turns; reset on successful turn_end.
+  - **S38.7 — Hard-Stop Switch.** `MEGACOMPACT_ERROR_RETRY_HARD_STOP=true` disables ALL error retries (S28-only behavior).
+  - **S38.8 — Retries Dashboard Tile.** `error_retry` / `error_retry_exhausted` / `error_retry_circuit_open` events surfaced via dashboard event stream.
+  - **S38.9 — Preflight Env Validation.** Extension load validates env vars at startup; invalid values log warnings and fall back to defaults (non-fatal).
+
+No migration required — additive; all features behind env flags with safe defaults. Tests: 540+ (S38 tests added).
+
 ## v0.8.0 (unreleased) — Game Mode (S30–S35)
 
 - **feat(game): S30 foundation.** `game_state` table (global on/off + theme + tui_display_mode) + `src/config/themes.ts` (6 themes) + `/mega-compact-settings` command (renamed from `/mega-game`; `/mega-game` kept as a backward-compat alias). `fb4ec17`.

@@ -253,9 +253,38 @@ export function registerContextHandler(
 			// NATIVE compaction just fired (avoids racing pi and surfacing a spurious
 			// "Already compacted" / "Nothing to compact" toast). Uses lastNativeCompactAt
 			// (NOT lastCompactAt, which runCompact also stamps for our own checkpoint).
+			// S38.5: strict race guard widens the cooldown 10s -> 30s (gated by
+			// MEGACOMPACT_RACE_GUARD_STRICT; false reverts to v0.7.4 10s).
+			const cooldownMs = config.raceGuardStrict ? 30_000 : 10_000;
 			const sinceCompact = Date.now() - (runtime.rt.lastNativeCompactAt ?? 0);
-			if (sinceCompact < 10_000 || piCompactWouldNoop(ctx)) return;
-			ctx.compact({ customInstructions: undefined }); // race-guarded by lastNativeCompactAt cooldown (ctx.compact returns void → not catchable; the cooldown prevents the call)
+			if (sinceCompact < cooldownMs || piCompactWouldNoop(ctx)) return;
+			// S38.5: defer ctx.compact() with a re-check so pi's about-to-run native
+			// _checkCompaction can append its `compaction` branch entry first (closes
+			// the first-race-in-burst window). setTimeout(500) — pi's compaction-summary
+			// append is async I/O, so queueMicrotask would re-check before it lands.
+			// Non-strict (v0.7.4) keeps the synchronous call.
+			if (config.raceGuardStrict) {
+				const stamp = runtime.rt.lastNativeCompactAt;
+				const liveSid = runtime.rt.sessionId;
+				setTimeout(() => {
+					try {
+						if (runtime.rt.sessionId !== liveSid) return; // session reset
+						const since2 =
+							Date.now() - (runtime.rt.lastNativeCompactAt ?? 0);
+						if (runtime.rt.lastNativeCompactAt !== stamp && since2 < cooldownMs) return;
+						if (piCompactWouldNoop(ctx)) return;
+						ctx.compact({
+							customInstructions: undefined,
+						}); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; deferred + re-validated.
+					} catch {
+						/* non-fatal */
+					}
+				}, 500);
+			} else {
+				ctx.compact({
+					customInstructions: undefined,
+				}); // race-guarded by lastNativeCompactAt cooldown (ctx.compact returns void → not catchable; the cooldown prevents the call)
+			}
 			return;
 		}
 

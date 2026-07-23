@@ -40,7 +40,7 @@ function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
 	if (!opts.keepTier) delete process.env.MEGACOMPACT_TIER;
 	process.env.MEGACOMPACT_FAST_GATE_PCT = "1";
 
-	const handlers: Record<string, Function> = {};
+	const handlers: Record<string, Function[]> = {};
 	const commands: Record<
 		string,
 		{ handler: (a: string, c: any) => Promise<void> }
@@ -154,8 +154,8 @@ function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
 			// session_before_compact handler (where WE supply the durable trim).
 			compact: (opts?: any) => {
 				compactCalls.push(opts);
-				if (handlers["session_before_compact"]) {
-					return handlers["session_before_compact"](
+				const _sbc = handlers["session_before_compact"]; if (_sbc && _sbc.length) {
+					return _sbc[0](
 						{
 							type: "session_before_compact",
 							reason: "threshold",
@@ -181,7 +181,8 @@ function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
 
 	const pi = {
 		on: (ev: string, h: Function) => {
-			handlers[ev] = h;
+			if (!handlers[ev]) handlers[ev] = [];
+			handlers[ev].push(h);
 		},
 		registerCommand: (name: string, opts: any) => {
 			commands[name] = opts;
@@ -225,7 +226,7 @@ function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
 		notifies,
 		compactCalls,
 		sendUserMessages,
-		fire: (ev: string, event: any, ctx: any) => handlers[ev](event, ctx),
+		fire: async (ev: string, event: any, ctx: any) => { let r: any; for (const h of handlers[ev] || []) r = await h(event, ctx); return r; },
 		ctx: makeCtx,
 		session,
 	};
@@ -1470,6 +1471,184 @@ test("S29: tiered config with pct==null falls back to the token gate (not skippe
 		delete process.env.MEGACOMPACT_TIER;
 		delete process.env.MEGACOMPACT_ANCHOR_USER_MESSAGES;
 	}
+});
+
+// ---- S38: output-error auto-retry + compaction-noop + race-guard tests -------
+// Spec: docs/specs/s38-error-retry.md. classifyError is exported from the
+// mega-events barrel (extensions/mega-events.ts -> agent-handlers.ts).
+const { classifyError: classifyErrorFn } =
+	require("./mega-events.js") as { classifyError: typeof import("./mega-events.js").classifyError };
+
+/** S38 helper: fire a turn_end with a given stopReason + optional text, using a
+ *  low-pressure ctx so the durable-trim branch (ctx.compact) does NOT fire --
+ *  isolates the error-retry path from the S16 mid-run path. */
+async function s38TurnEnd(
+	h: ReturnType<typeof harness>,
+	stopReason: string | undefined,
+	text?: string,
+) {
+	const lowCtx = h.ctx({
+		isIdle: () => true,
+		hasPendingMessages: () => false,
+		getContextUsage: () => ({ tokens: 100, contextWindow: 200000, percent: 0 }),
+	});
+	const message: any = { role: "assistant" };
+	if (stopReason !== undefined) message.stopReason = stopReason;
+	if (text) message.content = text;
+	await h.fire("turn_end", { type: "turn_end", turnIndex: 1, message }, lowCtx);
+}
+
+test("S38: classifyError returns 'transient' for error/aborted stopReasons", () => {
+	assert.equal(classifyErrorFn({ stopReason: "error" }), "transient");
+	assert.equal(classifyErrorFn({ stopReason: "aborted" }), "transient");
+});
+
+test("S38: classifyError returns 'transient' for max-output-token text", () => {
+	assert.equal(
+		classifyErrorFn({ stopReason: "error", content: "reached the maximum output token limit" }),
+		"transient",
+	);
+	assert.equal(classifyErrorFn("max output token exceeded"), "transient");
+});
+
+test("S38: classifyError returns 'permanent' for auth/unauthorized text", () => {
+	assert.equal(classifyErrorFn("unauthorized: invalid api key"), "permanent");
+	assert.equal(classifyErrorFn("permission denied"), "permanent");
+});
+
+test("S38: classifyError returns null for stop/toolUse stopReasons (success)", () => {
+	assert.equal(classifyErrorFn({ stopReason: "stop" }), null);
+	assert.equal(classifyErrorFn({ stopReason: "toolUse" }), null);
+	assert.equal(classifyErrorFn({ stopReason: "tool_use" }), null);
+});
+
+test("S38: classifyError returns null for 'length' stopReason (S28 guard)", () => {
+	assert.equal(classifyErrorFn({ stopReason: "length" }), null);
+});
+
+test("S38: classifyError returns 'compaction-noop' for 'Already compacted' text", () => {
+	assert.equal(classifyErrorFn("Error: Already compacted"), "compaction-noop");
+});
+
+test("S38: classifyError returns 'compaction-noop' for 'Nothing to compact' text", () => {
+	assert.equal(classifyErrorFn("Nothing to compact (session too small)"), "compaction-noop");
+});
+
+test("S38: classifyError returns 'compaction-noop' for 'Auto compaction failed' text", () => {
+	assert.equal(classifyErrorFn("Auto compaction failed"), "compaction-noop");
+	assert.equal(classifyErrorFn("Auto-compaction failed"), "compaction-noop");
+});
+
+test("S38: compaction-noop logs 'compaction_noop_diagnostic' + resets counter + no retry fired", async () => {
+	const h = harness();
+	await s38TurnEnd(h, "error", "Already compacted");
+	const ev = eventTypes(h.stateDir);
+	assert.ok(ev.includes("compaction_noop_diagnostic"), "compaction-noop: diagnostic event logged");
+	assert.equal(h.sendUserMessages.length, 0, "compaction-noop: NO retry nudge fired");
+});
+
+test("S38: compaction-noop does NOT fire pi.sendUserMessage (NOT retryable)", async () => {
+	const h = harness();
+	await s38TurnEnd(h, "error", "Nothing to compact");
+	assert.equal(h.sendUserMessages.length, 0, "compaction-noop: no sendUserMessage");
+	assert.ok(eventTypes(h.stateDir).includes("compaction_noop_diagnostic"));
+});
+
+test("S38: retry fires up to max (5) for transient errors, then stops", async () => {
+	const h = harness();
+	for (let i = 0; i < 5; i++) {
+		await s38TurnEnd(h, "error", "internal server error");
+	}
+	assert.equal(h.sendUserMessages.length, 5, "transient: 5 retry nudges (<= max 5)");
+	// 6th transient turn -> exhausted, no further nudge.
+	await s38TurnEnd(h, "error", "internal server error");
+	assert.equal(h.sendUserMessages.length, 5, "transient: exhausted -> no 6th nudge");
+	assert.ok(eventTypes(h.stateDir).includes("error_retry_exhausted"), "exhausted event logged");
+});
+
+test("S38: retry fires 1x for permanent errors then stops", async () => {
+	const h = harness();
+	await s38TurnEnd(h, "error", "invalid api key");
+	assert.equal(h.sendUserMessages.length, 1, "permanent: 1 retry nudge (<= max 1)");
+	// 2nd permanent turn -> exhausted, no further nudge.
+	await s38TurnEnd(h, "error", "invalid api key");
+	assert.equal(h.sendUserMessages.length, 1, "permanent: exhausted -> no 2nd nudge");
+	assert.ok(eventTypes(h.stateDir).includes("error_retry_exhausted"), "permanent exhausted logged");
+});
+
+test("S38: successful turn (stop/toolUse) resets the retry counter", async () => {
+	const h = harness();
+	// 1 transient retry fires.
+	await s38TurnEnd(h, "error", "5xx server error");
+	assert.equal(h.sendUserMessages.length, 1, "first transient: 1 nudge");
+	// A successful stop resets the counter.
+	await s38TurnEnd(h, "stop");
+	// Now another transient should fire the 1st (back to count=1) nudge again.
+	await s38TurnEnd(h, "error", "5xx server error");
+	assert.equal(h.sendUserMessages.length, 2, "success reset counter -> transient fires again from count=1");
+});
+
+test("S38: error_retry_exhausted event logged when max exceeded", async () => {
+	const h = harness();
+	// max permanent = 1: 1st fires, 2nd exhausted.
+	await s38TurnEnd(h, "error", "malformed bad request");
+	await s38TurnEnd(h, "error", "malformed bad request");
+	assert.ok(eventTypes(h.stateDir).includes("error_retry_exhausted"), "error_retry_exhausted logged");
+});
+
+test("S38: MEGACOMPACT_AUTO_RETRY_TRANSIENT_MAX=0 disables transient retries cleanly", async () => {
+	const prev = process.env.MEGACOMPACT_AUTO_RETRY_TRANSIENT_MAX;
+	process.env.MEGACOMPACT_AUTO_RETRY_TRANSIENT_MAX = "0";
+	try {
+		const h = harness();
+		await s38TurnEnd(h, "error", "network timeout");
+		assert.equal(h.sendUserMessages.length, 0, "max=0: no transient retry nudge");
+		assert.ok(!eventTypes(h.stateDir).includes("error_retry"), "max=0: no error_retry event");
+	} finally {
+		if (prev === undefined) delete process.env.MEGACOMPACT_AUTO_RETRY_TRANSIENT_MAX;
+		else process.env.MEGACOMPACT_AUTO_RETRY_TRANSIENT_MAX = prev;
+	}
+});
+
+// ---- S38.5: race-guard strengthening (cooldown 10s->30s + deferred re-check) ---
+
+test("S38.5: MEGACOMPACT_RACE_GUARD_STRICT=false reverts to synchronous 10s guard", async () => {
+	const prev = process.env.MEGACOMPACT_RACE_GUARD_STRICT;
+	process.env.MEGACOMPACT_RACE_GUARD_STRICT = "false";
+	try {
+		const h = harness();
+		// High pressure + idle + over threshold -> durable-trim branch entered.
+		// Non-strict -> synchronous ctx.compact() (no setTimeout defer).
+		const hiCtx = h.ctx({
+			isIdle: () => true,
+			hasPendingMessages: () => false,
+			getContextUsage: () => ({ tokens: 200000, contextWindow: 200000, percent: 100 }),
+		});
+		await h.fire("agent_end", { type: "agent_end", messages: [] }, hiCtx);
+		// Non-strict path calls ctx.compact() synchronously (when not cooldown-skipped).
+		// Fresh session lastNativeCompactAt is null -> sinceCompact huge -> not skipped.
+		assert.ok(h.compactCalls.length >= 1, "non-strict: synchronous ctx.compact() fired");
+	} finally {
+		if (prev === undefined) delete process.env.MEGACOMPACT_RACE_GUARD_STRICT;
+		else process.env.MEGACOMPACT_RACE_GUARD_STRICT = prev;
+	}
+});
+
+test("S38.5: strict (default) defers ctx.compact() via setTimeout re-check", async () => {
+	const h = harness();
+	const hiCtx = h.ctx({
+		isIdle: () => true,
+		hasPendingMessages: () => false,
+		getContextUsage: () => ({ tokens: 200000, contextWindow: 200000, percent: 100 }),
+	});
+	await h.fire("agent_end", { type: "agent_end", messages: [] }, hiCtx);
+	// Strict path defers ctx.compact() 500ms; synchronously no compact call yet.
+	assert.equal(h.compactCalls.length, 0, "strict: ctx.compact() NOT called synchronously (deferred)");
+	// Wait for the deferred callback (500ms + margin) to land.
+	await new Promise((r) => setTimeout(r, 700));
+	// piCompactWouldNoop on the mock branch (last entry is NOT a compaction) -> false,
+	// idle true, sinceCompact huge -> deferred ctx.compact() should fire.
+	assert.ok(h.compactCalls.length >= 1, "strict: deferred ctx.compact() fired after re-check");
 });
 
 test("cleanup", async () => {
