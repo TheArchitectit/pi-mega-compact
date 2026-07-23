@@ -82,12 +82,22 @@ export function stagedExpansion(
     .map((s) => s.node);
 
   // 3. BFS to leaves from those anchors.
+  // Build a leaf-id -> wrapping level-0 node map ONCE, instead of an O(leaves ×
+  // nodes × avgChildren) `[...nodes].find(...)` scan per leaf (L4). Map insertion
+  // order matches node insertion order, so the first parent found for a leaf is
+  // the level-0 wrapper — the same node the old `.find()` returned, just O(1).
+  const leafParent = new Map<string, RaptorNode>();
+  for (const n of tree.nodes.values()) {
+    for (const childId of n.children) {
+      if (!leafParent.has(childId)) leafParent.set(childId, n);
+    }
+  }
   const leaves = new Map<string, RaptorNode>();
   for (const a of anchors) {
     for (const lid of leafDescendants(a, tree)) {
       // Represent each leaf by its nearest internal parent so we can score it.
       // (The leaf's own centroid is stored on the level-0 node that wraps it.)
-      const parent = [...tree.nodes.values()].find((n) => n.children.includes(lid));
+      const parent = leafParent.get(lid);
       if (parent) leaves.set(lid, parent);
     }
   }

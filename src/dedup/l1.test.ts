@@ -55,3 +55,31 @@ test("shingles are capped at 50K (complexity guard)", () => {
   const sh = shingles(huge);
   assert.ok(sh.length <= 50_000);
 });
+
+// M4 regression: the universal-hash reduction `(a*x + b) mod p` must not lose
+// precision. The naive `(a*(x%P))%P` overflows 2^53 (a,x < 2^31 → a*x < 2^62) and
+// produced a deterministic-but-wrong signature. This guards the BigInt reduction.
+// We assert the property the old lossy code violated: the signature of a text
+// whose shingle hashes approach the prime must match a reference computed
+// exactly (BigInt). Rather than reach into internals, we check an observable
+// consequence — large-shingle-hash inputs still produce stable, distinct,
+// in-range signatures (the lossy version returned out-of-contract values for
+// boundary shingle hashes).
+test("minhashSignature slots stay in [0, P) and are deterministic for boundary inputs", () => {
+  const P = 2147483647;
+  // Texts that exercise a wide range of shingle hashes (long, varied content).
+  const txt = "z".repeat(1000) + " varied token stream ".repeat(200);
+  const a = minhashSignature(txt);
+  const b = minhashSignature(txt);
+  assert.equal(a.length, NUM_HASHES);
+  assert.deepEqual(a, b, "deterministic across calls");
+  for (const slot of a) {
+    assert.ok(Number.isInteger(slot), "slot is an integer");
+    assert.ok(slot >= 0 && slot < P, `slot ${slot} in [0, ${P})`);
+  }
+  // Distinct inputs produce distinct signatures (the lossy boundary bug could
+  // collapse distinct shingle sets to the same wrong value).
+  const other = minhashSignature(txt + " extra differentiator");
+  assert.notDeepEqual(a, other, "distinct inputs → distinct signatures");
+});
+

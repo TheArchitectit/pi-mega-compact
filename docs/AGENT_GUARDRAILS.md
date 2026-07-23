@@ -261,9 +261,9 @@ Each Phases 2–7 sprint (S8–S15) exits only when:
 #### Project Planning
 
 - [PLAN.md](../../PLAN.md) - Architecture + phase status
-- [SPRINT_PLAN.md](../../SPRINT_PLAN.md) - Sprint 0–15 (0–7 shipped v0.1.0; 8–15 → v0.2.0)
+- [SPRINT_PLAN.md](../../SPRINT_PLAN.md) - Sprint 0–15 (foundation phases; project has since progressed through S38 / v0.8.15)
 - [docs/dedup-implementation-plan.md](dedup-implementation-plan.md) - Dedup upgrade spec (QA-reviewed)
-- [docs/specs/](specs/) - Per-sprint full specs (S8–S15)
+- [docs/specs/](specs/) - Per-sprint full specs (S8–S15 and S24–S38; the authoritative feature-status record)
 
 #### Architecture
 

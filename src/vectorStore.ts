@@ -39,6 +39,8 @@ import {
   repoStats as repoStatsFromStore,
   dataInvariantStats,
   maxCheckpointTimestamp,
+  withTx,
+  openStore,
 } from "./store/sqlite.js";
 import {
   initVectorIndex,
@@ -361,35 +363,43 @@ export class VectorStore {
     };
     // Persistence is SQLite (store/sqlite.ts). upsertCheckpoint keeps the
     // idempotent-by-id semantics the old JSON append implied.
-    upsertCheckpoint(checkpoint, this.stateDir);
-    // Cumulative "tokens saved" counter (per-repo SQLite meta). For a NEW
-    // checkpoint the saved amount is (original − stored); for a deduped add the
-    // whole original region is discarded (handled in the deduped return paths
-    // below). Survives sessions and travels with the repo.
-    const stored = input.tokenEstimate ?? 0;
-    addTokensSaved(Math.max(0, origTokens - stored), this.stateDir);
-    // L1: persist this checkpoint's MinHash signature + LSH buckets so future
-    // near-duplicate inserts can find it. Deterministic given the seed.
-    const sig = minhashSignature(input.regionText);
-    upsertMinhashSignature(checkpointId, sessionId, SIGNATURE_VERSION, sig, this.stateDir);
-    insertLshBuckets(
-      checkpointId,
-      sessionId,
-      SIGNATURE_VERSION,
-      lshBands(sig, sessionId, SIGNATURE_VERSION),
-      this.stateDir,
-    );
+    //
+    // M3: wrap the multi-step new-checkpoint write in a single SAVEPOINT so a
+    // crash mid-sequence can't leave a checkpoint with no LSH buckets (invisible
+    // to L1 near-dup) or no session-state sentinel (dedupe under-reports). The
+    // accelerators self-heal on backfill, but a partial write shouldn't be
+    // possible. saveBloom writes a FILE (not SQLite) so it stays outside the txn.
+    withTx(openStore(this.stateDir), () => {
+      upsertCheckpoint(checkpoint, this.stateDir);
+      // Cumulative "tokens saved" counter (per-repo SQLite meta). For a NEW
+      // checkpoint the saved amount is (original − stored); for a deduped add the
+      // whole original region is discarded (handled in the deduped return paths
+      // below). Survives sessions and travels with the repo.
+      const stored = input.tokenEstimate ?? 0;
+      addTokensSaved(Math.max(0, origTokens - stored), this.stateDir);
+      // L1: persist this checkpoint's MinHash signature + LSH buckets so future
+      // near-duplicate inserts can find it. Deterministic given the seed.
+      const sig = minhashSignature(input.regionText);
+      upsertMinhashSignature(checkpointId, sessionId, SIGNATURE_VERSION, sig, this.stateDir);
+      insertLshBuckets(
+        checkpointId,
+        sessionId,
+        SIGNATURE_VERSION,
+        lshBands(sig, sessionId, SIGNATURE_VERSION),
+        this.stateDir,
+      );
+      // Track the region hash in session state for fast sentinel checks.
+      const state = loadSessionState(sessionId, this.stateDir);
+      if (!state.storedRegionHashes.includes(regionHash)) {
+        state.storedRegionHashes.push(regionHash);
+        saveSessionState(sessionId, state, this.stateDir);
+      }
+    });
     // Bloom accelerator: record the new content_hash so a future add() can short-
     // circuit the scan on a hit (still confirmed by the SELECT-based `all` above).
+    // Outside withTx — bloom persists to a file, not SQLite, so it can't roll back.
     bloom.add(digest.contentHash);
     saveBloom(this.stateDir);
-
-    // Track the region hash in session state for fast sentinel checks.
-    const state = loadSessionState(sessionId, this.stateDir);
-    if (!state.storedRegionHashes.includes(regionHash)) {
-      state.storedRegionHashes.push(regionHash);
-      saveSessionState(sessionId, state, this.stateDir);
-    }
     // A new checkpoint. If a tier matched while MARK_ONLY, record that (the
     // decision fired but we intentionally did not collapse).
     if (markOnly) {

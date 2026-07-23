@@ -64,7 +64,7 @@ Additional guardrails (from template): PREVENT-001 (JSON.parse without null chec
 * **Dedup tiers**: L0 exact-hash (`src/dedup/digest.ts`, `src/store/bloom.ts`), L1 MinHash/LSH (`src/dedup/l1-minhash.ts`, `src/dedup/l1-lsh.ts`, `src/dedup/l1-verify.ts`), L2 semantic cosine + MMR (`src/dedup/mmr.ts`), RAPTOR tree (`src/dedup/raptor/`). Config: `src/config/dedup.ts` (single source of truth for all tier flags).
 * **Monitoring**: `src/monitoring.ts` (events.log + dashboard.json + FP alerts), `src/canary.ts` (sequential tier rollout + auto-disable on p95 breach).
 * **Scripts**: `scripts/dedup-benchmark.mjs` (benchmark), `scripts/dedup-restore-drill.sh` (DR drill), `scripts/guardrails-scan.mjs` (guardrails), `scripts/regression_check.py` (regression).
-* **Test count**: 372 tests (unit + integration + handler-level), all passing as of v0.7.3.
+* **Test count**: ~590 tests (unit + integration + handler-level) across ~58 files; all passing as of v0.8.15. (Run `npm test`; `node --test <file>` per-file is the reliable per-suite signal — the parallel runner can mask failures via exit-hung states.)
 
 ---
 

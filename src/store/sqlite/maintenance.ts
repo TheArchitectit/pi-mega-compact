@@ -133,19 +133,26 @@ export function pruneOldRows(stateDir: string = getStateDir(), daysOld = 30): Ma
     changes?: number;
   } | undefined;
   const epDeleted = delEp?.changes ?? 0;
-  // dedup_mirror: cascade-delete orphan rows whose ref_count has dropped to 0
-  // after the raw_transcript deletes. Safe even if FK is off (raw_transcript has
-  // no FK to dedup_mirror; ref_count is maintained by the dedup pipeline).
+  // dedup_mirror: the raw_transcript deletes above drop references, but
+  // dedup_mirror.ref_count is only ever incremented by the dedup pipeline or
+  // fully recomputed by reconcileDedupMirror — the old `WHERE ref_count <= 0`
+  // delete only caught rows ALREADY at zero, never decrementing the rows whose
+  // referencing transcripts were just deleted. So orphans with inflated
+  // ref_count accumulated until a separate reconcile ran (L1). Recompute
+  // ref_counts from the now-trimmed raw_transcript and purge true orphans here.
   const delDedup = db.prepare(`DELETE FROM dedup_mirror WHERE ref_count <= 0`).run() as {
     changes?: number;
   } | undefined;
   const dedupDeleted = delDedup?.changes ?? 0;
+  // Recompute ref_count for surviving rows + delete newly-orphaned ones. Cheap
+  // (two indexed UPDATE/DELETE) and closes the space leak that prune otherwise left.
+  const reconciled = reconcileDedupMirror(stateDir);
   const afterBytes = fileSizeIfExists(join(stateDir, "sqlite.db"));
-  const total = rtDeleted + epDeleted + dedupDeleted;
+  const total = rtDeleted + epDeleted + dedupDeleted + reconciled.orphansDeleted;
   return {
     affected: total,
     reclaimedBytes: Math.max(0, beforeBytes - afterBytes),
-    summary: `pruned ${rtDeleted} raw_transcript + ${epDeleted} epochs + ${dedupDeleted} dedup_mirror rows older than ${daysOld}d`,
+    summary: `pruned ${rtDeleted} raw_transcript + ${epDeleted} epochs + ${dedupDeleted} dedup_mirror rows older than ${daysOld}d (reconciled ${reconciled.fixedRefCount} ref_counts, ${reconciled.orphansDeleted} orphans)`,
   };
 }
 

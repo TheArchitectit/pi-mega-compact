@@ -1,5 +1,12 @@
 # Work Status — pi-mega-compact (as of v0.7.3)
 
+> ⚠️ **STALE (snapshot frozen at v0.7.3).** The project is now at **v0.8.15**
+> (S38 error-retry, React dashboard, Game Mode, RAPTOR serving retrieval by
+> default, PGlite+pgvector cross-repo recall hardened). The "IN-PROGRESS: None"
+> and "RAPTOR unhardened" framings below are outdated. This file is retained as a
+> historical snapshot; for current status see `CHANGELOG.md` and `README.md`.
+> The per-sprint specs in `docs/specs/` are the authoritative feature-status record.
+
 > Living snapshot of what is SHIPPED vs IN-PROGRESS vs PLANNED across the
 > PGlite/pgvector, RAPTOR, cross-repo, and memory-RAG work streams.
 

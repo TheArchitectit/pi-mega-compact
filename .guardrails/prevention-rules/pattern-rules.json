@@ -462,7 +462,7 @@
       "rule_id": "PREVENT-PI-004",
       "name": "Network calls in extension (must stay local)",
       "enabled": true,
-      "pattern": "(fetch\\(|https?://|new (WebSocket|net\\.)|XMLHttpRequest|child_process)",
+      "pattern": "(fetch\\(|https?://|new (WebSocket|net\\.)|XMLHttpRequest|child_process|https?\\.request|http\\.get|net\\.connect|undici|new\\s+Agent\\(|from\\s+[\"']node:https?[\"']|from\\s+[\"']https?[\"'])",
       "forbidden_context": null,
       "message": "pi-mega-compact must run fully local — no remote MCP server or network calls at runtime.",
       "severity": "critical",

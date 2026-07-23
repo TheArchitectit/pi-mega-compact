@@ -17,11 +17,17 @@ export function storeStats(sessionId: string, stateDir: string = getStateDir()):
   const sid = normalizeSessionId(sessionId);
   const row = db
     .prepare(
+      // lastId = the newest checkpoint by NUMERIC suffix, not lexicographic. The
+      // id format is `chkpt_NNN` (zero-padded to 3 by nextCheckpointId); MAX(id)
+      // would misorder at 1000+ (`chkpt_1000` sorts before `chkpt_999`), reporting
+      // a stale lastCheckpointId/lastSummary. Parse the integer suffix like
+      // nextCheckpointId does.
       `SELECT COUNT(*) AS c, COALESCE(SUM(token_estimate),0) AS tok,
-              MAX(id) AS lastId
+              (SELECT id FROM context_chunks WHERE session_id = ?
+               ORDER BY CAST(SUBSTR(id, 7) AS INTEGER) DESC LIMIT 1) AS lastId
        FROM context_chunks WHERE session_id = ?`,
     )
-    .get(sid) as { c: number; tok: number; lastId: string | null };
+    .get(sid, sid) as { c: number; tok: number; lastId: string | null };
   let lastSummary: string | undefined;
   if (row.lastId) {
     const s = db.prepare("SELECT summary FROM context_chunks WHERE id = ?").get(row.lastId) as

@@ -11,12 +11,12 @@
  * the integration test to call explicitly.
  */
 
-import { createHash } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { getStateDir, readGzJson, normalizeSessionId } from "../store.js";
 import type { StoredCheckpoint } from "../store.js";
 import { openStore, upsertCheckpoint, listCheckpoints } from "./sqlite.js";
+import { computeContentDigest } from "../dedup/digest.js";
 
 /** Scan a state dir for v0.1.0 checkpoint JSON files. */
 function legacyCheckpointFiles(stateDir: string): string[] {
@@ -30,13 +30,20 @@ export function deriveContentHashes(cp: StoredCheckpoint): {
   contentHash: string;
   contentHash2: string;
 } {
-  // L0/L1 basis: the human summary (whitespace-normalized).
-  const normalized = (cp.summary ?? "").replace(/\s+/g, " ").trim();
-  const contentHash = createHash("sha256").update(normalized).digest("hex");
-  // L2 basis: summary + extractive topic summary (catches paraphrased topics).
-  const basis2 = `${normalized}\n${cp.topicSummary ?? ""}`.trim();
-  const contentHash2 = createHash("sha256").update(basis2).digest("hex");
-  return { normalizedText: normalized, contentHash, contentHash2 };
+  // M1: use the SAME digest the live L0 path uses (computeContentDigest), so a
+  // migrated checkpoint and a freshly-added one with identical summary content
+  // produce identical (content_hash, content_hash2) and dedup against each other.
+  // The old scheme used whitespace-only normalization (no NFC/lowercase/ANSI
+  // strip) and a different hash2 basis (summary+topicSummary vs reversed text),
+  // so migrated rows never matched live rows — excluding migrated data from
+  // exact dedup. Migrated checkpoints have no stored regionText, so the summary
+  // is the canonical basis (mirrors how the live path digests a summary region).
+  const digest = computeContentDigest(cp.summary ?? "");
+  return {
+    normalizedText: digest.normalizedText,
+    contentHash: digest.contentHash,
+    contentHash2: digest.contentHash2,
+  };
 }
 
 /** Read a single legacy checkpoint file (lossless: returns every stored field). */

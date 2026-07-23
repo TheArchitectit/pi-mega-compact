@@ -21,6 +21,7 @@ export const SHINGLE_SIZE = 5; // char 5-grams
 const MAX_SHINGLES = 50_000; // QA #7/#15 complexity cap
 const SEED = 0xdeadbeef;
 const P = 2147483647; // 2^31 - 1, Mersenne prime
+const PBigInt = 2147483647n; // BigInt twin of P for overflow-safe modular reduction
 
 /** Per-index universal-hashing coefficients, derived deterministically from SEED. */
 function coeffA(i: number): number {
@@ -69,10 +70,14 @@ export function minhashSignature(text: string): number[] {
     const b = coeffB(i);
     let min = P;
     for (const x of grams) {
-      // (a*x + b) mod p — use Number math; a,x < 2^31 so a*x < 2^62, within
-      // double-precision integer range (2^53) only if reduced; reduce a*x first.
-      const ax = (a * (x % P)) % P;
-      const h = (ax + b) % P;
+      // (a*x + b) mod p. a, x < 2^31 (p = 2^31-1), so a*x < 2^62 — EXCEEDS the
+      // double-precision safe-integer range (2^53). A naive `(a * (x % P)) % P`
+      // loses precision and yields a deterministic-but-mathematically-wrong
+      // signature (verified: a=x=p-1 → lossy 2147483644 vs exact 1), which
+      // degrades LSH bucketing away from the theoretical Jaccard curve. Compute
+      // in BigInt then coerce back — correct by construction, and cheap (~5ms for
+      // a full 256-hash × 500-shingle signature; minhash runs only on compaction).
+      const h = Number((BigInt(a) * BigInt(x % P) + BigInt(b)) % PBigInt);
       if (h < min) min = h;
     }
     sig[i] = min;

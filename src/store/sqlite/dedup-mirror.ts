@@ -52,6 +52,13 @@ export function upsertDedupMirror(
 
 /**
  * Get dedup ratio for a session: total bytes vs unique bytes.
+ *
+ * L2: both halves are now SESSION-scoped so the ratio is meaningful. Previously
+ * `totalBytes` was session-scoped but `uniqueBytes` summed the GLOBAL dedup_mirror
+ * (which is content-hash keyed, cross-session) — mixing scopes made the per-session
+ * ratio meaningless when multiple sessions shared the mirror. We now count unique
+ * bytes as the dedup_mirror payloads actually referenced by THIS session's
+ * raw_transcript rows, matching the total's scope.
  */
 export function getDedupRatio(
   db: DatabaseSync,
@@ -66,10 +73,14 @@ export function getDedupRatio(
     .get({ "@session_id": sessionId }) as { total: number };
   const uniqueRow = db
     .prepare(
-      `SELECT COALESCE(SUM(LENGTH(content_bytes)), 0) AS unique_bytes
-       FROM dedup_mirror`,
+      `SELECT COALESCE(SUM(LENGTH(dm.content_bytes)), 0) AS unique_bytes
+       FROM dedup_mirror dm
+       WHERE dm.content_hash IN (
+         SELECT DISTINCT content_ref FROM raw_transcript
+         WHERE session_id = @session_id AND content_ref IS NOT NULL
+       )`,
     )
-    .get() as { unique_bytes: number };
+    .get({ "@session_id": sessionId }) as { unique_bytes: number };
   const totalBytes = totalRow.total;
   const uniqueBytes = uniqueRow.unique_bytes;
   const ratio = uniqueBytes > 0 ? totalBytes / uniqueBytes : 1;
