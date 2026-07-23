@@ -551,6 +551,16 @@ export class MegaRuntime {
 				cacheHit: { sessionSec: sec(this.rt.cacheHitTokens), totalSec: sec(cacheHitsTotalTokens) },
 			},
 			model,
+			// S38.8: error-retry state for the dashboard "retries" tile. The field is
+			// declared on DashboardSnapshot (mega-dashboard.ts) and surfaced here so the
+			// dashboard can render live retry/circuit-breaker status alongside the event
+			// stream (which already carries per-retry events).
+			retries: {
+				errorRetryCount: this.rt.errorRetryCount,
+				consecutiveErrors: this.rt.consecutiveErrors,
+				maxConsecutiveErrors: this.config.maxConsecutiveErrors,
+				errorRetryHardStop: this.config.errorRetryHardStop,
+			},
 			diag: {
 				ctxFastGate: this.diagCtxFastGate,
 				liveTrimFires: this.diagLiveTrimFires,

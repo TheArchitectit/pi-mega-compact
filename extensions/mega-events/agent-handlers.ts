@@ -18,7 +18,7 @@ import { recordScore } from "../../src/store/sqlite.js";
 import { evaluateAndUnlockAchievements } from "../../src/store/sqlite/game-achievements.js";
 import { isMegaCache } from "../../src/game/scoring.js";
 import { resolveRepoRoot } from "../mega-config.js";
-import { classifyError, errorRetryBackoffMs } from "./error-classifier.js";
+import { classifyError } from "./error-classifier.js";
 
 /** Register agent/turn tracking event handlers. */
 export function registerAgentHandlers(
@@ -66,11 +66,32 @@ export function registerAgentHandlers(
 				const idle = ctx.isIdle?.() ?? true;
 				const queued = ctx.hasPendingMessages?.() ?? false;
 				const now = Date.now();
+				// S38.5: read LIVE pressure from ctx.getContextUsage() instead of the
+				// stale runtime.lastCtxTokens (only updated by the `context` event).
+				// agent_end may fire without a preceding context event this turn (e.g.
+				// a sub-agent settling), so the cached value can be null/stale and the
+				// durable-trim branch would be unreachable. ctx.getContextUsage() is the
+				// authoritative live reading (mirrors context-handler.ts:86). Fall back
+				// to the cached value only if the ctx omits it.
+				const liveUsage = ctx.getContextUsage?.();
+				const liveTokens =
+					typeof liveUsage?.tokens === "number"
+						? liveUsage.tokens
+						: runtime.lastCtxTokens ?? 0;
+				// Keep the cache fresh for snapshot()/diag regardless of which source we use.
+				if (typeof liveUsage?.tokens === "number") {
+					runtime.lastCtxTokens = liveUsage.tokens;
+				}
+				if (typeof liveUsage?.percent === "number") {
+					runtime.lastCtxPercent = liveUsage.percent;
+				}
+				if (typeof liveUsage?.contextWindow === "number") {
+					runtime.lastCtxWindow = liveUsage.contextWindow;
+				}
 				// DIAG (team-run relief): surface whether the agent is idle + over
 				// threshold at agent_end so we can see if a mid-run durable-trim trigger
 				// *should* have fired but didn't.
-				const overThreshold =
-					(runtime.lastCtxTokens ?? 0) >= runtime.effectiveThreshold;
+				const overThreshold = liveTokens >= runtime.effectiveThreshold;
 				runtime.diagAgentEndIdle++;
 				runtime.logger.info("agent-end-idle", {
 					sessionId: runtime.rt.sessionId,
@@ -118,11 +139,20 @@ export function registerAgentHandlers(
 					// synchronous `piCompactWouldNoop` branch check misses a native
 					// compaction that hasn't appended its entry yet — calling
 					// ctx.compact() then races with pi and throws "Already compacted"
-					// to the user. The `lastCompactAt` cooldown (updated by the
+					// to the user. The `lastNativeCompactAt` cooldown (updated by the
 					// session_compact listener for EVERY compaction, native or
 					// extension-supplied) closes that race window.
+					//
+					// S38.5: strict race guard widens the cooldown 10s -> 30s AND defers
+					// ctx.compact() via setTimeout(500) with a re-check, so pi's
+					// about-to-run native _checkCompaction can append its `compaction`
+					// branch entry first (closes the first-race-in-burst window). Gated
+					// by MEGACOMPACT_RACE_GUARD_STRICT (default true); false reverts to
+					// the v0.7.4 synchronous 10s guard. Mirrors the legacy path in
+					// context-handler.ts:258-287 so both call sites stay in sync.
+					const cooldownMs = config.raceGuardStrict ? 30_000 : 10_000;
 					const sinceCompact = now - (runtime.rt.lastNativeCompactAt ?? 0);
-					if (sinceCompact < 10_000) {
+					if (sinceCompact < cooldownMs) {
 						runtime.diagAgentEndDurableSkipRecent++;
 					} else if (!piCompactWouldNoop(ctx)) {
 						runtime.debounceUntil = now + 2000;
@@ -133,7 +163,31 @@ export function registerAgentHandlers(
 							thresholdTokens: config.thresholdTokens,
 							queued,
 						});
-						ctx.compact({ customInstructions: undefined }); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; agent settled so no in-flight abort. Race-guarded by lastCompactAt cooldown above (ctx.compact returns void → throw is surfaced by pi as compaction_end; the cooldown prevents the call entirely).
+						if (config.raceGuardStrict) {
+							// Strict: defer ctx.compact() with a re-check so pi's
+							// about-to-run native _checkCompaction can append its
+							// `compaction` branch entry first. setTimeout(500) — pi's
+							// compaction-summary append is async I/O, so queueMicrotask
+							// would re-check before it lands.
+							const stamp = runtime.rt.lastNativeCompactAt;
+							const liveSid = runtime.rt.sessionId;
+							setTimeout(() => {
+								try {
+									if (runtime.rt.sessionId !== liveSid) return; // session reset
+									const since2 =
+										now - (runtime.rt.lastNativeCompactAt ?? 0);
+									if (runtime.rt.lastNativeCompactAt !== stamp && since2 < cooldownMs) return;
+									if (piCompactWouldNoop(ctx)) return;
+									ctx.compact({
+										customInstructions: undefined,
+									}); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; deferred + re-validated.
+								} catch {
+									/* non-fatal */
+								}
+							}, 500);
+						} else {
+							ctx.compact({ customInstructions: undefined }); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; agent settled so no in-flight abort. Race-guarded by lastNativeCompactAt cooldown above (ctx.compact returns void → throw is surfaced by pi as compaction_end; the cooldown prevents the call entirely).
+						}
 						didDurableTrim = true;
 					}
 				}
@@ -326,31 +380,35 @@ export function registerAgentHandlers(
 					// max === 0 disables the category entirely (revert to S28-only).
 					if (max <= 0) {
 						runtime.rt.errorRetryCount = 0;
-					} else {
-						runtime.rt.errorRetryCount++;
-						if (runtime.rt.errorRetryCount > max) {
-							// Exhausted — surface the error, reset for the next burst.
-							runtime.dashboard.event('error_retry_exhausted', {
-								category,
-								count: runtime.rt.errorRetryCount,
-								max,
-								turnIndex: event.turnIndex,
-							});
-							runtime.logger.info('error-retry-exhausted', {
-								sessionId: runtime.rt.sessionId,
-								category,
-								count: runtime.rt.errorRetryCount,
-								max,
-							});
-							runtime.rt.errorRetryCount = 0;
 						} else {
-							const now = Date.now();
-							// Debounce: don't fire if a prior retry nudge is still in its
-							// backoff window (prevents a tight turn_end loop from
-							// busy-looping before the backoff elapses).
-							if (now >= runtime.rt.errorRetryUntil) {
-								runtime.rt.errorRetryUntil =
-									now + errorRetryBackoffMs(runtime.rt.errorRetryCount);
+							runtime.rt.errorRetryCount++;
+							if (runtime.rt.errorRetryCount > max) {
+								// Exhausted — surface the error, reset for the next burst.
+								runtime.dashboard.event('error_retry_exhausted', {
+									category,
+									count: runtime.rt.errorRetryCount,
+									max,
+									turnIndex: event.turnIndex,
+								});
+								runtime.logger.info('error-retry-exhausted', {
+									sessionId: runtime.rt.sessionId,
+									category,
+									count: runtime.rt.errorRetryCount,
+									max,
+								});
+								runtime.rt.errorRetryCount = 0;
+							} else {
+								// S38: fire the retry nudge. Each error turn fires its own
+								// nudge up to `max` — we intentionally do NOT debounce on the
+								// backoff window (errorRetryUntil) here, because that would
+								// suppress turns 2..max on a fast-erroring provider (the exact
+								// scenario this feature targets) and the user could see zero
+								// retries followed by error_retry_exhausted. The per-turn cap
+								// (errorRetryCount <= max) plus the session circuit breaker
+								// (consecutiveErrors > maxConsecutiveErrors) already bound the
+								// loop, so a tight turn_end storm cannot busy-loop unbounded.
+								// errorRetryUntil + errorRetryBackoffMs() are retained on the
+								// runtime for future/optional pacing but are not gating.
 								runtime.dashboard.event('error_retry', {
 									category,
 									count: runtime.rt.errorRetryCount,
@@ -369,7 +427,6 @@ export function registerAgentHandlers(
 								);
 							}
 						}
-					}
 				}
 			}
 		} catch {
