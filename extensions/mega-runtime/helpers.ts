@@ -44,7 +44,6 @@ export interface SessionRuntime {
 	cacheHitTokens: number; // tokens saved via cache hits (dedup + recall) this session
 	lengthStopPending: boolean; // S28: set on turn_end when stopReason==='length'
 	errorRetryCount: number; // S38: consecutive error turns, reset on success/turn_start
-	errorRetryUntil: number; // S38: wall-clock ms debounce for error-retry nudge
 	// S38.6: circuit-breaker state — consecutive error turns across the session.
 	// When this exceeds maxConsecutiveErrors, the extension stops retrying.
 	consecutiveErrors: number; // reset to 0 on successful turn_end

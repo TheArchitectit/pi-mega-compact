@@ -9,10 +9,10 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, output-error-work]
     tags: ["v*"]
   pull_request:
-    branches: [master]
+    branches: [master, output-error-work]
 
 permissions:
   contents: read
@@ -31,7 +31,9 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # package.json requires node >=22.13 (node:sqlite / DatabaseSync is used
+          # across src/store). Pinning to 20 here silently broke CI on every push.
+          node-version: "22.13"
           cache: "npm"
 
       - name: Install dependencies

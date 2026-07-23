@@ -44,7 +44,7 @@ These are pi-extension invariants; `scripts/guardrails-scan.mjs` scans for viola
 | PREVENT-PI-001 | error | Never drop messages without the anchor-floor guard (preserve recent N). |
 | PREVENT-PI-002 | error | Never split a toolCall/toolResult pair at a compaction boundary. |
 | PREVENT-PI-003 | error | Never inject compacted context as `role:"system"` — use the `before_agent_start` systemPrompt prepend. |
-| PREVENT-PI-004 | critical | **Zero network calls at runtime.** Extension is fully local (better-sqlite3 = in-process native SQLite, FS persistence). No `fetch`/HTTP to remote. EXCEPTION: the optional, user-triggered `/dashboard` localhost server — audited via `// guardrails-allow PREVENT-PI-004: <reason>` inline annotations (scanner enforces a reason). |
+| PREVENT-PI-004 | critical | **Zero network calls at runtime.** Extension is fully local (`node:sqlite` = Node built-in `DatabaseSync` ≥22.13, FS persistence — replaced `better-sqlite3` in v0.4.23). No `fetch`/HTTP to remote. EXCEPTION: the optional, user-triggered `/dashboard` localhost server — audited via `// guardrails-allow PREVENT-PI-004: <reason>` inline annotations (scanner enforces a reason). |
 
 Additional guardrails (from template): PREVENT-001 (JSON.parse without null check), PREVENT-002 (SQL string concat — use parameterized queries), PREVENT-011 (`any` type), PREVENT-024 (hallucinated package import), PREVENT-003 (hardcoded credentials).
 

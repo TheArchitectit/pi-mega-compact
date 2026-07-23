@@ -264,12 +264,12 @@ export function loadConfig(): MegaConfig {
     errorRetryHardStop: envBool("MEGACOMPACT_ERROR_RETRY_HARD_STOP", false),
     autoPctTrigger,
     autoInlineK: envFlag("MEGACOMPACT_AUTO_INLINE_K", 3),
-    dedupSim: Number(process.env.MEGACOMPACT_DEDUP_SIM ?? "0.9"),
+    dedupSim: envFlag("MEGACOMPACT_DEDUP_SIM", 0.9),
     raptorEnabled: envBool("MEGACOMPACT_RAPTOR_ENABLED", true),
     legacyDurableTrim: envBool("MEGACOMPACT_LEGACY_DURABLE_TRIM", false),
     dbMirror: envBool("MEGACOMPACT_DB_MIRROR", false),
     crossRepoEnabled: envBool("MEGACOMPACT_CROSSREPO_ENABLED", true),
-    crossRepoCosine: Number(process.env.MEGACOMPACT_CROSSREPO_COSINE ?? "0.90"),
+    crossRepoCosine: envFlag("MEGACOMPACT_CROSSREPO_COSINE", 0.9),
     memoryAutoReview: envBool("MEGACOMPACT_MEMORY_AUTO_REVIEW", true),
     memoryReviewInterval: envFlag("MEGACOMPACT_MEMORY_REVIEW_INTERVAL", 10),
     recallMaxTokens: envFlag("MEGACOMPACT_RECALL_MAX_TOKENS", 1500),
@@ -303,9 +303,12 @@ export function resolveRepoRoot(cwd: string): string | undefined {
 }
 
 /**
- * Per-repo state dir: <repo>/.pi/mega-compact (tracked, so it travels with the
- * repo across devices — not gitignored). Falls back to `fallback` for non-git
- * cwds (the explicit MEGACOMPACT_STATE_DIR override, if set).
+ * Per-repo state dir: <repo>/.pi/mega-compact. NOTE: this is LOCAL-ONLY — the
+ * `.pi/` directory is gitignored, so the SQLite checkpoints / raw_transcript
+ * mirror / RAPTOR trees do NOT travel with the repo across devices/clone. The
+ * durable-trim value lives in the on-disk pi transcript (which pi persists), not
+ * here; this dir is the per-machine recall index. Falls back to `fallback` for
+ * non-git cwds (the explicit MEGACOMPACT_STATE_DIR override, if set).
  */
 export function repoStateDir(cwd: string, fallback: string): string {
   const root = resolveRepoRoot(cwd);

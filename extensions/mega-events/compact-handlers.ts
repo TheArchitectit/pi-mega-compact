@@ -155,7 +155,8 @@ export function registerCompactHandlers(
 		// entry but BEFORE our branch read sees it on the next tick — racing
 		// into a user-facing "Already compacted" throw. `lastCompactAt` is the
 		// race-closing signal: any compaction (manual/threshold/overflow, ours
-		// or pi's own) stamps it, and the agent_end guard skips for 10s.
+		// or pi's own) stamps it, and the agent_end guard skips for 30s strict /
+		// 10s non-strict (MEGACOMPACT_RACE_GUARD_STRICT, default strict).
 		pi.on("session_compact", async (_event: SessionCompactEvent, _ctx: ExtensionContext) => {
 			runtime.rt.lastNativeCompactAt = Date.now();
 			runtime.rt.lastCompactAt = Date.now();

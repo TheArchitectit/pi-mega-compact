@@ -163,29 +163,37 @@ export function registerAgentHandlers(
 							thresholdTokens: config.thresholdTokens,
 							queued,
 						});
-						if (config.raceGuardStrict) {
-							// Strict: defer ctx.compact() with a re-check so pi's
-							// about-to-run native _checkCompaction can append its
-							// `compaction` branch entry first. setTimeout(500) — pi's
-							// compaction-summary append is async I/O, so queueMicrotask
-							// would re-check before it lands.
-							const stamp = runtime.rt.lastNativeCompactAt;
-							const liveSid = runtime.rt.sessionId;
-							setTimeout(() => {
-								try {
-									if (runtime.rt.sessionId !== liveSid) return; // session reset
-									const since2 =
-										now - (runtime.rt.lastNativeCompactAt ?? 0);
-									if (runtime.rt.lastNativeCompactAt !== stamp && since2 < cooldownMs) return;
-									if (piCompactWouldNoop(ctx)) return;
-									ctx.compact({
-										customInstructions: undefined,
-									}); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; deferred + re-validated.
-								} catch {
-									/* non-fatal */
-								}
-							}, 500);
-						} else {
+							if (config.raceGuardStrict) {
+								// Strict: defer ctx.compact() with a re-check so pi's
+								// about-to-run native _checkCompaction can append its
+								// `compaction` branch entry first. setTimeout(500) — pi's
+								// compaction-summary append is async I/O, so queueMicrotask
+								// would re-check before it lands.
+								const stamp = runtime.rt.lastNativeCompactAt;
+								const liveSid = runtime.rt.sessionId;
+								// RT2: track the timer so resetRuntime/dispose can cancel it
+								// instead of leaving a dangling ctx closure. At most one is
+								// pending (the debounce/cooldown gates scheduling above).
+								if (runtime.pendingDurableTrimTimer) clearTimeout(runtime.pendingDurableTrimTimer);
+								runtime.pendingDurableTrimTimer = setTimeout(() => {
+									runtime.pendingDurableTrimTimer = undefined;
+									try {
+										if (runtime.rt.sessionId !== liveSid) return; // session reset
+										// RT1: recompute since2 from a FRESH Date.now() — `now` was
+										// captured ~500ms earlier and would skew the cooldown check
+										// (mirrors context-handler.ts, which already uses Date.now()).
+										const since2 =
+											Date.now() - (runtime.rt.lastNativeCompactAt ?? 0);
+										if (runtime.rt.lastNativeCompactAt !== stamp && since2 < cooldownMs) return;
+										if (piCompactWouldNoop(ctx)) return;
+										ctx.compact({
+											customInstructions: undefined,
+										}); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; deferred + re-validated.
+									} catch {
+										/* non-fatal */
+									}
+								}, 500);
+							} else {
 							ctx.compact({ customInstructions: undefined }); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; agent settled so no in-flight abort. Race-guarded by lastNativeCompactAt cooldown above (ctx.compact returns void → throw is surfaced by pi as compaction_end; the cooldown prevents the call entirely).
 						}
 						didDurableTrim = true;
@@ -397,19 +405,17 @@ export function registerAgentHandlers(
 									max,
 								});
 								runtime.rt.errorRetryCount = 0;
-							} else {
-								// S38: fire the retry nudge. Each error turn fires its own
-								// nudge up to `max` — we intentionally do NOT debounce on the
-								// backoff window (errorRetryUntil) here, because that would
-								// suppress turns 2..max on a fast-erroring provider (the exact
-								// scenario this feature targets) and the user could see zero
-								// retries followed by error_retry_exhausted. The per-turn cap
-								// (errorRetryCount <= max) plus the session circuit breaker
-								// (consecutiveErrors > maxConsecutiveErrors) already bound the
-								// loop, so a tight turn_end storm cannot busy-loop unbounded.
-								// errorRetryUntil + errorRetryBackoffMs() are retained on the
-								// runtime for future/optional pacing but are not gating.
-								runtime.dashboard.event('error_retry', {
+								} else {
+									// S38: fire the retry nudge. Each error turn fires its own
+									// nudge up to `max`. There is intentionally no per-nudge
+									// debounce/backoff — that would suppress turns 2..max on a
+									// fast-erroring provider (the exact scenario this feature
+									// targets), so the user could see zero retries followed by
+									// error_retry_exhausted. The per-turn cap
+									// (errorRetryCount <= max) plus the session circuit breaker
+									// (consecutiveErrors > maxConsecutiveErrors) bound the loop,
+									// so a tight turn_end storm cannot busy-loop unbounded.
+									runtime.dashboard.event('error_retry', {
 									category,
 									count: runtime.rt.errorRetryCount,
 									max,
@@ -429,8 +435,16 @@ export function registerAgentHandlers(
 						}
 				}
 			}
-		} catch {
-			/* non-fatal: a classifier/retry failure never breaks the agent loop */
+		} catch (e) {
+			// RT7: a silent catch here would hide a future pi AgentMessage shape
+			// change that makes classifyError throw, silently no-oping all retries
+			// with zero signal. Surface it via the dashboard event stream (non-fatal)
+			// — mirrors the S26 captureModel record-failed pattern. Never rethrow: a
+			// retry failure must never break the agent loop.
+			runtime.dashboard.event('error_retry_classify_failed', {
+				error: String(e),
+				turnIndex: event.turnIndex,
+			});
 		}
 	});
 }

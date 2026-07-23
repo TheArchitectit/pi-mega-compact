@@ -17,14 +17,21 @@ import { openStore } from "./utils.js";
 import type { SQLInputValue } from "node:sqlite";
 import { GameMetric, METRICS } from "../../game/scoring.js";
 
-// Process-local monotonic sequence appended into the low 3 digits of `ts` so
+// Process-local monotonic sequence appended into the low digits of `ts` so
 // back-to-back inserts within the same millisecond get distinct PK values
-// (Date.now()*1000 + seq%1000). Production turns are >1ms apart, so seq is
-// almost always 0; this only disambiguates the burst case. Without it,
-// OR REPLACE would drop the earlier same-ms row and break the dedupe SUM.
+// (Date.now()*1000 + seq). Production turns are >1ms apart, so seq is almost
+// always 0; this only disambiguates the burst case. Without it, OR REPLACE would
+// drop the earlier same-ms row and break the dedupe SUM.
+//
+// NOTE: an earlier version used `seq % 1000`, which wraps to 0 after 1000 events
+// and re-collides the PK (game_scores PK is (repo_root, metric, ts) WITHOUT
+// ROWID) — a burst of >=1000 same-ms score events for one repo+metric would
+// throw UNIQUE-constraint instead of recording. The raw counter never overflows
+// 2^53 for any realistic session and stays strictly monotonic, so the modulo is
+// dropped.
 let scoreSeq = 0;
 function nextTs(): number {
-	return Date.now() * 1000 + (scoreSeq++ % 1000);
+	return Date.now() * 1000 + scoreSeq++;
 }
 
 export type { GameMetric } from "../../game/scoring.js";

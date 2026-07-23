@@ -52,6 +52,17 @@ export default function (pi: ExtensionAPI) {
     console.warn('[mega-compact] MEGACOMPACT_MAX_CONSECUTIVE_ERRORS must be >= 1; using default 10');
     config.maxConsecutiveErrors = 10;
   }
+  // E1: validate the similarity thresholds used by recall dedup (NaN or out of
+  // (0,1] silently disables matching — `anything >= NaN` is false — so a typo'd
+  // env var would degrade recall with no error. Clamp to sane bounds.
+  if (!(config.dedupSim > 0 && config.dedupSim <= 1)) {
+    console.warn('[mega-compact] MEGACOMPACT_DEDUP_SIM must be in (0,1]; using default 0.9');
+    config.dedupSim = 0.9;
+  }
+  if (!(config.crossRepoCosine >= 0 && config.crossRepoCosine <= 1)) {
+    console.warn('[mega-compact] MEGACOMPACT_CROSSREPO_COSINE must be in [0,1]; using default 0.9');
+    config.crossRepoCosine = 0.9;
+  }
   const runtime = new MegaRuntime(config);
   registerEventHandlers(pi, runtime, config);
   registerCommands(pi, runtime, config);

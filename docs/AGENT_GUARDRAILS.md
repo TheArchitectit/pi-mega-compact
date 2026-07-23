@@ -110,7 +110,7 @@ See [skills/shared-prompts/four-laws.md](../skills/shared-prompts/four-laws.md) 
 | **NO PROD CREDENTIALS IN TEST** | CRITICAL | Halt, rollback |
 | **ASK IF UNCERTAIN** | HIGH | Ask user before proceeding |
 
-**pi-mega-compact note:** this extension is **local-only** — it must make **zero network calls** at runtime (PREVENT-PI-004). The store is `better-sqlite3` (in-process native SQLite, FS persistence), not a remote database. There is no production/remote boundary to cross, but the spirit of test/prod separation still applies: never point a test at a real user state dir, and never commit the `MEGACOMPACT_STATE_DIR` contents.
+**pi-mega-compact note:** this extension is **local-only** — it must make **zero network calls** at runtime (PREVENT-PI-004). The store is `node:sqlite` (`DatabaseSync`, Node built-in ≥22.13 — in-process, FS persistence, replaced `better-sqlite3` in v0.4.23), not a remote database. There is no production/remote boundary to cross, but the spirit of test/prod separation still applies: never point a test at a real user state dir, and never commit the `MEGACOMPACT_STATE_DIR` contents.
 
 ---
 

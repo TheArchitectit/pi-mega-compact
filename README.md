@@ -112,8 +112,9 @@ so storage and recall stay lean:
   catch one-word rewordings that L0 misses.
 - **L2 — semantic:** cosine over the embedding collapses paraphrases; MMR
   diversifies retrieval so a cluster of near-hits yields distinct results.
-- **RAPTOR — pre-compression tree** (shadow mode by default): a hierarchical
-  summary tree over checkpoints, built + logged but not served until promoted.
+- **RAPTOR — pre-compression tree**: a hierarchical summary tree over
+  checkpoints, built + served into retrieval by default (`MEGACOMPACT_RAPTOR_ENABLED`,
+  default `true`); set `false` to shadow-mode it (build + log only).
 
 Every tier is gated by its own feature flag (see [Configuration](#configuration)).
 A tier can be put in `MARK_ONLY` (record the decision, don't collapse) as a safe
@@ -349,7 +350,7 @@ collapse (safe partial-rollout / auto-degrade state).
 | `MEGACOMPACT_L0_ENABLED` | `true` | L0 exact content-hash dedup. |
 | `MEGACOMPACT_L1_ENABLED` | `true` | L1 MinHash/LSH near-dup verification. |
 | `MEGACOMPACT_L2_ENABLED` | `true` | L2 semantic cosine dedup + MMR retrieval diversity. |
-| `MEGACOMPACT_RAPTOR_ENABLED` | `false` | RAPTOR pre-compression tree (**shadow mode by default** — builds + logs, does not serve retrieval). |
+| `MEGACOMPACT_RAPTOR_ENABLED` | `true` | RAPTOR pre-compression tree (built + **served into retrieval by default**; set `false` for shadow mode — build + log only). |
 | `MEGACOMPACT_MARK_ONLY_L0` | `false` | L0: record, don't collapse. |
 | `MEGACOMPACT_MARK_ONLY_L1` | `false` | L1: record, don't collapse. |
 | `MEGACOMPACT_MARK_ONLY_L2` | `false` | L2: record, don't collapse. |

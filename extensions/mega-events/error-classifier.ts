@@ -75,13 +75,3 @@ export function classifyError(message: unknown):
 	return null;
 }
 
-/** S38.2: exponential backoff for error-retry nudges (5s,10s,20s,30s,30s cap).
- *  count is 1-based (the retry about to fire). */
-export function errorRetryBackoffMs(count: number): number {
-	switch (count) {
-		case 1: return 5_000;
-		case 2: return 10_000;
-		case 3: return 20_000;
-		default: return 30_000; // cap from the 4th retry onward
-	}
-}

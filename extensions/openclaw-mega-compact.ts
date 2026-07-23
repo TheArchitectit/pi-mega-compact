@@ -32,8 +32,11 @@ import type { EngineMessage } from "../src/types.js";
 const PLUGIN_ID = "mega-compact";
 const PLUGIN_LABEL = "Mega Compact (Trident)";
 
-/** Default state directory for vector store persistence. */
-const STATE_DIR = process.env.MEGA_COMPACT_STATE_DIR ?? undefined;
+/** Default state directory for vector store persistence. Uses the canonical
+ *  MEGACOMPACT_STATE_DIR (matching mega-config.ts / README); the prior
+ *  MEGA_COMPACT_STATE_DIR (with an underscore) was a typo that read a var no
+ *  other path recognizes, so the override silently did nothing. */
+const STATE_DIR = process.env.MEGACOMPACT_STATE_DIR ?? undefined;
 
 /** Minimum messages before we bother compacting. */
 const MIN_MESSAGES_FOR_COMPACT = 6;

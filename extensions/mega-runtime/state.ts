@@ -88,7 +88,6 @@ export class MegaRuntime {
 		cacheHitTokens: 0,
 		lengthStopPending: false,
 		errorRetryCount: 0,
-		errorRetryUntil: 0,
 		consecutiveErrors: 0,
 	};
 	// v0.8.6 cache-stability: the cached live-trim view for the current
@@ -174,6 +173,11 @@ export class MegaRuntime {
 	perfProviderStart = 0;
 	perfCpuInterval: ReturnType<typeof setInterval> | undefined;
 	private perfCpuBaseline: { user: number; sys: number } | undefined;
+	// S38.5 RT2: the deferred durable-trim setTimeout handle (agent_end + legacy
+	// context paths). Tracked so resetRuntime/dispose can cancel it instead of
+	// leaving a dangling timer + ctx closure on session churn. Re-armed per fire;
+	// at most one is pending at a time (the cooldown/debounce gates scheduling).
+	pendingDurableTrimTimer: ReturnType<typeof setTimeout> | undefined;
 
 	// Context tracking for the dashboard (updated in the context handler).
 	lastCtxTokens: number | null = null;
@@ -228,7 +232,7 @@ export class MegaRuntime {
 	diagBeforeCompactSupplied = 0; // session_before_compact supplied our trim
 	diagAgentEndIdle = 0; // agent_end with activeAgents===0
 	diagAgentEndDurable = 0; // agent_end fired ctx.compact() (mid-run durable trim)
-	diagAgentEndDurableSkipRecent = 0; // agent_end skipped ctx.compact() — compaction in last 10s (race guard)
+	diagAgentEndDurableSkipRecent = 0; // agent_end skipped ctx.compact() — compaction in last 30s strict / 10s non-strict (race guard)
 	// Per-skip-path counters for the team-run diagnosis.
 	diagCtxFastGate = 0; // returned at token fast-gate (below threshold)
 	diagCtxNoCompact = 0; // autoCompactCheck().shouldCompact === false
@@ -827,6 +831,13 @@ export class MegaRuntime {
 	resetRuntime(sessionId: string | undefined): void {
 		const sid = normalizeSessionId(sessionId);
 		if (this.rt.sessionId === sid && this.rt.persistedThisSession) return; // same session, keep checkpoint memory
+		// S38.5 RT2: cancel any pending deferred durable-trim so it can't fire
+		// its ctx.compact() into a reset session (the session-id recheck already
+		// guards this, but cancelling also frees the ctx closure promptly).
+		if (this.pendingDurableTrimTimer) {
+			clearTimeout(this.pendingDurableTrimTimer);
+			this.pendingDurableTrimTimer = undefined;
+		}
 		this.rt = {
 			sessionId: sid,
 			persistedThisSession: false,
@@ -843,7 +854,6 @@ export class MegaRuntime {
 			cacheHitTokens: 0,
 			lengthStopPending: false,
 			errorRetryCount: 0,
-			errorRetryUntil: 0,
 			consecutiveErrors: 0,
 	};
 	this.trimCache = null; // v0.8.6: never replay a stale trim into a new session
@@ -1023,6 +1033,11 @@ export class MegaRuntime {
 			clearInterval(this.perfCpuInterval);
 			this.perfCpuInterval = undefined;
 			this.perfCpuBaseline = undefined;
+		}
+		// S38.5 RT2: cancel a pending deferred durable-trim timer on teardown.
+		if (this.pendingDurableTrimTimer) {
+			clearTimeout(this.pendingDurableTrimTimer);
+			this.pendingDurableTrimTimer = undefined;
 		}
 	}
 
