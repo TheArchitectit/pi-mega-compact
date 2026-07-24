@@ -43,3 +43,6 @@ mega-compact-vector/
 !.crew/graphs/.gitkeep
 # agent temp scratch dir
 tmp/
+
+# Benchmark results (per-run, not committed)
+scripts/benchmark/out/
