@@ -6,6 +6,9 @@ dist/
 .env
 .env.*
 .DS_Store
+err.txt
+global-hitter.cjs
+worker.exp.cjs
 
 # FORBIDDEN — npm is the ONLY distribution path (PREVENT-DIST-001).
 # Never produce or commit a `.tgz` (`npm pack`); tarballs bypass pi's package
@@ -27,6 +30,9 @@ sqlite.db-wal
 guardrails-template/
 sess_*
 sqlite.db
+
+.claude/
+.crew/
 
 # Local runtime audit/state dir from pi-crew / mega-compact
 .crew/
