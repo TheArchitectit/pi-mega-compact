@@ -54,7 +54,7 @@ function harness() {
   process.env.MEGACOMPACT_RAPTOR_ENABLED = "false";
   delete process.env.MEGACOMPACT_LEGACY_DURABLE_TRIM;
 
-  const handlers: Record<string, Function[]> = {};
+  const handlers: Record<string, Function> = {};
   const compactCalls: any[] = [];
 
   function msg(role: string, text: string, toolName?: string): AgentMessage {
@@ -91,8 +91,8 @@ function harness() {
       // Mock ctx.compact() runs pi's flow and fires session_before_compact.
       compact: (opts?: any) => {
         compactCalls.push(opts);
-        const _sbc = handlers["session_before_compact"]; if (_sbc && _sbc.length) {
-          return _sbc[0](
+        if (handlers["session_before_compact"]) {
+          return handlers["session_before_compact"](
             { type: "session_before_compact", reason: "threshold", willRetry: false, signal: undefined, preparation: { firstKeptEntryId: "e2", messagesToSummarize: session.slice(0, 2), tokensBefore: 500 } } as any,
             makeCtx(),
           );
@@ -105,7 +105,7 @@ function harness() {
   }
 
   const pi = {
-    on: (ev: string, h: Function) => { if (!handlers[ev]) handlers[ev] = []; handlers[ev].push(h); },
+    on: (ev: string, h: Function) => { handlers[ev] = h; },
     registerCommand: () => {}, registerTool: () => {}, registerShortcut: () => {},
     registerFlag: () => {}, getFlag: () => undefined, registerMessageRenderer: () => {},
     registerEntryRenderer: () => {}, sendMessage: () => {}, sendUserMessage: () => {},
@@ -120,7 +120,7 @@ function harness() {
   mod.default(pi);
   const { lastRuntime } = require("./mega-events.js") as { lastRuntime: any };
 
-  const fire = async (ev: string, event: any, ctx: any) => { let r: any; for (const h of handlers[ev] || []) r = await h(event, ctx); return r; };
+  const fire = (ev: string, event: any, ctx: any) => handlers[ev](event, ctx);
   return {
     stateDir, handlers, compactCalls, fire, ctx: makeCtx, session,
     runtime: lastRuntime, // MegaRuntime with diag* counters
@@ -165,6 +165,12 @@ test("control: session_before_compact supplies a durable compaction (parent sett
 });
 
 test("cleanup", async () => {
-  await closeVectorIndex();
+  // Race closeVectorIndex with a timeout to prevent 40-min hangs.
+  try {
+    await Promise.race([
+      closeVectorIndex(),
+      new Promise((r) => setTimeout(r, 3000)),
+    ]);
+  } catch { /* ignore */ }
   rmSync(baseTmp, { recursive: true, force: true });
 });

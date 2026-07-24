@@ -46,7 +46,29 @@ export function classifyError(message: unknown):
 			}
 		}
 		if (m.error) {
-			parts.push(typeof m.error === 'string' ? m.error : JSON.stringify(m.error));
+			// Extract message from error objects for pattern matching.
+			const err = m.error;
+			if (typeof err === 'string') {
+				parts.push(err);
+			} else if (err && typeof err === 'object') {
+				const errObj = err as Record<string, unknown>;
+				if (typeof errObj.message === 'string') {
+					parts.push(errObj.message);
+				} else {
+					parts.push(JSON.stringify(err));
+				}
+			}
+		}
+		// S38: detect mid-response errors where the stream died without a
+		// proper stopReason (empty/undefined) — this catches provider failures
+		// that cut off the response mid-stream, INCLUDING the case where the
+		// provider emitted partial content before dying (a truncated response
+		// with no stop reason is a mid-stream death, not a success).
+		// A genuine success ALWAYS carries stop/tool_use/toolUse (which
+		// short-circuit to null at the top), so any message reaching here with a
+		// falsy stopReason is a stream failure → retryable.
+		if (!sr) {
+			return 'transient';
 		}
 		text = parts.join(' ');
 	}
@@ -67,7 +89,7 @@ export function classifyError(message: unknown):
 	if (/max(imum)? output token/.test(s)) return 'transient';
 	if (/rate[\s.-]?limit|429|too many requests/.test(s)) return 'transient';
 	if (/5\d\d|internal server|bad gateway|service unavailable/.test(s)) return 'transient';
-	if (/network|timeout|connection (lost|refused|reset)/.test(s)) return 'transient';
+	if (/network|timeout|connection (lost|refused|reset)|stream (interrupted|closed|ended|failed)|disconnected/.test(s)) return 'transient';
 	// --- permanent (NOT retryable beyond 1) ---
 	if (/auth|unauthorized|invalid (api )?key|permission/.test(s)) return 'permanent';
 	if (/invalid request|malformed|bad request/.test(s)) return 'permanent';

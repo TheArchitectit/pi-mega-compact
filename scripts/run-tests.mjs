@@ -81,6 +81,7 @@ function runOne(file) {
 				"--test",
 				"--test-concurrency=1",
 				"--test-reporter=tap",
+				"--test-force-exit",
 				`--test-timeout=${PER_FILE_TIMEOUT_MS}`,
 				file,
 			],

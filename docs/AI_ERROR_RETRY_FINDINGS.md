@@ -147,6 +147,82 @@ Dashboard now displays retry metrics (`errorRetryCount`, `consecutiveErrors`,
 
 Validates config at startup for invalid combinations.
 
+### S38.10 — Mid-Response Error Detection (stream died without stopReason)
+**File**: `extensions/mega-events/error-classifier.ts`
+
+Added 2026-07-23 to catch the failure mode where a model provider dies
+mid-stream and `turn_end` fires with **no `stopReason`** (undefined or empty
+string) and no error text. The original classifier returned `null` (success) for
+these, so the agent silently stopped with no retry.
+
+Two enhancements to `classifyError`:
+
+1. **Error-object message extraction** — `{ error: { message: "…" } }` (the shape
+   pi surfaces for provider stream failures) now extracts the `.message` string
+   for pattern matching instead of `JSON.stringify`-ing the object (which never
+   matched the transient patterns).
+
+2. **No-stopReason = transient (mid-stream death)** — when `stopReason` is falsy,
+   the classifier returns `'transient'` instead of `null`, **regardless of whether
+   partial content was emitted**. This is the key fix for the post-resume
+   disconnect scenario: a provider that streams partial text then dies mid-stream
+   leaves `turn_end` with `content` populated but `stopReason` undefined. The
+   earlier guard only fired when `parts.length === 0` (empty message), so the
+   partial-content case fell through to `null` (treated as success, not retried).
+   A genuinely successful turn ALWAYS carries `stop`/`tool_use`/`toolUse` (which
+   short-circuit to `null` at the top of the function), so any message reaching
+   the classifier body with a falsy `stopReason` is a stream failure → retryable.
+
+3. **Stream-interruption patterns** — added `stream (interrupted|closed|ended|failed)`
+   and `disconnected` to the transient regex set so provider errors that name
+   the stream explicitly are classified as retryable.
+
+> **Audit (2026-07-23):** a 5-dimension haiku-agent workflow
+> (`audit-resume-disconnect-retry`) traced the resume → disconnect → retry flow
+> and adversarially verified each finding. Conclusions:
+> - **Partial-content + no-stopReason was a real gap** (Shape 6) — the
+>   `parts.length === 0` guard missed it; fixed by widening to `!sr`.
+> - **The post-resume `already compacted` race is NOT a blocker in the default
+>   config** — the S38.5 strict guard's `setTimeout(500)` + stamp re-check
+>   catches it when `raceGuardStrict=true` (default). Only `raceGuardStrict=false`
+>   reopens the window. No fix needed.
+> - **`resetRuntime` on resume is NOT a flaw** — the same-session guard
+>   (state.ts:820) preserves S38 state when resuming the live session that
+>   already persisted checkpoints. Refuted as false-alarm.
+> - **Counter bounds hold** — `errorRetryCount` resets per `turn_start` (so the
+>   "max 5" is per-turn); the cross-turn backstop is `consecutiveErrors >
+>   maxConsecutiveErrors` (default 10), reset on a successful `turn_end`. Bounded,
+>   not unbounded.
+
+Verified by 6 new S38 tests (classifier-level) + 2 integration tests that fire
+`turn_end` through the real extension and assert a retry nudge fires.
+
+---
+
+## 2. Test File Split (2026-07-23)
+
+The extension test suite hung for ~40 minutes when `closeVectorIndex()`
+(`src/store/vectorIndex.ts`) stalled on a PGlite WASM worker that never
+settled — `node --test` blocks on the open handle and never flushes its summary.
+Two fixes:
+
+1. **Timeout race on cleanup** — every `cleanup` test now wraps
+   `closeVectorIndex()` in `Promise.race([…, setTimeout(3000)])` so a stalled
+   WASM close cannot block the suite. Applied to `mega-compact.test.ts`,
+   `mega-compact-s38.test.ts`, and `mega-teamrun.test.ts`.
+
+2. **S38 tests extracted** into a focused, fast-isolated file:
+   `extensions/mega-compact-s38.test.ts` (308 lines, 24 tests, ~4s standalone).
+   The S38 classifier + retry + race-guard tests no longer share a process with
+   the heavier auto-trigger / dashboard / game-mode tests. The original
+   `mega-compact.test.ts` retains the auto-trigger / recall / S28 / S29 / S24
+   / monitoring / game-mode tests.
+
+3. **`scripts/run-tests.mjs`** — added `--test-force-exit` to the per-file
+   `node --test` invocation as a belt-and-suspenders guard against open handles.
+
+The full gate now runs in ~35s (was effectively infinite).
+
 ---
 
 ## 2. Current Test Status
