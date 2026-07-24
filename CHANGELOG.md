@@ -1,19 +1,22 @@
 # Changelog
 
-## v0.8.15 (unreleased) — S38 Error-Retry Safety Net
+## v0.8.15 (2026-07-23) — S38 Error-Retry Safety Net + Mid-Response Disconnect Detection
 
 - **feat(error-retry): S38 error-retry safety net + circuit breaker.** Broader error-retry layer on top of S28 (`stopReason === 'length'`), catching ALL error types (provider failure, network timeout, 5xx, 429, auth, compaction-noop) with classified retry behavior.
   - **S38.1 — Config + Runtime State.** `autoRetryTransientMax` (default 5), `autoRetryPermanentMax` (default 1), `errorRetryCount`, `errorRetryUntil` runtime counters.
   - **S38.2 — Error Classifier.** `classifyError()` helper returns 'transient' | 'permanent' | 'compaction-noop' | null. 'compaction-noop' (Already compacted / Nothing to compact / Auto compaction failed) is NOT retried — diagnostic logged, counter reset, error surfaced. S28 owns 'length' exclusively.
-  - **S38.3 — Tests.** 14 new tests for classifier + retry behavior (transient/permanent/compaction-noop classification, max exhaustion, counter reset on success).
+  - **S38.3 — Tests.** New tests for classifier + retry behavior (transient/permanent/compaction-noop classification, max exhaustion, counter reset on success).
   - **S38.4 — Integration.** CHANGELOG entry + full gate.
   - **S38.5 — Strengthen Race Guard.** `lastNativeCompactAt` cooldown raised 10s -> 30s; deferred `ctx.compact()` re-checks `piCompactWouldNoop` + idle + cooldown before calling (closes first-race-in-burst window). `MEGACOMPACT_RACE_GUARD_STRICT=false` reverts to v0.7.4 synchronous 10s guard.
   - **S38.6 — Circuit Breaker.** `maxConsecutiveErrors` (default 10) stops retrying after too many consecutive errors across turns; reset on successful turn_end.
   - **S38.7 — Hard-Stop Switch.** `MEGACOMPACT_ERROR_RETRY_HARD_STOP=true` disables ALL error retries (S28-only behavior).
-  - **S38.8 — Retries Dashboard Tile.** `error_retry` / `error_retry_exhausted` / `error_retry_circuit_open` events surfaced via dashboard event stream.
+  - **S38.8 — Retries Dashboard Tile.** `error_retry` / `error_retry_exhausted` / `error_retry_circuit_open` events surfaced via dashboard event stream + the status tile populates `retries` (errorRetryCount, consecutiveErrors, maxConsecutiveErrors, errorRetryHardStop).
   - **S38.9 — Preflight Env Validation.** Extension load validates env vars at startup; invalid values log warnings and fall back to defaults (non-fatal).
+  - **S38.10 — Mid-Response Disconnect Detection (2026-07-23).** Catches the failure mode where a model provider dies mid-stream and `turn_end` fires with **no `stopReason`** — previously classified `null` (success) so the agent silently stopped with no retry. Three `classifyError` enhancements: (a) **no-stopReason = transient, including partial content** — widened the guard from `!sr && parts.length === 0` to `!sr`; a genuine success always carries `stop`/`tool_use`/`toolUse` (which short-circuit to `null` at the top), so any message reaching the classifier body with a falsy `stopReason` is a mid-stream death → retryable, whether or not it emitted partial text; (b) **error-object message extraction** — `{ error: { message: "…" } }` (pi's provider-failure shape) extracts `.message` instead of `JSON.stringify`-ing the object (which never matched transient patterns); (c) **stream-interruption patterns** — `stream (interrupted|closed|ended|failed)` + `disconnected` added to the transient regex set.
+- **fix(tests): closeVectorIndex hang + S38 test-file split.** The extension test suite hung ~40 minutes when `closeVectorIndex()` stalled on a PGlite WASM worker that never settled (`node --test` blocked on the open handle). Fixes: (1) every `cleanup` test wraps `closeVectorIndex()` in `Promise.race([…, setTimeout(3000)])` so a stalled WASM close cannot block CI; (2) S38 tests extracted into `extensions/mega-compact-s38.test.ts` (focused, fast-isolated, ~3s standalone) so error-retry has its own file under the 500-line guardrail; (3) `scripts/run-tests.mjs` adds `--test-force-exit` to the per-file `node --test` call.
+- **audit(error-retry): 5-dimension resume→disconnect→retry review.** Adversarially verified (haiku workflow). Confirmed the partial-content gap (fixed in S38.10). Refuted three suspected risks: the post-resume "already compacted" race is NOT a blocker in the default config (the S38.5 strict guard catches it), `resetRuntime`'s same-session guard preserves S38 state on resume, and the retry loop is bounded (per-turn `errorRetryCount` + cross-turn `consecutiveErrors`). Findings recorded in `docs/AI_ERROR_RETRY_FINDINGS.md`.
 
-No migration required — additive; all features behind env flags with safe defaults. Tests: 540+ (S38 tests added).
+No migration required — additive; all features behind env flags with safe defaults. Full gate: 571 pass / 0 fail in ~22s (was effectively infinite due to the hang). npm-only distribution; published via `./scripts/deploy.sh 0.8.15`.
 
 ## v0.8.0 (unreleased) — Game Mode (S30–S35)
 

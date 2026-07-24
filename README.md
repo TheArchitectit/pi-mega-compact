@@ -6,9 +6,13 @@ sessions into a **local SQLite store** and offers **deduped inline recall** — 
 running **locally inside the extension**, with **no remote MCP server** and
 **zero network calls at runtime** (PREVENT-PI-004).
 
-> **Status - v0.8.14.** The React dashboard (8 tabs, responsive scaling from
-> 1280×720 to 4K) now ships in the npm tarball alongside the fallback html.ts.
-> Game Mode adds themes, levels, achievements, and leaderboards. See
+> **Status - v0.8.15.** A new **error-retry safety net (S38)** catches provider
+> failures, network timeouts, 5xx/429 responses, and mid-response disconnects
+> (provider dies mid-stream with no stop reason) — classifying each and firing a
+> retry nudge automatically, with a circuit breaker to bound the loop. The
+> React dashboard (8 tabs, responsive scaling from 1280×720 to 4K) ships in the
+> npm tarball alongside the fallback html.ts. Game Mode adds themes, levels,
+> achievements, and leaderboards. See
 > [RELEASE_NOTES.md](RELEASE_NOTES.md) for the full changelog.
 
 ---
@@ -23,6 +27,7 @@ running **locally inside the extension**, with **no remote MCP server** and
 - **Live dashboard** - React-based 8-tab dashboard (Overview, Repos, Events, Config, Metrics, Cache, Game, Achievements) with responsive scaling from laptop (1280×720) to ultrawide/4K. Active Repos tab shows every currently-open session side by side.
 - **Perf metrics** - Model latency (turn/provider p50/p95), throughput (TPS/cache hit %), process (RSS/heap/CPU), snapshot cost (DB recompute/disk write), and TUI lag proxy — all polled on a 2s interval while the dashboard is open.
 - **Database maintenance** - `/mega-db-*` commands plus best-effort auto-maintenance on session start.
+- **Error-retry safety net (S38)** - when a turn ends with a recoverable error (provider failure, network timeout, 5xx/429, or a mid-response disconnect where the stream dies without a stop reason), the extension classifies it and fires a retry nudge automatically — up to 5× for transient errors, 1× for permanent. A circuit breaker stops the loop after too many consecutive failures, and the race guard ensures the retry itself can't trigger an "already compacted" error. Tunable via env flags with safe defaults.
 
 ## Table of contents
 
@@ -294,7 +299,7 @@ Optional progression layer (toggle with `/mega-compact-settings on`):
 Above the pi editor the extension shows a compact widget:
 
 ```
- ⚡ high·low v0.8.14 │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
+ ⚡ high·low v0.8.15 │ 142k/200k tokens (71%) │ 3 chkpts │ 🤖 2 agents │ turn 5
    ◐ armed │ dedup: 92% │ saved: 45k tok │ LVL 4
 ```
 

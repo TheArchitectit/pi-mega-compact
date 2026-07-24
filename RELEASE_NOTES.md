@@ -1,5 +1,39 @@
 # Release Notes — pi-mega-compact
 
+## v0.8.15 (2026-07-23)
+
+**S38 Error-Retry Safety Net + mid-response disconnect detection.** A new error-retry layer catches provider failures, network timeouts, 5xx/429 responses, auth errors, and — critically — **mid-response disconnects where the provider dies mid-stream** and `turn_end` fires with no stop reason. Previously the agent silently stopped on these; it now classifies the failure and fires a retry nudge automatically.
+
+### What's new
+
+- **Error classifier (`classifyError`).** Classifies every turn-end error into `transient` (retry up to 5×), `permanent` (retry 1×), `compaction-noop` (don't retry — the compaction already succeeded, retrying would race), or `null` (success, reset counters). S28 continues to own the `length` (max-output-token) stop reason exclusively.
+- **Mid-response disconnect detection (S38.10).** When a provider streams partial content then dies without a `stopReason`, the classifier returns `transient` (not `null`). A genuine success always carries `stop`/`tool_use`/`toolUse`, so any message reaching the classifier with a falsy stop reason is a stream death — retryable whether or not partial text was emitted. Provider error objects (`{ error: { message } }`) now extract `.message` for pattern matching; stream-interruption phrases (`stream interrupted/closed/ended/failed`, `disconnected`) are classified transient.
+- **Circuit breaker (S38.6).** After `maxConsecutiveErrors` (default 10) consecutive errors across turns, retries stop until a successful `turn_end` resets the counter — bounds the retry loop on a persistently failing provider.
+- **Hard-stop switch (S38.7).** `MEGACOMPACT_ERROR_RETRY_HARD_STOP=true` disables all error retries (reverts to S28-only behavior).
+- **Race guard (S38.5).** The retry nudge itself can't trigger the "already compacted" race: `agent_end`'s durable-trim skips `ctx.compact()` for 30s after any native compaction (`MEGACOMPACT_RACE_GUARD_STRICT=false` reverts to the 10s synchronous guard). In strict mode (default) the call is deferred 500ms with a re-check so pi's about-to-run native compaction lands first.
+- **Retries dashboard tile (S38.8).** The status tile surfaces `errorRetryCount`, `consecutiveErrors`, `maxConsecutiveErrors`, and `errorRetryHardStop` alongside the per-retry event stream.
+- **Preflight env validation (S38.9).** Invalid env values log warnings and fall back to defaults at startup (non-fatal).
+
+### Configuration
+
+| Env var | Default | Effect |
+|---|---|---|
+| `MEGACOMPACT_AUTO_RETRY_TRANSIENT_MAX` | `5` | Max transient retries; `0` disables transient retries |
+| `MEGACOMPACT_AUTO_RETRY_PERMANENT_MAX` | `1` | Max permanent retries; `0` disables |
+| `MEGACOMPACT_MAX_CONSECUTIVE_ERRORS` | `10` | Circuit-breaker threshold |
+| `MEGACOMPACT_ERROR_RETRY_HARD_STOP` | `false` | Disable all error retries |
+| `MEGACOMPACT_RACE_GUARD_STRICT` | `true` | 30s cooldown + deferred re-check; `false` reverts to 10s sync guard |
+
+### Reliability fixes
+
+- **Test-suite hang eliminated.** The full gate ran ~40 minutes (effectively infinite) because `closeVectorIndex()` stalled on a PGlite WASM worker that never settled — `node --test` blocked on the open handle. Every `cleanup` test now races the close against a 3s timeout, the S38 tests were extracted into a focused isolated file (`mega-compact-s38.test.ts`), and `scripts/run-tests.mjs` adds `--test-force-exit`. **Full gate now runs in ~22s** (571 pass / 0 fail).
+
+### Migration
+
+None — fully additive, all features behind env flags with safe defaults. Update with `pi update --extensions`.
+
+---
+
 ## v0.8.14 (2026-07-21)
 
 **React dashboard parity with responsive scaling.** The old static `html.ts` dashboard (1071 lines, all data visible) is now fully replicated in React with 8 tabs, and the layout scales fluidly from narrow laptop (1280×720) to ultrawide/4K.
