@@ -46,3 +46,8 @@ tmp/
 
 # Benchmark results (per-run, not committed)
 scripts/benchmark/out/
+
+# Benchmark results + logs (transcript-derived, may contain repo/session data)
+scripts/benchmark/*-results.jsonl
+scripts/benchmark/*-bench.log
+scripts/benchmark/results.json

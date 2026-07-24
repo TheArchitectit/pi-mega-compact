@@ -65,6 +65,7 @@
 | **S27 sprint plan (tasks 5–9: context hook, dedup pipeline, recall demotion, tests, DB maintenance /commands)** | [specs/sprint-27-db-mirror-implementation.md](specs/sprint-27-db-mirror-implementation.md) | docs/ |
 | **post-mortem: "Already compacted" / "Auto compaction failed" race (agent_end vs native _checkCompaction)** | [specs/postmortem-already-compacted-race.md](specs/postmortem-already-compacted-race.md) | docs/specs/ |
 | **AI error-retry findings (S38.1–S38.10: classifier, retry contract, circuit breaker, hard-stop, race guard, retries tile, mid-response stream-death detection, test-file split + closeVectorIndex hang fix)** | [AI_ERROR_RETRY_FINDINGS.md](AI_ERROR_RETRY_FINDINGS.md) | docs/ |
+| **compaction benchmarks (recall-based synthetic suite + real-repo head-to-head: mega-compact vs pi-vcc — size, ratio, latency; fair-comparison protocol + honest caveats)** | [BENCHMARKS.md](BENCHMARKS.md) | docs/ |
 | **S27 Task 10: DB maintenance /commands (/mega-db-stats, prune, vacuum, check, reconcile) + auto-maintenance on session_start** | `extensions/mega-db-cmds.ts` + `src/store/sqlite.ts` | extensions/ + src/ |
 | retention policy (TTL 90d, soft-delete, VACUUM, DR snapshots) | [RETENTION_POLICY.md](RETENTION_POLICY.md) | docs/ |
 | dedup runbook (SEV tiers, first-15-min, MARK_ONLY degrade) | [DEDUP_RUNBOOK.md](DEDUP_RUNBOOK.md) | docs/ |
