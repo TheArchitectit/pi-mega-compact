@@ -80,7 +80,7 @@ Detailed architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
 ```bash
 npm run build     # TypeScript compile
-npm test          # Build + 353 tests
+npm test          # Build + 609 tests
 npm run lint      # Type check + guardrails scan
 ```
 
