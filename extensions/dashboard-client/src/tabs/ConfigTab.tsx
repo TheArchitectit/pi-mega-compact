@@ -17,7 +17,7 @@ import type React from "react";
 import { useState, useEffect, useCallback } from "react";
 import type { SnapshotResponse, GameStatePatch } from "@contracts";
 import { fetchSnapshot, fetchGameState, putGameState } from "../api/client";
-import { THEMES } from "../../../../src/config/themes";
+import { THEMES, THEME_IDS } from "../../../../src/config/themes";
 
 /** Actual flat game state returned by the server (the server returns a flat
  *  { game_mode_on, theme, tui_display_mode } shape, NOT the contract's nested
@@ -168,6 +168,20 @@ export default function ConfigTab(): React.ReactElement {
 								</option>
 							))}
 						</select>
+						<button
+							type="button"
+							disabled={saving}
+							className="theme-cycle-btn"
+							title="Cycle to the next theme (P3)"
+							onClick={() => {
+								const i = THEME_IDS.indexOf(themeVal);
+								const next =
+									THEME_IDS[(i < 0 ? 0 : i + 1) % THEME_IDS.length];
+								if (next) void handlePatch({ theme: next });
+							}}
+						>
+							Next theme →
+						</button>
 					</label>
 				</div>
 				<div className="settings-row">
@@ -184,7 +198,10 @@ export default function ConfigTab(): React.ReactElement {
 						>
 							<option value="full">Full</option>
 							<option value="minimal">Minimal</option>
-						</select>
+						</select>{" "}
+							<span className="tui-mode-hint">
+								(affects the in-app TUI widget; not shown here)
+							</span>
 					</label>
 				</div>
 			</section>

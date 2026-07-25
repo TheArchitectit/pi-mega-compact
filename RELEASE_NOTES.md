@@ -1,5 +1,31 @@
 # Release Notes — pi-mega-compact
 
+## v0.8.16 (2026-07-24)
+
+**TUI footer-flip fix + cross-process widget refresh + hang elimination.** Three priority fixes around the mega-runtime TUI widget: the footer line no longer flips every 250ms, dashboard theme/toggle changes now reflect in the live TUI instantly even when pi is idle, and the re-entrant `snapshot()` call in the `fs.watch` game-state callback (which caused a 190s test-suite timeout) is replaced with a lightweight re-read. Also tracks the authoritative `scripts/deploy.sh` publish gate in git.
+
+### What's new
+
+- **P3 — Dashboard theme-cycle button.** A "Next theme →" button on the dashboard Config tab (React + the legacy `html.ts` settings strip) cycles through the already-fetched `<option>` values client-side — no new endpoint, stays in sync with the server's `THEMES` list. A hint span `(affects the in-app TUI widget; not shown here)` clarifies the TUI display-mode select.
+
+### Fixed
+
+- **P1 — TUI footer-flip.** The L5 ticker branch re-picked the head text every 250ms via `step = floor(Date.now()/250)`, flipping the footer line on a 250·N ms cycle (the client-reported "last line keeps flipping" bug). It now pins to the most-recent entry so the last line holds stable until a real state change.
+- **P1 — `pushTicker` dedupe.** Consecutive identical ticker entries are skipped (keeping the ring at `TICKER_MAX` for real variety); `at` is not refreshed on a skip.
+- **P2 — Cross-process widget refresh.** A dashboard-made theme/toggle/tui-mode change now reflects in the live TUI immediately even when pi is idle (no context event to drive `snapshot()`). `lastWidgetCtx` is stashed on every `snapshot()` so the `fs.watch` callback can force a widget re-render.
+- **P2 — Re-entrant `snapshot()` hang.** The `fs.watch` game-state callback used to call the full `this.snapshot(ctx)`, which recomputes 6 sync SQLite opens + `writeFileSync(dashboard.json)` + store writes. Those store writes retrigger the SAME `fs.watch` callback (it fires on every `sqlite.db*` write, including context-event checkpoint writes) → re-entrant thrash → 190s test timeout under `mega-compact.test.js` / `mega-teamrun.test.js`. Replaced with a lightweight `refreshWidgetGameState(ctx)` that re-reads ONLY the `game_state` row and patches the three game-mode fields (`gameMode`/`theme`/`tuiMode`) on the existing `widgetData`, then re-registers the factory via `renderWidget()`. It writes nothing to the store or `dashboard.json`, so it cannot retrigger itself. No-op when `widgetData` is null or `ctx` undefined.
+
+### Reliability
+
+- **`scripts/deploy.sh` now tracked in git.** The MANDATORY release pipeline script (CLAUDE.md: "never publish by hand") was recovered from an untracked stash and committed so every release runs it. It enforces a clean tree + the full gate (`build` + `test` + `lint` + `regression_check` + `guardrails-scan`) + dashboard-bundle verify (`extensions/dashboard-client/dist/index.html` present AND listed by `npm pack --dry-run`) before `npm publish`.
+- **Lockfile sync.** `package-lock.json` version field synced to v0.8.16 (`deploy.sh` stages only `package.json` + dist, not the lockfile).
+
+### Migration
+
+None — bug fixes only. Update with `pi update --extensions`.
+
+---
+
 ## v0.8.15 (2026-07-23)
 
 **S38 Error-Retry Safety Net + mid-response disconnect detection.** A new error-retry layer catches provider failures, network timeouts, 5xx/429 responses, auth errors, and — critically — **mid-response disconnects where the provider dies mid-stream** and `turn_end` fires with no stop reason. Previously the agent silently stopped on these; it now classifies the failure and fires a retry nudge automatically.
