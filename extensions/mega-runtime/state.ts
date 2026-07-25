@@ -213,6 +213,11 @@ export class MegaRuntime {
 	// getCachedGameState() snapshot re-queries the DB anyway.
 	private gameStateWatcher?: FSWatcher;
 	private gameStateWatchDir?: string;
+	// P2: the last ExtensionContext handed to snapshot()/renderWidget(), stashed
+	// so the fs.watch game-state callback can force a widget re-render without
+	// a context event (cross-process dashboard edits while pi is idle). Cleared
+	// implicitly on construction (undefined → watcher skips until first snap).
+	private lastWidgetCtx?: ExtensionContext;
 
 	/**
 	 * DIAG counters for the "team run doesn't relieve context" investigation.
@@ -379,6 +384,7 @@ export class MegaRuntime {
 
 	/** Collect live state and write it to disk (+ paint the above-editor widget). */
 	snapshot(ctx?: ExtensionContext): void {
+		if (ctx) this.lastWidgetCtx = ctx;
 		if (ctx) this.bindRepo(ctx.cwd);
 		// v0.8.5: gate the expensive body (6 sync SQLite opens +
 		// writeFileSync(dashboard.json)) behind a cheap material-change signature.
@@ -999,6 +1005,29 @@ export class MegaRuntime {
 					if (typeof filename === "string" && filename.startsWith("sqlite.db")) {
 						this.cachedGameState = undefined;
 						this.gameStateBump++;
+						// P2: force a widget re-render so a dashboard-made theme/toggle/
+						// tui-mode change reflects in the live TUI immediately, even when
+						// pi is idle (no context event to drive snapshot()). Use the
+						// LIGHTWEIGHT refreshWidgetGameState() — NOT the full snapshot():
+						// snapshot() recomputes 6 sync SQLite opens + writes dashboard.json
+						// + writes to the store, and those store writes RETRIGGER this
+						// same fs.watch callback (it fires on every sqlite.db* write) →
+						// re-entrant thrash → 190s test timeout under mega-compact.test.js
+						// / mega-teamrun.test.js. The lightweight path re-reads ONLY the
+						// game_state row and patches the three game-mode fields on the
+						// existing widgetData, then re-registers the factory via
+						// renderWidget() — it writes nothing to the store or
+						// dashboard.json, so it cannot retrigger itself. Guard: skip until
+						// the first snapshot stashed a ctx (no widget registered yet →
+						// nothing to refresh). Non-fatal: next context event re-snapshots.
+						const ctx = this.lastWidgetCtx;
+						if (ctx) {
+							try {
+								this.refreshWidgetGameState(ctx);
+							} catch {
+								/* non-fatal */
+							}
+						}
 					}
 				},
 			);
@@ -1074,6 +1103,33 @@ export class MegaRuntime {
 			}
 		}
 		return this.cachedGameState;
+	}
+
+	/** P2 cross-process re-render: lightweight game-state refresh for the
+	 *  fs.watch callback. Eviction of cachedGameState + gameStateBump++ happens
+	 *  in the caller BEFORE this runs. Here we re-read ONLY the game_state row
+	 *  via getCachedGameState() (one SELECT; the cache is already evicted) and
+	 *  patch ONLY the three game-mode fields on the EXISTING widgetData, then
+	 *  re-register the widget factory via renderWidget() so pi redraws next
+	 *  frame.
+	 *
+	 *  WHY a lightweight path: the full snapshot(ctx) recomputes 6 synchronous
+	 *  SQLite opens + writeFileSync(dashboard.json) + store writes, and those
+	 *  store writes RETRIGGER this same fs.watch callback → re-entrant thrash
+	 *  (the watcher fires on every sqlite.db* write, including context-event
+	 *  checkpoint writes) → 190s test timeout under mega-compact.test.js /
+	 *  mega-teamrun.test.js. This path writes NOTHING to the store or
+	 *  dashboard.json, so it cannot retrigger itself.
+	 *
+	 *  Guard: no-op when widgetData is null (no snapshot has run yet → nothing
+	 *  to patch) or ctx is undefined. Field values mirror snapshot() exactly. */
+	refreshWidgetGameState(ctx: ExtensionContext): void {
+		if (!this.widgetData || !ctx) return;
+		const gs = this.getCachedGameState();
+		this.widgetData.gameMode = gs.game_mode_on;
+		this.widgetData.theme = getTheme(gs.theme) ? gs.theme : "transparent";
+		this.widgetData.tuiMode = gs.tui_display_mode;
+		this.renderWidget(ctx);
 	}
 
 	/** S31: evict the cached game-mode state so the next widget render re-reads
