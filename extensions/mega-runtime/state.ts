@@ -1220,6 +1220,14 @@ export class MegaRuntime {
 
 	// Phase 3 — recall/activity ticker ring buffer.
 	pushTicker(text: string): void {
+		// P1: dedupe consecutive identical entries — skip the append when the
+		// last entry's text matches, so a re-fired compact/recall/dedup event
+		// doesn't flood the ring (keeps it at TICKER_MAX for real variety).
+		// `at` is NOT refreshed on a skip (the original event time stands).
+		if (this.ticker[this.ticker.length - 1]?.text === text) {
+			this.lastActivityAt = Date.now();
+			return;
+		}
 		this.ticker.push({ text, at: Date.now() });
 		while (this.ticker.length > this.TICKER_MAX) this.ticker.shift();
 		this.lastActivityAt = Date.now();
