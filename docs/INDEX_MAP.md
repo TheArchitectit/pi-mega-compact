@@ -79,6 +79,7 @@
 | install, setup, usage, openclaw plugin, commands, troubleshooting | [INSTALL_AND_USAGE.md](INSTALL_AND_USAGE.md) | docs/ |
 | release notes, v0.2.0, migration guide, breaking change, what's new | [RELEASE_NOTES.md](../RELEASE_NOTES.md) | repo root |
 | changelog, per-release changes, sprint breakdown | [CHANGELOG.md](../CHANGELOG.md) | repo root |
+| release pipeline, publish gate, deploy.sh, npm publish gate (v0.8.16) | [scripts/deploy.sh](../scripts/deploy.sh) | scripts/ |
 | dashboard, live monitoring, widget, SSE, token gauge | [DASHBOARD.md](../extensions/DASHBOARD.md) | extensions/ |
 
 ---
