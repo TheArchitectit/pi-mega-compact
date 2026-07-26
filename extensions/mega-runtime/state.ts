@@ -29,6 +29,8 @@ import {
 	getCacheHitTokensSaved,
 	getGameState,
 	recordPerfSample,
+	recordSessionHeartbeat,
+	appendTokenSample,
 	type ModelSnapshot,
 	type GameState,
 } from "../../src/store/sqlite.js";
@@ -574,6 +576,35 @@ export class MegaRuntime {
 			},
 		} as DashboardSnapshot);
 		const perfDiskMs = this.dashboard.lastWriteMs;
+
+		// S39: record a session heartbeat + token sample into the shared
+		// machine-wide index.sqlite so the dashboard can show a real-time
+		// stacked-memory graph across all active pi processes. Behind the
+		// material-change gate (this code only runs when sig changed). Non-fatal
+		// try/catch mirrors the recordPerfSample pattern below. Skip the token
+		// sample when lastCtxTokens is null (no context data yet).
+		try {
+			const repo = resolveRepoRoot(ctx?.cwd ?? this.currentStateDir) ?? this.currentStateDir;
+			recordSessionHeartbeat(
+				process.pid,
+				this.rt.sessionId,
+				repo,
+				this.currentStateDir,
+				this.lastCtxWindow || 0,
+			);
+			if (this.lastCtxTokens != null) {
+				appendTokenSample(
+					this.rt.sessionId,
+					repo,
+					this.lastCtxTokens,
+					this.lastCtxPercent ?? 0,
+					this.lastCtxWindow || 0,
+					join(this.currentStateDir, "events.log"),
+				);
+			}
+		} catch {
+			/* non-fatal: S39 monitoring must never block the snapshot path */
+		}
 
 		// Live stats widget above the editor
 		if (ctx) {
