@@ -1,0 +1,87 @@
+/**
+ * dashboard-client/src/styles/repostack.css — Stacked per-repo context bar (S40).
+ *
+ * Horizontal stacked bar: one colored segment per active repo (aggregating
+ * token counts across that repo's active sessions). Depends on base.css
+ * tokens (--panel, --border, --text, --muted, --accent, --ok, --warn, --err).
+ */
+
+.repo-stack-card {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.repo-stack-card h3 {
+	margin: 0;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--text);
+}
+
+.repo-stack-bar {
+	display: flex;
+	width: 100%;
+	height: 22px;
+	border-radius: 6px;
+	overflow: hidden;
+	border: 1px solid var(--border);
+	background: var(--bg);
+}
+
+.repo-stack-segment {
+	height: 100%;
+	min-width: 2px;
+	transition: opacity 0.15s, filter 0.15s;
+}
+
+.repo-stack-segment:hover {
+	opacity: 0.85;
+	filter: brightness(1.15);
+}
+
+.repo-stack-total {
+	font-size: 13px;
+	color: var(--text);
+	font-variant-numeric: tabular-nums;
+}
+
+.repo-stack-total .pct {
+	color: var(--muted);
+}
+
+.repo-stack-legend {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+	gap: 6px;
+}
+
+.repo-stack-legend-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	color: var(--muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.repo-stack-legend-swatch {
+	flex-shrink: 0;
+	width: 12px;
+	height: 12px;
+	border-radius: 3px;
+	border: 1px solid var(--border);
+}
+
+.repo-stack-legend-name {
+	color: var(--text);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+	.repo-stack-legend {
+		grid-template-columns: 1fr;
+	}
+}

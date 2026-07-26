@@ -1,5 +1,102 @@
 # Release Notes — pi-mega-compact
 
+## v0.8.21 (2026-07-27)
+
+**ESC abort now cleanly skips retry nudges + real-time session gauges + stacked memory charts.** Three features (S39 session-timeseries charts, S40 per-repo context gauges, S38 ESC-cancel fix) and a critical P1 bug fix: pressing ESC mid-task previously fired up to 5 blind retry nudges that re-ran the exact task you just cancelled. That's fixed — the new `'cancelled'` error category short-circuits the retry safety net on any user-initiated abort.
+
+### What's new
+
+- **S39 — Sessions tab with stacked memory graph.** A new Sessions tab on the dashboard shows a real-time stacked area chart of per-session memory usage (compact limit + context tokens) over time. Data is persisted in new SQLite tables (`session_heartbeats`, `token_samples`) with a heartbeat hook that records token usage on every `turn_end`. The chart updates live via SSE (`/api/sessions/events`) using the same `Last-Event-ID` resumable-stream pattern as the compact event stream. Backend endpoints: `GET /api/sessions` (snapshot) + `GET /api/sessions/timeseries` (per-session time-series, `?since=` + `?sessionId=`). Frontend: `recharts` `AreaChart` with stacked fills, auto-updating every heartbeat. (`e73eba4` → `62814a1`)
+- **S40 — Per-session context gauges on Overview.** The Overview tab now shows a stacked bar of per-repo context usage (real-time via `/api/sessions` + SSE). Each session gets a proportional gauge showing context tokens vs compact limit — making it easy to see at a glance which repos are close to compaction. `lastCtxTokens` fallback handles providers that don't report usage metadata. (`3ae34b6` → `bb460cc`)
+- **S38 cancelled — ESC/Ctrl-C abort skips all retry nudges.** The error-retry classifier now recognizes `stopReason === "aborted"` (the signal pi fires on ESC) as a new `'cancelled'` category — like `'compaction-noop'` and `'context-overflow'`, it short-circuits the safety net with no retry nudge. Both `errorRetryCount` and `consecutiveErrors` are reset to zero (a cancel is not a failure for circuit-breaker purposes), and `error_retry_cancelled` is emitted to the dashboard event stream. The old text-based `s.includes('aborted') → 'transient'` classifier path is removed. (`5742881`)
+- **Dashboard "Buy Me a Coffee" support link.** (`9e6316f`)
+
+### Fixed
+
+- **P1 — ESC abort fires blind retry nudges.** When a user pressed ESC mid-task, pi's `app.interrupt` keybinding called `agent.abort()`, producing a `turn_end` with `stopReason: "aborted"`. The S38 error-retry classifier matched `s.includes('aborted')` and returned `'transient'` — identical to a provider 5xx or network timeout. The safety net then fired up to 5 retry nudges (`"[mega-compact] the last turn ended with an error; please retry."`), re-running the task the user explicitly cancelled. Fixed by introducing the `'cancelled'` category that fires before any text-based matching. (`5742881`)
+- **Dashboard build: `recharts` dependency.** The S39 `SessionsMemoryChart.tsx` component imported `recharts`, which was declared in `extensions/dashboard-client/package.json` but never installed — causing the deploy.sh vite build step to fail with "Rollup failed to resolve import". Reinstalled the dependency and pinned to `^2.15.4`. (`a2319a1`, `fb2f2bf`)
+- **S40 `lastCtxTokens` fallback.** Providers that don't report usage metadata (no `usage.total_tokens` / `usage.input_tokens`) now gracefully fall back to the last known value instead of showing 0. (`90a7b78`)
+
+### Tests
+
+S38 file: **37 tests** (up from 33). New:
+- `classifyError` returns `'cancelled'` for `stopReason: "aborted"` — 3 variants (plain, "Operation aborted", "Aborted after N retry attempts")
+- Defense: `stopReason: "error"` + `errorMessage` containing "aborted" still returns `'transient'` (not `'cancelled'`)
+- Integration: ESC abort fires NO nudge + logs `error_retry_cancelled`
+- Integration: ESC abort resets counters so next real transient error starts fresh from count=1
+
+Full gate: **628 pass / 0 fail** across 59 files in ~29s. Guardrails clean.
+
+### Configuration
+
+No new env vars. The `'cancelled'` category requires no configuration — it is a pure short-circuit of the existing retry logic. All S38 knobs (`MEGACOMPACT_AUTO_RETRY_TRANSIENT_MAX`, `MEGACOMPACT_MAX_CONSECUTIVE_ERRORS`, etc.) continue to work unchanged for real transient errors.
+
+### Migration
+
+None — fully backward-compatible. Update with `pi update --extensions`.
+
+---
+
+## v0.8.16 (2026-07-24)
+
+**TUI footer-flip fix + cross-process widget refresh + hang elimination.** Three priority fixes around the mega-runtime TUI widget: the footer line no longer flips every 250ms, dashboard theme/toggle changes now reflect in the live TUI instantly even when pi is idle, and the re-entrant `snapshot()` call in the `fs.watch` game-state callback (which caused a 190s test-suite timeout) is replaced with a lightweight re-read. Also tracks the authoritative `scripts/deploy.sh` publish gate in git.
+
+### What's new
+
+- **P3 — Dashboard theme-cycle button.** A "Next theme →" button on the dashboard Config tab (React + the legacy `html.ts` settings strip) cycles through the already-fetched `<option>` values client-side — no new endpoint, stays in sync with the server's `THEMES` list. A hint span `(affects the in-app TUI widget; not shown here)` clarifies the TUI display-mode select.
+
+### Fixed
+
+- **P1 — TUI footer-flip.** The L5 ticker branch re-picked the head text every 250ms via `step = floor(Date.now()/250)`, flipping the footer line on a 250·N ms cycle (the client-reported "last line keeps flipping" bug). It now pins to the most-recent entry so the last line holds stable until a real state change.
+- **P1 — `pushTicker` dedupe.** Consecutive identical ticker entries are skipped (keeping the ring at `TICKER_MAX` for real variety); `at` is not refreshed on a skip.
+- **P2 — Cross-process widget refresh.** A dashboard-made theme/toggle/tui-mode change now reflects in the live TUI immediately even when pi is idle (no context event to drive `snapshot()`). `lastWidgetCtx` is stashed on every `snapshot()` so the `fs.watch` callback can force a widget re-render.
+- **P2 — Re-entrant `snapshot()` hang.** The `fs.watch` game-state callback used to call the full `this.snapshot(ctx)`, which recomputes 6 sync SQLite opens + `writeFileSync(dashboard.json)` + store writes. Those store writes retrigger the SAME `fs.watch` callback (it fires on every `sqlite.db*` write, including context-event checkpoint writes) → re-entrant thrash → 190s test timeout under `mega-compact.test.js` / `mega-teamrun.test.js`. Replaced with a lightweight `refreshWidgetGameState(ctx)` that re-reads ONLY the `game_state` row and patches the three game-mode fields (`gameMode`/`theme`/`tuiMode`) on the existing `widgetData`, then re-registers the factory via `renderWidget()`. It writes nothing to the store or `dashboard.json`, so it cannot retrigger itself. No-op when `widgetData` is null or `ctx` undefined.
+
+### Reliability
+
+- **`scripts/deploy.sh` now tracked in git.** The MANDATORY release pipeline script (CLAUDE.md: "never publish by hand") was recovered from an untracked stash and committed so every release runs it. It enforces a clean tree + the full gate (`build` + `test` + `lint` + `regression_check` + `guardrails-scan`) + dashboard-bundle verify (`extensions/dashboard-client/dist/index.html` present AND listed by `npm pack --dry-run`) before `npm publish`.
+- **Lockfile sync.** `package-lock.json` version field synced to v0.8.16 (`deploy.sh` stages only `package.json` + dist, not the lockfile).
+
+### Migration
+
+None — bug fixes only. Update with `pi update --extensions`.
+
+---
+
+## v0.8.15 (2026-07-23)
+
+**S38 Error-Retry Safety Net + mid-response disconnect detection.** A new error-retry layer catches provider failures, network timeouts, 5xx/429 responses, auth errors, and — critically — **mid-response disconnects where the provider dies mid-stream** and `turn_end` fires with no stop reason. Previously the agent silently stopped on these; it now classifies the failure and fires a retry nudge automatically.
+
+### What's new
+
+- **Error classifier (`classifyError`).** Classifies every turn-end error into `transient` (retry up to 5×), `permanent` (retry 1×), `compaction-noop` (don't retry — the compaction already succeeded, retrying would race), or `null` (success, reset counters). S28 continues to own the `length` (max-output-token) stop reason exclusively.
+- **Mid-response disconnect detection (S38.10).** When a provider streams partial content then dies without a `stopReason`, the classifier returns `transient` (not `null`). A genuine success always carries `stop`/`tool_use`/`toolUse`, so any message reaching the classifier with a falsy stop reason is a stream death — retryable whether or not partial text was emitted. Provider error objects (`{ error: { message } }`) now extract `.message` for pattern matching; stream-interruption phrases (`stream interrupted/closed/ended/failed`, `disconnected`) are classified transient.
+- **Circuit breaker (S38.6).** After `maxConsecutiveErrors` (default 10) consecutive errors across turns, retries stop until a successful `turn_end` resets the counter — bounds the retry loop on a persistently failing provider.
+- **Hard-stop switch (S38.7).** `MEGACOMPACT_ERROR_RETRY_HARD_STOP=true` disables all error retries (reverts to S28-only behavior).
+- **Race guard (S38.5).** The retry nudge itself can't trigger the "already compacted" race: `agent_end`'s durable-trim skips `ctx.compact()` for 30s after any native compaction (`MEGACOMPACT_RACE_GUARD_STRICT=false` reverts to the 10s synchronous guard). In strict mode (default) the call is deferred 500ms with a re-check so pi's about-to-run native compaction lands first.
+- **Retries dashboard tile (S38.8).** The status tile surfaces `errorRetryCount`, `consecutiveErrors`, `maxConsecutiveErrors`, and `errorRetryHardStop` alongside the per-retry event stream.
+- **Preflight env validation (S38.9).** Invalid env values log warnings and fall back to defaults at startup (non-fatal).
+
+### Configuration
+
+| Env var | Default | Effect |
+|---|---|---|
+| `MEGACOMPACT_AUTO_RETRY_TRANSIENT_MAX` | `5` | Max transient retries; `0` disables transient retries |
+| `MEGACOMPACT_AUTO_RETRY_PERMANENT_MAX` | `1` | Max permanent retries; `0` disables |
+| `MEGACOMPACT_MAX_CONSECUTIVE_ERRORS` | `10` | Circuit-breaker threshold |
+| `MEGACOMPACT_ERROR_RETRY_HARD_STOP` | `false` | Disable all error retries |
+| `MEGACOMPACT_RACE_GUARD_STRICT` | `true` | 30s cooldown + deferred re-check; `false` reverts to 10s sync guard |
+
+### Reliability fixes
+
+- **Test-suite hang eliminated.** The full gate ran ~40 minutes (effectively infinite) because `closeVectorIndex()` stalled on a PGlite WASM worker that never settled — `node --test` blocked on the open handle. Every `cleanup` test now races the close against a 3s timeout, the S38 tests were extracted into a focused isolated file (`mega-compact-s38.test.ts`), and `scripts/run-tests.mjs` adds `--test-force-exit`. **Full gate now runs in ~22s** (571 pass / 0 fail).
+
+### Migration
+
+None — fully additive, all features behind env flags with safe defaults. Update with `pi update --extensions`.
+
+---
+
 ## v0.8.14 (2026-07-21)
 
 **React dashboard parity with responsive scaling.** The old static `html.ts` dashboard (1071 lines, all data visible) is now fully replicated in React with 8 tabs, and the layout scales fluidly from narrow laptop (1280×720) to ultrawide/4K.

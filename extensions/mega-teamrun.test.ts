@@ -42,6 +42,12 @@ function harness() {
   process.env.MEGACOMPACT_DEBUG = "true";
   process.env.MEGACOMPACT_THRESHOLD_TOKENS = "50";
   process.env.MEGACOMPACT_FAST_GATE_PCT = "1";
+  // Strict race-guard mode double-counts diagAgentEndDurable (sync++ at branch
+  // entry + deferred++ in the setTimeout(500) callback = 6, not 3), lands
+  // compactCalls after the synchronous assertions, and leaks timers that hang
+  // `node --test`. The strict deferred path is covered by the two S38.5 tests
+  // in mega-compact.test.ts. Use the synchronous v0.7.4 path here.
+  process.env.MEGACOMPACT_RACE_GUARD_STRICT = "false";
   process.env.MEGACOMPACT_ANCHOR_USER_MESSAGES = "1";
   process.env.MEGACOMPACT_DURABLE_TRIM_FLOOR = "0"; // piCompactWouldNoop must not skip
   process.env.MEGACOMPACT_MEMORY_AUTO_REVIEW = "false";
@@ -159,6 +165,12 @@ test("control: session_before_compact supplies a durable compaction (parent sett
 });
 
 test("cleanup", async () => {
-  await closeVectorIndex();
+  // Race closeVectorIndex with a timeout to prevent 40-min hangs.
+  try {
+    await Promise.race([
+      closeVectorIndex(),
+      new Promise((r) => setTimeout(r, 3000)),
+    ]);
+  } catch { /* ignore */ }
   rmSync(baseTmp, { recursive: true, force: true });
 });

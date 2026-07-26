@@ -300,3 +300,28 @@ export interface SseCrewBanditChosen {
   /** Cumulative regret of the bandit policy (dimensionless). */
   regret: number;
 }
+
+/**
+ * SSE event appened to events.log by `appendTokenSample`
+ * (src/store/sqlite/global-index.ts) on every material snapshot. The existing
+ * `GET /api/events` SSE handler tails events.log line-by-line, so these
+ * `session_sample` lines stream to the dashboard client for free
+ * (real-time chart updates between the 2s polls in the Sessions tab).
+ *
+ * Wire shape mirrors {@link SseCompactStart} etc. with `ts` (ISO 8601 string)
+ * plus `type` (`'session_sample'`) and the per-session payload.
+ *
+ * Served via `GET /api/events` (Server-Sent Events stream).
+ */
+export interface SseSessionSample {
+  /** Discriminator. Always `'session_sample'`. */
+  type: 'session_sample';
+  /** ISO 8601 timestamp of the sample (coincides with the token_samples row `ts`). */
+  ts: string;
+  /** Session identifier the sample belongs to. */
+  sessionId: string;
+  /** Context window token count at this sample (tokens). */
+  tokens: number;
+  /** Context pressure percentage (0–100). */
+  percent: number;
+}

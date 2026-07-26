@@ -770,6 +770,106 @@ export async function launchDashboardServer(
 			return;
 		}
 
+		// /api/sessions — S39: active pi sessions with latest token usage + heartbeat.
+		// GET returns {updatedAt, pruned, sessions[]} after pruning stale heartbeats.
+		// The dashboard server is a detached child with no MegaRuntime ref, so it
+		// reads session_heartbeats via a require()'d sqlite helper (same pattern as
+		// /api/achievements, /api/perf). Non-GET -> 405. PREVENT-PI-004: loopback.
+		if (req.url?.startsWith("/api/sessions")) {
+			// Guard: /api/sessions/timeseries handled separately below.
+			if (req.url.startsWith("/api/sessions/timeseries")) {
+				// Fall through to the timeseries handler below.
+			} else {
+				const sReq = createRequire(import.meta.url);
+				const {
+					readActiveSessions,
+					pruneStaleSessions,
+					listRepoRegistry,
+				} = sReq(
+						"../../src/store/sqlite.js",
+					) as typeof import("../../src/store/sqlite.js");
+				if (req.method !== "GET") {
+					res.writeHead(405, { "Content-Type": "application/json" }); // guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
+					res.end(JSON.stringify({ error: "method_not_allowed" }));
+					return;
+				}
+				try {
+					const pruned = pruneStaleSessions(); // guardrails-allow PREVENT-PI-004: local SQLite read (loopback dashboard)
+					const active = readActiveSessions();
+					const repos = listRepoRegistry();
+					const repoMap = new Map(repos.map((r) => [r.repoRoot, r]));
+					const sessions = active.map((s) => ({
+						pid: s.pid,
+						sessionId: s.sessionId,
+						repoRoot: s.repoRoot,
+						displayName: s.repoRoot
+							? (s.repoRoot.split(/[\\/]/).filter(Boolean).pop() ?? s.repoRoot)
+							: (s.stateDir?.split(/[\\/]/).filter(Boolean).pop() ?? "unknown"),
+						model: s.repoRoot ? (repoMap.get(s.repoRoot)?.modelName ?? null) : null,
+						tokens: s.tokens,
+						percent: s.percent,
+						ctxWindow: s.ctxWindow,
+						lastSeen: s.lastSeen,
+						stateDir: s.stateDir,
+					}));
+					res.writeHead(200, { "Content-Type": "application/json" });
+					res.end(
+						JSON.stringify({ updatedAt: new Date().toISOString(), pruned, sessions }),
+					);
+				} catch (e) {
+					res.writeHead(500, { "Content-Type": "application/json" });
+					res.end(
+						JSON.stringify({ error: "sessions_unavailable", detail: String(e) }),
+					);
+				}
+				return;
+			}
+		}
+
+		// /api/sessions/timeseries — S39: stacked per-session token timeseries for
+		// the recharts memory graph. GET ?minutes=N (clamped [1,1440]) returns
+		// {updatedAt, windowMinutes, series[], totals[]} in recharts-ready shape.
+		// Non-GET -> 405. PREVENT-PI-004: loopback.
+		if (req.url?.startsWith("/api/sessions/timeseries")) {
+			const tsReq = createRequire(import.meta.url);
+			const {
+				readSessionTimeseries,
+				pruneTokenSamples,
+			} = tsReq(
+					"../../src/store/sqlite.js",
+				) as typeof import("../../src/store/sqlite.js");
+			if (req.method !== "GET") {
+				res.writeHead(405, { "Content-Type": "application/json" }); // guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
+				res.end(JSON.stringify({ error: "method_not_allowed" }));
+				return;
+			}
+			try {
+				const url = new URL(req.url, "http://x"); // guardrails-allow PREVENT-PI-004: localhost dashboard URL base (loopback-only)
+				let minutes = Number(url.searchParams.get("minutes") ?? "30");
+				if (!Number.isFinite(minutes) || minutes <= 0) minutes = 30;
+				minutes = Math.min(Math.max(minutes, 1), 1440);
+				const sinceTs = Date.now() - minutes * 60_000;
+				const pruneMs = Math.max(minutes * 60_000, 1_800_000);
+				pruneTokenSamples(pruneMs); // guardrails-allow PREVENT-PI-004: local SQLite read (loopback dashboard)
+				const result = readSessionTimeseries(sinceTs); // guardrails-allow PREVENT-PI-004: local SQLite read (loopback dashboard)
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(
+					JSON.stringify({
+						updatedAt: new Date().toISOString(),
+						windowMinutes: minutes,
+						series: result.series,
+						totals: result.totals,
+					}),
+				);
+			} catch (e) {
+				res.writeHead(500, { "Content-Type": "application/json" });
+				res.end(
+					JSON.stringify({ error: "timeseries_unavailable", detail: String(e) }),
+				);
+			}
+			return;
+		}
+
 		// Fallback — serve the React client build (SPA route) or legacy dashboard.
 		// Non-/api/* GETs hit here: serve client assets if built, else inline HTML.
 		if (

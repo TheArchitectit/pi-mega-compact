@@ -1,20 +1,27 @@
 #!/bin/bash
-# Deploy new React dashboard to all devices running pi-mega-compact
-# Uses npm registry (0.8.10) — no .tgz, no symlink
+# deploy_dashboard.sh — DEVICE-SIDE updater helper (kept for backwards lookups).
+#
+# This is NOT the publish script. Publishing happens on the dev machine via
+#   ./scripts/deploy.sh <new-version>
+# which enforces the full gate, builds the React dashboard, and verifies the
+# bundle is included in `npm pack --dry-run` BEFORE `npm publish` — preventing
+# the 0.8.5 regression where the dashboard bundle was missing from the package.
+#
+# Run THIS script on each device AFTER a release has been published to npm.
 
-set -e
+set -euo pipefail
 
-echo "[deploy] Updating to registry version 0.8.10..."
+echo "[device] Updating to the latest registry version (npm only, no .tgz)..."
 pi update --extensions
 
-echo "[deploy] Confirm installed version:"
+echo "[device] Installed version:"
 cat $(find ~/.pi/agent/extensions -path '*mega-compact/package.json' 2>/dev/null | head -1) 2>/dev/null | grep '"version"' || echo "Package file not found — install may have failed"
 
-echo "[deploy] Remove any leftover .tgz artifacts:"
+echo "[device] Remove any leftover .tgz artifacts:"
 find ~/.pi/agent/extensions -name '*.tgz' -delete 2>/dev/null || true
 
-echo "[deploy] Verify server serves new React bundle (not old html):"
-# Restart server by touching a trigger file (server watches for changes)
-echo "Restart server by running: curl http://localhost:9320/"
-echo "Then check /api/version responds with version 0.8.10"
-echo "[deploy] Done. If old dashboard still visible, restart server (kill server process, relaunch)."
+echo "[device] Verify the server serves the React bundle (not old static html):"
+echo "  curl -sS http://localhost:9320/ | grep -E 'id=\"root\"|<div id=\"root\">'"
+echo "  (expected: a match — the React #root mount point. If empty, the bundle did"
+echo "   not ship; ask the publisher to re-run ./scripts/deploy.sh with a patch bump.)"
+echo "[device] Done."

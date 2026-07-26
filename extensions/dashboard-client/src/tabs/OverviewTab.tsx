@@ -18,9 +18,19 @@
  */
 
 import type React from "react";
-import type { SnapshotResponse } from "@contracts";
+import { useCallback, useEffect, useMemo } from "react";
+import { useApi } from "../hooks/useApi";
+import { useSSE } from "../hooks/useSSE";
+import { fetchSessions } from "../api/client";
+import type {
+	SnapshotResponse,
+	SseEvent,
+	SseSessionSample,
+	SessionsResponse,
+} from "@contracts";
 import type { RuntimeSnapshot } from "../utils/types";
-import { ContextGauge } from "../components/ContextGauge";
+import { RepoContextStack } from "../components/RepoContextStack";
+import { SessionContextGauges } from "../components/SessionContextGauges";
 import { TriggerStatus } from "../components/TriggerStatus";
 import { VectorStoreCard } from "../components/VectorStoreCard";
 import { RepoAllSessionsCard } from "../components/RepoAllSessionsCard";
@@ -31,6 +41,11 @@ import { SessionInfo } from "../components/SessionInfo";
 import { CacheHitsCard } from "../components/CacheHitsCard";
 import { TimeSavedCard } from "../components/TimeSavedCard";
 import { LegendCard } from "../components/LegendCard";
+
+/** Type guard: narrows an SSE event to a session_sample event. */
+function isSessionSample(e: SseEvent): e is SseSessionSample {
+	return e.type === "session_sample";
+}
 
 export interface OverviewTabProps {
 	snapshot: SnapshotResponse | null;
@@ -52,6 +67,31 @@ export default function OverviewTab({
 	loading,
 	error,
 }: OverviewTabProps): React.ReactElement {
+	// S40: real-time per-repo context via /api/sessions + SSE. Mirrors the
+	// SessionsTab pattern: 2s poll + session_sample SSE refetch.
+	const {
+		data: sessionsData,
+		error: sessionsErr,
+		loading: sessionsLoading,
+		refetch: refetchSessions,
+	} = useApi<SessionsResponse>(
+		useCallback(() => fetchSessions(), []),
+		{ pollInterval: 2_000 },
+	);
+
+	const { events } = useSSE();
+
+	const sampleEvents = useMemo(() => events.filter(isSessionSample), [events]);
+	const lastSampleTs = useMemo(() => {
+		if (sampleEvents.length === 0) return null;
+		return sampleEvents[sampleEvents.length - 1].ts;
+	}, [sampleEvents]);
+
+	useEffect(() => {
+		if (lastSampleTs == null) return;
+		refetchSessions();
+	}, [lastSampleTs, refetchSessions]);
+
 	if (loading && !snapshot)
 		return <div className="tab-stub">Loading snapshot…</div>;
 	if (error && !snapshot)
@@ -60,8 +100,7 @@ export default function OverviewTab({
 
 	// Cast to RuntimeSnapshot for tierPct (runtime-only field).
 	const d = snapshot as RuntimeSnapshot;
-	const { context, compression, trigger, session, store, tier, updatedAt } =
-		d;
+	const { context, compression, trigger, session, store, tier, updatedAt } = d;
 	const cfg = d.config;
 	const crew = d.crew;
 	const integrity = d.integrity;
@@ -78,10 +117,21 @@ export default function OverviewTab({
 				<span className="updated">updated {formatUpdatedAt(updatedAt)}</span>
 			</div>
 			<div className="card-grid overview-card-grid">
-				<ContextGauge
-					tokens={context.tokens}
-					percent={context.percent}
-					contextWindow={context.contextWindow}
+				<SessionContextGauges
+					sessions={sessionsData}
+					loading={sessionsLoading}
+					error={sessionsErr}
+					launcherSessionId={session.id}
+					launcher={{
+						tokens: context.tokens,
+						percent: context.percent,
+						contextWindow: context.contextWindow,
+					}}
+				/>
+				<RepoContextStack
+					sessions={sessionsData}
+					loading={sessionsLoading}
+					error={sessionsErr}
 				/>
 				<TriggerStatus
 					armed={trigger.armed}

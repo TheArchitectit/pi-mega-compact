@@ -40,7 +40,7 @@ function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
 	if (!opts.keepTier) delete process.env.MEGACOMPACT_TIER;
 	process.env.MEGACOMPACT_FAST_GATE_PCT = "1";
 
-	const handlers: Record<string, Function> = {};
+	const handlers: Record<string, Function[]> = {};
 	const commands: Record<
 		string,
 		{ handler: (a: string, c: any) => Promise<void> }
@@ -154,8 +154,8 @@ function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
 			// session_before_compact handler (where WE supply the durable trim).
 			compact: (opts?: any) => {
 				compactCalls.push(opts);
-				if (handlers["session_before_compact"]) {
-					return handlers["session_before_compact"](
+				const _sbc = handlers["session_before_compact"]; if (_sbc && _sbc.length) {
+					return _sbc[0](
 						{
 							type: "session_before_compact",
 							reason: "threshold",
@@ -181,7 +181,8 @@ function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
 
 	const pi = {
 		on: (ev: string, h: Function) => {
-			handlers[ev] = h;
+			if (!handlers[ev]) handlers[ev] = [];
+			handlers[ev].push(h);
 		},
 		registerCommand: (name: string, opts: any) => {
 			commands[name] = opts;
@@ -225,7 +226,7 @@ function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
 		notifies,
 		compactCalls,
 		sendUserMessages,
-		fire: (ev: string, event: any, ctx: any) => handlers[ev](event, ctx),
+		fire: async (ev: string, event: any, ctx: any) => { let r: any; for (const h of handlers[ev] || []) r = await h(event, ctx); return r; },
 		ctx: makeCtx,
 		session,
 	};
@@ -251,8 +252,13 @@ test("auto-trigger (legacy): past threshold persists a chkpt and starts a durabl
 				percent: 100,
 			}),
 		});
-		const res = await h.fire("context", { type: "context", messages }, ctx);
-		// L1->L4 ran: a checkpoint was persisted to the SQLite store + a marker entry written.
+			const res = await h.fire("context", { type: "context", messages }, ctx);
+			// S38.5: the strict race guard (default) defers ctx.compact() via a
+			// setTimeout(500) re-check. The synchronous return is still undefined
+			// (no local drop), but ctx.compact() only lands after the timer — wait
+			// for it before asserting the durable-trim call count.
+			await new Promise((r) => setTimeout(r, 700));
+			// L1->L4 ran: a checkpoint was persisted to the SQLite store + a marker entry written.
 		const { listCheckpoints } = await import("../src/store/sqlite.js");
 		assert.ok(
 			listCheckpoints("sess_ext_001", h.stateDir).length > 0,
@@ -1238,15 +1244,20 @@ test("S28: length_stop + length_stop_continue dashboard events fire on the right
 	assert.equal(h.sendUserMessages.length, 1, "length stop: exactly one nudge");
 });
 
-test("S28: non-length stopReasons do not arm the flag (no nudge, no length_stop event)", async () => {
+test("S28: non-length stopReasons do not arm the length-stop flag (no length_stop event); S38 owns error/aborted retries", async () => {
 	const h = harness();
 	const lowPressureCtx = h.ctx({
 		isIdle: () => true,
 		hasPendingMessages: () => false,
 		getContextUsage: () => ({ tokens: 100, contextWindow: 200000, percent: 0 }),
 	});
-	// Every other pi-ai StopReason must leave the flag unset → no nudge + no event.
+	// S28 contract: every non-length StopReason must leave lengthStopPending unset,
+	// so no length_stop event fires and no length-stop resume nudge is armed.
+	// (S38 separately owns error/aborted — it WILL fire error-retry nudges for those;
+	// this test only asserts the S28 length-stop flag is not armed.)
+	let transientRetries = 0;
 	for (const stopReason of ["tool_use", "error", "aborted"] as const) {
+		const before = h.sendUserMessages.length;
 		await h.fire(
 			"turn_end",
 			{
@@ -1261,11 +1272,22 @@ test("S28: non-length stopReasons do not arm the flag (no nudge, no length_stop 
 			{ type: "agent_end", messages: [] },
 			lowPressureCtx,
 		);
+		// tool_use is success (0 nudges); error/aborted are transient under S38 (1 each).
+		if (stopReason === "tool_use") {
+			assert.equal(
+				h.sendUserMessages.length - before,
+				0,
+				"tool_use (success): no nudge",
+			);
+		} else {
+			transientRetries += h.sendUserMessages.length - before;
+		}
 	}
+	// error + aborted each produced one S38 transient retry nudge (2 total).
 	assert.equal(
-		h.sendUserMessages.length,
-		0,
-		"non-length stopReasons: no nudge",
+		transientRetries,
+		2,
+		"S38 owns error/aborted: 1 transient retry each",
 	);
 	assert.ok(
 		!eventTypes(h.stateDir).includes("length_stop"),
@@ -1476,6 +1498,12 @@ test("cleanup", async () => {
 	// Terminate the global PGlite cross-repo index (WASM worker thread) so the
 	// test process can exit. Without this, node --test never returns even though
 	// every test passed — the leaked worker keeps the event loop alive.
-	await closeVectorIndex();
+	// Race with a timeout to prevent 40-min hangs if PGlite WASM close stalls.
+	try {
+		await Promise.race([
+			closeVectorIndex(),
+			new Promise((r) => setTimeout(r, 3000)),
+		]);
+	} catch { /* ignore */ }
 	rmSync(baseTmp, { recursive: true, force: true });
 });

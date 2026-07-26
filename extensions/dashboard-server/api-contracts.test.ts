@@ -158,10 +158,11 @@ void _c_perf;
 void _c_achievements;
 
 // ─── Compile-Time: ENDPOINTS path/method consistency ─────────────────────────
-// Verify the ENDPOINTS registry has exactly 13 entries with correct paths.
+// Verify the ENDPOINTS registry has exactly 15 entries with correct paths.
+// (Sprint 39 added /api/sessions + /api/sessions/timeseries.)
 
 const ENDPOINT_KEYS = Object.keys(ENDPOINTS) as (keyof typeof ENDPOINTS)[];
-const EXPECTED_ENDPOINT_COUNT = 13;
+const EXPECTED_ENDPOINT_COUNT = 15;
 
 /** All `/api/*` paths served by server.ts (extracted from the route handlers). */
 const SERVER_TS_PATHS: string[] = [
@@ -177,12 +178,14 @@ const SERVER_TS_PATHS: string[] = [
   "/api/game-scores",
   "/api/perf",
   "/api/achievements",
+  "/api/sessions",
+  "/api/sessions/timeseries",
 ];
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("ENDPOINTS registry", () => {
-  test("has exactly 13 endpoint entries", () => {
+  test("has exactly 15 endpoint entries", () => {
     assert.equal(
       ENDPOINT_KEYS.length,
       EXPECTED_ENDPOINT_COUNT,
@@ -803,7 +806,7 @@ describe("GET /api/achievements", () => {
 // matching its discriminator.
 
 describe("SSE /api/events — SseEvent union discriminator validation", () => {
-  /** All 20 SseEvent variants with their discriminator `type` value and a minimal payload. */
+  /** All 21 SseEvent variants with their discriminator `type` value and a minimal payload. */
   const SSE_VARIANTS: ReadonlyArray<{
     discriminator: string;
     payload: string;
@@ -996,13 +999,23 @@ describe("SSE /api/events — SseEvent union discriminator validation", () => {
         frame: "\x1b[2J\x1b[H",
       }),
     },
+    {
+      discriminator: "session_sample",
+      payload: JSON.stringify({
+        type: "session_sample",
+        ts: "2025-01-01T00:00:00Z",
+        sessionId: "sess-abc",
+        tokens: 42_000,
+        percent: 35.5,
+      }),
+    },
   ];
 
-  test("all 20 SseEvent variants have a type field matching their discriminator", () => {
+  test("all 21 SseEvent variants have a type field matching their discriminator", () => {
     assert.equal(
       SSE_VARIANTS.length,
-      20,
-      "SseEvent union should have 20 variants",
+      21,
+      "SseEvent union should have 21 variants",
     );
 
     for (const variant of SSE_VARIANTS) {

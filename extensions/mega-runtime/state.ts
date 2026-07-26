@@ -29,6 +29,8 @@ import {
 	getCacheHitTokensSaved,
 	getGameState,
 	recordPerfSample,
+	recordSessionHeartbeat,
+	appendTokenSample,
 	type ModelSnapshot,
 	type GameState,
 } from "../../src/store/sqlite.js";
@@ -87,6 +89,9 @@ export class MegaRuntime {
 		recallInjections: 0,
 		cacheHitTokens: 0,
 		lengthStopPending: false,
+		errorRetryCount: 0,
+		errorRetryUntil: 0,
+		consecutiveErrors: 0,
 	};
 	// v0.8.6 cache-stability: the cached live-trim view for the current
 	// compaction epoch. Set after a fresh runCompact + computeLiveTrimCut, and
@@ -210,6 +215,11 @@ export class MegaRuntime {
 	// getCachedGameState() snapshot re-queries the DB anyway.
 	private gameStateWatcher?: FSWatcher;
 	private gameStateWatchDir?: string;
+	// P2: the last ExtensionContext handed to snapshot()/renderWidget(), stashed
+	// so the fs.watch game-state callback can force a widget re-render without
+	// a context event (cross-process dashboard edits while pi is idle). Cleared
+	// implicitly on construction (undefined → watcher skips until first snap).
+	private lastWidgetCtx?: ExtensionContext;
 
 	/**
 	 * DIAG counters for the "team run doesn't relieve context" investigation.
@@ -376,6 +386,7 @@ export class MegaRuntime {
 
 	/** Collect live state and write it to disk (+ paint the above-editor widget). */
 	snapshot(ctx?: ExtensionContext): void {
+		if (ctx) this.lastWidgetCtx = ctx;
 		if (ctx) this.bindRepo(ctx.cwd);
 		// v0.8.5: gate the expensive body (6 sync SQLite opens +
 		// writeFileSync(dashboard.json)) behind a cheap material-change signature.
@@ -548,6 +559,16 @@ export class MegaRuntime {
 				cacheHit: { sessionSec: sec(this.rt.cacheHitTokens), totalSec: sec(cacheHitsTotalTokens) },
 			},
 			model,
+			// S38.8: error-retry state for the dashboard "retries" tile. The field is
+			// declared on DashboardSnapshot (mega-dashboard.ts) and surfaced here so the
+			// dashboard can render live retry/circuit-breaker status alongside the event
+			// stream (which already carries per-retry events).
+			retries: {
+				errorRetryCount: this.rt.errorRetryCount,
+				consecutiveErrors: this.rt.consecutiveErrors,
+				maxConsecutiveErrors: this.config.maxConsecutiveErrors,
+				errorRetryHardStop: this.config.errorRetryHardStop,
+			},
 			diag: {
 				ctxFastGate: this.diagCtxFastGate,
 				liveTrimFires: this.diagLiveTrimFires,
@@ -555,6 +576,35 @@ export class MegaRuntime {
 			},
 		} as DashboardSnapshot);
 		const perfDiskMs = this.dashboard.lastWriteMs;
+
+		// S39: record a session heartbeat + token sample into the shared
+		// machine-wide index.sqlite so the dashboard can show a real-time
+		// stacked-memory graph across all active pi processes. Behind the
+		// material-change gate (this code only runs when sig changed). Non-fatal
+		// try/catch mirrors the recordPerfSample pattern below. Skip the token
+		// sample when lastCtxTokens is null (no context data yet).
+		try {
+			const repo = resolveRepoRoot(ctx?.cwd ?? this.currentStateDir) ?? this.currentStateDir;
+			recordSessionHeartbeat(
+				process.pid,
+				this.rt.sessionId,
+				repo,
+				this.currentStateDir,
+				this.lastCtxWindow || 0,
+			);
+			if (this.lastCtxTokens != null) {
+				appendTokenSample(
+					this.rt.sessionId,
+					repo,
+					this.lastCtxTokens,
+					this.lastCtxPercent ?? 0,
+					this.lastCtxWindow || 0,
+					join(this.currentStateDir, "events.log"),
+				);
+			}
+		} catch {
+			/* non-fatal: S39 monitoring must never block the snapshot path */
+		}
 
 		// Live stats widget above the editor
 		if (ctx) {
@@ -829,8 +879,11 @@ export class MegaRuntime {
 			recallInjections: 0,
 			cacheHitTokens: 0,
 			lengthStopPending: false,
+			errorRetryCount: 0,
+			errorRetryUntil: 0,
+			consecutiveErrors: 0,
 	};
-		this.trimCache = null; // v0.8.6: never replay a stale trim into a new session
+	this.trimCache = null; // v0.8.6: never replay a stale trim into a new session
 		this.statusKey = undefined;
 		this.activeAgents = 0;
 		this.currentTurn = 0;
@@ -983,6 +1036,29 @@ export class MegaRuntime {
 					if (typeof filename === "string" && filename.startsWith("sqlite.db")) {
 						this.cachedGameState = undefined;
 						this.gameStateBump++;
+						// P2: force a widget re-render so a dashboard-made theme/toggle/
+						// tui-mode change reflects in the live TUI immediately, even when
+						// pi is idle (no context event to drive snapshot()). Use the
+						// LIGHTWEIGHT refreshWidgetGameState() — NOT the full snapshot():
+						// snapshot() recomputes 6 sync SQLite opens + writes dashboard.json
+						// + writes to the store, and those store writes RETRIGGER this
+						// same fs.watch callback (it fires on every sqlite.db* write) →
+						// re-entrant thrash → 190s test timeout under mega-compact.test.js
+						// / mega-teamrun.test.js. The lightweight path re-reads ONLY the
+						// game_state row and patches the three game-mode fields on the
+						// existing widgetData, then re-registers the factory via
+						// renderWidget() — it writes nothing to the store or
+						// dashboard.json, so it cannot retrigger itself. Guard: skip until
+						// the first snapshot stashed a ctx (no widget registered yet →
+						// nothing to refresh). Non-fatal: next context event re-snapshots.
+						const ctx = this.lastWidgetCtx;
+						if (ctx) {
+							try {
+								this.refreshWidgetGameState(ctx);
+							} catch {
+								/* non-fatal */
+							}
+						}
 					}
 				},
 			);
@@ -1058,6 +1134,33 @@ export class MegaRuntime {
 			}
 		}
 		return this.cachedGameState;
+	}
+
+	/** P2 cross-process re-render: lightweight game-state refresh for the
+	 *  fs.watch callback. Eviction of cachedGameState + gameStateBump++ happens
+	 *  in the caller BEFORE this runs. Here we re-read ONLY the game_state row
+	 *  via getCachedGameState() (one SELECT; the cache is already evicted) and
+	 *  patch ONLY the three game-mode fields on the EXISTING widgetData, then
+	 *  re-register the widget factory via renderWidget() so pi redraws next
+	 *  frame.
+	 *
+	 *  WHY a lightweight path: the full snapshot(ctx) recomputes 6 synchronous
+	 *  SQLite opens + writeFileSync(dashboard.json) + store writes, and those
+	 *  store writes RETRIGGER this same fs.watch callback → re-entrant thrash
+	 *  (the watcher fires on every sqlite.db* write, including context-event
+	 *  checkpoint writes) → 190s test timeout under mega-compact.test.js /
+	 *  mega-teamrun.test.js. This path writes NOTHING to the store or
+	 *  dashboard.json, so it cannot retrigger itself.
+	 *
+	 *  Guard: no-op when widgetData is null (no snapshot has run yet → nothing
+	 *  to patch) or ctx is undefined. Field values mirror snapshot() exactly. */
+	refreshWidgetGameState(ctx: ExtensionContext): void {
+		if (!this.widgetData || !ctx) return;
+		const gs = this.getCachedGameState();
+		this.widgetData.gameMode = gs.game_mode_on;
+		this.widgetData.theme = getTheme(gs.theme) ? gs.theme : "transparent";
+		this.widgetData.tuiMode = gs.tui_display_mode;
+		this.renderWidget(ctx);
 	}
 
 	/** S31: evict the cached game-mode state so the next widget render re-reads
@@ -1148,6 +1251,14 @@ export class MegaRuntime {
 
 	// Phase 3 — recall/activity ticker ring buffer.
 	pushTicker(text: string): void {
+		// P1: dedupe consecutive identical entries — skip the append when the
+		// last entry's text matches, so a re-fired compact/recall/dedup event
+		// doesn't flood the ring (keeps it at TICKER_MAX for real variety).
+		// `at` is NOT refreshed on a skip (the original event time stands).
+		if (this.ticker[this.ticker.length - 1]?.text === text) {
+			this.lastActivityAt = Date.now();
+			return;
+		}
 		this.ticker.push({ text, at: Date.now() });
 		while (this.ticker.length > this.TICKER_MAX) this.ticker.shift();
 		this.lastActivityAt = Date.now();

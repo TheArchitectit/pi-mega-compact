@@ -67,11 +67,13 @@
 | **S31 spec (CRAG quality metrics — relevance, coverage, diversity, specificity; query expansion on low quality, quality telemetry)** | [specs/s31-crag-quality-metrics.md](specs/s31-crag-quality-metrics.md) | docs/specs/ |
 | **S32 spec (visual memory map dashboard — reactflow graph of memories, temporal/causal/topical edges, filter controls, detail panel)** | [specs/s32-visual-memory-map.md](specs/s32-visual-memory-map.md) | docs/specs/ |
 | **S33 spec (auto-categorizing memory wiki — rule-based + LLM topic assignment, wiki page generation, topic tree browser)** | [specs/s33-auto-categorizing-wiki.md](specs/s33-auto-categorizing-wiki.md) | docs/specs/ |
+| **S39 spec (real-time multi-pi stacked memory graph — shared `session_heartbeats` + `token_samples` tables in `~/.mega-compact-index`, runtime snapshot hook, `/api/sessions` + `/api/sessions/timeseries`, recharts Sessions tab; PREVENT-PI-004 safe)** | [specs/s39-multi-pi-memory-graph.md](specs/s39-multi-pi-memory-graph.md) | docs/specs/ |
 | **game-mode design spec v0.2 (gamified stats: per-metric leaderboards, MEGA CACHE, 6 themes, 3-toggle panel, minimalist TUI)** | [game-mode-design.md](game-mode-design.md) | docs/ |
 | **game-mode QA review + sprint plan S30–S35 (guardrail adherence, 12 QA findings, 52 pre-defined TODOs; S31 ✅ DONE)** | [specs/game-mode-sprint-plan.md](specs/game-mode-sprint-plan.md) | docs/specs/ |
 | **S27 spec (db mirror: byte-stable prompt cache via raw transcript mirror + deterministic epoch nonce)** | [specs/sprint-27-db-mirror-cache-stability.md](specs/sprint-27-db-mirror-cache-stability.md) | docs/ |
 | **S27 sprint plan (tasks 5–9: context hook, dedup pipeline, recall demotion, tests, DB maintenance /commands)** | [specs/sprint-27-db-mirror-implementation.md](specs/sprint-27-db-mirror-implementation.md) | docs/ |
 | **post-mortem: "Already compacted" / "Auto compaction failed" race (agent_end vs native _checkCompaction)** | [specs/postmortem-already-compacted-race.md](specs/postmortem-already-compacted-race.md) | docs/specs/ |
+| **AI error-retry findings (S38.1–S38.10: classifier, retry contract, circuit breaker, hard-stop, race guard, retries tile, mid-response stream-death detection, test-file split + closeVectorIndex hang fix)** | [AI_ERROR_RETRY_FINDINGS.md](AI_ERROR_RETRY_FINDINGS.md) | docs/ |
 | **S27 Task 10: DB maintenance /commands (/mega-db-stats, prune, vacuum, check, reconcile) + auto-maintenance on session_start** | `extensions/mega-db-cmds.ts` + `src/store/sqlite.ts` | extensions/ + src/ |
 | retention policy (TTL 90d, soft-delete, VACUUM, DR snapshots) | [RETENTION_POLICY.md](RETENTION_POLICY.md) | docs/ |
 | dedup runbook (SEV tiers, first-15-min, MARK_ONLY degrade) | [DEDUP_RUNBOOK.md](DEDUP_RUNBOOK.md) | docs/ |
@@ -86,6 +88,7 @@
 | install, setup, usage, openclaw plugin, commands, troubleshooting | [INSTALL_AND_USAGE.md](INSTALL_AND_USAGE.md) | docs/ |
 | release notes, v0.2.0, migration guide, breaking change, what's new | [RELEASE_NOTES.md](../RELEASE_NOTES.md) | repo root |
 | changelog, per-release changes, sprint breakdown | [CHANGELOG.md](../CHANGELOG.md) | repo root |
+| release pipeline, publish gate, deploy.sh, npm publish gate (v0.8.16) | [scripts/deploy.sh](../scripts/deploy.sh) | scripts/ |
 | dashboard, live monitoring, widget, SSE, token gauge | [DASHBOARD.md](../extensions/DASHBOARD.md) | extensions/ |
 
 ---

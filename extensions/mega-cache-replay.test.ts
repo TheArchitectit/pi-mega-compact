@@ -59,7 +59,7 @@ function harness() {
   // the percent-basis grewEnough (>=10) never trips (no re-compact → pure replay).
   const usage = { tokens: 200000, contextWindow: 200000, percent: 100 as number | null };
 
-  const handlers: Record<string, Function> = {};
+  const handlers: Record<string, Function[]> = {};
   const compactCalls: any[] = [];
 
   function msg(role: string, text: string, toolName?: string): AgentMessage {
@@ -106,7 +106,7 @@ function harness() {
   }
 
   const pi = {
-    on: (ev: string, h: Function) => { handlers[ev] = h; },
+    on: (ev: string, h: Function) => { if (!handlers[ev]) handlers[ev] = []; handlers[ev].push(h); },
     registerCommand: () => {}, registerTool: () => {}, registerShortcut: () => {},
     registerFlag: () => {}, getFlag: () => undefined, registerMessageRenderer: () => {},
     registerEntryRenderer: () => {}, sendMessage: () => {}, sendUserMessage: () => {},
@@ -121,7 +121,7 @@ function harness() {
   mod.default(pi);
   const { lastRuntime } = require("./mega-events.js") as { lastRuntime: any };
 
-  const fire = (ev: string, event: any, ctx: any) => handlers[ev](event, ctx);
+  const fire = async (ev: string, event: any, ctx: any) => { let r: any; for (const h of handlers[ev] || []) r = await h(event, ctx); return r; };
   return {
     stateDir, handlers, compactCalls, fire, ctx: makeCtx, usage, buildSession,
     runtime: lastRuntime, // MegaRuntime with diag* counters + rt + trimCache
