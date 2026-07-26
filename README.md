@@ -89,3 +89,9 @@ Testing guide: [`TESTER_GUIDE.md`](TESTER_GUIDE.md)
 ## License
 
 BSD-2-Clause
+
+## ☕ Support
+
+If this project helped you, consider buying me a coffee:
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-TheArchitectit-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/TheArchitectit)
