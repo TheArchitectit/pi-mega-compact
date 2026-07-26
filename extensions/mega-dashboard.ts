@@ -146,6 +146,13 @@ export interface DashboardSnapshot {
     liveTrimFires: number;
     liveTrimReplays: number;
   };
+  /** S38.8: error-retry state for dashboard "retries" tile. */
+  retries?: {
+    errorRetryCount: number;
+    consecutiveErrors: number;
+    maxConsecutiveErrors: number;
+    errorRetryHardStop: boolean;
+  };
 }
 
 export class Dashboard {

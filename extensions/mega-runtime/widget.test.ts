@@ -212,6 +212,54 @@ describe("buildWidgetLines ambient border effect (v0.8.3)", () => {
   });
 });
 
+describe("buildWidgetLines footer stability (P1 — no 250ms rotation)", () => {
+  // P1: the L5 ticker branch used to re-pick the head text every 250ms via
+  // `step = floor(Date.now()/250)`, flipping the footer line on a 250·N ms
+  // cycle. After the fix it pins to the most-recent entry, so two renders of
+  // the SAME WidgetData at t and t+500ms (well past one rotation slot) must
+  // produce byte-identical footer lines. Proves the metronome is gone.
+  const stabBase = (overrides: Partial<WidgetData> = {}): WidgetData => baseWd({
+    theme: DEFAULT_THEME, tuiMode: "full", gameMode: false, level: 1, cachePct: 42, ...overrides,
+  });
+
+  it("ticker footer is byte-identical across simulated frames 500ms apart", () => {
+    const wd = stabBase({
+      ticker: [
+        { text: "first", at: 1000 },
+        { text: "second", at: 2000 },
+        { text: "third", at: 3000 },
+      ],
+      lastWhy: "because",
+    });
+    const realNow = Date.now;
+    try {
+      Date.now = () => 1_000_000; // t
+      const a = buildWidgetLines(wd, WIDTH, 0);
+      Date.now = () => 1_000_500; // t+500ms (would have rotated twice under the old code)
+      const b = buildWidgetLines(wd, WIDTH, 0);
+      assert.deepEqual(a, b, "footer byte-identical across 500ms with no state change");
+      // And the pinned head is the most-recent entry (third), not a rotation:
+      assert.ok(a.some((l) => l.includes("third")), "shows most-recent ticker entry");
+      assert.ok(a.some((l) => l.includes("(+2 more)")), "(+N more) suffix preserved");
+      assert.ok(a.some((l) => l.includes("because")), "lastWhy preserved");
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  it("footer still flips when the ticker actually changes (new pushTicker)", () => {
+    const realNow = Date.now;
+    try {
+      Date.now = () => 1_000_000;
+      const before = buildWidgetLines(stabBase({ ticker: [{ text: "a", at: 1 }] }), WIDTH, 0);
+      const after = buildWidgetLines(stabBase({ ticker: [{ text: "a", at: 1 }, { text: "b", at: 2 }] }), WIDTH, 0);
+      assert.notDeepEqual(before, after, "footer changes when ticker grows");
+    } finally {
+      Date.now = realNow;
+    }
+  });
+});
+
 describe("buildWidgetLines achievement flare (S35)", () => {
   const achBase = (overrides: Partial<WidgetData> = {}): WidgetData => baseWd({
     theme: DEFAULT_THEME, tuiMode: "full", gameMode: true, level: 1, cachePct: 42, ...overrides,

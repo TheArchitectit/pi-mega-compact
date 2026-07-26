@@ -179,8 +179,8 @@ export function dashboardHtml(tierName: string): string {
 
 <div class="settings-strip">
   <label title="Turn game mode on/off (themes the widget + dashboard)"><input type="checkbox" id="set-game-mode"> Game mode</label>
-  <label title="Visual theme (applies instantly)">Theme <select id="set-theme">${THEME_OPTIONS}</select></label>
-  <label title="TUI widget display density">TUI <select id="set-tui-mode"><option value="full">Full</option><option value="minimal">Minimal</option></select></label>
+  <label title="Visual theme (applies instantly)">Theme <select id="set-theme">${THEME_OPTIONS}</select> <button type="button" id="set-theme-next" title="Cycle to the next theme (P3)">Next theme →</button></label>
+  <label title="TUI widget display density">TUI <select id="set-tui-mode"><option value="full">Full</option><option value="minimal">Minimal</option></select> <span class="tui-mode-hint">(affects the in-app TUI widget; not shown here)</span></label>
 </div>
 
 <nav class="tabs">
@@ -872,6 +872,19 @@ export function dashboardHtml(tierName: string): string {
   }
   if (gmCheckbox) gmCheckbox.addEventListener('change', function() { putGameState({ game_mode_on: gmCheckbox.checked }); });
   if (gmTheme) gmTheme.addEventListener('change', function() { putGameState({ theme: gmTheme.value }); });
+  // P3: client-side theme cycling (no new endpoint). Reads the already-fetched
+  // <option> values from the theme select, so it stays in sync with the server's
+  // THEMES list without a second fetch.
+  var gmThemeNext = document.getElementById('set-theme-next');
+  if (gmThemeNext) gmThemeNext.addEventListener('click', function() {
+    var opts = gmTheme ? gmTheme.options : [];
+    var n = opts.length;
+    var cur = gmTheme ? gmTheme.value : 'transparent';
+    var idx = -1;
+    for (var i = 0; i < n; i++) { if (opts[i].value === cur) { idx = i; break; } }
+    var next = n > 0 ? opts[(idx < 0 ? 0 : (idx + 1) % n)].value : 'transparent';
+    putGameState({ theme: next });
+  });
   if (gmTui) gmTui.addEventListener('change', function() { putGameState({ tui_display_mode: gmTui.value }); });
   pollGameState();
   setInterval(pollGameState, 5000);

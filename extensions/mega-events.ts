@@ -16,3 +16,5 @@ export * from "./mega-events/agent-handlers.js";
 export * from "./mega-events/context-handler.js";
 export * from "./mega-events/compact-handlers.js";
 export * from "./mega-events/perf-handler.js";
+export * from "./mega-events/error-classifier.js";
+export * from "./mega-events/send-safe.js";

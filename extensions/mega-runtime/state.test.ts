@@ -116,6 +116,39 @@ describe("MegaRuntime setEffect lifecycle (v0.8.3)", () => {
 	});
 });
 
+describe("MegaRuntime pushTicker dedupe (P1)", () => {
+  const dirs: string[] = [];
+  after(() => {
+    for (const d of dirs) {
+      try { closeStore(d); } catch { /* */ }
+    }
+    delete process.env.MEGACOMPACT_STATE_DIR;
+    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+  });
+
+  it("pushTicker skips consecutive identical entries (keeps ring at capacity for variety)", () => {
+    const dir = freshDir(); dirs.push(dir);
+    process.env.MEGACOMPACT_STATE_DIR = dir;
+    const rt = new MegaRuntime(minimalConfig(dir));
+    rt.pushTicker("compact");
+    rt.pushTicker("compact"); // dedup — skipped
+    rt.pushTicker("compact"); // dedup — skipped
+    rt.pushTicker("recall");
+    assert.equal(rt.ticker.length, 2, "only 2 unique entries kept");
+    assert.equal(rt.ticker[0].text, "compact");
+    assert.equal(rt.ticker[1].text, "recall");
+  });
+
+  it("pushTicker keeps distinct entries and respects TICKER_MAX", () => {
+    const dir = freshDir(); dirs.push(dir);
+    process.env.MEGACOMPACT_STATE_DIR = dir;
+    const rt = new MegaRuntime(minimalConfig(dir));
+    for (let i = 0; i < rt.TICKER_MAX + 3; i++) rt.pushTicker(`t${i}`);
+    assert.equal(rt.ticker.length, rt.TICKER_MAX, "capped at TICKER_MAX");
+    assert.equal(rt.ticker[rt.TICKER_MAX - 1].text, `t${rt.TICKER_MAX + 2}`);
+  });
+});
+
 describe("MegaRuntime game-state cache (S31)", () => {
 	const dirs: string[] = [];
 	after(() => {

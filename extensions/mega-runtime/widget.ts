@@ -388,8 +388,12 @@ export function buildWidgetLines(
 	if (wd.tierTrace && wd.fresh) {
 		lines.push(panelLine(`   ${pulse}${wd.tierTrace}`, width, panelBg));
 	} else if (wd.ticker.length > 0) {
-		const step = Math.floor(Date.now() / 250);
-		const idx = wd.ticker.length - 1 - (step % wd.ticker.length);
+		// P1: pin to the most-recent entry (no 250ms rotation). The old
+		// `step = floor(Date.now()/250)` re-picked the head every TUI frame,
+		// flipping the footer line on a 250·N ms cycle. Pinning makes the
+		// footer hold stable until a real state change (new pushTicker /
+		// tierTrace / pulsing transition). (+N more) + lastWhy are preserved.
+		const idx = wd.ticker.length - 1;
 		const head = wd.ticker[idx].text;
 		const why = wd.lastWhy ? ` ${C.gray}· ${wd.lastWhy}${C.reset}` : "";
 		const more =
