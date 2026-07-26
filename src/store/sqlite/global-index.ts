@@ -461,13 +461,26 @@ export function appendTokenSample(
   });
   // Step 5: also append a session_sample JSON line to events.log so the
   // existing /api/events SSE tail streams it for free (real-time chart push).
+  // Mirrors the DashboardEmitter events.log append pattern in
+  // extensions/mega-dashboard.ts:{ event(type, data) }: a JSON object with
+  // `ts` (ISO 8601 string), `type`, and the event-specific payload. The ISO
+  // timestamp matches the shape of every other SSE variant (SseSessionSample
+  // contract; every SSE variant's `ts` is a string); a numeric ms `ts` would
+  // violate the contract union's "every SSE variant has a ts field of type
+  // string" invariant and break DashboardEmitter consumers.
   if (eventsLogPath) {
     try {
       const dir = eventsLogPath.includes("/") ? eventsLogPath.slice(0, eventsLogPath.lastIndexOf("/")) : ".";
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       appendFileSync(
         eventsLogPath,
-        JSON.stringify({ type: "session_sample", ts: now, sessionId, tokens, percent }) + "\n",
+        JSON.stringify({
+          ts: new Date(now).toISOString(),
+          type: "session_sample",
+          sessionId,
+          tokens,
+          percent,
+        }) + "\n",
       );
     } catch {
       /* non-fatal: SSE push is best-effort */

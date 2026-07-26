@@ -806,7 +806,7 @@ describe("GET /api/achievements", () => {
 // matching its discriminator.
 
 describe("SSE /api/events — SseEvent union discriminator validation", () => {
-  /** All 20 SseEvent variants with their discriminator `type` value and a minimal payload. */
+  /** All 21 SseEvent variants with their discriminator `type` value and a minimal payload. */
   const SSE_VARIANTS: ReadonlyArray<{
     discriminator: string;
     payload: string;
@@ -999,13 +999,23 @@ describe("SSE /api/events — SseEvent union discriminator validation", () => {
         frame: "\x1b[2J\x1b[H",
       }),
     },
+    {
+      discriminator: "session_sample",
+      payload: JSON.stringify({
+        type: "session_sample",
+        ts: "2025-01-01T00:00:00Z",
+        sessionId: "sess-abc",
+        tokens: 42_000,
+        percent: 35.5,
+      }),
+    },
   ];
 
-  test("all 20 SseEvent variants have a type field matching their discriminator", () => {
+  test("all 21 SseEvent variants have a type field matching their discriminator", () => {
     assert.equal(
       SSE_VARIANTS.length,
-      20,
-      "SseEvent union should have 20 variants",
+      21,
+      "SseEvent union should have 21 variants",
     );
 
     for (const variant of SSE_VARIANTS) {

@@ -19,28 +19,21 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useApi } from "../hooks/useApi";
 import { useSSE } from "../hooks/useSSE";
 import { fetchSessions, fetchSessionTimeseries } from "../api/client";
-import type { SseEvent, SessionsResponse, SessionTimeseriesResponse } from "@contracts";
+import type { SseEvent, SseSessionSample, SessionsResponse, SessionTimeseriesResponse } from "@contracts";
 import { SessionsMemoryChart } from "../components/SessionsMemoryChart";
 import { ActiveSessionsTable } from "../components/ActiveSessionsTable";
 
 /**
- * Shape of the session_sample SSE event appended to events.log by
- * appendTokenSample (src/store/sqlite/global-index.ts). Defined locally here
- * because {@link SseEvent} is the contract union of dashboard-emitted event
- * types, and session_sample is emitted by the S39 runtime hook rather than by
- * the DashboardEmitter; the type is added to the union in Step 5.
+ * Shape of the {@link SseSessionSample} SSE event appended to events.log by
+ * `appendTokenSample` (src/store/sqlite/global-index.ts). The contract now
+ * defines this variant as part of the {@link SseEvent} union (Step 5); the
+ * local alias keeps the surface terser in this file.
  */
-interface SessionSampleEvent {
-	readonly type: "session_sample";
-	readonly ts: number;
-	readonly sessionId: string;
-	readonly tokens: number;
-	readonly percent: number;
-}
+type SessionSampleEvent = SseSessionSample;
 
 /** Type guard: narrows an SSE event to a session_sample event. */
 function isSessionSample(
-	e: SseEvent | SessionSampleEvent,
+	e: SseEvent,
 ): e is SessionSampleEvent {
 	return e.type === "session_sample";
 }
@@ -122,10 +115,7 @@ export default function SessionsTab(): React.ReactElement {
 	// length-based dependency means the effect re-runs when a new sample event
 	// lands (not on every poll). We debounce via a microtask guard.
 	const sampleEvents = useMemo(
-		() =>
-			(events as ReadonlyArray<SseEvent | SessionSampleEvent>).filter(
-				isSessionSample,
-			),
+		() => events.filter(isSessionSample),
 		[events],
 	);
 
