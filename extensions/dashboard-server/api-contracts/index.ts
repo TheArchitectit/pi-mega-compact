@@ -130,6 +130,12 @@ export type {
   GameScoresQuery,
   AchievementRow,
   GameStatePatch,
+  ActiveSession,
+  SessionsResponse,
+  SessionDataPoint,
+  SessionSeries,
+  SessionTimeseriesQuery,
+  SessionTimeseriesResponse,
   SseEndpointDef,
 } from './endpoints.js';
 
