@@ -12,12 +12,13 @@
  * exclusively (its agent_end nudge path is separate and must not be doubled).
  *
  * @param message  the event.message (a pi AgentMessage) or an error string
- * @returns 'transient' | 'permanent' | 'compaction-noop' | null (success/unknown)
+ * @returns 'transient' | 'permanent' | 'compaction-noop' | 'context-overflow' | null (success/unknown)
  */
 export function classifyError(message: unknown):
 	| 'transient'
 	| 'permanent'
 	| 'compaction-noop'
+	| 'context-overflow'
 	| null {
 	// Resolve a searchable text blob from a pi AgentMessage or raw string.
 	let text = '';
@@ -81,6 +82,29 @@ export function classifyError(message: unknown):
 	if (/compaction failed/.test(s)) return 'compaction-noop';
 	if (/nothing to compact/.test(s)) return 'compaction-noop';
 	if (/auto[\s-]?compaction failed/.test(s)) return 'compaction-noop';
+	// --- context-overflow (ORDER BEFORE generic transient!) ---
+	// A 400 from the model meaning "the prompt is bigger than the context window."
+	// Catches BOTH provider phrasings so the classification does not depend on
+	// which backend the router landed on:
+	//   - pi/Anthropic wrapper: "too long for this model's context window even
+	//     after compaction. Reduce the conversation length..." ->
+	//     too long | context window | even after compaction | reduce the conversation
+	//   - OpenAI/OpenRouter provider-side (often wrapped in "All targets failed:
+	//     <model>. Last error: ..."): "This model's maximum context length is N
+	//     tokens. Your request requires at least M tokens. Please reduce your
+	//     input or max_tokens." -> maximum context length | context length
+	//     exceeded | requires at least N tokens | reduce your input
+	// All of these carry `invalid_request_error` (UNDERSCORE, not 'invalid
+	// request' space) and would otherwise fall through to the generic
+	// `s.includes('error')` transient branch below, misclassifying as
+	// 'transient' and firing up to 5 blind retry nudges that re-submit the same
+	// oversized prompt -> re-400 -> busy-loop. 'context-overflow' instead forces
+	// ONE deferred re-compact (debounce-bypassed, race-guarded) and fires NO
+	// blind retry nudge. The forced re-compact is shaped by the existing
+	// session_before_compact durable trim (it cannot lower pi's firstKeptEntryId).
+	if (/too long|context window|maximum context length|context length exceeded|requires at least \d+ tokens|even after compaction|reduce the conversation|reduce your input/.test(s)) {
+		return 'context-overflow';
+	}
 	// --- transient (retryable) ---
 	if (s.includes('error') && !/\b(permanent|invalid request|malformed|bad request|auth|unauthorized|invalid (api )?key|permission)\b/.test(s)) {
 		return 'transient'; // generic pi stopReason 'error' / 'aborted'

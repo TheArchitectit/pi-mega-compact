@@ -191,6 +191,69 @@ test("S38: classifyError returns 'compaction-noop' for 'Auto compaction failed' 
 	assert.equal(classifyErrorFn("Auto-compaction failed"), "compaction-noop");
 });
 
+// ---- context-overflow classifier (S38.8: 400 "too long... even after compaction") ----
+
+test("S38: classifyError returns 'context-overflow' for the literal user 400 string", () => {
+	assert.equal(
+		classifyErrorFn("Your conversation is too long for this model's context window even after compaction. Reduce the conversation length or enable/allow compaction."),
+		"context-overflow",
+	);
+});
+
+test("S38: classifyError returns 'context-overflow' for 'All targets failed' wrapper", () => {
+	assert.equal(
+		classifyErrorFn("All targets failed: ... Last error: ... too long ... context window even after compaction"),
+		"context-overflow",
+	);
+});
+
+test("S38: classifyError returns 'context-overflow' for invalid_request_error JSON shape", () => {
+	assert.equal(
+		classifyErrorFn('{"type":"invalid_request_error","message":"... too long for context window ..."}'),
+		"context-overflow",
+	);
+});
+
+test("S38: classifyError returns 'context-overflow' for OpenRouter 'All targets failed' max-context 400 (FAIL-20260725)", () => {
+	// Regression: the OpenAI/OpenRouter provider-side phrasing
+	// "maximum context length is N tokens ... requires at least M tokens ...
+	// reduce your input or max_tokens" does NOT contain "too long" / "context
+	// window" / "reduce the conversation", so it slipped past the original S38.8
+	// regex and fell through to the generic transient branch, firing 5 blind
+	// retry nudges that re-submitted the same oversized prompt -> re-400 ->
+	// busy-loop. The exact user-facing wrapper string from the router:
+	assert.equal(
+		classifyErrorFn('Error: 400: {"message":"All targets failed: neuralwatt/glm-5.2-short. Last error: This model\'s maximum context length is 200000 tokens. Your request requires at least 201070 tokens (201070 prompt + 0 max_tokens). Please reduce your input or max_tokens.","type":"invalid_request_error"}'),
+		"context-overflow",
+	);
+});
+
+test("S38: classifyError returns 'context-overflow' for bare 'maximum context length' phrasing", () => {
+	assert.equal(
+		classifyErrorFn("This model's maximum context length is 128000 tokens. Your request requires at least 130000 tokens. Please reduce your input or max_tokens."),
+		"context-overflow",
+	);
+});
+
+test("S38: classifyError returns 'context-overflow' for 'context length exceeded' phrasing", () => {
+	assert.equal(
+		classifyErrorFn("This model's context length exceeded: 200000 tokens"),
+		"context-overflow",
+	);
+});
+
+test("S38: context-overflow fires NO blind retry nudge and logs 'context_overflow'", async () => {
+	const h = harness();
+	await s38TurnEnd(
+		h,
+		"error",
+		"Your conversation is too long for this model's context window even after compaction. Reduce the conversation length or enable/allow compaction.",
+	);
+	const ev = eventTypes(h.stateDir);
+	assert.equal(h.sendUserMessages.length, 0, "context-overflow: NO blind retry nudge fired");
+	assert.ok(ev.includes("context_overflow"), "context-overflow: 'context_overflow' event logged");
+});
+
 // ---- integration tests (fire turn_end through the real extension) ----
 
 test("S38: compaction-noop logs 'compaction_noop_diagnostic' + resets counter + no retry fired", async () => {

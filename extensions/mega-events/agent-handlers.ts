@@ -19,6 +19,7 @@ import { evaluateAndUnlockAchievements } from "../../src/store/sqlite/game-achie
 import { isMegaCache } from "../../src/game/scoring.js";
 import { resolveRepoRoot } from "../mega-config.js";
 import { classifyError } from "./error-classifier.js";
+import { safeSendUserMessage } from "./send-safe.js";
 
 /** Register agent/turn tracking event handlers. */
 export function registerAgentHandlers(
@@ -215,7 +216,7 @@ export function registerAgentHandlers(
 					const nudgeMsg = lengthStop && !didDurableTrim
 						? "[mega-compact] the last response hit the output-token cap; continue from where it stopped."
 						: "[mega-compact] continue from the compacted context above.";
-					pi.sendUserMessage(nudgeMsg);
+					await safeSendUserMessage(pi, nudgeMsg);
 				}
 			} catch {
 				/* non-fatal: a failed nudge never blocks */
@@ -346,6 +347,48 @@ export function registerAgentHandlers(
 						sessionId: runtime.rt.sessionId,
 						turnIndex: event.turnIndex,
 					});
+				} else if (category === 'context-overflow') {
+					// (4b) context-window overflow 400 ("too long... even after compaction").
+					// NOT a blind retry: re-submitting the same oversized prompt would just
+					// re-400 and busy-loop. Reset the counters (this turn is terminal, not
+					// retryable in the S38 sense) and force ONE best-effort re-compact with
+					// the debounce bypassed + the same race-guard (lastNativeCompactAt
+					// cooldown + deferred setTimeout re-check) as the agent_end durable
+					// trim. Resume after that forced compact is handled by the existing
+					// nudgeResume() inside session_before_compact (it fires after
+					// driveNativeCompaction supplies the compaction) — do NOT add a
+					// separate nudge here.
+					runtime.rt.errorRetryCount = 0;
+					runtime.rt.consecutiveErrors = 0;
+					runtime.dashboard.event('context_overflow', {
+						turnIndex: event.turnIndex,
+						sessionId: runtime.rt.sessionId,
+					});
+					runtime.logger.warn('context-overflow', {
+						sessionId: runtime.rt.sessionId,
+						turnIndex: event.turnIndex,
+					});
+					if (config.auto) {
+						const now2 = Date.now();
+						const cooldownMs2 = config.raceGuardStrict ? 30_000 : 10_000;
+						const sinceCompact2 = now2 - (runtime.rt.lastNativeCompactAt ?? 0);
+						if (sinceCompact2 >= cooldownMs2 && !piCompactWouldNoop(ctx)) {
+							runtime.debounceUntil = now2 + 0;
+							const stamp2 = runtime.rt.lastNativeCompactAt;
+							const liveSid2 = runtime.rt.sessionId;
+							setTimeout(() => {
+								try {
+									if (runtime.rt.sessionId !== liveSid2) return; // session reset
+									const since3 = Date.now() - (runtime.rt.lastNativeCompactAt ?? 0);
+									if (runtime.rt.lastNativeCompactAt !== stamp2 && since3 < cooldownMs2) return;
+									if (piCompactWouldNoop(ctx)) return;
+									ctx.compact({ customInstructions: undefined }); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; deferred + re-validated. Forced re-compact after a context-overflow 400.
+								} catch {
+									/* non-fatal */
+								}
+							}, 500);
+						}
+					}
 				} else {
 					// (5) transient or permanent — retry with exponential backoff.
 					// S38.7: hard-stop switch — bypass ALL retry logic when set.
@@ -421,8 +464,9 @@ export function registerAgentHandlers(
 									count: runtime.rt.errorRetryCount,
 									max,
 								});
-								// PREVENT-PI-003: user-role sendUserMessage only.
-								pi.sendUserMessage(
+								// PREVENT-PI-003: user-role sendUserMessage only (queued + catch-guarded).
+								await safeSendUserMessage(
+									pi,
 									'[mega-compact] the last turn ended with an error; please retry.',
 								);
 							}
