@@ -26,6 +26,8 @@ import type {
 	PerfResponse,
 	PerfQuery,
 	AchievementRow,
+	SessionsResponse,
+	SessionTimeseriesResponse,
 } from "@contracts";
 
 /** Error thrown when a dashboard API response is not 2xx. */
@@ -142,4 +144,14 @@ export function fetchPerf(params: PerfQuery = {}): Promise<PerfResponse> {
 
 export function fetchAchievements(): Promise<AchievementRow[]> {
 	return getJson<AchievementRow[]>(ENDPOINTS.achievements.path);
+}
+
+export function fetchSessions(): Promise<SessionsResponse> {
+	return getJson<SessionsResponse>(ENDPOINTS.sessions.path);
+}
+
+export function fetchSessionTimeseries(minutes: number): Promise<SessionTimeseriesResponse> {
+	return getJson<SessionTimeseriesResponse>(
+		`${ENDPOINTS.sessionTimeseries.path}${query({ minutes })}`,
+	);
 }

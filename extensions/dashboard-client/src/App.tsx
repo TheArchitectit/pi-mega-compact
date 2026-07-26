@@ -22,6 +22,7 @@ const MetricsTab = React.lazy(() => import("./tabs/MetricsTab"));
 const CacheTab = React.lazy(() => import("./tabs/CacheTab"));
 const GameTab = React.lazy(() => import("./tabs/GameTab"));
 const AchievementsTab = React.lazy(() => import("./tabs/AchievementsTab"));
+const SessionsTab = React.lazy(() => import("./tabs/SessionsTab"));
 
 export type TabId =
 	| "overview"
@@ -31,7 +32,8 @@ export type TabId =
 	| "metrics"
 	| "cache"
 	| "game"
-	| "achievements";
+	| "achievements"
+	| "sessions";
 
 const TABS: Array<{ id: TabId; label: string }> = [
 	{ id: "overview", label: "Overview" },
@@ -42,6 +44,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
 	{ id: "cache", label: "Cache" },
 	{ id: "game", label: "Game" },
 	{ id: "achievements", label: "Achievements" },
+	{ id: "sessions", label: "Sessions" },
 ];
 
 export default function App(): React.ReactElement {
@@ -88,6 +91,7 @@ export default function App(): React.ReactElement {
 						{activeTab === "cache" && <CacheTab />}
 						{activeTab === "game" && <GameTab />}
 						{activeTab === "achievements" && <AchievementsTab />}
+					{activeTab === "sessions" && <SessionsTab />}
 					</React.Suspense>
 				</main>
 			</div>

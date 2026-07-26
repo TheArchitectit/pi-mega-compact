@@ -336,6 +336,94 @@ export interface AchievementRow {
   readonly unlocked_at: number | null;
 }
 
+// ─── Sessions Memory Graph (S39) ─────────────────────────────────────────
+
+/**
+ * A single active session in the GET /api/sessions response. Represents a
+ * live pi process with its latest token usage and heartbeat.
+ */
+export interface ActiveSession {
+  /** OS process ID of the pi process. */
+  readonly pid: number;
+  /** Session identifier (normalized). */
+  readonly sessionId: string;
+  /** Absolute path to the repo root, or null if not in a git repo. */
+  readonly repoRoot: string | null;
+  /** Display name (repo basename or state dir basename). */
+  readonly displayName: string;
+  /** Model name, or null if not captured. Available from repo_registry join. */
+  readonly model: string | null;
+  /** Latest context token count, or null if no sample yet. */
+  readonly tokens: number | null;
+  /** Latest context pressure percentage (0–100), or null. */
+  readonly percent: number | null;
+  /** Context window size in tokens. */
+  readonly ctxWindow: number;
+  /** Unix timestamp (ms) of the last heartbeat. */
+  readonly lastSeen: number;
+  /** State directory of the session. */
+  readonly stateDir: string | null;
+}
+
+/**
+ * Response for GET /api/sessions. Lists active sessions with their latest
+ * token usage after pruning stale entries.
+ */
+export interface SessionsResponse {
+  /** ISO timestamp when the response was generated. */
+  readonly updatedAt: string;
+  /** Number of stale sessions pruned during this request. */
+  readonly pruned: number;
+  /** Array of active sessions, sorted by lastSeen descending. */
+  readonly sessions: ActiveSession[];
+}
+
+/** A single time-series data point for a session. */
+export interface SessionDataPoint {
+  /** Unix timestamp (ms). */
+  readonly ts: number;
+  /** Token count at this sample. */
+  readonly tokens: number;
+  /** Context pressure percentage (0–100). */
+  readonly percent: number;
+}
+
+/** A recharts-ready per-session series with a stable color. */
+export interface SessionSeries {
+  /** Session identifier. */
+  readonly sessionId: string;
+  /** Short display label for the legend. */
+  readonly label: string;
+  /** Stable hex color string (e.g. "#60a5fa"). */
+  readonly color: string;
+  /** Data points ordered by timestamp ascending. */
+  readonly data: SessionDataPoint[];
+}
+
+/**
+ * Query parameters for GET /api/sessions/timeseries. The `minutes` parameter
+ * controls the rolling window size.
+ */
+export interface SessionTimeseriesQuery {
+  /** Rolling window size in minutes (default: 30, clamped to [1, 1440]). */
+  readonly minutes?: number;
+}
+
+/**
+ * Response for GET /api/sessions/timeseries. Returns recharts-ready stacked
+ * per-session series + a totals array.
+ */
+export interface SessionTimeseriesResponse {
+  /** ISO timestamp when the response was generated. */
+  readonly updatedAt: string;
+  /** Rolling window size in minutes. */
+  readonly windowMinutes: number;
+  /** Per-session series with stable colors. */
+  readonly series: SessionSeries[];
+  /** Totals (sum of all sessions) per timestamp. */
+  readonly totals: { readonly ts: number; readonly tokens: number }[];
+}
+
 // ─── Game State Patch (PUT request body) ────────────────────────────────────
 
 /**
@@ -473,4 +561,18 @@ export const ENDPOINTS = {
     path: '/api/achievements',
     description: 'All achievement rows with unlock state.',
   } as const satisfies EndpointDef<'GET', undefined, AchievementRow[]>,
+
+  /** GET /api/sessions — Active sessions with latest token usage (S39). */
+  sessions: {
+    method: 'GET',
+    path: '/api/sessions',
+    description: 'Active pi sessions with latest token usage + heartbeat.',
+  } as const satisfies EndpointDef<'GET', undefined, SessionsResponse>,
+
+  /** GET /api/sessions/timeseries — Stacked per-session token timeseries (S39). */
+  sessionTimeseries: {
+    method: 'GET',
+    path: '/api/sessions/timeseries',
+    description: 'Recharts-ready per-session token timeseries for the stacked memory graph.',
+  } as const satisfies EndpointDef<'GET', SessionTimeseriesQuery, SessionTimeseriesResponse>,
 } as const;

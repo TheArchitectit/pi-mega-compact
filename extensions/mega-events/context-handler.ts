@@ -21,7 +21,7 @@ import {
 import { epochIdFor } from "../../src/mirror/epoch.js";
 import { autoCompactCheck } from "../../src/compact.js";
 import { estimateSessionTokens } from "../../src/tokens.js";
-import { type MegaRuntime } from "../mega-runtime.js";
+import type { MegaRuntime } from "../mega-runtime.js";
 import { runCompact, piCompactWouldNoop } from "../mega-pipeline.js";
 import { computeLiveTrimCut, liveTrimSummaryMessage } from "../mega-trim.js";
 import {
@@ -42,13 +42,19 @@ function toRawTranscriptRow(
 	epochId: string,
 ): RawTranscriptRow | null {
 	// Narrow to Message union (has content + timestamp).
-	const m = msg as { role?: string; content?: unknown; timestamp?: number; toolName?: string };
+	const m = msg as {
+		role?: string;
+		content?: unknown;
+		timestamp?: number;
+		toolName?: string;
+	};
 	const content = m.content;
 	if (content == null || content === "") return null;
 	// Canonical form: sort object keys for deterministic hashing.
-	const contentBytes = typeof content === "string"
-		? content
-		: JSON.stringify(content, Object.keys(content as object).sort());
+	const contentBytes =
+		typeof content === "string"
+			? content
+			: JSON.stringify(content, Object.keys(content as object).sort());
 	const contentHash = createHash("sha256").update(contentBytes).digest("hex");
 	return {
 		contentHash,
@@ -85,21 +91,32 @@ export function registerContextHandler(
 	pi.on("context", async (event: ContextEvent, ctx: ExtensionContext) => {
 		const usage = ctx.getContextUsage();
 		const pct = usage?.percent;
+		const messages = event.messages;
 		// Always track context for the dashboard/widget, even when auto is off.
 		// (v0.8 regression: !config.auto gate sat above this, leaving ctx stats
 		// null -> widget '?% / ?/?' when auto disabled. Track first, THEN gate.)
-		runtime.lastCtxTokens = usage?.tokens ?? null;
+		// S40 fix: fall back to estimateSessionTokens(view) when the provider
+		// doesn't report tokens (e.g. plexus / claude-mythos-5 via OpenRouter).
+		// Without this, lastCtxTokens is null -> appendTokenSample (S39) never
+		// fires -> Sessions chart + Overview per-repo stack + ContextGauge all
+		// show empty/zero. Compute view lazily only when the fallback is needed
+		// (at most one engineView call per context event; when auto is on and
+		// usage.tokens is present, view is computed once below via reuse).
+		const viewForFallback =
+			usage?.tokens == null ? runtime.engineView(messages) : null;
+		const currentTokens =
+			usage?.tokens ??
+			(viewForFallback != null
+				? estimateSessionTokens(viewForFallback)
+				: null) ??
+			Math.round(((pct ?? 0) / 100) * (usage?.contextWindow ?? 0));
+		runtime.lastCtxTokens = currentTokens ?? null;
 		runtime.lastCtxPercent = pct ?? null;
 		runtime.lastCtxWindow = usage?.contextWindow ?? 0;
 		runtime.snapshot(ctx);
 		if (!config.auto) return;
 
-		const messages = event.messages;
-		const view = runtime.engineView(messages);
-		const currentTokens =
-			usage?.tokens ??
-			estimateSessionTokens(view) ??
-			Math.round(((pct ?? 0) / 100) * (usage?.contextWindow ?? 0));
+		const view = viewForFallback ?? runtime.engineView(messages);
 
 		// S27 DB-mirror: append ALL incoming messages to raw_transcript.
 		// Runs BEFORE fast-gate so every message is captured, even if we
@@ -178,7 +195,7 @@ export function registerContextHandler(
 				pct != null && runtime.trimCache.ctxPct != null
 					? pct - runtime.trimCache.ctxPct >= RECOMPACT_PCT_DELTA
 					: currentTokens - (runtime.trimCache.ctxTokens ?? 0) >=
-							runtime.effectiveThreshold * 0.5;
+						runtime.effectiveThreshold * 0.5;
 			if (!grewEnough) {
 				const recent = messages.slice(runtime.trimCache.cut); // guardrails-allow PREVENT-PI-002: cached `cut` was sanitized once by computeLiveTrimCut (src/boundary.ts) and replayed verbatim; the transcript only grows within an epoch (cache is cleared on durable truncation), so the preserved run still starts on a toolPair-safe index.
 				runtime.diagLiveTrimFires++; // trim view returned this call (replay counts as a fire)
@@ -186,7 +203,9 @@ export function registerContextHandler(
 				runtime.snapshot(ctx);
 				// v0.8.7: shallow-copy the cached summary so pi's transformContext can't
 				// mutate the shared reference across replays (audit P3).
-				return { messages: [{ ...runtime.trimCache.summaryAgentMsg }, ...recent] };
+				return {
+					messages: [{ ...runtime.trimCache.summaryAgentMsg }, ...recent],
+				};
 			}
 			// else: context grew enough → fall through to re-compact (cache is stale)
 		}
@@ -195,7 +214,10 @@ export function registerContextHandler(
 		// with how close we are to the model context limit. Null-safe: when the
 		// token-fallback path ran (pct unavailable) use the token-basis pressure
 		// (the same basis the runtime `pressure` getter uses for custom/no-window).
-		const pressure = pct != null ? pressureFromPct(pct) : pressureRatio(currentTokens, runtime.effectiveThreshold);
+		const pressure =
+			pct != null
+				? pressureFromPct(pct)
+				: pressureRatio(currentTokens, runtime.effectiveThreshold);
 		const ran = runCompact(pi, runtime, config, ctx, messages, {
 			compressionPressure: pressure,
 		});
@@ -269,9 +291,9 @@ export function registerContextHandler(
 				setTimeout(() => {
 					try {
 						if (runtime.rt.sessionId !== liveSid) return; // session reset
-						const since2 =
-							Date.now() - (runtime.rt.lastNativeCompactAt ?? 0);
-						if (runtime.rt.lastNativeCompactAt !== stamp && since2 < cooldownMs) return;
+						const since2 = Date.now() - (runtime.rt.lastNativeCompactAt ?? 0);
+						if (runtime.rt.lastNativeCompactAt !== stamp && since2 < cooldownMs)
+							return;
 						if (piCompactWouldNoop(ctx)) return;
 						ctx.compact({
 							customInstructions: undefined,

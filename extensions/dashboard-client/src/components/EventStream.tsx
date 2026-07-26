@@ -30,6 +30,7 @@ const TYPE_COLORS: Record<string, string> = {
 	crew_presence_changed: "ev-crew",
 	crew_turn_changed: "ev-crew",
 	crew_bandit_chosen: "ev-crew",
+	session_sample: "ev-recall",
 	game_ritual_start: "ev-game",
 	game_ritual_stage: "ev-game",
 	game_ritual_end: "ev-game",
@@ -81,6 +82,8 @@ function summarize(ev: SseEvent): string {
 			return `turn=${ev.turnIndex} agent=${ev.agentName}`;
 		case "crew_bandit_chosen":
 			return `agent=${ev.chosenAgent} score=${ev.score} regret=${ev.regret}`;
+		case "session_sample":
+			return `sess=${ev.sessionId.slice(0, 8)} tok=${ev.tokens.toLocaleString()} ctx=${Math.round(ev.percent)}%`;
 		case "game_ritual_start":
 		case "game_ritual_stage":
 		case "game_ritual_end":

@@ -15,6 +15,8 @@ import "./styles/overview-extra.css";
 import "./styles/config.css";
 import "./styles/metrics-extra.css";
 import "./styles/game-achievements.css";
+import "./styles/sessions.css";
+import "./styles/repostack.css";
 
 const rootEl = document.getElementById("root");
 if (!rootEl) {
