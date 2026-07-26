@@ -1,0 +1,85 @@
+/**
+ * dashboard-client/src/styles/session-gauges.css — Per-session context gauges (S40).
+ *
+ * Grid of compact gauges rendered on the Overview tab in place of the single
+ * launcher ContextGauge. The launcher's own gauge is highlighted via
+ * .session-gauge-self. Depends on .gauge-bar / .gauge-fill / .gauge-{green,
+ * yellow,red} from overview-events.css + base.css tokens.
+ */
+
+.session-gauges-card {
+	grid-column: 1 / -1;
+}
+
+.session-gauges-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+	gap: 14px;
+}
+
+.session-gauge {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 10px 12px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+}
+
+.session-gauge-self {
+	border-color: var(--accent);
+	box-shadow: 0 0 0 1px var(--accent);
+	background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+}
+
+.session-gauge-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 6px;
+}
+
+.session-gauge-label {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 70%;
+}
+
+.session-gauge-self .session-gauge-label {
+	color: var(--accent);
+}
+
+.session-gauge-pct {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--muted);
+	white-space: nowrap;
+}
+
+.session-gauges-grid .gauge-bar {
+	height: 8px;
+}
+
+.session-gauge-sub {
+	margin: 0;
+}
+
+.session-gauge-meta {
+	margin: 0;
+	font-size: 11px;
+	color: var(--muted);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+	.session-gauges-grid {
+		grid-template-columns: 1fr;
+	}
+}

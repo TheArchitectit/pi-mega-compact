@@ -29,8 +29,8 @@ import type {
 	SessionsResponse,
 } from "@contracts";
 import type { RuntimeSnapshot } from "../utils/types";
-import { ContextGauge } from "../components/ContextGauge";
 import { RepoContextStack } from "../components/RepoContextStack";
+import { SessionContextGauges } from "../components/SessionContextGauges";
 import { TriggerStatus } from "../components/TriggerStatus";
 import { VectorStoreCard } from "../components/VectorStoreCard";
 import { RepoAllSessionsCard } from "../components/RepoAllSessionsCard";
@@ -121,11 +121,17 @@ export default function OverviewTab({
 				<span className="updated">updated {formatUpdatedAt(updatedAt)}</span>
 			</div>
 			<div className="card-grid overview-card-grid">
-				<ContextGauge
-					tokens={context.tokens}
-					percent={context.percent}
-					contextWindow={context.contextWindow}
-				/>
+			<SessionContextGauges
+				sessions={sessionsData}
+				loading={sessionsLoading}
+				error={sessionsErr}
+				launcherSessionId={session.id}
+				launcher={{
+					tokens: context.tokens,
+					percent: context.percent,
+					contextWindow: context.contextWindow,
+				}}
+			/>
 				<RepoContextStack
 					sessions={sessionsData}
 					loading={sessionsLoading}
