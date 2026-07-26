@@ -11,7 +11,7 @@ A local context compressor for the [pi coding agent](https://github.com/earendil
 - **Durable memory** — auto-reviews conversation every 10 turns, writes decisions/facts/preferences to SQLite, injects them as RAG context on recall
 - **Fully local** — SQLite + trigram embedder by default. Bring your own localhost embedder (ONNX, Ollama, TEI) for better semantic matching
 - **Team-run aware** — fires native durable trim at agent settle during sub-agent runs, so context relieves mid-run not just at the end
-- **Dashboard** — optional localhost-only live dashboard with token gauge, store stats, and event stream
+- **Multi-pi dashboard** — optional localhost-only live dashboard with a real-time stacked memory graph across all active pi processes, per-repo context stack on the Overview tab, token gauge, store stats, and SSE event stream
 
 ## Install
 
@@ -80,7 +80,7 @@ Detailed architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
 ```bash
 npm run build     # TypeScript compile
-npm test          # Build + 609 tests
+npm test          # Build + 608 tests
 npm run lint      # Type check + guardrails scan
 ```
 
