@@ -288,6 +288,19 @@
 | Rollback | 104 | 0 |
 | Relationship to S28 | 112 | 0 |
 
+## docs/specs/s39-multi-pi-memory-graph.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Status / Branch / Prereq | 3 | 0 |
+| Problem | 9 | 0 |
+| Safety | 23 | 0 |
+| Architecture | 36 | 0 |
+| Execution (Steps 0–5) | 64 | 0 |
+| Acceptance | 90 | 0 |
+| Rollback | 100 | 0 |
+| Out of scope | 107 | 0 |
+
 ## docs/superpowers/plans/2026-07-15-compaction-continuity-cross-repo-memory.md
 
 | Section | Line | Offset |
