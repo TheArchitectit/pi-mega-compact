@@ -1,5 +1,42 @@
 # Release Notes — pi-mega-compact
 
+## v0.8.21 (2026-07-27)
+
+**ESC abort now cleanly skips retry nudges + real-time session gauges + stacked memory charts.** Three features (S39 session-timeseries charts, S40 per-repo context gauges, S38 ESC-cancel fix) and a critical P1 bug fix: pressing ESC mid-task previously fired up to 5 blind retry nudges that re-ran the exact task you just cancelled. That's fixed — the new `'cancelled'` error category short-circuits the retry safety net on any user-initiated abort.
+
+### What's new
+
+- **S39 — Sessions tab with stacked memory graph.** A new Sessions tab on the dashboard shows a real-time stacked area chart of per-session memory usage (compact limit + context tokens) over time. Data is persisted in new SQLite tables (`session_heartbeats`, `token_samples`) with a heartbeat hook that records token usage on every `turn_end`. The chart updates live via SSE (`/api/sessions/events`) using the same `Last-Event-ID` resumable-stream pattern as the compact event stream. Backend endpoints: `GET /api/sessions` (snapshot) + `GET /api/sessions/timeseries` (per-session time-series, `?since=` + `?sessionId=`). Frontend: `recharts` `AreaChart` with stacked fills, auto-updating every heartbeat. (`e73eba4` → `62814a1`)
+- **S40 — Per-session context gauges on Overview.** The Overview tab now shows a stacked bar of per-repo context usage (real-time via `/api/sessions` + SSE). Each session gets a proportional gauge showing context tokens vs compact limit — making it easy to see at a glance which repos are close to compaction. `lastCtxTokens` fallback handles providers that don't report usage metadata. (`3ae34b6` → `bb460cc`)
+- **S38 cancelled — ESC/Ctrl-C abort skips all retry nudges.** The error-retry classifier now recognizes `stopReason === "aborted"` (the signal pi fires on ESC) as a new `'cancelled'` category — like `'compaction-noop'` and `'context-overflow'`, it short-circuits the safety net with no retry nudge. Both `errorRetryCount` and `consecutiveErrors` are reset to zero (a cancel is not a failure for circuit-breaker purposes), and `error_retry_cancelled` is emitted to the dashboard event stream. The old text-based `s.includes('aborted') → 'transient'` classifier path is removed. (`5742881`)
+- **Dashboard "Buy Me a Coffee" support link.** (`9e6316f`)
+
+### Fixed
+
+- **P1 — ESC abort fires blind retry nudges.** When a user pressed ESC mid-task, pi's `app.interrupt` keybinding called `agent.abort()`, producing a `turn_end` with `stopReason: "aborted"`. The S38 error-retry classifier matched `s.includes('aborted')` and returned `'transient'` — identical to a provider 5xx or network timeout. The safety net then fired up to 5 retry nudges (`"[mega-compact] the last turn ended with an error; please retry."`), re-running the task the user explicitly cancelled. Fixed by introducing the `'cancelled'` category that fires before any text-based matching. (`5742881`)
+- **Dashboard build: `recharts` dependency.** The S39 `SessionsMemoryChart.tsx` component imported `recharts`, which was declared in `extensions/dashboard-client/package.json` but never installed — causing the deploy.sh vite build step to fail with "Rollup failed to resolve import". Reinstalled the dependency and pinned to `^2.15.4`. (`a2319a1`, `fb2f2bf`)
+- **S40 `lastCtxTokens` fallback.** Providers that don't report usage metadata (no `usage.total_tokens` / `usage.input_tokens`) now gracefully fall back to the last known value instead of showing 0. (`90a7b78`)
+
+### Tests
+
+S38 file: **37 tests** (up from 33). New:
+- `classifyError` returns `'cancelled'` for `stopReason: "aborted"` — 3 variants (plain, "Operation aborted", "Aborted after N retry attempts")
+- Defense: `stopReason: "error"` + `errorMessage` containing "aborted" still returns `'transient'` (not `'cancelled'`)
+- Integration: ESC abort fires NO nudge + logs `error_retry_cancelled`
+- Integration: ESC abort resets counters so next real transient error starts fresh from count=1
+
+Full gate: **628 pass / 0 fail** across 59 files in ~29s. Guardrails clean.
+
+### Configuration
+
+No new env vars. The `'cancelled'` category requires no configuration — it is a pure short-circuit of the existing retry logic. All S38 knobs (`MEGACOMPACT_AUTO_RETRY_TRANSIENT_MAX`, `MEGACOMPACT_MAX_CONSECUTIVE_ERRORS`, etc.) continue to work unchanged for real transient errors.
+
+### Migration
+
+None — fully backward-compatible. Update with `pi update --extensions`.
+
+---
+
 ## v0.8.16 (2026-07-24)
 
 **TUI footer-flip fix + cross-process widget refresh + hang elimination.** Three priority fixes around the mega-runtime TUI widget: the footer line no longer flips every 250ms, dashboard theme/toggle changes now reflect in the live TUI instantly even when pi is idle, and the re-entrant `snapshot()` call in the `fs.watch` game-state callback (which caused a 190s test-suite timeout) is replaced with a lightweight re-read. Also tracks the authoritative `scripts/deploy.sh` publish gate in git.
