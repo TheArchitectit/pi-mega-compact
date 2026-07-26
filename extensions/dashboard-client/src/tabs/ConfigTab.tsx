@@ -29,10 +29,13 @@ interface FlatGameState {
 }
 type FlatGameStatePatch = Partial<FlatGameState>;
 
-/** Extended snapshot config — the runtime includes tierPct (not in contract). */
-interface ConfigExt extends SnapshotResponse["config"] {
+/** Extended snapshot config — the runtime includes tierPct (not in contract).
+ * Implemented as a type intersection rather than `interface extends` because
+ * TypeScript (TS2499) forbids `interface extends T["k"]` indexed-access
+ * parents; the resulting type is structurally identical. */
+type ConfigExt = SnapshotResponse["config"] & {
 	tierPct?: number | null;
-}
+};
 
 /* Tooltips copied verbatim from extensions/dashboard-server/html.ts */
 const TOOLTIPS = {
