@@ -1,8 +1,8 @@
-# S33 — Auto-Categorizing Memory Wiki
+# S47 — Auto-Categorizing Memory Wiki
 
 **Date:** 2026-07-26
 **Parent plan:** Memory RAG System (borrowed from radical-memory-mcp / R.A.D.1.C.A.1)
-**Depends on:** S26 (importance scoring), S28 (RAPTOR multi-level retrieval), S32 (visual memory map), `src/store/sqlite.ts`, `extensions/dashboard-server/server.ts`
+**Depends on:** S40 (importance scoring), S42 (RAPTOR multi-level retrieval), S46 (visual memory map), `src/store/sqlite.ts`, `extensions/dashboard-server/server.ts`
 **Priority:** P2
 **Status:** Draft → implement-ready
 **Target version:** v0.9.x
@@ -32,7 +32,7 @@ Conversation memories accumulate as a flat list in the `memories` and `context_c
 
 4. **No topic summaries** — even if memories were grouped, there's no auto-generated summary for each topic. The user would have to read every memory individually.
 
-5. **Sprint S32 provides visual navigation** (memory map) but not *categorical* navigation. The wiki complements the map: the map shows relationships, the wiki shows categories.
+5. **Sprint S46 provides visual navigation** (memory map) but not *categorical* navigation. The wiki complements the map: the map shows relationships, the wiki shows categories.
 
 ---
 
@@ -65,7 +65,7 @@ Conversation memories accumulate as a flat list in the `memories` and `context_c
 
 ## EXECUTION
 
-### Sprint S33A: Topic Model (Rule-Based)
+### Sprint S47A: Topic Model (Rule-Based)
 
 **Goal:** Implement rule-based topic assignment with keyword matching.
 
@@ -73,19 +73,19 @@ Conversation memories accumulate as a flat list in the `memories` and `context_c
 
 **Tasks:**
 
-- [ ] **S33A.1** Create `src/topics.ts` with types
+- [ ] **S47A.1** Create `src/topics.ts` with types
   - `Topic` type: `{ id: string; name: string; description: string; parentTopicId: string | null; memoryCount: number; lastUpdated: number }`
   - `TopicAssignment` type: `{ memoryId: string; topicId: string; confidence: number; assignedAt: number; method: "rule" | "llm" | "hybrid" }`
   - `TopicRule` type: `{ keywords: string[]; topicName: string; parentTopic: string | null; description: string }`
 
-- [ ] **S33A.2** Define topic rules (hardcoded, extensible)
+- [ ] **S47A.2** Define topic rules (hardcoded, extensible)
   - Parent topics: `code`, `infrastructure`, `process`, `debugging`
   - Sub-topics under `code`: `authentication` (keywords: auth, login, jwt, token, oauth, session, password), `database` (keywords: sql, sqlite, pg, migration, schema, query, index), `api` (keywords: endpoint, route, request, response, rest, graphql), `frontend` (keywords: ui, component, css, html, react, dashboard, tab)
   - Sub-topics under `infrastructure`: `deployment` (keywords: deploy, ship, release, ci/cd, docker, container, publish, npm), `monitoring` (keywords: metrics, alert, log, trace, perf, latency, error-rate), `storage` (keywords: disk, fs, file, backup, checkpoint, compress)
   - Sub-topics under `debugging`: `errors` (keywords: error, exception, crash, fail, bug, stacktrace, TypeError, ReferenceError), `performance` (keywords: slow, timeout, bottleneck, optimize, latency, p95)
   - Sub-topics under `process`: `decisions` (keywords: decided, chose, trade-off, rationale, design-decision), `testing` (keywords: test, spec, mock, coverage, regression, assert)
 
-- [ ] **S33A.3** Implement `assignTopicRuleBased(memoryText: string): TopicAssignment | null`
+- [ ] **S47A.3** Implement `assignTopicRuleBased(memoryText: string): TopicAssignment | null`
   - Tokenize: lowercase, split on whitespace/punctuation
   - For each rule: count keyword matches in memory text
   - Select rule with highest match count (minimum 2 matches to assign)
@@ -93,12 +93,12 @@ Conversation memories accumulate as a flat list in the `memories` and `context_c
   - If no rule matches ≥2 keywords: return `null`
   - Confidence = `min(1.0, matchCount / 5)` — 5 keyword matches = full confidence
 
-- [ ] **S33A.4** Implement topic hierarchy constants
+- [ ] **S47A.4** Implement topic hierarchy constants
   - `TOPIC_HIERARCHY`: array of `{ id, name, parentId, description, keywords }`
   - Seed topics are created at schema migration time (idempotent INSERT OR IGNORE)
   - Topic IDs are stable slugs: `code-authentication`, `infra-deployment`, etc.
 
-- [ ] **S33A.5** Add tests in `src/topics.test.ts`
+- [ ] **S47A.5** Add tests in `src/topics.test.ts`
   - Test: "authentication error with JWT token" → `code-authentication` (3 keyword matches)
   - Test: "deploy to production via Docker" → `infra-deployment` (3 matches)
   - Test: "TypeError at line 42" → `debugging-errors` (2 matches)
@@ -106,11 +106,11 @@ Conversation memories accumulate as a flat list in the `memories` and `context_c
   - Test: ties prefer sub-topic over parent
   - Test: confidence scales with match count
 
-- [ ] **S33A.6** Verify: `npm run build && npm test`
+- [ ] **S47A.6** Verify: `npm run build && npm test`
 
 ---
 
-### Sprint S33B: Topic Storage + LLM Classification
+### Sprint S47B: Topic Storage + LLM Classification
 
 **Goal:** Persist topics and assignments in SQLite; add LLM fallback for ambiguous cases.
 
@@ -118,13 +118,13 @@ Conversation memories accumulate as a flat list in the `memories` and `context_c
 
 **Tasks:**
 
-- [ ] **S33B.1** Create `src/store/sqlite/topics.ts` with schema
+- [ ] **S47B.1** Create `src/store/sqlite/topics.ts` with schema
   - `topics` table: `id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, parent_topic_id TEXT REFERENCES topics(id), memory_count INTEGER DEFAULT 0, last_updated INTEGER`
   - `memory_topics` table: `memory_id TEXT NOT NULL, topic_id TEXT NOT NULL REFERENCES topics(id), confidence REAL, assigned_at INTEGER, method TEXT CHECK(method IN ('rule','llm','hybrid')), PRIMARY KEY (memory_id, topic_id)`
   - Index: `CREATE INDEX idx_memory_topics_topic ON memory_topics(topic_id)`
   - Seed parent topics + sub-topics from `TOPIC_HIERARCHY` on first access
 
-- [ ] **S33B.2** Implement CRUD operations
+- [ ] **S47B.2** Implement CRUD operations
   - `getOrCreateTopic(db, id, name, description, parentId)` — idempotent upsert
   - `assignMemoryToTopic(db, memoryId, topicId, confidence, method)` — INSERT OR IGNORE
   - `getTopicsForMemory(db, memoryId)` → `TopicAssignment[]`
@@ -132,7 +132,7 @@ Conversation memories accumulate as a flat list in the `memories` and `context_c
   - `getTopicHierarchy(db)` → `Topic[]` (tree structure)
   - `incrementTopicMemoryCount(db, topicId)` — update `memory_count` and `last_updated`
 
-- [ ] **S33B.3** Add LLM classification for `WIKI_TOPIC_MODEL=llm|hybrid`
+- [ ] **S47B.3** Add LLM classification for `WIKI_TOPIC_MODEL=llm|hybrid`
   - When rule-based returns `null` AND topic model is `llm` or `hybrid`:
     - Call localhost Ollama with prompt: "Classify this text into one of these topics: [list]. Text: {memory}. Topic:"
     - Parse response; match to known topic name
@@ -140,27 +140,27 @@ Conversation memories accumulate as a flat list in the `memories` and `context_c
   - Guard: same `guardrails-allow PREVENT-PI-004: localhost Ollama` annotation as `src/dedup/raptor/summarizer.ts:12`
   - Fallback: if LLM call fails or timeout (2s), skip assignment (non-fatal)
 
-- [ ] **S33B.4** Add barrel re-export in `src/store/sqlite.ts`
+- [ ] **S47B.4** Add barrel re-export in `src/store/sqlite.ts`
   - `export * from "./sqlite/topics.js";`
 
-- [ ] **S33B.5** Add config flags to `src/config/dedup.ts`
+- [ ] **S47B.5** Add config flags to `src/config/dedup.ts`
   - `WIKI_ENABLED: boolean` (env: `MEGACOMPACT_WIKI`, default: `false`)
   - `WIKI_TOPIC_MODEL: string` (env: `MEGACOMPACT_WIKI_MODEL`, default: `"rule-based"`, options: `"rule-based" | "llm" | "hybrid"`)
   - `WIKI_MAX_TOPICS: number` (env: `MEGACOMPACT_WIKI_MAX_TOPICS`, default: `50`)
   - `WIKI_MIN_MEMORIES_PER_TOPIC: number` (env: `MEGACOMPACT_WIKI_MIN_MEMORIES`, default: `3`)
 
-- [ ] **S33B.6** Add tests in `src/store/sqlite/topics.test.ts`
+- [ ] **S47B.6** Add tests in `src/store/sqlite/topics.test.ts`
   - Test: topic table creation + seed data
   - Test: CRUD operations round-trip
   - Test: topic hierarchy is navigable
   - Test: memory_count increments correctly
   - Test: duplicate assignment is idempotent
 
-- [ ] **S33B.7** Verify: `npm run build && npm test`
+- [ ] **S47B.7** Verify: `npm run build && npm test`
 
 ---
 
-### Sprint S33C: Wiki Page Generation
+### Sprint S47C: Wiki Page Generation
 
 **Goal:** Generate wiki pages from topic memories — summary, key decisions, recent memories.
 
@@ -168,11 +168,11 @@ Conversation memories accumulate as a flat list in the `memories` and `context_c
 
 **Tasks:**
 
-- [ ] **S33C.1** Create `src/wiki.ts` with types
+- [ ] **S47C.1** Create `src/wiki.ts` with types
   - `WikiPage` type: `{ topic: Topic; summary: string; keyDecisions: Array<{ content: string; timestamp: number }>; recentMemories: Array<{ content: string; timestamp: number; importance: number }>; relatedTopics: Topic[]; generatedAt: number }`
   - `WikiIndex` type: `{ topics: Array<{ id: string; name: string; memoryCount: number; childCount: number }> }`
 
-- [ ] **S33C.2** Implement `generateWikiPage(topicId, db): WikiPage`
+- [ ] **S47C.2** Implement `generateWikiPage(topicId, db): WikiPage`
   - Fetch topic metadata
   - Fetch memories for topic (ordered by `timestamp DESC`, limit 50)
   - Extract key decisions: filter memories where `topicId` matches `process-decisions` OR content contains decision keywords
@@ -180,18 +180,18 @@ Conversation memories accumulate as a flat list in the `memories` and `context_c
   - Related topics: topics that share ≥2 memory IDs with this topic (via `memory_topics` join)
   - Summary: concatenation of topic description + top-3 memory summaries (rule-based extractive)
 
-- [ ] **S33C.3** Implement LLM summary generation (optional)
+- [ ] **S47C.3** Implement LLM summary generation (optional)
   - When `WIKI_TOPIC_MODEL=llm|hybrid`:
     - Feed top-10 memories to localhost Ollama with prompt: "Summarize these conversation excerpts about {topicName} in 2-3 paragraphs. Focus on key decisions and patterns. Excerpts: {memories}"
     - Use as wiki page summary
     - Fallback: if LLM fails, use extractive summary (non-fatal)
 
-- [ ] **S33C.4** Implement `getWikiIndex(db): WikiIndex`
+- [ ] **S47C.4** Implement `getWikiIndex(db): WikiIndex`
   - Query all topics with `memory_count >= WIKI_MIN_MEMORIES_PER_TOPIC`
   - Build tree structure (parent → children)
   - Return sorted by `memory_count DESC`
 
-- [ ] **S33C.5** Implement write-time topic assignment
+- [ ] **S47C.5** Implement write-time topic assignment
   - In `extensions/mega-events/context-handler.ts`: after a checkpoint or memory is stored, call `assignTopicAndStore()` if `WIKI_ENABLED=true`
   - `assignTopicAndStore(memoryId, text, db)`:
     1. Call `assignTopicRuleBased(text)`
@@ -199,7 +199,7 @@ Conversation memories accumulate as a flat list in the `memories` and `context_c
     3. If topic assigned, call `assignMemoryToTopic()` + `incrementTopicMemoryCount()`
     4. Non-fatal: any failure logs warning, continues
 
-- [ ] **S33C.6** Add tests in `src/wiki.test.ts`
+- [ ] **S47C.6** Add tests in `src/wiki.test.ts`
   - Test: wiki page has all required sections (summary, decisions, memories, related)
   - Test: empty topic returns minimal page (no crash)
   - Test: related topics are correctly identified
@@ -207,11 +207,11 @@ Conversation memories accumulate as a flat list in the `memories` and `context_c
   - Test: LLM summary falls back to extractive on failure
   - Test: write-time assignment triggers on checkpoint creation
 
-- [ ] **S33C.7** Verify: `npm run build && npm test`
+- [ ] **S47C.7** Verify: `npm run build && npm test`
 
 ---
 
-### Sprint S33D: Dashboard Wiki Tab
+### Sprint S47D: Dashboard Wiki Tab
 
 **Goal:** Add a browsable wiki interface to the dashboard.
 
@@ -219,43 +219,43 @@ Conversation memories accumulate as a flat list in the `memories` and `context_c
 
 **Tasks:**
 
-- [ ] **S33D.1** Add API endpoints in `extensions/dashboard-server/server.ts`
+- [ ] **S47D.1** Add API endpoints in `extensions/dashboard-server/server.ts`
   - `GET /api/wiki/index` — returns `WikiIndex` (topic tree with counts)
   - `GET /api/wiki/topic/:id` — returns `WikiPage` for a topic
   - `GET /api/wiki/search?q=term` — search topics by name/description (FTS5 on topic names)
   - All gated: return 404 when `WIKI_ENABLED=false`
 
-- [ ] **S33D.2** Create `extensions/dashboard-client/src/components/TopicTree.tsx`
+- [ ] **S47D.2** Create `extensions/dashboard-client/src/components/TopicTree.tsx`
   - Recursive tree component: parent topics expand to show children
   - Each node: topic name, memory count badge
   - Click: load wiki page for that topic
   - Highlight: currently selected topic
   - Search input at top: filters tree by name
 
-- [ ] **S33D.3** Create `extensions/dashboard-client/src/components/WikiPage.tsx`
+- [ ] **S47D.3** Create `extensions/dashboard-client/src/components/WikiPage.tsx`
   - Renders a `WikiPage` response:
     - Header: topic name + description
     - Summary section: rendered markdown-like (paragraphs)
     - Key Decisions section: list of decisions with timestamps
     - Recent Memories section: scrollable list with importance indicators
     - Related Topics section: clickable links to related wiki pages
-  - "View in Memory Map" link (future: deep-link to S32 memory map focused on this topic)
+  - "View in Memory Map" link (future: deep-link to S46 memory map focused on this topic)
 
-- [ ] **S33D.4** Create `extensions/dashboard-client/src/tabs/WikiTab.tsx`
+- [ ] **S47D.4** Create `extensions/dashboard-client/src/tabs/WikiTab.tsx`
   - Layout: two-column (TopicTree on left, WikiPage on right)
   - Initial state: show wiki index overview (total topics, total memories, top topics)
   - Loading: show spinner while fetching wiki page
   - Empty state: "No topics yet — topics are assigned as memories are created"
 
-- [ ] **S33D.5** Add "Wiki" tab to `extensions/dashboard-client/src/App.tsx`
+- [ ] **S47D.5** Add "Wiki" tab to `extensions/dashboard-client/src/App.tsx`
   - Add `WikiTab` lazy import (~line 22)
   - Add `"wiki"` to `TabId` union (~line 36)
   - Add to `TABS` array (~line 48)
   - Add render case (~line 72)
 
-- [ ] **S33D.6** Verify: `cd extensions/dashboard-client && npm run build && npm test`
+- [ ] **S47D.6** Verify: `cd extensions/dashboard-client && npm run build && npm test`
 
-- [ ] **S33D.7** Full regression test
+- [ ] **S47D.7** Full regression test
   - `MEGACOMPACT_WIKI=false npm test` — zero behavior change
   - `MEGACOMPACT_WIKI=true npm test` — all new tests pass
   - `python3 scripts/regression_check.py --all` — green

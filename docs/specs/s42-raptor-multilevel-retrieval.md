@@ -1,8 +1,8 @@
-# S28 — RAPTOR Multi-Level Retrieval + Incremental Enrichment
+# S42 — RAPTOR Multi-Level Retrieval + Incremental Enrichment
 
 **Date:** 2026-07-26
 **Parent plan:** Memory RAG System (borrowed from radical-memory-mcp / R.A.D.1.C.A.1)
-**Depends on:** Sprint 13 (RAPTOR tree build), Sprint 14 (RAPTOR promoted to live recall), S27 (self-RAG quality gate), `src/dedup/raptor/`, `src/vectorStore.ts`, `src/recall.ts`
+**Depends on:** Sprint 13 (RAPTOR tree build), Sprint 14 (RAPTOR promoted to live recall), S41 (self-RAG quality gate), `src/dedup/raptor/`, `src/vectorStore.ts`, `src/recall.ts`
 **Priority:** P1
 **Status:** Draft → implement-ready
 **Target version:** v0.9.x
@@ -13,7 +13,7 @@
 
 - **PREVENT-PI-001** (anchor floor): multi-level retrieval is additive — it produces `SearchHit[]` that feed into the existing `recallAndInline()` pipeline. The anchor-floor guard in `src/boundary.ts:computeDropRange()` is never touched. Multi-level retrieval affects *which* checkpoints are recalled, not *how* messages are dropped.
 - **PREVENT-PI-003** (no system role): recalled RAPTOR nodes are injected via the existing `before_agent_start` systemPrompt prepend path. Multi-level retrieval changes which hits are selected, not the injection mechanism.
-- **PREVENT-PI-004** (no network): all retrieval, expansion, and dedup functions are pure in-process math (cosine similarity, BFS traversal). LLM enrichment (S28C) uses the configured localhost Ollama endpoint (same exception class as `src/dedup/raptor/summarizer.ts:12` — annotated with `guardrails-allow`). No remote API calls.
+- **PREVENT-PI-004** (no network): all retrieval, expansion, and dedup functions are pure in-process math (cosine similarity, BFS traversal). LLM enrichment (S42C) uses the configured localhost Ollama endpoint (same exception class as `src/dedup/raptor/summarizer.ts:12` — annotated with `guardrails-allow`). No remote API calls.
 - **Feature flags default OFF**: `RAPTOR_MULTILEVEL_ENABLED`, `RAPTOR_LEAF_EXPANSION`, `RAPTOR_ENRICHMENT_ENABLED` all default to `false`. Zero behavior change unless explicitly enabled. When OFF, `raptorSearchHits()` and `recallAndInline()` behave identically to current production.
 - **Shadow mode respected**: `isShadowMode()` (`src/dedup/raptor/index.ts:19`) is honored — when shadow mode is ON, multi-level retrieval returns `[]` regardless of flag state.
 - Gate: `npm run build && npm test && npm run lint && python3 scripts/regression_check.py --all`.
@@ -66,7 +66,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 
 ## EXECUTION
 
-### Sprint S28A: Multi-Level Retrieval Engine
+### Sprint S42A: Multi-Level Retrieval Engine
 
 **Goal:** Build a retrieval engine that searches across ALL RAPTOR tree levels with configurable level weights, supports leaf expansion, and deduplicates results.
 
@@ -74,7 +74,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 
 **Tasks:**
 
-- [ ] **S28A-1: Define multi-level retrieval types** (`src/dedup/raptor/multilevel.ts`)
+- [ ] **S42A-1: Define multi-level retrieval types** (`src/dedup/raptor/multilevel.ts`)
   ```ts
   export interface MultilevelRetrieveOptions {
     embedder: Embedder;
@@ -104,7 +104,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   }
   ```
 
-- [ ] **S28A-2: Implement level-weighted scoring** (`src/dedup/raptor/multilevel.ts`)
+- [ ] **S42A-2: Implement level-weighted scoring** (`src/dedup/raptor/multilevel.ts`)
   ```ts
   /**
    * Score all RAPTOR tree nodes by cosine similarity to the query, then apply
@@ -129,7 +129,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   - For leaves (ids not in `tree.nodes`): score using the nearest parent's embedding (same approach as `stagedExpansion()` at `retrieval.ts:95–102`)
   - Sort by `weightedScore` descending
 
-- [ ] **S28A-3: Implement leaf expansion** (`src/dedup/raptor/multilevel.ts`)
+- [ ] **S42A-3: Implement leaf expansion** (`src/dedup/raptor/multilevel.ts`)
   ```ts
   /**
    * Given a set of cluster-level hits, expand each one to include its leaf
@@ -152,7 +152,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
     - Add to result set, skipping any leaf already present (by `nodeId`)
   - Return merged hits
 
-- [ ] **S28A-4: Implement result dedup** (`src/dedup/raptor/multilevel.ts`)
+- [ ] **S42A-4: Implement result dedup** (`src/dedup/raptor/multilevel.ts`)
   ```ts
   /**
    * Deduplicate hits: if both a cluster node and its leaf child appear in
@@ -167,7 +167,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   - If yes, remove the cluster hit (leaves provide more specific context)
   - If no leaves are in the set, keep the cluster hit (it provides the abstract view)
 
-- [ ] **S28A-5: Implement top-level `multilevelRetrieval()`** (`src/dedup/raptor/multilevel.ts`)
+- [ ] **S42A-5: Implement top-level `multilevelRetrieval()`** (`src/dedup/raptor/multilevel.ts`)
   ```ts
   /**
    * Full multi-level retrieval pipeline: score → expand → dedup → MMR → top-K.
@@ -187,7 +187,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   5. MMR rerank to `k` using `mmrRerank()` from `src/dedup/mmr.ts`
   6. Return final `MultilevelHit[]`
 
-- [ ] **S28A-6: Unit tests** (`src/dedup/raptor/multilevel.test.ts`)
+- [ ] **S42A-6: Unit tests** (`src/dedup/raptor/multilevel.test.ts`)
   - Multi-level retrieval returns results from multiple tree levels (construct a 3-level tree, verify hits from level 0, 1, and root)
   - Level weights shift scoring: with `levelWeights=[0.1, 1.0]`, level-1 nodes outrank equally-scoring leaves
   - Leaf expansion adds children to cluster results (verify a level-1 hit produces its 3 leaf children)
@@ -197,7 +197,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 
 ---
 
-### Sprint S28B: Integration into VectorStore + Config
+### Sprint S42B: Integration into VectorStore + Config
 
 **Goal:** Wire multi-level retrieval into the live RAPTOR recall path (`VectorStore.raptorSearchHits()`) behind feature flags, and add all configuration to `config/dedup.ts`.
 
@@ -205,7 +205,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 
 **Tasks:**
 
-- [ ] **S28B-1: Add config flags** (`src/config/dedup.ts`)
+- [ ] **S42B-1: Add config flags** (`src/config/dedup.ts`)
   Add to `DedupConfigShape` interface (after `RAPTOR_CONSISTENCY` at line ~88):
   ```ts
   RAPTOR_MULTILEVEL_ENABLED: boolean;   // default false
@@ -228,7 +228,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   ```
   Add helper `envNumArray(name, def)` for parsing comma-separated numeric env vars.
 
-- [ ] **S28B-2: Replace `raptorSearchHits()` to use multi-level retrieval** (`src/vectorStore.ts`)
+- [ ] **S42B-2: Replace `raptorSearchHits()` to use multi-level retrieval** (`src/vectorStore.ts`)
   Modify `raptorSearchHits()` (currently at line ~465–510):
   ```ts
   private raptorSearchHits(sid: string, query: string, k: number): SearchHit[] {
@@ -259,7 +259,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
         } else {
           // Cluster node: synthesize a SearchHit from the RAPTOR node
           // This requires extending SearchHit or using the node as a virtual checkpoint
-          // See S28B-3 below
+          // See S42B-3 below
         }
       }
       this.record("RAPTOR", hits.length > 0 ? "new" : "mark_only", `ml_leaves=${mlHits.length}`, Date.now() - t0);
@@ -270,7 +270,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   }
   ```
 
-- [ ] **S28B-3: Extend SearchHit to support RAPTOR cluster nodes** (`src/vectorStore.ts`)
+- [ ] **S42B-3: Extend SearchHit to support RAPTOR cluster nodes** (`src/vectorStore.ts`)
   RAPTOR cluster nodes are not checkpoints — they exist only in `raptor_nodes`. To inject them into the recall block, we need a virtual checkpoint representation:
   ```ts
   // In SearchHit, add optional field:
@@ -292,7 +292,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   const text = h.raptorSummary ?? h.checkpoint.summary.trim();
   ```
 
-- [ ] **S28B-4: Unit tests for integration** (`extensions/mega-compact.test.ts` or new file)
+- [ ] **S42B-4: Unit tests for integration** (`extensions/mega-compact.test.ts` or new file)
   - With `RAPTOR_MULTILEVEL_ENABLED=true`, `VectorStore.search()` returns multi-level RAPTOR hits
   - With flag OFF (default), `VectorStore.search()` returns identical results to current production
   - Cluster-level hits include `raptorSummary` and `raptorLevel` fields
@@ -302,7 +302,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 
 ---
 
-### Sprint S28C: Incremental Enrichment
+### Sprint S42C: Incremental Enrichment
 
 **Goal:** Allow RAPTOR node summaries to be progressively upgraded from extractive → LLM-generated in background batches, without blocking the compaction pipeline.
 
@@ -310,7 +310,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 
 **Tasks:**
 
-- [ ] **S28C-1: Define enrichment types + status tracking** (`src/dedup/raptor/enrichment.ts`)
+- [ ] **S42C-1: Define enrichment types + status tracking** (`src/dedup/raptor/enrichment.ts`)
   ```ts
   export type EnrichmentStatus = "raw" | "enriched" | "failed";
 
@@ -327,7 +327,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   }
   ```
 
-- [ ] **S28C-2: Add `enrichment_status` column to `raptor_nodes` table** (`src/store/sqlite.ts`)
+- [ ] **S42C-2: Add `enrichment_status` column to `raptor_nodes` table** (`src/store/sqlite.ts`)
   Migration (additive, backward-compatible):
   ```sql
   ALTER TABLE raptor_nodes ADD COLUMN enrichment_status TEXT DEFAULT 'raw';
@@ -336,7 +336,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   ```
   Update `saveRaptorTree()` and `listRaptorNodes()` to persist/read the new columns.
 
-- [ ] **S28C-3: Implement batch enrichment** (`src/dedup/raptor/enrichment.ts`)
+- [ ] **S42C-3: Implement batch enrichment** (`src/dedup/raptor/enrichment.ts`)
   ```ts
   /**
    * Enrich up to `batchSize` unenriched RAPTOR cluster nodes for a session.
@@ -364,14 +364,14 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
      - If guardrail fails: `enrichment_status = 'failed'`, keep original extractive summary
   4. Persist changes via `updateRaptorNodeEnrichment()` (new sqlite.ts helper)
 
-- [ ] **S28C-4: Wire enrichment into the RAPTOR serve path** (`src/vectorStore.ts`)
+- [ ] **S42C-4: Wire enrichment into the RAPTOR serve path** (`src/vectorStore.ts`)
   In `raptorSearchHits()` and the new multi-level path, when serving a cluster node:
   ```ts
   // Prefer enriched summary over raw extractive
   const summary = node.enrichedSummary ?? node.summary;
   ```
 
-- [ ] **S28C-5: Add enrichment trigger point** (`src/dedup/raptor/index.ts`)
+- [ ] **S42C-5: Add enrichment trigger point** (`src/dedup/raptor/index.ts`)
   Add a new exported function:
   ```ts
   /**
@@ -387,7 +387,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   ```
   The extension wires this into the `after_agent_start` or compaction hook as a fire-and-forget call.
 
-- [ ] **S28C-6: Unit tests** (`src/dedup/raptor/enrichment.test.ts`)
+- [ ] **S42C-6: Unit tests** (`src/dedup/raptor/enrichment.test.ts`)
   - Enrichment upgrades raw nodes to enriched (mock Ollama)
   - Failed enrichment marks node as failed, keeps original summary
   - Batch size limit is respected (5 nodes per tick with default config)
@@ -398,7 +398,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 
 ---
 
-### Sprint S28D: Build History + Freshness
+### Sprint S42D: Build History + Freshness
 
 **Goal:** Track RAPTOR tree builds in a structured history table with coherence scores and freshness checks, so the system can skip unnecessary rebuilds.
 
@@ -406,7 +406,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 
 **Tasks:**
 
-- [ ] **S28D-1: Create `raptor_build_history` table** (`src/store/sqlite.ts`)
+- [ ] **S42D-1: Create `raptor_build_history` table** (`src/store/sqlite.ts`)
   ```sql
   CREATE TABLE IF NOT EXISTS raptor_build_history (
     build_id TEXT PRIMARY KEY,
@@ -425,7 +425,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   ```
   Add helpers: `insertBuildHistory()`, `getLatestBuild()`, `listBuildHistory()`.
 
-- [ ] **S28D-2: Implement coherence score computation** (`src/dedup/raptor/buildHistory.ts`)
+- [ ] **S42D-2: Implement coherence score computation** (`src/dedup/raptor/buildHistory.ts`)
   ```ts
   /**
    * Compute the average intra-cluster cosine similarity for a RAPTOR tree.
@@ -441,7 +441,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
     - Compute mean pairwise cosine similarity
   - Average across all internal nodes
 
-- [ ] **S28D-3: Record build history in `runRaptor()`** (`src/dedup/raptor/index.ts`)
+- [ ] **S42D-3: Record build history in `runRaptor()`** (`src/dedup/raptor/index.ts`)
   Modify `runRaptor()` (line ~40–70) to:
   ```ts
   // After saveRaptorTree():
@@ -461,7 +461,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   });
   ```
 
-- [ ] **S28D-4: Implement freshness check** (`src/dedup/raptor/buildHistory.ts`)
+- [ ] **S42D-4: Implement freshness check** (`src/dedup/raptor/buildHistory.ts`)
   ```ts
   /**
    * Check if the RAPTOR tree is fresh enough to skip a rebuild.
@@ -484,7 +484,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   4. `changeRatio = abs(currentCheckpointCount - latest.leafCount) / max(latest.leafCount, 1)`
   5. Return `changeRatio <= 0.2` (20% threshold)
 
-- [ ] **S28D-5: Gate rebuilds on freshness** (`src/dedup/raptor/index.ts`)
+- [ ] **S42D-5: Gate rebuilds on freshness** (`src/dedup/raptor/index.ts`)
   Modify the RAPTOR build call site (in the extension's compaction hook) to check freshness before building:
   ```ts
   if (cfg.RAPTOR_FRESHNESS_HOURS > 0) {
@@ -496,7 +496,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   }
   ```
 
-- [ ] **S28D-6: Unit tests** (`src/dedup/raptor/buildHistory.test.ts`)
+- [ ] **S42D-6: Unit tests** (`src/dedup/raptor/buildHistory.test.ts`)
   - Build history records are created with correct metadata
   - Coherence score is 1.0 for identical embeddings, lower for diverse clusters
   - Freshness check returns true for recent builds with stable count

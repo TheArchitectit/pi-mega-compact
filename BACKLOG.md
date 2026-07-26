@@ -136,12 +136,12 @@
 
 ## Shipped Items (Reference)
 
-### S30-S35 — Game Mode (v0.8.0)
+### S44-S35 — Game Mode (v0.8.0)
 
-- ✅ S30: Foundation (game_state table, themes, /mega-game command)
-- ✅ S31: TUI widget theming + full/minimal display modes
-- ✅ S32: Dashboard CSS-variable skin + settings strip
-- ✅ S33: Scoring schema + hooks (cache/dedupe/turns/repos scores)
+- ✅ S44: Foundation (game_state table, themes, /mega-game command)
+- ✅ S45: TUI widget theming + full/minimal display modes
+- ✅ S46: Dashboard CSS-variable skin + settings strip
+- ✅ S47: Scoring schema + hooks (cache/dedupe/turns/repos scores)
 - ✅ S34: Game Mode dashboard tab (leaderboards, MEGA CACHE banner, Opie easter egg)
 - ✅ S35: Achievements system (9 achievements + hidden Opie unlock)
 
@@ -161,12 +161,12 @@
 - ✅ S22: Dual-backend docs
 - ✅ S24: Unified pressure + memory DB hardening
 
-### S26-S29 — Dashboard + Threshold (v0.7.x)
+### S40-S43 — Dashboard + Threshold (v0.7.x)
 
-- ✅ S26: Dashboard overhaul
-- ✅ S27: Tiered percent threshold
-- ✅ S28: Max output token auto-continue
-- ✅ S29: Percent auto-trigger
+- ✅ S40: Dashboard overhaul
+- ✅ S41: Tiered percent threshold
+- ✅ S42: Max output token auto-continue
+- ✅ S43: Percent auto-trigger
 
 ---
 

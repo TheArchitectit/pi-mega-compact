@@ -1,8 +1,8 @@
-# S32 — Visual Memory Map Dashboard
+# S46 — Visual Memory Map Dashboard
 
 **Date:** 2026-07-26
 **Parent plan:** Memory RAG System (borrowed from radical-memory-mcp / R.A.D.1.C.A.1)
-**Depends on:** S26 (importance scoring), S28 (RAPTOR multi-level retrieval), `extensions/dashboard-server/server.ts`, `extensions/dashboard-client/`, `src/store/sqlite.ts`
+**Depends on:** S40 (importance scoring), S42 (RAPTOR multi-level retrieval), `extensions/dashboard-server/server.ts`, `extensions/dashboard-client/`, `src/store/sqlite.ts`
 **Priority:** P2
 **Status:** Draft → implement-ready
 **Target version:** v0.9.x
@@ -53,7 +53,7 @@ The dashboard currently shows aggregate metrics (Overview, Canary, DR tabs) but 
 - `src/config/dedup.ts` — add memory map config flags
 
 ### OUT OF SCOPE:
-- Conversation branching — S32 provides the navigation surface only; branching logic is a separate sprint.
+- Conversation branching — S46 provides the navigation surface only; branching logic is a separate sprint.
 - Real-time graph updates — the graph is loaded on-demand when the tab is opened, not streamed via SSE.
 - Graph editing — the graph is read-only; no user mutations.
 
@@ -61,7 +61,7 @@ The dashboard currently shows aggregate metrics (Overview, Canary, DR tabs) but 
 
 ## EXECUTION
 
-### Sprint S32A: Graph Data Generation (Backend)
+### Sprint S46A: Graph Data Generation (Backend)
 
 **Goal:** Build the memory graph from SQLite data — nodes are memories, edges are relationships.
 
@@ -69,13 +69,13 @@ The dashboard currently shows aggregate metrics (Overview, Canary, DR tabs) but 
 
 **Tasks:**
 
-- [ ] **S32A.1** Create `src/memoryGraph.ts` with types
+- [ ] **S46A.1** Create `src/memoryGraph.ts` with types
   - `MemoryGraphNode` type: `{ id: string; type: "message" | "decision" | "error" | "topic" | "cluster"; contentPreview: string; timestamp: number; importanceScore: number; sessionId: string; metadata?: Record<string, unknown> }`
   - `MemoryGraphEdge` type: `{ source: string; target: string; type: "temporal" | "causal" | "topical"; weight: number }`
   - `MemoryGraph` type: `{ nodes: MemoryGraphNode[]; edges: MemoryGraphEdge[]; sessionId: string; generatedAt: number }`
   - `MemoryGraphOptions` type: `{ maxNodes?: number; minImportance?: number; sessionFilter?: string; timeRange?: { from: number; to: number } }`
 
-- [ ] **S32A.2** Implement temporal edge generation
+- [ ] **S46A.2** Implement temporal edge generation
   - Query `context_chunks` for the session, ordered by `timestamp` ASC (`src/store/sqlite/checkpoints.ts`)
   - Create temporal edges: each checkpoint `i` → checkpoint `i+1` with `weight = 1.0`
   - Node type inference from checkpoint content:
@@ -83,29 +83,29 @@ The dashboard currently shows aggregate metrics (Overview, Canary, DR tabs) but 
     - Contains "error" or "exception" or "failed" → `type: "error"`
     - Default → `type: "message"`
 
-- [ ] **S32A.3** Implement topical edge generation (RAPTOR clusters)
+- [ ] **S46A.3** Implement topical edge generation (RAPTOR clusters)
   - Query `raptor_nodes` table for cluster membership (`src/store/sqlite/raptor.ts`)
   - For each RAPTOR cluster: create edges between all member checkpoints with `type: "topical"`, `weight = clusterDepth / maxDepth`
   - Cluster nodes themselves: add `type: "cluster"` node with summary as content preview
 
-- [ ] **S32A.4** Implement causal edge detection (heuristic)
+- [ ] **S46A.4** Implement causal edge detection (heuristic)
   - Scan checkpoint summaries for cross-references: phrases like "as we decided", "from the previous", "based on", "following up"
   - When found, extract the referenced topic and find the most recent prior checkpoint mentioning that topic
   - Create causal edge with `type: "causal"`, `weight = 0.8`
   - This is heuristic — false positives are acceptable (edges are visual, not structural)
 
-- [ ] **S32A.5** Implement importance scoring integration
-  - When S26 importance scoring is enabled: use `importance_score` from the `memories` or `context_chunks` table
+- [ ] **S46A.5** Implement importance scoring integration
+  - When S40 importance scoring is enabled: use `importance_score` from the `memories` or `context_chunks` table
   - When disabled: default importance = `tokenEstimate / 1000` (normalized to [0, 1])
   - Node size in the frontend will be proportional to importance
 
-- [ ] **S32A.6** Add filtering to `buildMemoryGraph()`
+- [ ] **S46A.6** Add filtering to `buildMemoryGraph()`
   - `maxNodes`: limit total nodes (default 200); when exceeded, keep highest-importance nodes
   - `minImportance`: filter out nodes below this threshold
   - `timeRange`: only include nodes within the time window
   - `sessionFilter`: only include nodes from this session (or null for all)
 
-- [ ] **S32A.7** Add tests in `src/memoryGraph.test.ts`
+- [ ] **S46A.7** Add tests in `src/memoryGraph.test.ts`
   - Test: temporal edges connect sequential checkpoints
   - Test: topical edges connect RAPTOR cluster members
   - Test: causal edges are created for cross-reference patterns
@@ -114,11 +114,11 @@ The dashboard currently shows aggregate metrics (Overview, Canary, DR tabs) but 
   - Test: empty session returns empty graph
   - Test: node types are correctly inferred
 
-- [ ] **S32A.8** Verify: `npm run build && npm test`
+- [ ] **S46A.8** Verify: `npm run build && npm test`
 
 ---
 
-### Sprint S32B: Dashboard API Endpoint
+### Sprint S46B: Dashboard API Endpoint
 
 **Goal:** Expose the memory graph via a REST endpoint.
 
@@ -126,32 +126,32 @@ The dashboard currently shows aggregate metrics (Overview, Canary, DR tabs) but 
 
 **Tasks:**
 
-- [ ] **S32B.1** Add config flags to `src/config/dedup.ts`
+- [ ] **S46B.1** Add config flags to `src/config/dedup.ts`
   - `MEMORY_MAP_ENABLED: boolean` (env: `MEGACOMPACT_MEMORY_MAP`, default: `false`)
   - `MEMORY_MAP_MAX_NODES: number` (env: `MEGACOMPACT_MEMORY_MAP_MAX`, default: `200`)
 
-- [ ] **S32B.2** Add `GET /api/memory-graph` endpoint in `extensions/dashboard-server/server.ts`
+- [ ] **S46B.2** Add `GET /api/memory-graph` endpoint in `extensions/dashboard-server/server.ts`
   - Location: after existing `/api/repos` endpoint (~line 274)
   - Query params: `session_id` (required), `max_nodes` (optional, default 200), `min_importance` (optional, default 0), `from` / `to` (optional timestamps)
   - Handler: import `buildMemoryGraph()` from `src/memoryGraph.js`, call with params, return JSON
   - Gated: return 404 when `MEMORY_MAP_ENABLED=false`
   - Error handling: try/catch, return 500 with `{ error: "..." }` on failure
 
-- [ ] **S32B.3** Add API contract type in `extensions/dashboard-server/api-contracts/`
+- [ ] **S46B.3** Add API contract type in `extensions/dashboard-server/api-contracts/`
   - `MemoryGraphResponse` type matching `MemoryGraph` from `src/memoryGraph.ts`
   - Add to the existing contract barrel
 
-- [ ] **S32B.4** Add API tests
+- [ ] **S46B.4** Add API tests
   - Test: endpoint returns 404 when `MEMORY_MAP_ENABLED=false`
   - Test: endpoint returns valid graph JSON when enabled
   - Test: query params are parsed correctly
   - Test: invalid session_id returns empty graph (not error)
 
-- [ ] **S32B.5** Verify: `npm run build && npm test`
+- [ ] **S46B.5** Verify: `npm run build && npm test`
 
 ---
 
-### Sprint S32C: Frontend — React Flow Graph Component
+### Sprint S46C: Frontend — React Flow Graph Component
 
 **Goal:** Interactive graph visualization in the dashboard.
 
@@ -159,19 +159,19 @@ The dashboard currently shows aggregate metrics (Overview, Canary, DR tabs) but 
 
 **Tasks:**
 
-- [ ] **S32C.1** Add reactflow dependency
+- [ ] **S46C.1** Add reactflow dependency
   - `cd extensions/dashboard-client && npm install reactflow`
   - Update `extensions/dashboard-client/package.json` (already has recharts as reference)
   - Verify: `npm run build` in dashboard-client
 
-- [ ] **S32C.2** Create `extensions/dashboard-client/src/tabs/MemoryMapTab.tsx`
+- [ ] **S46C.2** Create `extensions/dashboard-client/src/tabs/MemoryMapTab.tsx`
   - Fetch data from `/api/memory-graph` on mount (via existing `useApi` hook pattern in `src/hooks/useApi.ts`)
   - Render `<ReactFlow>` with nodes and edges
   - Layout: use `dagre` or `elkjs` for automatic hierarchical layout (or simple force-directed)
   - Background: `<Background />` component from reactflow for grid dots
   - Controls: `<Controls />` for zoom in/out/fit
 
-- [ ] **S32C.3** Create custom node renderer `extensions/dashboard-client/src/components/MemoryGraphNode.tsx`
+- [ ] **S46C.3** Create custom node renderer `extensions/dashboard-client/src/components/MemoryGraphNode.tsx`
   - Node styling by type:
     - `message` → blue background, small (20px)
     - `decision` → green background, medium (30px)
@@ -182,37 +182,37 @@ The dashboard currently shows aggregate metrics (Overview, Canary, DR tabs) but 
   - Display: truncated content preview (first 60 chars)
   - Click: select node, show in detail panel
 
-- [ ] **S32C.4** Create custom edge renderer `extensions/dashboard-client/src/components/MemoryGraphEdge.tsx`
+- [ ] **S46C.4** Create custom edge renderer `extensions/dashboard-client/src/components/MemoryGraphEdge.tsx`
   - Edge styling by type:
     - `temporal` → solid gray line, weight = line thickness
     - `causal` → dashed green line, arrow at target
     - `topical` → dotted purple line
   - Edge label (optional): show weight on hover
 
-- [ ] **S32C.5** Create detail panel `extensions/dashboard-client/src/components/MemoryGraphPanel.tsx`
+- [ ] **S46C.5** Create detail panel `extensions/dashboard-client/src/components/MemoryGraphPanel.tsx`
   - Side panel (slides in from right) when a node is selected
   - Shows: full content preview, timestamp, importance score, node type, connected edges count
   - "Branch from here" button (disabled — future feature, shows tooltip "Coming soon")
   - Close button to dismiss
 
-- [ ] **S32C.6** Add filter controls to MemoryMapTab
+- [ ] **S46C.6** Add filter controls to MemoryMapTab
   - Time range picker (from/to date inputs)
   - Importance threshold slider (0–1)
   - Node type checkboxes (message, decision, error, topic, cluster)
   - Session dropdown (fetch session list from `/api/repos` or `/api/snapshot`)
   - Re-fetch graph on filter change
 
-- [ ] **S32C.7** Add "Memory Map" tab to `extensions/dashboard-client/src/App.tsx`
+- [ ] **S46C.7** Add "Memory Map" tab to `extensions/dashboard-client/src/App.tsx`
   - Add `MemoryMapTab` lazy import (~line 22)
   - Add `"memory-map"` to `TabId` union (~line 36)
   - Add to `TABS` array (~line 48)
   - Add render case (~line 72)
 
-- [ ] **S32C.8** Verify: `cd extensions/dashboard-client && npm run build && npm test`
+- [ ] **S46C.8** Verify: `cd extensions/dashboard-client && npm run build && npm test`
 
 ---
 
-### Sprint S32D: Integration Tests + Polish
+### Sprint S46D: Integration Tests + Polish
 
 **Goal:** End-to-end verification and edge-case handling.
 
@@ -220,25 +220,25 @@ The dashboard currently shows aggregate metrics (Overview, Canary, DR tabs) but 
 
 **Tasks:**
 
-- [ ] **S32D.1** Integration test: API → frontend data flow
+- [ ] **S46D.1** Integration test: API → frontend data flow
   - Mock API response with known graph data
   - Verify reactflow renders correct node count
   - Verify filter changes trigger re-fetch
 
-- [ ] **S32D.2** Edge case: empty session
+- [ ] **S46D.2** Edge case: empty session
   - API returns `{ nodes: [], edges: [] }` — frontend shows "No memories to display" message
   - No crash, no empty graph with controls
 
-- [ ] **S32D.3** Edge case: large session (>200 nodes)
+- [ ] **S46D.3** Edge case: large session (>200 nodes)
   - API truncates to `maxNodes` by importance
   - Frontend renders without performance degradation
   - Warning shown: "Showing top 200 of N memories"
 
-- [ ] **S32D.4** Edge case: no RAPTOR clusters
+- [ ] **S46D.4** Edge case: no RAPTOR clusters
   - Topical edges are absent; graph still renders with temporal edges only
   - No crash from missing `raptor_nodes` table
 
-- [ ] **S32D.5** Full regression test
+- [ ] **S46D.5** Full regression test
   - `MEGACOMPACT_MEMORY_MAP=false npm test` — zero behavior change
   - `MEGACOMPACT_MEMORY_MAP=true npm test` — all new tests pass
   - `python3 scripts/regression_check.py --all` — green

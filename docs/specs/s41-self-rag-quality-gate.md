@@ -1,4 +1,4 @@
-# S27 — Self-RAG Quality Gate (Word-Overlap Critique)
+# S41 — Self-RAG Quality Gate (Word-Overlap Critique)
 
 **Date:** 2026-07-26
 **Parent plan:** Memory RAG System (borrowed from radical-memory-mcp / R.A.D.1.C.A.1)
@@ -60,7 +60,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~80–160) retrieves top-K 
 
 ## EXECUTION
 
-### Sprint S27A: Core Critique Engine (`src/recallCritique.ts`)
+### Sprint S41A: Core Critique Engine (`src/recallCritique.ts`)
 
 **Goal:** Build a standalone, deterministic, zero-dependency recall quality critique module with four word-overlap metrics and a composite scoring function.
 
@@ -68,7 +68,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~80–160) retrieves top-K 
 
 **Tasks:**
 
-- [ ] **S27A-1: Define types and interfaces** (`src/recallCritique.ts`)
+- [ ] **S41A-1: Define types and interfaces** (`src/recallCritique.ts`)
   Create the core types:
   ```ts
   /** Breakdown of individual critique dimensions. */
@@ -88,7 +88,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~80–160) retrieves top-K 
   }
   ```
 
-- [ ] **S27A-2: Implement text normalization and tokenization** (`src/recallCritique.ts`)
+- [ ] **S41A-2: Implement text normalization and tokenization** (`src/recallCritique.ts`)
   ```ts
   /** Normalize text for comparison: lowercase, strip punctuation, split on whitespace. */
   export function tokenize(text: string): string[]
@@ -113,7 +113,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~80–160) retrieves top-K 
   ```
   Tokens ≤ 2 characters are also filtered (too short to be meaningful overlap signals).
 
-- [ ] **S27A-3: Implement `factualAccuracy()`** (`src/recallCritique.ts`)
+- [ ] **S41A-3: Implement `factualAccuracy()`** (`src/recallCritique.ts`)
   ```ts
   /**
    * What fraction of significant terms in `answer` also appear in `context`?
@@ -132,7 +132,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~80–160) retrieves top-K 
   ```
   Example: answer = "JWT auth uses tokens", context = "We set up JWT authentication with bearer tokens" → tokens: `{jwt, auth, uses, tokens}` ∩ `{jwt, authentication, bearer, tokens}` = {jwt, tokens} → 2/4 = 0.5
 
-- [ ] **S27A-4: Implement `completeness()`** (`src/recallCritique.ts`)
+- [ ] **S41A-4: Implement `completeness()`** (`src/recallCritique.ts`)
   ```ts
   /**
    * What fraction of significant terms in `query` are addressed in `answer`?
@@ -143,7 +143,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~80–160) retrieves top-K 
   ```
   Same word-overlap logic as `factualAccuracy` but with (query, answer) as (source, target).
 
-- [ ] **S27A-5: Implement `relevance()`** (`src/recallCritique.ts`)
+- [ ] **S41A-5: Implement `relevance()`** (`src/recallCritique.ts`)
   ```ts
   /**
    * Jaccard similarity between significant query tokens and significant context tokens.
@@ -162,7 +162,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~80–160) retrieves top-K 
   return intersection.size / union.size
   ```
 
-- [ ] **S27A-6: Implement `clarity()`** (`src/recallCritique.ts`)
+- [ ] **S41A-6: Implement `clarity()`** (`src/recallCritique.ts`)
   ```ts
   /**
    * Sentence structure heuristic: penalizes overly long or fragmented text.
@@ -180,9 +180,9 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~80–160) retrieves top-K 
   if avgLen < 10: return avgLen / 10   // too fragmented
   if avgLen > 30: return 30 / avgLen    // too dense
   ```
-  Note: clarity is a secondary signal. A recall chunk that is a code block will have low clarity (long unbroken text) but may be highly relevant. The composite scoring weights clarity at only 10% (see S27A-7).
+  Note: clarity is a secondary signal. A recall chunk that is a code block will have low clarity (long unbroken text) but may be highly relevant. The composite scoring weights clarity at only 10% (see S41A-7).
 
-- [ ] **S27A-7: Implement `critiqueRecall()` composite function** (`src/recallCritique.ts`)
+- [ ] **S41A-7: Implement `critiqueRecall()` composite function** (`src/recallCritique.ts`)
   ```ts
   /**
    * Run all four critique dimensions on a query + recalled chunks.
@@ -216,7 +216,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~80–160) retrieves top-K 
   Default weights: factual accuracy 35%, completeness 30%, relevance 25%, clarity 10%.
   Reason string: highest-scoring dimension → "High relevance (0.82)" or lowest → "Low factual accuracy (0.15)".
 
-- [ ] **S27A-8: Unit tests** (`src/recallCritique.test.ts`)
+- [ ] **S41A-8: Unit tests** (`src/recallCritique.test.ts`)
   Test matrix (≥35 tests):
   - `tokenize`: normal text, empty string, punctuation-only, unicode, code blocks
   - `significantTokens`: filters stopwords, filters short tokens, passes through technical terms
@@ -231,7 +231,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~80–160) retrieves top-K 
 
 ---
 
-### Sprint S27B: Integration into `recallAndInline()` Pipeline
+### Sprint S41B: Integration into `recallAndInline()` Pipeline
 
 **Goal:** Wire the critique gate into the recall path so irrelevant recalled chunks are rejected before injection.
 
@@ -239,10 +239,10 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~80–160) retrieves top-K 
 
 **Tasks:**
 
-- [ ] **S27B-1: Add configuration to `src/config.ts`**
+- [ ] **S41B-1: Add configuration to `src/config.ts`**
   Add the following exports:
   ```ts
-  /** Enable recall quality critique gate (S27). Default: false. */
+  /** Enable recall quality critique gate (S41). Default: false. */
   export const RECALL_CRITIQUE_ENABLED = false;
   // Override: set MEGACOMPACT_RECALL_CRITIQUE=1 in env
 
@@ -255,10 +255,10 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~80–160) retrieves top-K 
   ```
   Read from env: `MEGACOMPACT_RECALL_CRITIQUE`, `MEGACOMPACT_RECALL_CRITIQUE_THRESHOLD`.
 
-- [ ] **S27B-2: Modify `recallAndInline()` in `src/recall.ts`** (insert after search + dedupe, before block assembly, around line ~130)
+- [ ] **S41B-2: Modify `recallAndInline()` in `src/recall.ts`** (insert after search + dedupe, before block assembly, around line ~130)
   After the search results are retrieved and window-deduped, but before building the injection block:
   ```ts
-  // ── S27 Recall Critique Gate ────────────────────────────────────────
+  // ── S41 Recall Critique Gate ────────────────────────────────────────
   if (RECALL_CRITIQUE_ENABLED && hits.length > 0) {
     const chunkTexts = hits.map(h => h.checkpoint.summary);
     const critiqueResult = critiqueRecall(opts.query, chunkTexts, {
@@ -302,11 +302,11 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~80–160) retrieves top-K 
       });
     }
   }
-  // ── End S27 ─────────────────────────────────────────────────────────
+  // ── End S41 ─────────────────────────────────────────────────────────
   ```
   **Placement:** This block must be inserted AFTER the `hits` array is populated (line ~130) but BEFORE the `for (const h of hits)` loop that builds `toInject` and `parts` (line ~135). The critique operates on the full hit set, not per-hit.
 
-- [ ] **S27B-3: Add import in `src/recall.ts`**
+- [ ] **S41B-3: Add import in `src/recall.ts`**
   At the top of `src/recall.ts`, add:
   ```ts
   import { critiqueRecall } from "./recallCritique.js";
@@ -315,19 +315,19 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~80–160) retrieves top-K 
   ```
   Note: `recall.ts` currently does not import from `log.ts`. A module-level logger instance should be created or the existing logging mechanism used. If `recallAndInline` is a pure function (no side effects), logging should be done via a callback parameter rather than a module-level logger, to preserve testability. Add an optional `onCritique?: (result: CritiqueResult) => void` parameter to `RecallInjectOptions`.
 
-- [ ] **S27B-4: Update `RecallInjectOptions` interface** (`src/recall.ts`)
+- [ ] **S41B-4: Update `RecallInjectOptions` interface** (`src/recall.ts`)
   Add optional field:
   ```ts
-  /** Callback fired when critique evaluates recall quality (S27). */
+  /** Callback fired when critique evaluates recall quality (S41). */
   onCritique?: (result: CritiqueResult) => void;
   ```
   This allows the extension to observe critique results for dashboard/monitoring without coupling `recall.ts` to the logger.
 
-- [ ] **S27B-5: Wire env-var reading** (`src/config.ts`)
+- [ ] **S41B-5: Wire env-var reading** (`src/config.ts`)
   In the config module, read `process.env.MEGACOMPACT_RECALL_CRITIQUE` and convert to boolean (`"1"` or `"true"` → `true`). Read `MEGACOMPACT_RECALL_CRITIQUE_THRESHOLD` as float, clamp to [0, 1].
 
-- [ ] **S27B-6: Integration tests** (`src/recallCritique.test.ts`)
-  Test scenarios (building on unit tests from S27A-8):
+- [ ] **S41B-6: Integration tests** (`src/recallCritique.test.ts`)
+  Test scenarios (building on unit tests from S41A-8):
   1. **Relevant recall passes:** Query = "How do I set up JWT auth?", chunks = ["Set up JWT authentication by configuring the token secret and middleware..."]. Critique score ≥ 0.3. Injection proceeds.
   2. **Irrelevant recall rejected:** Query = "How do I set up CI/CD?", chunks = ["Database migrations use Knex.js with PostgreSQL..."]. Critique score < 0.3. Injection blocked (empty block, empty toInject).
   3. **Mixed relevance:** 2 relevant chunks + 1 irrelevant. Composite score is average — may pass or fail depending on the mix.

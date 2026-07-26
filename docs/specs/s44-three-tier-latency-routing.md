@@ -1,8 +1,8 @@
-# S30 — Three-Tier Latency-Aware Recall Routing
+# S44 — Three-Tier Latency-Aware Recall Routing
 
 **Date:** 2026-07-26
 **Parent plan:** Memory RAG System (borrowed from radical-memory-mcp / R.A.D.1.C.A.1)
-**Depends on:** Sprint 14 (tier flags + monitoring), S27 (self-RAG quality gate), S28 (RAPTOR multi-level retrieval), `src/vectorStore.ts`, `src/recall.ts`, `src/store/vectorIndex.ts`
+**Depends on:** Sprint 14 (tier flags + monitoring), S41 (self-RAG quality gate), S42 (RAPTOR multi-level retrieval), `src/vectorStore.ts`, `src/recall.ts`, `src/store/vectorIndex.ts`
 **Priority:** P2
 **Status:** Draft → implement-ready
 **Target version:** v0.9.x
@@ -56,13 +56,13 @@ The Rust rewrite of radical-memory-mcp has a three-tier query router with Redis 
 ### OUT OF SCOPE:
 - Changes to `src/engine.ts` — compaction path unchanged; router only affects recall.
 - Changes to dedup tiers — L0/L1/L2 dedup in `vectorStore.add()` is unaffected.
-- Changes to RAPTOR tree — multi-level retrieval (`S28`) remains the default for RAPTOR-enabled sessions.
+- Changes to RAPTOR tree — multi-level retrieval (`S42`) remains the default for RAPTOR-enabled sessions.
 
 ---
 
 ## EXECUTION
 
-### Sprint S30A: Embedding Cache + L0 Result Cache
+### Sprint S44A: Embedding Cache + L0 Result Cache
 
 **Goal:** In-memory caches for repeated queries. Zero behavior change when OFF.
 
@@ -70,41 +70,41 @@ The Rust rewrite of radical-memory-mcp has a three-tier query router with Redis 
 
 **Tasks:**
 
-- [ ] **S30A.1** Create `src/tieredRouter.ts` with types (`src/types.ts` reference)
+- [ ] **S44A.1** Create `src/tieredRouter.ts` with types (`src/types.ts` reference)
   - `TieredRouterConfig` type: `{ enabled, l0TtlMs, l1ConfidenceThreshold, embeddingCacheTtlMs }`
   - `TieredRouterMetrics` type: `{ l0Hits, l0Misses, l1Hits, l1Misses, l2Hits, l2Misses, avgLatencyMs: Record<Tier, number> }`
   - `TieredRouter` class with constructor accepting config + VectorStore
 
-- [ ] **S30A.2** Implement L0 result cache in `src/tieredRouter.ts`
+- [ ] **S44A.2** Implement L0 result cache in `src/tieredRouter.ts`
   - `private l0Cache: Map<string, { results: SearchHit[]; timestamp: number; sessionId: string }>`
   - Cache key: `hash(sessionId + ":" + query)` using `createHash("sha256")` (same pattern as `src/vectorStore.ts:39`)
   - TTL eviction: check `Date.now() - entry.timestamp > config.l0TtlMs` on access
   - Background sweep every 60s to purge expired entries
 
-- [ ] **S30A.3** Implement embedding cache in `src/tieredRouter.ts`
+- [ ] **S44A.3** Implement embedding cache in `src/tieredRouter.ts`
   - `private embeddingCache: Map<string, { vector: Vector; timestamp: number }>`
   - Key: `hash(queryText)` — same query always gets same embedding
   - TTL: `config.embeddingCacheTtlMs` (default 1h)
   - Wrap `embedder.embed()` — check cache first, store on miss
 
-- [ ] **S30A.4** Add config flags to `src/config/dedup.ts` (~line 30)
+- [ ] **S44A.4** Add config flags to `src/config/dedup.ts` (~line 30)
   - `TIERED_ROUTING_ENABLED: boolean` (env: `MEGACOMPACT_TIERED_ROUTING`, default: `false`)
   - `TIERED_L0_TTL_MS: number` (env: `MEGACOMPACT_TIERED_L0_TTL`, default: `300000`)
   - `TIERED_L1_CONFIDENCE_THRESHOLD: number` (env: `MEGACOMPACT_TIERED_L1_THRESHOLD`, default: `0.8`)
   - `TIERED_EMBEDDING_CACHE_TTL_MS: number` (env: `MEGACOMPACT_TIERED_EMBED_TTL`, default: `3600000`)
 
-- [ ] **S30A.5** Add L0 cache tests in `src/tieredRouter.test.ts`
+- [ ] **S44A.5** Add L0 cache tests in `src/tieredRouter.test.ts`
   - Test: L0 hit returns cached result without calling L1/L2
   - Test: L0 miss falls through to L1
   - Test: L0 TTL expiry evicts entry
   - Test: embedding cache returns same vector for same query
   - Test: embedding cache TTL expiry re-embeds
 
-- [ ] **S30A.6** Verify: `npm run build && npm test` — all 372+ tests pass, zero regressions
+- [ ] **S44A.6** Verify: `npm run build && npm test` — all 372+ tests pass, zero regressions
 
 ---
 
-### Sprint S30B: L1 FTS5 Trigram Search Tier
+### Sprint S44B: L1 FTS5 Trigram Search Tier
 
 **Goal:** Add fast sync FTS5 trigram search as L1 tier between cache and HNSW.
 
@@ -112,33 +112,33 @@ The Rust rewrite of radical-memory-mcp has a three-tier query router with Redis 
 
 **Tasks:**
 
-- [ ] **S30B.1** Create `src/store/sqlite/fts5-search.ts`
+- [ ] **S44B.1** Create `src/store/sqlite/fts5-search.ts`
   - `searchFTS5(db, sessionId, query, limit)` — FTS5 trigram query against `context_chunks` table
   - Reuse existing FTS5 index on `context_chunks` (created in `src/store/sqlite/schema.ts`)
   - Returns `{ checkpointId, score, snippet }[]` where score is the FTS5 BM25 rank normalized to [0, 1]
   - Confidence metric: ratio of best FTS5 score to a calibrated maximum (empirically ~0.6 for trigram)
 
-- [ ] **S30B.2** Add `searchFTS5()` method to `VectorStore` (`src/vectorStore.ts`)
+- [ ] **S44B.2** Add `searchFTS5()` method to `VectorStore` (`src/vectorStore.ts`)
   - Public method that delegates to `fts5-search.ts`
   - Returns `SearchHit[]` with `score` from FTS5 BM25 normalized
   - Used by the tiered router as the L1 tier
 
-- [ ] **S30B.3** Implement L1 tier in `src/tieredRouter.ts`
+- [ ] **S44B.3** Implement L1 tier in `src/tieredRouter.ts`
   - On L0 miss: call `vectorStore.searchFTS5(sessionId, query, k*2)`
   - If best hit score ≥ `config.l1ConfidenceThreshold` (default 0.8): cache to L0, return
   - If best hit score < threshold: fall through to L2
 
-- [ ] **S30B.4** Add L1 tier tests in `src/tieredRouter.test.ts`
+- [ ] **S44B.4** Add L1 tier tests in `src/tieredRouter.test.ts`
   - Test: L1 high confidence promotes results to L0 cache
   - Test: L1 low confidence falls through to L2
   - Test: L1 latency is <5ms for 100 checkpoints
   - Test: L1 returns empty when session has no checkpoints
 
-- [ ] **S30B.5** Verify: `npm run build && npm test`
+- [ ] **S44B.5** Verify: `npm run build && npm test`
 
 ---
 
-### Sprint S30C: L2 HNSW Async Tier + Routing Logic
+### Sprint S44C: L2 HNSW Async Tier + Routing Logic
 
 **Goal:** Complete the three-tier cascade with L2 as the async HNSW fallback.
 
@@ -146,27 +146,27 @@ The Rust rewrite of radical-memory-mcp has a three-tier query router with Redis 
 
 **Tasks:**
 
-- [ ] **S30C.1** Implement L2 tier in `src/tieredRouter.ts`
+- [ ] **S44C.1** Implement L2 tier in `src/tieredRouter.ts`
   - On L1 miss: call `vectorStore.searchAsync(sessionId, query, k, opts)` (`src/vectorStore.ts:268`)
   - L2 is async — the router's `route()` method must be `async`
   - Cache L2 results to L0 on return
 
-- [ ] **S30C.2** Implement session-scoped cache invalidation
+- [ ] **S44C.2** Implement session-scoped cache invalidation
   - `invalidateSession(sessionId: string)` — remove all L0 entries where `entry.sessionId === sessionId`
   - Called from `extensions/mega-events/context-handler.ts` when new messages arrive
   - Also clears embedding cache entries for that session's queries
 
-- [ ] **S30C.3** Add hit-rate tracking in `src/tieredRouter.ts`
+- [ ] **S44C.3** Add hit-rate tracking in `src/tieredRouter.ts`
   - Per-tier counters: `hits`, `misses`, `totalLatencyMs`
   - `getMetrics()` returns `{ l0: {hits, misses, avgMs}, l1: {...}, l2: {...}, totalQueries }`
   - Log to `events.log` every 100 queries via `logDecision()` (`src/monitoring.ts:22`)
 
-- [ ] **S30C.4** Add monitoring integration to `src/monitoring.ts` (~line 45)
+- [ ] **S44C.4** Add monitoring integration to `src/monitoring.ts` (~line 45)
   - `TieredRoutingMetrics` interface added to the monitoring types
   - `logTieredMetrics()` appends structured event to events.log
   - Dashboard JSON includes tiered routing summary
 
-- [ ] **S30C.5** Add routing tests in `src/tieredRouter.test.ts`
+- [ ] **S44C.5** Add routing tests in `src/tieredRouter.test.ts`
   - Test: L0 miss → L1 miss → L2 hit → cache to L0
   - Test: L0 miss → L1 hit (no L2 call)
   - Test: L0 hit (no L1/L2 calls)
@@ -174,11 +174,11 @@ The Rust rewrite of radical-memory-mcp has a three-tier query router with Redis 
   - Test: hit-rate counters increment correctly
   - Test: embedding cache is independent of result cache
 
-- [ ] **S30C.6** Verify: `npm run build && npm test`
+- [ ] **S44C.6** Verify: `npm run build && npm test`
 
 ---
 
-### Sprint S30D: Integration + Dashboard
+### Sprint S44D: Integration + Dashboard
 
 **Goal:** Wire tiered router into recall path and expose metrics on dashboard.
 
@@ -186,30 +186,30 @@ The Rust rewrite of radical-memory-mcp has a three-tier query router with Redis 
 
 **Tasks:**
 
-- [ ] **S30D.1** Wire into `recallAndInline()` (`src/recall.ts:108–185`)
+- [ ] **S44D.1** Wire into `recallAndInline()` (`src/recall.ts:108–185`)
   - When `TIERED_ROUTING_ENABLED=true`: call `tieredRouter.route(sessionId, query, k)` instead of `searchRecall()`
   - TieredRouter instance created lazily (singleton, similar to `getDefaultStore()` in `src/engine.ts:67`)
   - Fallback: if router throws, fall through to existing `searchRecall()`
 
-- [ ] **S30D.2** Wire into `recallAndInlineAsync()` (`src/recall.ts:286–345`)
+- [ ] **S44D.2** Wire into `recallAndInlineAsync()` (`src/recall.ts:286–345`)
   - Same pattern: use `tieredRouter.routeAsync()` when flag is ON
   - Router's L2 tier already calls `searchAsync()` internally
 
-- [ ] **S30D.3** Wire session invalidation into context handler
+- [ ] **S44D.3** Wire session invalidation into context handler
   - `extensions/mega-events/context-handler.ts`: on `before_agent_start` with new messages, call `tieredRouter.invalidateSession(sessionId)`
   - Non-fatal: if router not initialized, skip
 
-- [ ] **S30D.4** Add dashboard API endpoint
+- [ ] **S44D.4** Add dashboard API endpoint
   - `GET /api/tiered-routing` in `extensions/dashboard-server/server.ts` (~line 243)
   - Returns tiered routing metrics from the router singleton
   - 404 when `TIERED_ROUTING_ENABLED=false`
 
-- [ ] **S30D.5** Add dashboard tab content (optional, low priority)
+- [ ] **S44D.5** Add dashboard tab content (optional, low priority)
   - `extensions/dashboard-client/src/tabs/MetricsTab.tsx`: add tier hit-rate cards
   - Show L0/L1/L2 hit rates, avg latency, total queries
   - Simple bar chart using existing recharts dependency
 
-- [ ] **S30D.6** Full regression test with flag OFF
+- [ ] **S44D.6** Full regression test with flag OFF
   - `MEGACOMPACT_TIERED_ROUTING=false npm test` — zero behavior change
   - `MEGACOMPACT_TIERED_ROUTING=true npm test` — all new tests pass
   - `python3 scripts/regression_check.py --all` — green

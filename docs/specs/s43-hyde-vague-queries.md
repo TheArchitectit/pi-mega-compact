@@ -1,8 +1,8 @@
-# S29 — HyDE for Vague Recall Queries
+# S43 — HyDE for Vague Recall Queries
 
 **Date:** 2026-07-26
 **Parent plan:** Memory RAG System (borrowed from radical-memory-mcp / R.A.D.1.C.A.1)
-**Depends on:** Sprint 12 (vector search), S27 (self-RAG quality gate), `src/recall.ts`, `src/vectorStore.ts`, `src/embedder.ts`
+**Depends on:** Sprint 12 (vector search), S41 (self-RAG quality gate), `src/recall.ts`, `src/vectorStore.ts`, `src/embedder.ts`
 **Priority:** P1
 **Status:** Draft → implement-ready
 **Target version:** v0.9.x
@@ -15,7 +15,7 @@
 - **PREVENT-PI-003** (no system role): recalled context is injected via the `before_agent_start` systemPrompt prepend path. HyDE changes which chunks are retrieved, not how they are injected.
 - **PREVENT-PI-004** (no network): HyDE and multi-query expansion call the configured LLM provider. By default this is localhost Ollama (`http://127.0.0.1:11434`), the same loopback exception class as `src/dedup/raptor/summarizer.ts:12` and `src/httpEmbedder.ts`. All LLM calls are annotated with `guardrails-allow PREVENT-PI-004`. No remote API is ever called. Cache prevents repeated LLM calls for the same query.
 - **Feature flags default OFF**: `HYDE_ENABLED` and `MULTI_QUERY_ENABLED` both default to `false`. Zero behavior change unless explicitly enabled. When OFF, `recallAndInline()` behaves identically to current production.
-- **S27 quality gate preserved**: the original query (not the hypothetical) is always passed to the self-RAG quality gate (`src/recallCritique.ts`). HyDE improves *retrieval*; the quality gate validates *injection*.
+- **S41 quality gate preserved**: the original query (not the hypothetical) is always passed to the self-RAG quality gate (`src/recallCritique.ts`). HyDE improves *retrieval*; the quality gate validates *injection*.
 - Gate: `npm run build && npm test && npm run lint && python3 scripts/regression_check.py --all`.
 
 ---
@@ -63,7 +63,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
 
 ## EXECUTION
 
-### Sprint S29A: HyDE Transformer
+### Sprint S43A: HyDE Transformer
 
 **Goal:** Build a HyDE (Hypothetical Document Embedding) transformer that takes a vague query, generates a hypothetical answer via LLM, and returns it for embedding and search.
 
@@ -71,7 +71,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
 
 **Tasks:**
 
-- [ ] **S29A-1: Define HyDE types and prompt templates** (`src/hyde.ts`)
+- [ ] **S43A-1: Define HyDE types and prompt templates** (`src/hyde.ts`)
   ```ts
   import type { Embedder, Vector } from "./embedder.js";
 
@@ -109,7 +109,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
   };
   ```
 
-- [ ] **S29A-2: Implement query type classification** (`src/hyde.ts`)
+- [ ] **S43A-2: Implement query type classification** (`src/hyde.ts`)
   ```ts
   /**
    * Classify a query into a type category for prompt selection.
@@ -124,7 +124,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
   - `fact`: contains "what is", "what was", "what are", "when", "who", "which", "how many", "how much"
   - `general`: everything else
 
-- [ ] **S29A-3: Implement TTL cache** (`src/hyde.ts`)
+- [ ] **S43A-3: Implement TTL cache** (`src/hyde.ts`)
   ```ts
   /**
    * In-memory TTL cache for HyDE results.
@@ -155,7 +155,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
   ```
   Note: `fnv1a` is already available in `src/embedder.ts:50–55`. Re-export or duplicate (pure function, no deps).
 
-- [ ] **S29A-4: Implement LLM call for hypothetical document generation** (`src/hyde.ts`)
+- [ ] **S43A-4: Implement LLM call for hypothetical document generation** (`src/hyde.ts`)
   ```ts
   /**
    * Generate a hypothetical document for a query using the configured LLM.
@@ -191,14 +191,14 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
   4. Low temperature (0.3) for focused, factual hypothetical answers
   5. Short token limit (200 tokens max) — we just need a plausible answer, not a complete one
 
-- [ ] **S29A-5: Implement top-level `hydeTransform()`** (`src/hyde.ts`)
+- [ ] **S43A-5: Implement top-level `hydeTransform()`** (`src/hyde.ts`)
   ```ts
   /**
    * HyDE transform: take a query, generate a hypothetical answer, return it
    * for embedding. Checks cache first; falls back to raw query on LLM failure.
    *
    * The hypothetical answer is embedded INSTEAD of the original query for search,
-   * but the original query is always preserved for quality gate checking (S27).
+   * but the original query is always preserved for quality gate checking (S41).
    */
   export function hydeTransform(
     query: string,
@@ -213,7 +213,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
   5. If LLM success: `setCache(query, hypothetical)`, return result
   6. If LLM failure: return `{ hypothetical: query, llmUsed: false, fromCache: false, queryType }` (graceful degradation — use raw query)
 
-- [ ] **S29A-6: Implement vagueness detection** (`src/hyde.ts`)
+- [ ] **S43A-6: Implement vagueness detection** (`src/hyde.ts`)
   ```ts
   /**
    * Heuristic: is this query "vague" enough to benefit from HyDE?
@@ -228,7 +228,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
   - Contains "we decided", "we used", "we chose", "that thing about", "the thing where"
   - Does NOT contain: file paths (`.ts`, `.js`, `/`), specific technical terms (>2 capitalized words), function names (`camelCase` patterns)
 
-- [ ] **S29A-7: Unit tests** (`src/hyde.test.ts`)
+- [ ] **S43A-7: Unit tests** (`src/hyde.test.ts`)
   - `classifyQuery()` correctly categorizes decision/code/error/fact/general queries
   - `isVagueQuery()` identifies vague queries ("what did we decide about auth?") and rejects specific ones ("how does VectorStore.search() filter by sessionId?")
   - `hydeTransform()` returns a hypothetical document (mock Ollama)
@@ -239,7 +239,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
 
 ---
 
-### Sprint S29B: Multi-Query Expansion + RRF Fusion
+### Sprint S43B: Multi-Query Expansion + RRF Fusion
 
 **Goal:** Build a multi-query expansion system that generates query variations and fuses results with Reciprocal Rank Fusion (RRF).
 
@@ -247,7 +247,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
 
 **Tasks:**
 
-- [ ] **S29B-1: Define multi-query types** (`src/queryExpansion.ts`)
+- [ ] **S43B-1: Define multi-query types** (`src/queryExpansion.ts`)
   ```ts
   import type { Embedder, Vector } from "./embedder.js";
 
@@ -271,7 +271,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
   }
   ```
 
-- [ ] **S29B-2: Implement LLM-based query expansion** (`src/queryExpansion.ts`)
+- [ ] **S43B-2: Implement LLM-based query expansion** (`src/queryExpansion.ts`)
   ```ts
   /**
    * Generate query variations using the LLM. Each variation is a rephrasing
@@ -297,7 +297,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
   4. Return up to `N` non-empty variations
   5. On failure: return `[]` (original query is always searched regardless)
 
-- [ ] **S29B-3: Implement Reciprocal Rank Fusion (RRF)** (`src/queryExpansion.ts`)
+- [ ] **S43B-3: Implement Reciprocal Rank Fusion (RRF)** (`src/queryExpansion.ts`)
   ```ts
   /**
    * Reciprocal Rank Fusion: merge multiple ranked lists into a single ranking.
@@ -332,7 +332,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
   }
   ```
 
-- [ ] **S29B-4: Implement multi-query search + fusion** (`src/queryExpansion.ts`)
+- [ ] **S43B-4: Implement multi-query search + fusion** (`src/queryExpansion.ts`)
   ```ts
   /**
    * Full multi-query pipeline: expand query → search with each variation →
@@ -355,7 +355,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
   5. `fused = reciprocalRankFusion(allRankedLists, rrfK)`
   6. Return fused results
 
-- [ ] **S29B-5: Unit tests** (`src/queryExpansion.test.ts`)
+- [ ] **S43B-5: Unit tests** (`src/queryExpansion.test.ts`)
   - `expandQuery()` generates 2–3 variations (mock Ollama)
   - `expandQuery()` returns `[]` on LLM failure
   - `reciprocalRankFusion()` correctly merges two ranked lists:
@@ -370,15 +370,15 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
 
 ---
 
-### Sprint S29C: Integration into Recall Path
+### Sprint S43C: Integration into Recall Path
 
-**Goal:** Wire HyDE and multi-query expansion into `recallAndInline()` behind feature flags, preserving the original query for S27 quality gate checking.
+**Goal:** Wire HyDE and multi-query expansion into `recallAndInline()` behind feature flags, preserving the original query for S41 quality gate checking.
 
 **Acceptance:** With `HYDE_ENABLED=true`, vague queries trigger HyDE transformation before embedding. With `MULTI_QUERY_ENABLED=true`, queries are expanded and results are fused. With both flags OFF, behavior is identical to current production.
 
 **Tasks:**
 
-- [ ] **S29C-1: Add config flags** (`src/config/dedup.ts`)
+- [ ] **S43C-1: Add config flags** (`src/config/dedup.ts`)
   Add to `DedupConfigShape` interface:
   ```ts
   HYDE_ENABLED: boolean;              // default false
@@ -400,10 +400,10 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
   RRF_K: envNum("MEGACOMPACT_RRF_K", 60),
   ```
 
-- [ ] **S29C-2: Integrate HyDE into `recallAndInline()`** (`src/recall.ts`)
+- [ ] **S43C-2: Integrate HyDE into `recallAndInline()`** (`src/recall.ts`)
   Modify `recallAndInline()` (line ~128–153). Insert HyDE between query text construction and the `recall()` call:
   ```ts
-  // --- HyDE transform (S29) ---
+  // --- HyDE transform (S43) ---
   let searchQuery = rawQuery;
   let hydeApplied = false;
 
@@ -429,7 +429,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
     }
   }
 
-  // --- Multi-query expansion (S29) ---
+  // --- Multi-query expansion (S43) ---
   let fusedHits: SearchHit[] | null = null;
 
   if (config?.MULTI_QUERY_ENABLED) {
@@ -459,13 +459,13 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
   }, store);
   const hits = fusedHits ?? rawHits;
 
-  // S27 quality gate: ALWAYS uses the ORIGINAL query (not hypothetical)
+  // S41 quality gate: ALWAYS uses the ORIGINAL query (not hypothetical)
   // This ensures the critique checks relevance to what the user actually asked.
   // ... existing quality gate code ...
   ```
   Note: the actual integration will need to handle the `recall()` function's return type and the injection logic carefully. The `fusedHits` path bypasses the `skipInjected` dedup (since RRF fusion already handles dedup via score merging). A second pass should apply `skipInjected` filtering.
 
-- [ ] **S29C-3: Logging for HyDE events** (`src/recall.ts`)
+- [ ] **S43C-3: Logging for HyDE events** (`src/recall.ts`)
   Add HyDE-specific log entries using the existing `Logger` interface:
   ```ts
   log?.info("hyde_applied", {
@@ -484,17 +484,17 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
   });
   ```
 
-- [ ] **S29C-4: Integration tests** (`extensions/mega-compact.test.ts` or new file)
+- [ ] **S43C-4: Integration tests** (`extensions/mega-compact.test.ts` or new file)
   - With `HYDE_ENABLED=true` + vague query: HyDE is applied, hypothetical is different from original, search uses hypothetical embedding
   - With `HYDE_ENABLED=true` + specific query: HyDE is skipped (not vague), search uses raw query
   - With `HYDE_ENABLED=false` (default): no HyDE processing, search uses raw query
   - With `MULTI_QUERY_ENABLED=true`: query is expanded, RRF fuses results
   - With `MULTI_QUERY_ENABLED=false` (default): no expansion, single search
-  - S27 quality gate always uses original query (not hypothetical)
+  - S41 quality gate always uses original query (not hypothetical)
   - HyDE logging: `hyde_applied` event is logged when HyDE is triggered
   - Full 372+ test regression passes with both flags OFF
 
-- [ ] **S29C-5: Monitoring hooks** (`src/monitoring.ts` or via existing event system)
+- [ ] **S43C-5: Monitoring hooks** (`src/monitoring.ts` or via existing event system)
   Add metrics for HyDE effectiveness:
   - `hyde_invocations_total` — count of HyDE applications
   - `hyde_cache_hits_total` — count of cache hits vs LLM calls
@@ -523,7 +523,7 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
 
 8. **Integration** — With `HYDE_ENABLED=true`, `recallAndInline()` applies HyDE to vague queries before searching. With `MULTI_QUERY_ENABLED=true`, queries are expanded and results are fused. With both flags OFF (default), `recallAndInline()` behaves identically to current production.
 
-9. **Quality gate** — The S27 self-RAG quality gate (`recallCritique.ts`) always receives the **original** query, not the hypothetical. This ensures relevance checking is based on what the user actually asked.
+9. **Quality gate** — The S41 self-RAG quality gate (`recallCritique.ts`) always receives the **original** query, not the hypothetical. This ensures relevance checking is based on what the user actually asked.
 
 10. **Regression** — Full 372+ test suite passes with all new flags OFF (`HYDE_ENABLED=false`, `MULTI_QUERY_ENABLED=false`). Zero behavior change in default configuration.
 
@@ -556,6 +556,6 @@ Today's `recallAndInline()` in `src/recall.ts` (line ~128–153) embeds the raw 
 
 5. **Ollama dependency** — Both HyDE and multi-query require a running localhost Ollama instance. If Ollama is unavailable, HyDE falls back to raw query and multi-query falls back to single search. No user-visible failure, but the features are silently non-functional.
 
-6. **Interaction with S28 (multi-level RAPTOR)** — If both S28 and S29 are enabled, a vague query goes through: HyDE → multi-level RAPTOR search → RRF fusion → MMR diversification → quality gate. This is a complex pipeline. Each stage is individually feature-flagged, so operators can enable one at a time. Mitigation: document the recommended enablement order (S28 first, then S29).
+6. **Interaction with S42 (multi-level RAPTOR)** — If both S42 and S43 are enabled, a vague query goes through: HyDE → multi-level RAPTOR search → RRF fusion → MMR diversification → quality gate. This is a complex pipeline. Each stage is individually feature-flagged, so operators can enable one at a time. Mitigation: document the recommended enablement order (S42 first, then S43).
 
 7. **Cache memory** — The in-memory HyDE cache grows unbounded if many unique vague queries are processed. Mitigation: (a) TTL eviction on read, (b) practical limit: a single session generates at most hundreds of unique queries, (c) process restart clears cache. If this becomes an issue, add a max-size LRU eviction policy.

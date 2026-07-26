@@ -1,4 +1,4 @@
-# S26 — Importance Scoring for Compaction
+# S40 — Importance Scoring for Compaction
 
 **Date:** 2026-07-26
 **Parent plan:** Memory RAG System (borrowed from radical-memory-mcp / R.A.D.1.C.A.1)
@@ -57,7 +57,7 @@ Today's `compactSession()` in `src/engine.ts` (line ~110–185) treats all messa
 
 ## EXECUTION
 
-### Sprint S26A: Core Scoring Engine (`src/importance.ts`)
+### Sprint S40A: Core Scoring Engine (`src/importance.ts`)
 
 **Goal:** Build a standalone, deterministic, pi-agnostic importance scoring module with no side effects.
 
@@ -65,7 +65,7 @@ Today's `compactSession()` in `src/engine.ts` (line ~110–185) treats all messa
 
 **Tasks:**
 
-- [ ] **S26A-1: Define types and enums** (`src/importance.ts`)
+- [ ] **S40A-1: Define types and enums** (`src/importance.ts`)
   Create the `ContextItemType` enum with 8 variants:
   ```ts
   export enum ContextItemType {
@@ -104,7 +104,7 @@ Today's `compactSession()` in `src/engine.ts` (line ~110–185) treats all messa
   }
   ```
 
-- [ ] **S26A-2: Implement type multipliers** (`src/importance.ts`)
+- [ ] **S40A-2: Implement type multipliers** (`src/importance.ts`)
   Default multipliers (ported from `router/src/context/importance.rs`):
   ```ts
   export const DEFAULT_MULTIPLIERS: Record<ContextItemType, number> = {
@@ -120,7 +120,7 @@ Today's `compactSession()` in `src/engine.ts` (line ~110–185) treats all messa
   ```
   Make multipliers overridable via a `Partial<Record<ContextItemType, number>>` parameter.
 
-- [ ] **S26A-3: Implement age decay** (`src/importance.ts`)
+- [ ] **S40A-3: Implement age decay** (`src/importance.ts`)
   ```ts
   export function ageDecay(
     itemAgeMs: number,
@@ -132,7 +132,7 @@ Today's `compactSession()` in `src/engine.ts` (line ~110–185) treats all messa
   Returns the fraction to SUBTRACT from score (0 = fresh, 0.7 = very old).
   At 14 hours: `14 * 0.05 = 0.70` (capped). At 1 hour: `0.05`. At 0: `0`.
 
-- [ ] **S26A-4: Implement recency and retention boosts** (`src/importance.ts`)
+- [ ] **S40A-4: Implement recency and retention boosts** (`src/importance.ts`)
   ```ts
   export function recencyBoost(ageMs: number, thresholdMs: number = 300_000): number
   ```
@@ -143,7 +143,7 @@ Today's `compactSession()` in `src/engine.ts` (line ~110–185) treats all messa
   ```
   Returns `3.0` if flagged, else `1.0`. User-flagged items are detected by `detect_item_type` returning `Decision` or `Error`, or by an explicit flag in the message metadata.
 
-- [ ] **S26A-5: Implement `detect_item_type()`** (`src/importance.ts`)
+- [ ] **S40A-5: Implement `detect_item_type()`** (`src/importance.ts`)
   ```ts
   export function detectItemType(content: string, role: "user" | "assistant" | "tool" | "custom"): ContextItemType
   ```
@@ -158,7 +158,7 @@ Today's `compactSession()` in `src/engine.ts` (line ~110–185) treats all messa
   8. `role === "assistant"` → `AssistantMessage`
   9. Fallback → `AssistantMessage`
 
-- [ ] **S26A-6: Implement `score()` composite function** (`src/importance.ts`)
+- [ ] **S40A-6: Implement `score()` composite function** (`src/importance.ts`)
   ```ts
   export function score(
     item: { id: string; content: string; role: string; timestamp: number; userFlagged?: boolean },
@@ -178,7 +178,7 @@ Today's `compactSession()` in `src/engine.ts` (line ~110–185) treats all messa
   ```
   Clamps: `finalScore` minimum 0.01 (never zero).
 
-- [ ] **S26A-7: Implement `preservation_cutoff()` and `items_to_preserve()`** (`src/importance.ts`)
+- [ ] **S40A-7: Implement `preservation_cutoff()` and `items_to_preserve()`** (`src/importance.ts`)
   ```ts
   export function preservationCutoff(
     items: ScoredItem[],
@@ -195,7 +195,7 @@ Today's `compactSession()` in `src/engine.ts` (line ~110–185) treats all messa
   ```
   Calls `preservationCutoff`, returns items with `finalScore >= threshold`.
 
-- [ ] **S26A-8: Unit tests** (`src/importance.test.ts`)
+- [ ] **S40A-8: Unit tests** (`src/importance.test.ts`)
   Test matrix:
   - `detectItemType`: all 8 types, edge cases (empty string, mixed patterns)
   - `ageDecay`: fresh (0), 1hr (0.05), 14hr (0.7 cap), negative age (0)
@@ -208,7 +208,7 @@ Today's `compactSession()` in `src/engine.ts` (line ~110–185) treats all messa
 
 ---
 
-### Sprint S26B: Integration into `compactSession()` Pipeline
+### Sprint S40B: Integration into `compactSession()` Pipeline
 
 **Goal:** Wire importance scoring into the compaction pipeline so high-importance old messages are preserved verbatim and low-importance recent messages are compressed.
 
@@ -216,10 +216,10 @@ Today's `compactSession()` in `src/engine.ts` (line ~110–185) treats all messa
 
 **Tasks:**
 
-- [ ] **S26B-1: Add configuration to `src/config.ts`**
+- [ ] **S40B-1: Add configuration to `src/config.ts`**
   Add the following exports:
   ```ts
-  /** Enable importance-aware compaction (S26). Default: false. */
+  /** Enable importance-aware compaction (S40). Default: false. */
   export const IMPORTANCE_SCORING = false;
   // Override: set MEGACOMPACT_IMPORTANCE_SCORING=1 in env
 
@@ -240,10 +240,10 @@ Today's `compactSession()` in `src/engine.ts` (line ~110–185) treats all messa
   ```
   Read from env: `MEGACOMPACT_IMPORTANCE_SCORING`, `MEGACOMPACT_IMPORTANCE_PRESERVE_RATIO`, `MEGACOMPACT_IMPORTANCE_DECAY_RATE`.
 
-- [ ] **S26B-2: Modify `compactSession()` in `src/engine.ts`** (insert between LAYER 1 and LAYER 2, after line ~120)
+- [ ] **S40B-2: Modify `compactSession()` in `src/engine.ts`** (insert between LAYER 1 and LAYER 2, after line ~120)
   After supersession pruning (`keep` is computed), before collapse:
   ```ts
-  // LAYER 1.5 — IMPORTANCE SCORING (S26): score and optionally preserve
+  // LAYER 1.5 — IMPORTANCE SCORING (S40): score and optionally preserve
   // high-importance messages outside the anchor window.
   let importancePreserved: EngineMessage[] = [];
   if (IMPORTANCE_SCORING && keep.length > 0) {
@@ -268,15 +268,15 @@ Today's `compactSession()` in `src/engine.ts` (line ~110–185) treats all messa
   ```
   **Critical:** importance-preserved messages are prepended to the summary output (not mixed into the summary text). They appear as a `## Preserved context` section before the compacted summary. This ensures the model sees them verbatim.
 
-- [ ] **S26B-3: Update `CompactResult` interface** (`src/engine.ts`)
+- [ ] **S40B-3: Update `CompactResult` interface** (`src/engine.ts`)
   Add optional field:
   ```ts
-  /** Messages preserved verbatim due to high importance score (S26). */
+  /** Messages preserved verbatim due to high importance score (S40). */
   importancePreserved?: EngineMessage[];
   ```
   The extension can use this to render preserved messages in the compacted context block.
 
-- [ ] **S26B-4: Update `formatCompactSummary()` or add new formatter** (`src/compact.ts` or `src/engine.ts`)
+- [ ] **S40B-4: Update `formatCompactSummary()` or add new formatter** (`src/compact.ts` or `src/engine.ts`)
   When `importancePreserved.length > 0`, prepend to the summary:
   ```
   ## Preserved context (high importance)
@@ -287,10 +287,10 @@ Today's `compactSession()` in `src/engine.ts` (line ~110–185) treats all messa
   <existing summary text>
   ```
 
-- [ ] **S26B-5: Wire env-var reading** (`src/config.ts`)
+- [ ] **S40B-5: Wire env-var reading** (`src/config.ts`)
   In the config module, read `process.env.MEGACOMPACT_IMPORTANCE_SCORING` and convert to boolean. Also read ratio and decay rate from env, clamping to valid ranges.
 
-- [ ] **S26B-6: Add logging** (`src/engine.ts`)
+- [ ] **S40B-6: Add logging** (`src/engine.ts`)
   Log to the existing `Logger` when importance scoring runs:
   ```ts
   log("info", "importance_scoring", {
@@ -302,13 +302,13 @@ Today's `compactSession()` in `src/engine.ts` (line ~110–185) treats all messa
   });
   ```
 
-- [ ] **S26B-7: Integration tests** (`src/importance.test.ts` or `src/engine.test.ts`)
+- [ ] **S40B-7: Integration tests** (`src/importance.test.ts` or `src/engine.test.ts`)
   Test scenarios:
   1. **Decision preserved:** Session of 30 messages, message #5 is a decision ("decided to use JWT"). With `IMPORTANCE_SCORING=true`, `IMPORTANCE_PRESERVE_RATIO=0.2`, the decision appears verbatim in the compacted output's "Preserved context" section.
   2. **Error preserved:** Message #10 contains an error trace. Scored as `Error` type (2.0x). Preserved when ratio allows.
   3. **Filler not preserved:** Message #3 is "ok, sounds good". Type = `AssistantMessage` (1.0x). Old age → low score. Not preserved.
   4. **Anchor floor unaffected:** With `preserveRecent=10` and importance scoring on, the last 10 messages are still verbatim (boundary guard is untouched).
-  5. **Tool pair intact:** If a tool-execution message is preserved, its paired assistant call is also preserved (S26B-2 logic must handle this).
+  5. **Tool pair intact:** If a tool-execution message is preserved, its paired assistant call is also preserved (S40B-2 logic must handle this).
   6. **Flag OFF regression:** With `IMPORTANCE_SCORING=false`, `compactSession()` produces identical output to current production (no preserved section, no scoring log).
   7. **Empty messages:** Messages with `text: ""` or `text: undefined` score as `AssistantMessage` (1.0x) and don't crash.
   8. **High ratio:** `IMPORTANCE_PRESERVE_RATIO=1.0` preserves everything (no summarization — effectively a no-op compaction).
