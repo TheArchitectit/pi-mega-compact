@@ -81,10 +81,7 @@ export default function OverviewTab({
 
 	const { events } = useSSE();
 
-	const sampleEvents = useMemo(
-		() => events.filter(isSessionSample),
-		[events],
-	);
+	const sampleEvents = useMemo(() => events.filter(isSessionSample), [events]);
 	const lastSampleTs = useMemo(() => {
 		if (sampleEvents.length === 0) return null;
 		return sampleEvents[sampleEvents.length - 1].ts;
@@ -103,8 +100,7 @@ export default function OverviewTab({
 
 	// Cast to RuntimeSnapshot for tierPct (runtime-only field).
 	const d = snapshot as RuntimeSnapshot;
-	const { context, compression, trigger, session, store, tier, updatedAt } =
-		d;
+	const { context, compression, trigger, session, store, tier, updatedAt } = d;
 	const cfg = d.config;
 	const crew = d.crew;
 	const integrity = d.integrity;
@@ -121,17 +117,17 @@ export default function OverviewTab({
 				<span className="updated">updated {formatUpdatedAt(updatedAt)}</span>
 			</div>
 			<div className="card-grid overview-card-grid">
-			<SessionContextGauges
-				sessions={sessionsData}
-				loading={sessionsLoading}
-				error={sessionsErr}
-				launcherSessionId={session.id}
-				launcher={{
-					tokens: context.tokens,
-					percent: context.percent,
-					contextWindow: context.contextWindow,
-				}}
-			/>
+				<SessionContextGauges
+					sessions={sessionsData}
+					loading={sessionsLoading}
+					error={sessionsErr}
+					launcherSessionId={session.id}
+					launcher={{
+						tokens: context.tokens,
+						percent: context.percent,
+						contextWindow: context.contextWindow,
+					}}
+				/>
 				<RepoContextStack
 					sessions={sessionsData}
 					loading={sessionsLoading}

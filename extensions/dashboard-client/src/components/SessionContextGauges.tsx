@@ -86,9 +86,7 @@ function SessionGauge({ data }: { data: GaugeData }): React.ReactElement {
 	const windowStr = data.contextWindow.toLocaleString();
 	const sublabel = `${tokStr} / ${windowStr} tokens`;
 	return (
-		<div
-			className={`session-gauge ${data.isSelf ? "session-gauge-self" : ""}`}
-		>
+		<div className={`session-gauge ${data.isSelf ? "session-gauge-self" : ""}`}>
 			<div className="session-gauge-head">
 				<span className="session-gauge-label">{data.label}</span>
 				<span className="session-gauge-pct">{pct}%</span>
@@ -104,9 +102,7 @@ function SessionGauge({ data }: { data: GaugeData }): React.ReactElement {
 				<div className="gauge-fill" style={{ width: `${fillWidth}%` }} />
 			</div>
 			<p className="gauge-label session-gauge-sub">{sublabel}</p>
-			{data.sublabel && (
-				<p className="session-gauge-meta">{data.sublabel}</p>
-			)}
+			{data.sublabel && <p className="session-gauge-meta">{data.sublabel}</p>}
 		</div>
 	);
 }
