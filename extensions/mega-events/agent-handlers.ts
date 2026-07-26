@@ -347,6 +347,21 @@ export function registerAgentHandlers(
 						sessionId: runtime.rt.sessionId,
 						turnIndex: event.turnIndex,
 					});
+				} else if (category === 'cancelled') {
+					// (4c) User ESC / Ctrl-C — stopReason === 'aborted'. NOT retryable:
+					// nudging would restart a task the user explicitly stopped.
+					// Reset both counters (a cancel is not an error for circuit-breaker
+					// purposes). Emit a diagnostic so the dashboard shows it.
+					runtime.rt.errorRetryCount = 0;
+					runtime.rt.consecutiveErrors = 0;
+					runtime.dashboard.event('error_retry_cancelled', {
+						turnIndex: event.turnIndex,
+						sessionId: runtime.rt.sessionId,
+					});
+					runtime.logger.info('error-retry-cancelled', {
+						sessionId: runtime.rt.sessionId,
+						turnIndex: event.turnIndex,
+					});
 				} else if (category === 'context-overflow') {
 					// (4b) context-window overflow 400 ("too long... even after compaction").
 					// NOT a blind retry: re-submitting the same oversized prompt would just

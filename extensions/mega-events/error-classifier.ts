@@ -12,13 +12,14 @@
  * exclusively (its agent_end nudge path is separate and must not be doubled).
  *
  * @param message  the event.message (a pi AgentMessage) or an error string
- * @returns 'transient' | 'permanent' | 'compaction-noop' | 'context-overflow' | null (success/unknown)
+ * @returns 'transient' | 'permanent' | 'compaction-noop' | 'context-overflow' | 'cancelled' | null (success/unknown)
  */
 export function classifyError(message: unknown):
 	| 'transient'
 	| 'permanent'
 	| 'compaction-noop'
 	| 'context-overflow'
+	| 'cancelled'
 	| null {
 	// Resolve a searchable text blob from a pi AgentMessage or raw string.
 	let text = '';
@@ -33,6 +34,9 @@ export function classifyError(message: unknown):
 		const sr = typeof m.stopReason === 'string' ? m.stopReason : '';
 		// S28 guard: length stopReason is handled exclusively by the S28 path.
 		if (sr === 'length') return null;
+		// User ESC / Ctrl-C abort — stopReason === 'aborted'. Not retryable:
+		// nudging would restart a task the user explicitly stopped.
+		if (sr === 'aborted') return 'cancelled';
 		// Success / normal tool flow — not an error, nothing to retry.
 		if (sr === 'stop' || sr === 'toolUse' || sr === 'tool_use') return null;
 		const parts: string[] = [];
@@ -109,7 +113,9 @@ export function classifyError(message: unknown):
 	if (s.includes('error') && !/\b(permanent|invalid request|malformed|bad request|auth|unauthorized|invalid (api )?key|permission)\b/.test(s)) {
 		return 'transient'; // generic pi stopReason 'error' / 'aborted'
 	}
-	if (s.includes('aborted')) return 'transient';
+	// NOTE: 'aborted' stopReason is handled by the sr==='aborted' early-return above.
+	// The text-based s.includes('aborted') was removed — it was the old path that
+	// misclassified user ESC/Ctrl-C as 'transient' (5 retry nudges after cancel).
 	if (/max(imum)? output token/.test(s)) return 'transient';
 	if (/rate[\s.-]?limit|429|too many requests/.test(s)) return 'transient';
 	if (/5\d\d|internal server|bad gateway|service unavailable/.test(s)) return 'transient';

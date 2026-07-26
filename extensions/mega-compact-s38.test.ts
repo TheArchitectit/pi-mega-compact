@@ -121,9 +121,21 @@ async function s38TurnEnd(h: ReturnType<typeof harness>, stopReason: string | un
 
 // ---- classifier unit tests (no extension harness needed) ----
 
-test("S38: classifyError returns 'transient' for error/aborted stopReasons", () => {
+test("S38: classifyError returns 'transient' for error stopReason", () => {
 	assert.equal(classifyErrorFn({ stopReason: "error" }), "transient");
-	assert.equal(classifyErrorFn({ stopReason: "aborted" }), "transient");
+});
+
+test("S38: classifyError returns 'cancelled' for aborted stopReason (ESC/Ctrl-C)", () => {
+	assert.equal(classifyErrorFn({ stopReason: "aborted" }), "cancelled");
+	assert.equal(classifyErrorFn({ stopReason: "aborted", errorMessage: "Operation aborted" }), "cancelled");
+	assert.equal(classifyErrorFn({ stopReason: "aborted", errorMessage: "Aborted after 3 retry attempts" }), "cancelled");
+});
+
+test("S38: classifyError does NOT return 'cancelled' for error message containing 'aborted' with non-aborted stopReason", () => {
+	// Defense: the old text-based s.includes('aborted') path is gone,
+	// but verify that an error message mentioning 'aborted' with stopReason
+	// 'error' (not 'aborted') still classifies as transient, not cancelled.
+	assert.equal(classifyErrorFn({ stopReason: "error", errorMessage: "Connection aborted" }), "transient");
 });
 
 test("S38: classifyError returns 'transient' for max-output-token text", () => {
@@ -252,6 +264,24 @@ test("S38: context-overflow fires NO blind retry nudge and logs 'context_overflo
 	const ev = eventTypes(h.stateDir);
 	assert.equal(h.sendUserMessages.length, 0, "context-overflow: NO blind retry nudge fired");
 	assert.ok(ev.includes("context_overflow"), "context-overflow: 'context_overflow' event logged");
+});
+
+test("S38: ESC-abort (stopReason='aborted') fires NO retry nudge and logs 'error_retry_cancelled'", async () => {
+	const h = harness();
+	await s38TurnEnd(h, "aborted", "Operation aborted");
+	const ev = eventTypes(h.stateDir);
+	assert.equal(h.sendUserMessages.length, 0, "cancelled: NO retry nudge fired after ESC abort");
+	assert.ok(ev.includes("error_retry_cancelled"), "cancelled: 'error_retry_cancelled' event logged");
+});
+
+test("S38: ESC-abort resets errorRetryCount and consecutiveErrors so next transient retry starts fresh", async () => {
+	const h = harness();
+	// First: simulate an ESC abort (should reset both counters to 0)
+	await s38TurnEnd(h, "aborted", "Operation aborted");
+	assert.equal(h.sendUserMessages.length, 0, "cancelled: no nudge on abort");
+	// Then: simulate a real transient error — should fire a fresh retry from count=1
+	await s38TurnEnd(h, "error", "500 Internal Server Error");
+	assert.equal(h.sendUserMessages.length, 1, "transient after cancel: retry fires from fresh count");
 });
 
 // ---- integration tests (fire turn_end through the real extension) ----
