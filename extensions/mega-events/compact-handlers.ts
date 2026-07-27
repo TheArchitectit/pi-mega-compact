@@ -110,6 +110,34 @@ export function registerCompactHandlers(
 				activeAgents: runtime.activeAgents,
 			});
 			if (!config.auto) return {}; // let pi run its own native compaction
+
+			// S38.5: COMPACT-DEDUP RACE GUARD — pi's _runAutoCompaction fires
+			// session_before_compact from within the agent loop (after agent_end,
+			// _handlePostAgentRun → _checkCompaction → _runAutoCompaction). If a
+			// compaction just completed (within the cooldown window), pi's
+			// prepareCompaction may still see the last entry as a compaction but
+			// the extension's session_compact handler hasn't been called yet, OR
+			// the setTimeout deferred ctx.compact() from the agent_end handler is
+			// about to race. Skip the durable trim and let pi run its own compact
+			// (or no-op if the branch is already compacted). Matches the cooldown
+			// in agent-handlers.ts so both call sites are consistent.
+			const cooldownMs = config.raceGuardStrict ? 30_000 : 10_000;
+			const sinceCompact = Date.now() - (runtime.rt.lastNativeCompactAt ?? 0);
+			if (sinceCompact < cooldownMs) {
+				runtime.logger.info("before-compact-skip-recent", {
+					sessionId: runtime.rt.sessionId,
+					reason: event.reason,
+					sinceCompactMs: sinceCompact,
+					cooldownMs,
+				});
+				runtime.diagBeforeCompactSupplied++;
+				const fb = fallbackCompaction(event);
+				if (fb) {
+					return { compaction: fb.compaction };
+				}
+				return {};
+			}
+
 			try {
 				const result = driveNativeCompaction(event, runtime, config);
 				if (result && result.compaction.summary?.trim()) {
