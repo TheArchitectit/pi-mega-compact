@@ -22,7 +22,7 @@ import {
   type CompactResult,
 } from "../src/engine.js";
 import { recallAndInline, recallMemoriesAndInline, type RecallInjectResult } from "../src/recall.js";
-import { VectorStore } from "../src/vectorStore.js";
+import { VectorStore, vectorStats } from "../src/vectorStore.js";
 import type { EngineMessage } from "../src/types.js";
 
 // ---------------------------------------------------------------------------
@@ -260,7 +260,7 @@ export default definePluginEntry({
         const sessionId = (args as Record<string, string>)?.sessionId ?? "global";
 
         try {
-          const stats = store.stats(sessionId);
+          const stats = vectorStats(store, sessionId);
           const parts: string[] = [
             `**Mega Compact Status**`,
             `Session: ${sessionId}`,

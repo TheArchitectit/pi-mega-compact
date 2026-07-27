@@ -14,6 +14,7 @@ import { decompressSmart } from "../src/store/compression.js";
 import { loadMetrics, fpRate, p95, defaultMetricsPath } from "../src/monitoring.js";
 import { type MegaRuntime, C, recentUserQuery } from "./mega-runtime.js";
 import { runCompact, doRecall, doRecallAsync } from "./mega-pipeline.js";
+import { vectorStats, vectorRepoStats, vectorDataInvariant } from "../src/vectorStore.js";
 import type { MegaConfig } from "./mega-config.js";
 
 /** Resolve a checkpoint by id (or "recent"/"last") from this session's store. */
@@ -95,9 +96,9 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
       const pct = usage?.percent != null ? `${usage.percent}%` : "n/a";
       const tokens = usage?.tokens != null ? `${usage.tokens} tok` : "n/a";
       const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
-      const st = runtime.store.stats(sid);
-      const repo = runtime.store.repoStats();
-      const di = runtime.store.dataInvariant();
+      const st = vectorStats(runtime.store, sid);
+      const repo = vectorRepoStats(runtime.store);
+      const di = vectorDataInvariant(runtime.store);
       const fmtB = (b: number) =>
         b >= 1_048_576 ? `${(b / 1_048_576).toFixed(1)} MiB` :
           b >= 1024 ? `${(b / 1024).toFixed(1)} KiB` : `${b} B`;

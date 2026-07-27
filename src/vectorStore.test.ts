@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { VectorStore, computeRegionHash } from "./vectorStore.js";
+import { VectorStore, computeRegionHash, vectorStats, vectorDedupe, vectorWasInjected, vectorMarkInjected, vectorList, vectorTopSimilar, vectorRepoStats, vectorSearch } from "./vectorStore.js";
 import {
   TrigramEmbedder,
   cosineSimilarity,
@@ -57,7 +57,7 @@ test("add then search returns the planted checkpoint top-1", () => {
     tokenEstimate: 1200,
     timestamp: 1000,
   });
-  const hits = s.search("sess_abc", "src/compact.ts truncate helper", 3);
+  const hits = vectorSearch(s, "sess_abc", "src/compact.ts truncate helper", 3);
   assert.equal(hits.length, 1);
   assert.ok(hits[0].score > 0.5);
   assert.equal(hits[0].checkpoint.summary.includes("src/compact.ts"), true);
@@ -81,7 +81,7 @@ test("dedup by regionHash: identical region is not double-stored", () => {
   assert.equal(r1.deduped, false);
   assert.equal(r2.deduped, true);
   assert.equal(r1.checkpoint.checkpointId, r2.checkpoint.checkpointId);
-  assert.equal(s.search("sess_dup", "anything", 10).length, 1);
+  assert.equal(vectorSearch(s, "sess_dup", "anything", 10).length, 1);
 });
 
 test("dedup cascade: summaryHash catches same-topic incremental compactions", () => {
@@ -115,7 +115,7 @@ test("dedup cascade: summaryHash dedup still stores only one checkpoint", () => 
   const ts = "some topic summary that is identical";
   s.add({ sessionId: "sess_sh2", summary, topicSummary: ts, regionText: "region a", timestamp: 1 });
   s.add({ sessionId: "sess_sh2", summary, topicSummary: ts, regionText: "region b", timestamp: 2 });
-  assert.equal(s.stats("sess_sh2").checkpointCount, 1);
+  assert.equal(vectorStats(s,"sess_sh2").checkpointCount, 1);
 });
 
 test("dedupe() sentinel returns true for a stored region", () => {
@@ -128,8 +128,8 @@ test("dedupe() sentinel returns true for a stored region", () => {
     regionText: region,
     timestamp: 1,
   });
-  assert.equal(s.dedupe("sess_sent", hash), true);
-  assert.equal(s.dedupe("sess_sent", "deadbeef"), false);
+  assert.equal(vectorDedupe(s,"sess_sent", hash), true);
+  assert.equal(vectorDedupe(s,"sess_sent", "deadbeef"), false);
 });
 
 test("near-duplicate collapse keeps only the top of a near-identical pair", () => {
@@ -148,7 +148,7 @@ test("near-duplicate collapse keeps only the top of a near-identical pair", () =
       "user investigated src/compact.ts and added a truncate helper for the summaries",
     timestamp: 2,
   });
-  const hits = s.search(
+  const hits = vectorSearch(s, 
     "sess_nd",
     "user investigated src/compact.ts and added a truncate helper for summaries",
     5,
@@ -164,9 +164,9 @@ test("markInjected / wasInjected track injection", () => {
     regionText: "inject region",
     timestamp: 1,
   });
-  assert.equal(s.wasInjected("sess_inj", r.checkpoint.checkpointId), false);
-  s.markInjected("sess_inj", r.checkpoint.checkpointId);
-  assert.equal(s.wasInjected("sess_inj", r.checkpoint.checkpointId), true);
+  assert.equal(vectorWasInjected(s,"sess_inj", r.checkpoint.checkpointId), false);
+  vectorMarkInjected(s,"sess_inj", r.checkpoint.checkpointId);
+  assert.equal(vectorWasInjected(s,"sess_inj", r.checkpoint.checkpointId), true);
 });
 
 test("normalizeSessionId handles null, prefixed, and uuid forms", () => {
@@ -207,7 +207,7 @@ test("checkpoints survive a fresh store instance (on-disk)", () => {
     timestamp: 1,
   });
   const s2 = new VectorStore({ dedupSim: 0.9, stateDir: dir }); // new instance, same disk state
-  const hits = s2.search("sess_persist", "persist region text", 3);
+  const hits = vectorSearch(s2, "sess_persist", "persist region text", 3);
   assert.equal(hits.length, 1);
   assert.equal(hits[0].checkpoint.summary, "persisted");
 });
@@ -218,7 +218,7 @@ test("corrupt checkpoint file falls back to empty (no throw)", () => {
   const file = join(dir, "sess_corrupt.checkpoints.json.gz");
   writeFileSync(file, Buffer.from("not a gzip"));
   const s = new VectorStore({ dedupSim: 0.9, stateDir: dir });
-  assert.equal(s.search("sess_corrupt", "q", 3).length, 0);
+  assert.equal(vectorSearch(s, "sess_corrupt", "q", 3).length, 0);
 });
 
 test("stats reports counts, last checkpoint, and dedup rate", () => {
@@ -237,15 +237,15 @@ test("stats reports counts, last checkpoint, and dedup rate", () => {
     tokenEstimate: 700,
     timestamp: 2,
   });
-  const st1 = s.stats("sess_stats");
+  const st1 = vectorStats(s,"sess_stats");
   assert.equal(st1.checkpointCount, 2);
   assert.equal(st1.lastCheckpointId, "chkpt_002");
   assert.equal(st1.totalTokenEstimate, 1200);
   assert.equal(st1.injectedCount, 0);
   assert.equal(st1.dedupHitRate, 0);
 
-  s.markInjected("sess_stats", "chkpt_001");
-  const st2 = s.stats("sess_stats");
+  vectorMarkInjected(s,"sess_stats", "chkpt_001");
+  const st2 = vectorStats(s,"sess_stats");
   assert.equal(st2.injectedCount, 1);
   assert.ok(Math.abs(st2.dedupHitRate - 0.5) < 1e-9);
 });
@@ -257,7 +257,7 @@ test("tokensSaved = original − stored per session; deduped add saves the whole
   //   cp2: orig 3000, stored 700 → saved 2300
   s.add({ sessionId: "sess_saved", summary: "alpha", regionText: "region alpha text", tokenEstimate: 500, originalTokenEstimate: 2000, timestamp: 1 });
   s.add({ sessionId: "sess_saved", summary: "beta", regionText: "region beta text", tokenEstimate: 700, originalTokenEstimate: 3000, timestamp: 2 });
-  const st = s.stats("sess_saved");
+  const st = vectorStats(s,"sess_saved");
   assert.equal(st.totalTokenEstimate, 1200, "Σ stored summaries");
   assert.equal(st.originalTokens, 5000, "Σ original region tokens");
   assert.equal(st.tokensSaved, 3800, "per-session saved = Σ(original − stored) = 1500 + 2300");
@@ -269,14 +269,14 @@ test("tokensSaved = original − stored per session; deduped add saves the whole
   // dedupCollapsed bumps, and no new checkpoint row is created.
   const deduped = s.add({ sessionId: "sess_saved", summary: "alpha", regionText: "region alpha text", tokenEstimate: 500, originalTokenEstimate: 2000, timestamp: 3 });
   assert.ok(deduped.deduped, "identical region should dedup");
-  const st3 = s.stats("sess_saved");
+  const st3 = vectorStats(s,"sess_saved");
   // Per-session DB sum only covers stored rows (deduped adds create no row), so
   // the per-session figure is unchanged; the deduped save lands in the repo meta.
   assert.equal(st3.tokensSaved, 3800, "per-session DB sum unchanged by deduped add");
   assert.equal(st3.dedupCollapsed, 1, "deduped collapse counted");
   assert.equal(st3.dedupAttempts, 3);
   // Repo cumulative counter DID capture the deduped region's full original size.
-  assert.equal(s.repoStats().tokensSaved, 3800 + 2000, "repo saved includes deduped original");
+  assert.equal(vectorRepoStats(s).tokensSaved, 3800 + 2000, "repo saved includes deduped original");
 });
 
 test("repoStats aggregates every session + counts deduped original tokens", () => {
@@ -286,7 +286,7 @@ test("repoStats aggregates every session + counts deduped original tokens", () =
   a.add({ sessionId: "sess_a", summary: "alpha", regionText: "region alpha text", tokenEstimate: 500, originalTokenEstimate: 2000, timestamp: 1 });
   b.add({ sessionId: "sess_b", summary: "beta", regionText: "region beta text", tokenEstimate: 700, originalTokenEstimate: 3000, timestamp: 2 });
 
-  const repo = a.repoStats();
+  const repo = vectorRepoStats(a);
   assert.equal(repo.checkpointCount, 2, "checkpoints across both sessions");
   assert.equal(repo.sessionCount, 2, "two distinct sessions");
   assert.equal(repo.totalTokenEstimate, 1200, "Σ stored");
@@ -297,7 +297,7 @@ test("repoStats aggregates every session + counts deduped original tokens", () =
   // A deduped add into sess_a: whole original region saved, no new row.
   const deduped = a.add({ sessionId: "sess_a", summary: "alpha", regionText: "region alpha text", tokenEstimate: 500, originalTokenEstimate: 2000, timestamp: 3 });
   assert.ok(deduped.deduped);
-  const repo2 = a.repoStats();
+  const repo2 = vectorRepoStats(a);
   assert.equal(repo2.tokensSaved, 3800 + 2000, "deduped collapse adds full original region to repo saved");
   assert.equal(repo2.dedupCollapsed, 1);
   assert.equal(repo2.checkpointCount, 2, "still two stored checkpoints");
@@ -329,7 +329,7 @@ test("whitespace-variant region is deduplicated", () => {
     timestamp: 2,
   });
   assert.equal(r2.deduped, true, "whitespace-variant should be deduplicated");
-  assert.equal(s.stats("sess_ws").checkpointCount, 1, "only one checkpoint stored");
+  assert.equal(vectorStats(s,"sess_ws").checkpointCount, 1, "only one checkpoint stored");
 });
 
 test("topSimilar returns n most similar checkpoints to the current (most recent)", () => {
@@ -354,7 +354,7 @@ test("topSimilar returns n most similar checkpoints to the current (most recent)
     regionText: "fix the buffer overflow in src/compact.ts by adding a bounds check before truncate",
     timestamp: 3,
   });
-  const hits = s.topSimilar("sess_top", 10);
+  const hits = vectorTopSimilar(s,"sess_top", 10);
   assert.equal(hits.length, 2); // two other checkpoints
   // The compact.ts checkpoint should rank above the guitar checkpoint
   assert.equal(hits[0].checkpoint.summary, "compact");
@@ -376,21 +376,21 @@ test("topSimilar excludes the current checkpoint itself", () => {
     regionText: "alpha region text two",
     timestamp: 2,
   });
-  const hits = s.topSimilar("sess_self", 5);
+  const hits = vectorTopSimilar(s,"sess_self", 5);
   assert.equal(hits.length, 1);
   assert.notEqual(hits[0].checkpoint.checkpointId, "chkpt_002"); // not the current
 });
 
 test("topSimilar returns empty for sessions with 0 or 1 checkpoints", () => {
   const s = store();
-  assert.deepEqual(s.topSimilar("sess_none", 5), []);
+  assert.deepEqual(vectorTopSimilar(s,"sess_none", 5), []);
   s.add({
     sessionId: "sess_one",
     summary: "solo",
     regionText: "only checkpoint",
     timestamp: 1,
   });
-  assert.deepEqual(s.topSimilar("sess_one", 5), []);
+  assert.deepEqual(vectorTopSimilar(s,"sess_one", 5), []);
 });
 
 test("topSimilar respects the n limit", () => {
@@ -410,13 +410,13 @@ test("topSimilar respects the n limit", () => {
       timestamp: i + 1,
     });
   }
-  const hits = s.topSimilar("sess_limit", 2);
+  const hits = vectorTopSimilar(s,"sess_limit", 2);
   assert.equal(hits.length, 2);
 });
 
 test("stats on empty session returns zeros and nulls", () => {
   const s = store();
-  const st = s.stats("sess_empty");
+  const st = vectorStats(s,"sess_empty");
   assert.equal(st.checkpointCount, 0);
   assert.equal(st.lastCheckpointId, undefined);
   assert.equal(st.totalTokenEstimate, 0);
@@ -442,7 +442,7 @@ test("L0 content-hash dedup: identical content under different regionText collap
   assert.equal(r1.deduped, false);
   assert.equal(r2.deduped, true);
   assert.equal(r2.reason, "contentHash");
-  assert.equal(s.list("sess_l0").length, 1);
+  assert.equal(vectorList(s,"sess_l0").length, 1);
 });
 
 test("L0 content-hash dedup stores both hash fields and bumps timestamp on hit", () => {
@@ -457,7 +457,7 @@ test("L0 content-hash dedup stores both hash fields and bumps timestamp on hit",
   });
   assert.equal(r2.deduped, true);
   assert.equal(r2.reason, "contentHash");
-  const cp = s.list("sess_l0ts")[0];
+  const cp = vectorList(s,"sess_l0ts")[0];
   assert.equal(cp.contentHash?.length, 64);
   assert.equal(cp.contentHash2?.length, 64);
   assert.equal(cp.contentHashVersion, 1);
@@ -468,7 +468,7 @@ test("compressed_original roundtrips through versioned compression", () => {
   const s = store();
   const raw = "raw region text preserved for audit and replay";
   s.add({ sessionId: "sess_co", summary: "x", regionText: raw, timestamp: 1 });
-  const cp = s.list("sess_co")[0];
+  const cp = vectorList(s,"sess_co")[0];
   assert.ok(cp.compressedOriginal instanceof Buffer);
   const restored = decompressSmart(cp.compressedOriginal as Buffer).toString("utf-8");
   assert.equal(restored, raw);
@@ -517,7 +517,7 @@ test("L1 catches a one-word-diff near-duplicate that L0 misses", () => {
   assert.equal(r1.deduped, false);
   assert.equal(r2.deduped, true);
   assert.equal(r2.reason, "l1MinHash");
-  assert.equal(s.list("sess_l1").length, 1);
+  assert.equal(vectorList(s,"sess_l1").length, 1);
 });
 
 test("L1 does NOT falsely dedup genuinely different content", () => {
@@ -525,7 +525,7 @@ test("L1 does NOT falsely dedup genuinely different content", () => {
   s.add({ sessionId: "sess_l1b", summary: "a", regionText: "the database migration added three indexes", timestamp: 1 });
   const r2 = s.add({ sessionId: "sess_l1b", summary: "b", regionText: "the frontend added a dark mode toggle", timestamp: 2 });
   assert.equal(r2.deduped, false);
-  assert.equal(s.list("sess_l1b").length, 2);
+  assert.equal(vectorList(s,"sess_l1b").length, 2);
 });
 
 test("cleanup", () => {

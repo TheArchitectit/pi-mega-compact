@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { VectorStore } from "./vectorStore.js";
+import { VectorStore, vectorSearch } from "./vectorStore.js";
 import { defaultEmbedder } from "./embedder.js";
 import { loadDedupConfig, type DedupConfigShape } from "./config/dedup.js";
 import {
@@ -49,7 +49,7 @@ test("flag matrix: all 16 L0/L1/L2/RAPTOR enable combos are safe", () => {
           s.add({ sessionId: "s", summary: "x", regionText: `region A for combo ${combos} about the cache`, timestamp: 1 });
           const r2 = s.add({ sessionId: "s", summary: "x", regionText: `region B for combo ${combos} about the parser`, timestamp: 2 });
           // search must not throw under any combination
-          const hits = s.search("s", "cache", 3);
+          const hits = vectorSearch(s, "s", "cache", 3);
           assert.ok(Array.isArray(hits));
           // With all tiers off, the second add is always "new" (no collapse).
           if (!l0 && !l1 && !l2) assert.equal(r2.deduped, false);

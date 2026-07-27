@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { VectorStore, L2_ENABLED } from "../vectorStore.js";
+import { VectorStore, L2_ENABLED, vectorSemDedup, vectorList, vectorSearch } from "../vectorStore.js";
 import { mmrRerank } from "./mmr.js";
 import { topK } from "./topk.js";
 import { cosineSimilarity, defaultEmbedder } from "../embedder.js";
@@ -79,7 +79,7 @@ test("L2_ENABLED defaults true; search still returns hits", () => {
   assert.equal(L2_ENABLED, true);
   const s = store();
   s.add({ sessionId: "sess_l2", summary: "investigated the parser", regionText: "investigated src/parser.ts and added a tokenizer", timestamp: 1 });
-  const hits = s.search("sess_l2", "src/parser.ts tokenizer", 3);
+  const hits = vectorSearch(s, "sess_l2", "src/parser.ts tokenizer", 3);
   assert.ok(hits.length >= 1);
 });
 
@@ -122,14 +122,14 @@ test("semDedup marks redundant near-identical rows 'removed' and search excludes
     { id: "chkpt_001", text: "the cache stores parsed ast nodes for fast lookup", tok: 100 },
     { id: "chkpt_002", text: "the cache stores parsed ast nodes for fast lookup and reuse", tok: 900 },
   ]);
-  const removed = s.semDedup("sess_sd", 0.85);
+  const removed = vectorSemDedup(s,"sess_sd", 0.85);
   assert.equal(removed, 1);
-  const st = s.list("sess_sd");
+  const st = vectorList(s,"sess_sd");
   const dropped = st.find((c) => c.dedupStatus === "removed");
   assert.ok(dropped);
   assert.equal(dropped.checkpointId, "chkpt_001"); // lower tokenEstimate removed
   // Search excludes the removed row (only one active remains).
-  const hits = s.search("sess_sd", "cache parsed ast nodes", 5);
+  const hits = vectorSearch(s, "sess_sd", "cache parsed ast nodes", 5);
   assert.equal(hits.length, 1);
 });
 
@@ -140,8 +140,8 @@ test("semDedup is idempotent (re-run removes nothing new)", () => {
     { id: "chkpt_001", text: "identical region text for the dedup job now", tok: 100 },
     { id: "chkpt_002", text: "identical region text for the dedup job right now", tok: 200 },
   ]);
-  const first = s.semDedup("sess_sd2", 0.85);
-  const second = s.semDedup("sess_sd2", 0.85);
+  const first = vectorSemDedup(s,"sess_sd2", 0.85);
+  const second = vectorSemDedup(s,"sess_sd2", 0.85);
   assert.equal(first, 1);
   assert.equal(second, 0);
 });

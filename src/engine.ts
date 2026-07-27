@@ -16,7 +16,7 @@ import { findSuperseded, supersede } from "./supersede.js";
 import { summarizeMessages, mergeCompactSummaries, formatCompactSummary } from "./compact.js";
 import { extractiveSummarize } from "./extractive.js";
 import { estimateSessionTokens, estimateBlockTokens } from "./tokens.js";
-import { computeRegionHash, VectorStore, type SearchHit } from "./vectorStore.js";
+import { computeRegionHash, vectorWasInjected, vectorSearch, VectorStore, type SearchHit } from "./vectorStore.js";
 import type { EngineMessage } from "./types.js";
 
 export interface CompactInput {
@@ -215,8 +215,8 @@ export interface RecallResult {
  * inject (Sprint 4 wires injection); this module only does the deduped search.
  */
 export function recall(input: RecallInput, store: VectorStore = getDefaultStore()): RecallResult {
-  const hits = store.search(input.sessionId, input.query, input.limit ?? 3);
-  const newHits = input.skipInjected === false ? hits : hits.filter((h) => !store.wasInjected(input.sessionId, h.checkpoint.checkpointId));
+  const hits = vectorSearch(store, input.sessionId, input.query, input.limit ?? 3);
+  const newHits = input.skipInjected === false ? hits : hits.filter((h) => !vectorWasInjected(store, input.sessionId, h.checkpoint.checkpointId));
   return { hits, newHits };
 }
 

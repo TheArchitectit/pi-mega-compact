@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { VectorStore } from "./vectorStore.js";
+import { VectorStore, vectorMarkInjected, vectorSearch } from "./vectorStore.js";
 import { compactSession, recall, mergeSummary, supersededCount } from "./engine.js";
 import type { EngineMessage } from "./types.js";
 
@@ -40,7 +40,7 @@ test("compactSession supersedes then persists a checkpoint", () => {
   assert.equal(supersededCount(messages.slice(0, 4)), 1);
   assert.equal(r.compactedFrom, 4);
   // The persisted checkpoint is searchable.
-  assert.equal(s.search(SESS, "bug src/server.ts", 5).length, 1);
+  assert.equal(vectorSearch(s, SESS, "bug src/server.ts", 5).length, 1);
 });
 
 test("compactSession is idempotent on identical region (dedup sentinel)", () => {
@@ -56,14 +56,14 @@ test("compactSession is idempotent on identical region (dedup sentinel)", () => 
   assert.equal(r1.deduped, false);
   assert.equal(r2.deduped, true);
   assert.equal(r1.checkpointId, r2.checkpointId);
-  assert.equal(s.search(SESS, "parser", 10).length, 1);
+  assert.equal(vectorSearch(s, SESS, "parser", 10).length, 1);
 });
 
 test("compactSession skipped when slice is empty", () => {
   const s = store();
   const r = compactSession({ sessionId: SESS, messages: [msg("user", "only tail")], keepFrom: 0 }, s);
   assert.equal(r.skipped, true);
-  assert.equal(s.search(SESS, "x", 5).length, 0);
+  assert.equal(vectorSearch(s, SESS, "x", 5).length, 0);
 });
 
 test("recall drops already-injected checkpoints", () => {
@@ -71,7 +71,7 @@ test("recall drops already-injected checkpoints", () => {
   compactSession({ sessionId: SESS, messages: [msg("user", "investigated src/vectorStore.ts"), msg("assistant", "ok", "Edit")], keepFrom: 2, timestamp: 1 }, s);
   const first = recall({ sessionId: SESS, query: "vectorStore", limit: 5, skipInjected: true }, s);
   assert.equal(first.newHits.length, 1);
-  s.markInjected(SESS, first.hits[0].checkpoint.checkpointId);
+  vectorMarkInjected(s,SESS, first.hits[0].checkpoint.checkpointId);
   const second = recall({ sessionId: SESS, query: "vectorStore", limit: 5, skipInjected: true }, s);
   assert.equal(second.newHits.length, 0);
   // Without the skip flag, both hits still surface.
@@ -111,7 +111,7 @@ test("compactSession with useExtractive produces topicSummary on checkpoint", ()
   assert.equal(r.skipped, false);
   assert.ok(r.checkpointId, "checkpoint created");
   // The checkpoint should have topicSummary populated
-  const hits = s.search("sess_extr", "auth refactor", 5);
+  const hits = vectorSearch(s, "sess_extr", "auth refactor", 5);
   assert.ok(hits.length > 0);
   // topicSummary should be present on the stored checkpoint (via extractive path)
   assert.ok(hits[0].checkpoint.topicSummary, "topicSummary should be populated when useExtractive is true");

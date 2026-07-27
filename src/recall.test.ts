@@ -6,7 +6,13 @@ import { join } from "node:path";
 import { VectorStore } from "./vectorStore.js";
 import { compactSession } from "./engine.js";
 import { recallAndInline, recallAndInlineAsync, formatRecallBlock } from "./recall.js";
+import { vectorList } from "./vectorStore.js";
 import { markInjectedGlobal, wasInjectedGlobal, closeIndexStore } from "./store/sqlite.js";
+import {
+  closeVectorIndex,
+  initVectorIndex,
+  rebuildFromSqlite,
+} from "./store/vectorIndex.js";
 import type { EngineMessage } from "./types.js";
 
 const baseTmp = mkdtempSync(join(tmpdir(), "mc-recall-"));
@@ -119,58 +125,124 @@ test("Fix C: inline dedupe drops a hit already resident in the live window", () 
   );
 });
 
+// ---- S18 cross-repo global injected-set (real-data, no mocks) ----------------
+//
+// Earlier versions of these tests used `as any` mock stores with canned
+// `searchAsync` returns. That was mock data: it asserted recall's orchestration
+// against a fake search result, not the real embed → HNSW → hydrate → inject
+// path. Per the no-mock-data principle, both tests now seed a REAL foreign
+// VectorStore (real checkpoint + real TrigramEmbedder embedding persisted to
+// SQLite), rebuild the real PGlite index from it via `rebuildFromSqlite`, and
+// run the full `recallAndInlineAsync` cross-repo path against a separate self
+// store. The foreign checkpoint hydrates from the foreign store via its real
+// repoId (== stateDir, per VectorStore's repoId convention).
+
+async function seedForeignRepo(foreignStateDir: string): Promise<{ sessionId: string; checkpointId: string; summary: string }> {
+  // A real VectorStore at the foreign repo's stateDir. repoId == stateDir.
+  const foreign = new VectorStore({ stateDir: foreignStateDir, dedupSim: 0.9 });
+  const sess = "sess_foreign";
+  // Seed a real checkpoint via the real compactSession pipeline. The summary
+  // text determines the embedding; the query below must land near it.
+  const summary = "foreign repo authentication jwt token validation";
+  const result = compactSession(
+    {
+      sessionId: sess,
+      messages: [msg("user", summary), msg("assistant", "ok", "Edit")],
+      keepFrom: 2,
+      timestamp: 1,
+    },
+    foreign,
+  );
+  return { sessionId: sess, checkpointId: result.checkpointId ?? "", summary };
+}
+
 test("S18: global injected-set skips a foreign checkpoint already injected machine-wide", async () => {
+  if (process.env.MEGACOMPACT_PGLITE_DISABLED === "true") { return; } // skip when WASM index is off
   const indexDir = mkdtempSync(join(tmpdir(), "mc-gi-"));
+  const foreignStateDir = mkdtempSync(join(tmpdir(), "mc-gi-foreign-"));
+  const selfStateDir = mkdtempSync(join(tmpdir(), "mc-gi-self-"));
+  process.env.MEGACOMPACT_VECTOR_INDEX_DIR = mkdtempSync(join(tmpdir(), "mc-gi-vidx-"));
   try {
+    await closeVectorIndex(); // fresh singleton per this index dir
+    const seed = await seedForeignRepo(foreignStateDir);
+    // Populate the real PGlite index from the foreign store's real checkpoints.
+    await rebuildFromSqlite(
+      () => [{ repoId: foreignStateDir, stateDir: foreignStateDir }],
+      (sd) => {
+        // readCheckpoints: yield (sessionId, checkpointId, embedding) for every
+        // real checkpoint in this store. Mirrors the production enumerator.
+        const store = new VectorStore({ stateDir: sd, dedupSim: 0.9 });
+        return vectorList(store, seed.sessionId).map((cp) => ({
+          sessionId: seed.sessionId,
+          checkpointId: cp.checkpointId,
+          embedding: cp.embedding,
+        }));
+      },
+    );
+    const pg = await initVectorIndex();
+    assert.ok(pg, "PGlite index should initialize (WASM available)");
+
     const sess = "sess_cross";
-    // A foreign checkpoint already marked injected globally (in this session).
-    markInjectedGlobal("chkpt_foreign", "/repo/other", sess, indexDir);
-    assert.equal(wasInjectedGlobal("chkpt_foreign", sess, indexDir), true);
-    // searchAsync returns the foreign hit; recallAndInlineAsync must skip it
-    // (globally injected) → toInject is empty.
-    const mockStore = {
-      searchAsync: async () => [{
-        checkpoint: { checkpointId: "chkpt_foreign", summary: "foreign work", filesModified: [], dedupStatus: "active" },
-        score: 0.92,
-        repoId: "/repo/other",
-      }],
-      wasInjected: () => false,
-      markInjected: () => {},
-    } as any;
+    // Pre-mark the foreign checkpoint as already injected machine-wide.
+    markInjectedGlobal(seed.checkpointId, foreignStateDir, sess, indexDir);
+    assert.equal(wasInjectedGlobal(seed.checkpointId, sess, indexDir), true);
+
+    // Self store (different repo) — the cross-repo query runs against the index.
+    const selfStore = new VectorStore({ stateDir: selfStateDir, dedupSim: 0.9 });
     const r = await recallAndInlineAsync(
-      { sessionId: sess, query: "foreign", limit: 3, source: "command", crossRepo: true, globalIndexDir: indexDir },
-      mockStore,
+      { sessionId: sess, query: "foreign repo authentication jwt", limit: 3, source: "command", crossRepo: true, globalIndexDir: indexDir },
+      selfStore,
     );
     assert.equal(r.toInject.length, 0, "globally-injected foreign checkpoint skipped");
   } finally {
+    await closeVectorIndex();
     closeIndexStore();
+    delete process.env.MEGACOMPACT_VECTOR_INDEX_DIR;
     rmSync(indexDir, { recursive: true, force: true });
+    rmSync(foreignStateDir, { recursive: true, force: true });
+    rmSync(selfStateDir, { recursive: true, force: true });
   }
 });
 
 test("S18: a fresh foreign checkpoint is injected AND recorded globally", async () => {
+  if (process.env.MEGACOMPACT_PGLITE_DISABLED === "true") { return; } // skip when WASM index is off
   const indexDir = mkdtempSync(join(tmpdir(), "mc-gi2-"));
+  const foreignStateDir = mkdtempSync(join(tmpdir(), "mc-gi2-foreign-"));
+  const selfStateDir = mkdtempSync(join(tmpdir(), "mc-gi2-self-"));
+  process.env.MEGACOMPACT_VECTOR_INDEX_DIR = mkdtempSync(join(tmpdir(), "mc-gi2-vidx-"));
   try {
+    await closeVectorIndex(); // fresh singleton per this index dir
+    const seed = await seedForeignRepo(foreignStateDir);
+    assert.equal(wasInjectedGlobal(seed.checkpointId, "sess_fresh", indexDir), false);
+    await rebuildFromSqlite(
+      () => [{ repoId: foreignStateDir, stateDir: foreignStateDir }],
+      (sd) => {
+        const store = new VectorStore({ stateDir: sd, dedupSim: 0.9 });
+        return vectorList(store, seed.sessionId).map((cp) => ({
+          sessionId: seed.sessionId,
+          checkpointId: cp.checkpointId,
+          embedding: cp.embedding,
+        }));
+      },
+    );
+    const pg = await initVectorIndex();
+    assert.ok(pg, "PGlite index should initialize (WASM available)");
+
     const sess = "sess_fresh";
-    assert.equal(wasInjectedGlobal("chkpt_new", sess, indexDir), false);
-    const mockStore = {
-      searchAsync: async () => [{
-        checkpoint: { checkpointId: "chkpt_new", summary: "brand new foreign work", filesModified: [], dedupStatus: "active" },
-        score: 0.93,
-        repoId: "/repo/alpha",
-      }],
-      wasInjected: () => false,
-      markInjected: () => {},
-    } as any;
+    const selfStore = new VectorStore({ stateDir: selfStateDir, dedupSim: 0.9 });
     const r = await recallAndInlineAsync(
-      { sessionId: sess, query: "foreign", limit: 3, source: "command", crossRepo: true, globalIndexDir: indexDir },
-      mockStore,
+      { sessionId: sess, query: "foreign repo authentication jwt", limit: 3, source: "command", crossRepo: true, globalIndexDir: indexDir },
+      selfStore,
     );
     assert.equal(r.toInject.length, 1, "fresh foreign checkpoint injected");
-    assert.equal(wasInjectedGlobal("chkpt_new", sess, indexDir), true, "recorded machine-wide");
+    assert.equal(wasInjectedGlobal(seed.checkpointId, sess, indexDir), true, "recorded machine-wide");
   } finally {
+    await closeVectorIndex();
     closeIndexStore();
+    delete process.env.MEGACOMPACT_VECTOR_INDEX_DIR;
     rmSync(indexDir, { recursive: true, force: true });
+    rmSync(foreignStateDir, { recursive: true, force: true });
+    rmSync(selfStateDir, { recursive: true, force: true });
   }
 });
 
