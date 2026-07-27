@@ -2,14 +2,20 @@
  * runtime.ts — the `MegaRuntime` class: shared live state of the mega-compact
  * extension.
  *
- * Extracted from state.ts so the class lives in its own module.  state.ts
- * re-exports it for backwards compatibility.
+ * Phase 2d (maximal split): the class body is field declarations, the
+ * constructor, and 1-line delegates only. Every method body lives in its own
+ * module following the context-interface + free-function + thin-delegate
+ * pattern: pressure-getters.ts / reset-runtime.ts / append-event.ts /
+ * get-state-dir.ts / render-widget.ts / status.ts / engine-view.ts /
+ * runtime-snapshot.ts / runtime-helpers.ts / effects.ts / game-state.ts /
+ * capture-model.ts / bind-repo.ts / perf.ts. state.ts re-exports the class for
+ * backwards compatibility.
  */
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { join } from "node:path";
-import { appendFileSync, mkdirSync } from "node:fs";
+import { type FSWatcher } from "node:fs";
 import { VectorStore } from "../../src/vectorStore.js";
 import { toEngineMessages } from "../../src/adapt.js";
 import { normalizeSessionId } from "../../src/store.js";
@@ -19,30 +25,23 @@ import {
 	type GameState,
 } from "../../src/store/sqlite.js";
 import {
-	pressureRatio,
-	pressureFromPct,
-	pressureBand,
-	effectiveThresholdTokens,
 	type MegaConfig,
 	type PressureBand,
 } from "../mega-config.js";
 import { Dashboard } from "../mega-dashboard.js";
 import {
-	STATUS_KEY,
-	WIDGET_KEY,
 	type SessionRuntime,
 } from "./helpers.js";
 import {
-	buildWidgetLines,
 	type TickerEntry,
 	type WidgetData,
 } from "./widget.js";
-import { type FSWatcher } from "node:fs";
 import {
 	ensureGameStateWatcherImpl,
 	getCachedGameStateImpl,
 	refreshWidgetGameStateImpl,
 	bumpGameStateImpl,
+	disposeRuntimeImpl,
 } from "./game-state.js";
 import {
 	setEffectImpl,
@@ -51,10 +50,21 @@ import {
 	makeTierCallbackImpl,
 	pushTickerImpl,
 } from "./effects.js";
-import { ensurePerfIntervalImpl, disposePerf } from "./perf.js";
+import { ensurePerfIntervalImpl } from "./perf.js";
 import { captureModelImpl } from "./capture-model.js";
 import { bindRepoImpl } from "./bind-repo.js";
 import { snapshotImpl } from "./runtime-snapshot.js";
+import {
+	pressureImpl,
+	effectiveThresholdImpl,
+	pressureBandImpl,
+} from "./pressure-getters.js";
+import { resetRuntimeImpl } from "./reset-runtime.js";
+import { appendEventImpl } from "./append-event.js";
+import { getStateDirImpl } from "./get-state-dir.js";
+import { renderWidgetImpl } from "./render-widget.js";
+import { setStatusImpl } from "./status.js";
+import { engineViewImpl } from "./engine-view.js";
 
 export class MegaRuntime {
 	config: MegaConfig;
@@ -85,15 +95,6 @@ export class MegaRuntime {
 		errorRetryCount: 0,
 		errorRetryUntil: 0,
 		consecutiveErrors: 0,
-		// R1-R3 (retry redesign): in-flight dedup, session cap, poisoned-context state.
-		lastErrorRetryAt: 0,
-		retryNudgePending: false,
-		errorRetrySessionCount: 0,
-		lastErrorText: undefined,
-		errorTextRepeatCount: 0,
-		poisonedAdviseSent: false,
-		poisonedCompactSignatures: new Set(),
-		poisonedCount: 0,
 	};
 	// v0.8.6 cache-stability: the cached live-trim view for the current
 	// compaction epoch. Set after a fresh runCompact + computeLiveTrimCut, and
@@ -255,61 +256,24 @@ export class MegaRuntime {
 	diagCaptureModelCalls = 0; // captureModel entered with a populated ctx.model
 	diagCaptureModelFails = 0; // recordModelSnapshot threw → model_snapshots stays empty
 
-	/**
-	 * Live 0–1 pressure — how full the context window is relative to the
-	 * compaction threshold.
-	 *
-	 * RECONCILE (BACKLOG dual-basis flicker): when the model context window is
-	 * known we base pressure consistently on the *percentage* basis
-	 * (`lastCtxPercent / (tierPct*100)`). This keeps the band stable whether the
-	 * latest context event carried a token count or only a percentage, so the
-	 * threshold comparison doesn't jump when a token-count event arrives vs a
-	 * percent-only event. We only fall back to the token-count basis
-	 * (`config.thresholdTokens`) when the window is unknown (e.g. before the first
-	 * context event, or a `custom` tier with no tierPct). Always finite + in [0,1].
-	 */
+	// ---- pressure accessors (bodies in pressure-getters.ts) -------------------
+
+	/** Live 0–1 pressure — see `pressureImpl` in pressure-getters.ts for the
+	 *  dual-basis (percent vs token) reconciliation notes. Thin delegate. */
 	get pressure(): number {
-		if (
-			this.lastCtxWindow > 0 &&
-			this.config.tierPct != null &&
-			this.lastCtxPercent != null
-		) {
-			// pressureFromPct(x) = x/100, and x = lastCtxPercent/tierPct, so this is
-			// exactly the intended lastCtxPercent/(tierPct*100) 0–1 ratio: at the
-			// fire point (lastCtxPercent == tierPct*100) pressure == 1.0, matching the
-			// token-based pressureRatio(currentTokens, effectiveThreshold) reading so
-			// the band doesn't jump when a token-count vs percent-only event arrives.
-			return pressureFromPct(this.lastCtxPercent / this.config.tierPct);
-		}
-		if (
-			this.lastCtxTokens != null &&
-			this.lastCtxTokens > 0 &&
-			this.config.thresholdTokens > 0
-		) {
-			return pressureRatio(this.lastCtxTokens, this.config.thresholdTokens);
-		}
-		return pressureFromPct(this.lastCtxPercent);
+		return pressureImpl(this);
 	}
 
-	/**
-	 * The live compaction FIRE POINT in tokens: the effective threshold scaled by
-	 * the current model context window (`tierPct * window`) when known, else the
-	 * boot fallback `config.thresholdTokens`. This is what the FAST GATE /
-	 * `autoCompactCheck` / agent_end durable-trigger compare against, so
-	 * compaction fires at tier% of the window for ANY model size (200k or 1M),
-	 * always below pi's native auto-compaction (~80% of window).
-	 */
+	/** The live compaction fire point in tokens — thin delegate to
+	 *  `effectiveThresholdImpl` (pressure-getters.ts). */
 	get effectiveThreshold(): number {
-		return effectiveThresholdTokens({
-			tierPct: this.config.tierPct,
-			fallbackThreshold: this.config.thresholdTokens,
-			window: this.lastCtxWindow,
-		});
+		return effectiveThresholdImpl(this);
 	}
 
-	/** Live discrete pressure band (low/medium/high/ultra/mega) over `pressure`. */
+	/** Live discrete pressure band (low/medium/high/ultra/mega) — thin delegate
+	 *  to `pressureBandImpl` (pressure-getters.ts). */
 	get pressureBand(): PressureBand {
-		return pressureBand(this.pressure);
+		return pressureBandImpl(this);
 	}
 
 	constructor(config: MegaConfig) {
@@ -340,103 +304,38 @@ export class MegaRuntime {
 		snapshotImpl(this, ctx);
 	}
 
-	/** Register the above-editor widget as a width-aware factory so pi re-renders
-	 *  it at the REAL terminal width every frame (auto-fit wide/narrow). The
-	 *  factory returns a minimal Component whose render() reads this.widgetData.
-	 */
+	/** Width-aware above-editor widget factory registration — thin delegate to
+	 *  `renderWidgetImpl` (render-widget.ts). */
 	renderWidget(ctx: ExtensionContext): void {
-		ctx.ui.setWidget(
-			WIDGET_KEY,
-			(_tui, _theme) => ({
-				render: (width: number) =>
-					buildWidgetLines(
-						this.widgetData,
-						width > 0 ? width : 200,
-						this.activeAgents,
-					),
-				invalidate: () => {},
-			}),
-			{ placement: "aboveEditor" },
-		);
+		renderWidgetImpl(this, ctx);
 	}
 
+	/** Mirror the dashboard status text onto pi's status line — thin delegate to
+	 *  `setStatusImpl` (status.ts). */
 	setStatus(ctx: ExtensionContext, text: string | undefined): void {
-		this.statusKey = text;
-		ctx.ui.setStatus(STATUS_KEY, text);
+		setStatusImpl(this, ctx, text);
 	}
 
+	/** Per-session state reset (session_start / session_tree) — thin delegate to
+	 *  `resetRuntimeImpl` (reset-runtime.ts). */
 	resetRuntime(sessionId: string | undefined): void {
-		const sid = normalizeSessionId(sessionId);
-		if (this.rt.sessionId === sid && this.rt.persistedThisSession) return; // same session, keep checkpoint memory
-		this.rt = {
-			sessionId: sid,
-			persistedThisSession: false,
-			lastCheckpointId: undefined,
-			lastCompactedFrom: 0,
-			lastCompactedTokens: 0,
-			dedupSkips: 0,
-			dedupAttempts: 0,
-			tokensSaved: 0,
-			lastCompactAt: null,
-			lastNativeCompactAt: null,
-			compactCount: 0,
-			recallInjections: 0,
-			cacheHitTokens: 0,
-			lengthStopPending: false,
-			errorRetryCount: 0,
-			errorRetryUntil: 0,
-			consecutiveErrors: 0,
-			// R1-R3 (retry redesign): in-flight dedup, session cap, poisoned-context state.
-			lastErrorRetryAt: 0,
-			retryNudgePending: false,
-			errorRetrySessionCount: 0,
-			lastErrorText: undefined,
-			errorTextRepeatCount: 0,
-			poisonedAdviseSent: false,
-			poisonedCompactSignatures: new Set(),
-			poisonedCount: 0,
-	};
-	this.trimCache = null; // v0.8.6: never replay a stale trim into a new session
-		this.statusKey = undefined;
-		this.activeAgents = 0;
-		this.currentTurn = 0;
-		this.lastActivityAt = 0;
-		this.tierTrace = undefined;
-		this.ticker.length = 0;
-		this.pulsing = false;
-		this.savedGoal = 50_000;
-		this.lastWhy = undefined;
-		// S31 audit P2: symmetry with bindRepo — a reset can coincide with a context
-		// that re-binds the repo, so drop the memo too. Cheap; the next
-		// getCachedGameState() re-queries lazily.
-		this.cachedGameState = undefined;
+		resetRuntimeImpl(this, sessionId);
 	}
 
 	captureModel(ctx: ExtensionContext): void {
 		captureModelImpl(this, ctx);
 	}
 
-	/**
-	 * Append a structured line to the repo's events.log — the always-on
-	 * diagnostics sink the dashboard live-streams. Unlike this.logger (gated by
-	 * config.debug), this fires in production, so capture failures surface during
-	 * a real capture even with debugging off. Best-effort + non-fatal.
-	 */
+	/** Structured events.log diagnostics sink (always-on) — thin delegate to
+	 *  `appendEventImpl` (append-event.ts). */
 	appendEvent(event: string, fields: Record<string, unknown>): void {
-		try {
-			mkdirSync(this.currentStateDir, { recursive: true });
-			appendFileSync(
-				join(this.currentStateDir, "events.log"),
-				JSON.stringify({ ts: Date.now(), event, ...fields }) + "\n",
-			);
-		} catch {
-			/* non-fatal */
-		}
+		appendEventImpl(this, event, fields);
 	}
 
-	/** S21: state dir of the currently bound repo (where memories live). */
+	/** S21: state dir of the currently bound repo (where memories live) — thin
+	 *  delegate to `getStateDirImpl` (get-state-dir.ts). */
 	getStateDir(): string {
-		return this.currentStateDir;
+		return getStateDirImpl(this);
 	}
 
 	/** S32: (re)target the fs.watch cache-eviction watcher at the current
@@ -449,16 +348,13 @@ export class MegaRuntime {
 		ensureGameStateWatcherImpl(this, this);
 	}
 
-	/** S32: release the fs.watch game-state watcher. Called when the runtime is
-	 *  torn down (no existing dispose path — the process exit reclaims the fd,
-	 *  but explicit close is correct for any in-process reload / test reuse). */
+	/** S32: release the fs.watch game-state watcher + stop the v0.8.8 perf
+	 *  sampling interval. Called when the runtime is torn down (no existing
+	 *  dispose path — the process exit reclaims the fd, but explicit close is
+	 *  correct for any in-process reload / test reuse). Thin delegate to
+	 *  `disposeRuntimeImpl` (game-state.ts). */
 	dispose(): void {
-		if (this.gameStateWatcher) {
-			try { this.gameStateWatcher.close(); } catch { /* non-fatal */ }
-			this.gameStateWatcher = undefined;
-			this.gameStateWatchDir = undefined;
-		}
-		disposePerf(this);
+		disposeRuntimeImpl(this);
 	}
 
 	ensurePerfInterval(): void {
@@ -533,8 +429,9 @@ export class MegaRuntime {
 		pushTickerImpl(this, text);
 	}
 
-	/** Convert the messages pi hands us in the `context` event into the engine view. */
+	/** Convert the messages pi hands us in the `context` event into the engine
+	 *  view — thin delegate to `engineViewImpl` (engine-view.ts). */
 	engineView(messages: AgentMessage[]): ReturnType<typeof toEngineMessages> {
-		return toEngineMessages(messages);
+		return engineViewImpl(messages);
 	}
 }
