@@ -1,4 +1,6 @@
-# S42 — RAPTOR Multi-Level Retrieval + Incremental Enrichment
+# S42 — RAPTOR Multi-Level Retrieval
+
+> **RE-PLAN (2026-07-25):** Prior draft defaulted all feature flags to OFF (conservative ship posture) and proposed an Ollama-based incremental enrichment step (S42C). This revision flips all feature flags to ON — features that default OFF are features that do not ship — and DELETES the Ollama enrichment sub-sprint entirely. Extractive cluster summaries are permanent: deterministic, fully local, no LLM/Ollama dependency (keeps the extension compliant with PREVENT-PI-004 without a `guardrails-allow` exception). Level weights and freshness thresholds are marked `uncalibrated` and require real-data calibration scripts before they can be declared stable. Mock-data language removed from active design.
 
 **Date:** 2026-07-26
 **Parent plan:** Memory RAG System (borrowed from radical-memory-mcp / R.A.D.1.C.A.1)
@@ -13,8 +15,9 @@
 
 - **PREVENT-PI-001** (anchor floor): multi-level retrieval is additive — it produces `SearchHit[]` that feed into the existing `recallAndInline()` pipeline. The anchor-floor guard in `src/boundary.ts:computeDropRange()` is never touched. Multi-level retrieval affects *which* checkpoints are recalled, not *how* messages are dropped.
 - **PREVENT-PI-003** (no system role): recalled RAPTOR nodes are injected via the existing `before_agent_start` systemPrompt prepend path. Multi-level retrieval changes which hits are selected, not the injection mechanism.
-- **PREVENT-PI-004** (no network): all retrieval, expansion, and dedup functions are pure in-process math (cosine similarity, BFS traversal). LLM enrichment (S42C) uses the configured localhost Ollama endpoint (same exception class as `src/dedup/raptor/summarizer.ts:12` — annotated with `guardrails-allow`). No remote API calls.
-- **Feature flags default OFF**: `RAPTOR_MULTILEVEL_ENABLED`, `RAPTOR_LEAF_EXPANSION`, `RAPTOR_ENRICHMENT_ENABLED` all default to `false`. Zero behavior change unless explicitly enabled. When OFF, `raptorSearchHits()` and `recallAndInline()` behave identically to current production.
+- **PREVENT-PI-004** (no network): all retrieval, expansion, dedup, and summary functions are pure in-process math (cosine similarity, BFS traversal, extractive summarization). No Ollama dependency; no `guardrails-allow` exception required. No remote API calls.
+- **Feature flags default ON**: `RAPTOR_MULTILEVEL_ENABLED`, `RAPTOR_LEAF_EXPANSION` both default to `true`. `RAPTOR_ENRICHMENT_ENABLED` and S42C are DELETED — extractive summaries are permanent. Zero behavior change unless explicitly disabled. When OFF, `raptorSearchHits()` and `recallAndInline()` behave identically to current production.
+- **Gating + error-logging contract** (lines 16–18): every feature is gated (default ON); every run logs structured events with real fields + `uncalibrated` marker where applicable; NO silent failures — if a tier fails it logs `*_failed` with the real error and returns the original result. There is NO code path where RAPTOR silently no-ops and returns nothing; a failed tier must log and fall back to a real result.
 - **Shadow mode respected**: `isShadowMode()` (`src/dedup/raptor/index.ts:19`) is honored — when shadow mode is ON, multi-level retrieval returns `[]` regardless of flag state.
 - Gate: `npm run build && npm test && npm run lint && python3 scripts/regression_check.py --all`.
 
@@ -30,9 +33,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 
 3. **No leaf expansion** — when a cluster node matches well (e.g., "authentication decisions cluster"), there is no way to fetch its leaf descendants for detailed context. The user sees only the cluster summary, not the individual decisions within it.
 
-4. **Summaries are meaningless averages** — the current build in `src/dedup/raptor/tree.ts:summarizeInto()` (line ~97–112) calls `summarizeCluster()` which defaults to extractive (`src/dedup/raptor/summarizer.ts:39–42`). When `MEGACOMPACT_RAPTOR_MODEL` is unset (the common case), cluster summaries are extractive concatenations, not LLM-generated summaries. This means internal nodes are mediocre summaries of their children.
-
-5. **No incremental enrichment** — the build runs once (in `runRaptor()` at `src/dedup/raptor/index.ts:40–70`) and is never revisited. There is no mechanism to progressively upgrade node summaries from extractive → LLM-generated after the initial fast build.
+4. **Summaries are extractive by design** — the current build in `src/dedup/raptor/tree.ts:summarizeInto()` (line ~97–112) calls `summarizeCluster()` which uses extractive summarization (`src/dedup/raptor/summarizer.ts:39–42`). Extractive summaries are permanent: deterministic, fully local, no LLM dependency. This is the correct default for a memory system — the summaries contain real message text, not LLM paraphrases that may drift.
 
 6. **No build history** — there is no record of when trees were built, with what configuration, or how long they took. Freshness checks in `raptorSearchHits()` compare `tree.builtAt` against `maxCheckpointTimestamp` (`src/vectorStore.ts:486`), but there is no structured build log.
 
@@ -43,16 +44,17 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 ### IN SCOPE (new files):
 - `src/dedup/raptor/multilevel.ts` — multi-level retrieval engine (level-weighted scoring, leaf expansion, result dedup)
 - `src/dedup/raptor/multilevel.test.ts` — unit tests for multi-level retrieval
-- `src/dedup/raptor/enrichment.ts` — incremental LLM enrichment scheduler
-- `src/dedup/raptor/enrichment.test.ts` — unit tests for enrichment
 - `src/dedup/raptor/buildHistory.ts` — build history tracking + freshness checks
 - `src/dedup/raptor/buildHistory.test.ts` — unit tests for build history
-- `src/store/sqlite.ts` — add `raptor_build_history` table + `raptor_node_enrichment` column migration
+- `src/store/sqlite.ts` — add `raptor_build_history` table
+
+### OUT OF SCOPE (DELETED: S42C Ollama enrichment):
+- `src/dedup/raptor/enrichment.ts` — DELETED. Extractive summaries are permanent; no LLM/Ollama dependency.
 
 ### IN SCOPE (modified files):
 - `src/vectorStore.ts` — replace `raptorSearchHits()` (line ~465) to use multi-level retrieval instead of leaf-only `stagedExpansion()`
-- `src/dedup/raptor/index.ts` — update `runRaptor()` to record build history; add `enrichRaptorNodes()` entry point
-- `src/config/dedup.ts` — add RAPTOR multi-level + enrichment config flags
+- `src/dedup/raptor/index.ts` — update `runRaptor()` to record build history
+- `src/config/dedup.ts` — add RAPTOR multi-level config flags (no enrichment flag — S42C is deleted)
 - `src/dedup/raptor/retrieval.ts` — add `multilevelRetrieval()` alongside existing `stagedExpansion()`
 
 ### OUT OF SCOPE:
@@ -208,25 +210,22 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 - [ ] **S42B-1: Add config flags** (`src/config/dedup.ts`)
   Add to `DedupConfigShape` interface (after `RAPTOR_CONSISTENCY` at line ~88):
   ```ts
-  RAPTOR_MULTILEVEL_ENABLED: boolean;   // default false
-  RAPTOR_LEVEL_WEIGHTS: number[];       // default [1.0, 0.9, 0.8, 0.7, 0.5]
+  RAPTOR_MULTILEVEL_ENABLED: boolean;   // default true
+  RAPTOR_LEVEL_WEIGHTS: number[];       // default [1.0, 0.9, 0.8, 0.7, 0.5] (uncalibrated)
   RAPTOR_LEAF_EXPANSION: boolean;       // default true
-  RAPTOR_MAX_LEAF_EXPANSION: number;    // default 10
-  RAPTOR_ENRICHMENT_ENABLED: boolean;   // default false
-  RAPTOR_ENRICHMENT_BATCH_SIZE: number; // default 5
-  RAPTOR_FRESHNESS_HOURS: number;       // default 4
+  RAPTOR_MAX_LEAF_EXPANSION: number;    // default 10 (uncalibrated)
+  RAPTOR_FRESHNESS_HOURS: number;       // default 4 (uncalibrated)
   ```
   Add to `loadDedupConfig()` return object:
   ```ts
-  RAPTOR_MULTILEVEL_ENABLED: envBool("MEGACOMPACT_RAPTOR_MULTILEVEL", false),
+  RAPTOR_MULTILEVEL_ENABLED: envBool("MEGACOMPACT_RAPTOR_MULTILEVEL", true),
   RAPTOR_LEVEL_WEIGHTS: envNumArray("MEGACOMPACT_RAPTOR_LEVEL_WEIGHTS", [1.0, 0.9, 0.8, 0.7, 0.5]),
   RAPTOR_LEAF_EXPANSION: envBool("MEGACOMPACT_RAPTOR_LEAF_EXPANSION", true),
   RAPTOR_MAX_LEAF_EXPANSION: envNum("MEGACOMPACT_RAPTOR_MAX_LEAF_EXP", 10),
-  RAPTOR_ENRICHMENT_ENABLED: envBool("MEGACOMPACT_RAPTOR_ENRICHMENT", false),
-  RAPTOR_ENRICHMENT_BATCH_SIZE: envNum("MEGACOMPACT_RAPTOR_ENRICH_BATCH", 5),
   RAPTOR_FRESHNESS_HOURS: envNum("MEGACOMPACT_RAPTOR_FRESHNESS_HOURS", 4),
   ```
   Add helper `envNumArray(name, def)` for parsing comma-separated numeric env vars.
+  NOTE: `RAPTOR_ENRICHMENT_ENABLED` and `RAPTOR_ENRICHMENT_BATCH_SIZE` are DELETED — S42C Ollama enrichment is not part of this sprint. Extractive summaries are permanent.
 
 - [ ] **S42B-2: Replace `raptorSearchHits()` to use multi-level retrieval** (`src/vectorStore.ts`)
   Modify `raptorSearchHits()` (currently at line ~465–510):
@@ -302,99 +301,15 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 
 ---
 
-### Sprint S42C: Incremental Enrichment
+### Sprint S42C: [DELETED] Incremental Enrichment
 
-**Goal:** Allow RAPTOR node summaries to be progressively upgraded from extractive → LLM-generated in background batches, without blocking the compaction pipeline.
-
-**Acceptance:** `src/dedup/raptor/enrichment.test.ts` passes; enrichment processes nodes in configurable batches; enrichment status is tracked per node; failed enrichment falls back to extractive.
-
-**Tasks:**
-
-- [ ] **S42C-1: Define enrichment types + status tracking** (`src/dedup/raptor/enrichment.ts`)
-  ```ts
-  export type EnrichmentStatus = "raw" | "enriched" | "failed";
-
-  export interface EnrichmentJob {
-    nodeId: string;
-    sessionId: string;
-    stateDir: string;
-    status: EnrichmentStatus;
-    /** The LLM-generated summary (null until enrichment succeeds). */
-    enrichedSummary: string | null;
-    /** Original extractive summary (for rollback). */
-    originalSummary: string;
-    enrichedAt: number;  // epoch ms, 0 if not yet enriched
-  }
-  ```
-
-- [ ] **S42C-2: Add `enrichment_status` column to `raptor_nodes` table** (`src/store/sqlite.ts`)
-  Migration (additive, backward-compatible):
-  ```sql
-  ALTER TABLE raptor_nodes ADD COLUMN enrichment_status TEXT DEFAULT 'raw';
-  ALTER TABLE raptor_nodes ADD COLUMN enriched_summary TEXT;
-  ALTER TABLE raptor_nodes ADD COLUMN enriched_at INTEGER DEFAULT 0;
-  ```
-  Update `saveRaptorTree()` and `listRaptorNodes()` to persist/read the new columns.
-
-- [ ] **S42C-3: Implement batch enrichment** (`src/dedup/raptor/enrichment.ts`)
-  ```ts
-  /**
-   * Enrich up to `batchSize` unenriched RAPTOR cluster nodes for a session.
-   * Uses the same localhost Ollama path as `summarizeCluster()` (summarizer.ts:48–82).
-   * Non-blocking: returns immediately, results are persisted on completion.
-   * Returns the number of nodes enriched (0 if none needed or all failed).
-   */
-  export function enrichRaptorNodes(
-    sessionId: string,
-    stateDir: string,
-    opts: {
-      batchSize?: number;  // default from config.RAPTOR_ENRICHMENT_BATCH_SIZE
-      model?: string;      // default from MEGACOMPACT_RAPTOR_MODEL
-    },
-  ): number
-  ```
-  Implementation:
-  1. Load tree via `rehydrateRaptorTree()` (`index.ts:82–114`)
-  2. Filter nodes where `enrichment_status === 'raw'` and `qualityMarker !== 'high'`
-  3. For each node (up to `batchSize`):
-     - Fetch the node's source messages (reconstruct from leaf checkpoint `compressedOriginal` fields)
-     - Call `summarizeCluster()` (`summarizer.ts:44`) — uses Ollama if configured, else extractive
-     - Run `applyHallucinationGuardrails()` (`guardrails.ts:78`) against the cluster centroid
-     - If guardrail passes: update `enrichment_status = 'enriched'`, `enriched_summary = summary`
-     - If guardrail fails: `enrichment_status = 'failed'`, keep original extractive summary
-  4. Persist changes via `updateRaptorNodeEnrichment()` (new sqlite.ts helper)
-
-- [ ] **S42C-4: Wire enrichment into the RAPTOR serve path** (`src/vectorStore.ts`)
-  In `raptorSearchHits()` and the new multi-level path, when serving a cluster node:
-  ```ts
-  // Prefer enriched summary over raw extractive
-  const summary = node.enrichedSummary ?? node.summary;
-  ```
-
-- [ ] **S42C-5: Add enrichment trigger point** (`src/dedup/raptor/index.ts`)
-  Add a new exported function:
-  ```ts
-  /**
-   * Best-effort enrichment pass. Called by the extension after a session compaction,
-   * or on a periodic tick. Non-blocking: enriches a batch and returns.
-   * Enrichment only runs when RAPTOR_ENRICHMENT_ENABLED is true.
-   */
-  export function enrichSessionRaptor(
-    sessionId: string,
-    stateDir: string,
-    opts?: { batchSize?: number },
-  ): void
-  ```
-  The extension wires this into the `after_agent_start` or compaction hook as a fire-and-forget call.
-
-- [ ] **S42C-6: Unit tests** (`src/dedup/raptor/enrichment.test.ts`)
-  - Enrichment upgrades raw nodes to enriched (mock Ollama)
-  - Failed enrichment marks node as failed, keeps original summary
-  - Batch size limit is respected (5 nodes per tick with default config)
-  - Guardrail failure prevents serving low-quality enriched summaries
-  - Already-enriched nodes are skipped
-  - Enrichment disabled → no-op
-  - Enrichment respects `enrichment_status` column in SQLite
+> **DELETED in RE-PLAN (2026-07-25).** The prior design proposed upgrading extractive → LLM-generated summaries in background batches via Ollama. This was removed because:
+>
+> 1. **Extractive summaries are permanent, not a fallback.** A memory system should remember real message text — not LLM paraphrases that may drift from the original meaning.
+> 2. **Ollama re-introduces a network dependency** (localhost-LLM call) and requires a `guardrails-allow` annotation for PREVENT-PI-004. The extension is fully in-process; no runtime network calls.
+> 3. **The enrichment API surface (`RAPTOR_ENRICHMENT_ENABLED`, `RAPTOR_ENRICHMENT_BATCH_SIZE`) is deleted** from `DedupConfigShape`. Only multi-level retrieval flags (`RAPTOR_MULTILEVEL_ENABLED`, `RAPTOR_LEVEL_WEIGHTS`, `RAPTOR_LEAF_EXPANSION`, `RAPTOR_MAX_LEAF_EXPANSION`, `RAPTOR_FRESHNESS_HOURS`) remain.
+>
+> If richer summaries are ever needed, the correct approach is a better extractive strategy (e.g., top-N sentences by TF-IDF weight, always deterministic and local) — not an LLM rewrite.
 
 ---
 
@@ -512,31 +427,31 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 
 2. **Leaf expansion** — When a level-1 cluster node matches a query with high similarity, its leaf descendants appear in the result set. The cluster node itself is deduplicated away if all its children are present.
 
-3. **Integration** — With `RAPTOR_MULTILEVEL_ENABLED=true`, `VectorStore.search()` returns multi-level RAPTOR hits merged with flat search results via MMR. With flag OFF (default), search results are identical to current production.
+3. **Integration** — With `RAPTOR_MULTILEVEL_ENABLED=true` (default), `VectorStore.search()` returns multi-level RAPTOR hits merged with flat search results via MMR. With flag explicitly OFF, search results are identical to current production.
 
-4. **Incremental enrichment** — With `RAPTOR_ENRICHMENT_ENABLED=true`, calling `enrichSessionRaptor()` upgrades at least one raw node to enriched status. Failed enrichments are marked as failed and do not corrupt the original summary.
+4. **Build history** — Every `runRaptor()` call creates a `raptor_build_history` record with correct metadata (node count, leaf count, depth, coherence score, duration).
 
-5. **Build history** — Every `runRaptor()` call creates a `raptor_build_history` record with correct metadata (node count, leaf count, depth, coherence score, duration).
+5. **Freshness** — `isRaptorTreeFresh()` returns true when the tree is <4h old and checkpoint count is stable (±20%). Returns false when stale or when significant new checkpoints were added.
 
-6. **Freshness** — `isRaptorTreeFresh()` returns true when the tree is <4h old and checkpoint count is stable (±20%). Returns false when stale or when significant new checkpoints were added.
+6. **Extractive summaries permanent** — All RAPTOR cluster summaries use extractive summarization only. No Ollama/LLM dependency. Summary text is real message content, not LLM paraphrase. PREVENT-PI-004 compliance with zero network calls and no `guardrails-allow` annotation required.
 
-7. **Regression** — Full 372+ test suite passes with all new flags OFF (`RAPTOR_MULTILEVEL_ENABLED=false`, `RAPTOR_ENRICHMENT_ENABLED=false`). Zero behavior change in default configuration.
+7. **Regression** — Full 372+ test suite passes. When all new flags are explicitly OFF, behavior is identical to current production. Default configuration (all flags ON) must not break existing tests.
 
-8. **Safety** — `npm run lint` passes. `python3 scripts/regression_check.py --all` passes. `scripts/guardrails-scan.mjs` reports no new violations. All LLM calls go through the existing `summarizer.ts` Ollama path (localhost-only, PREVENT-PI-004 annotated).
+8. **Safety** — `npm run lint` passes. `python3 scripts/regression_check.py --all` passes. `scripts/guardrails-scan.mjs` reports no new violations. No LLM calls, no Ollama, no network — fully in-process.
 
 ---
 
 ## ROLLBACK
 
-1. **Feature flags** — Set `MEGACOMPACT_RAPTOR_MULTILEVEL=false` and `MEGACOMPACT_RAPTOR_ENRICHMENT=false` to revert to leaf-only retrieval and no enrichment. These are the defaults, so no action is needed unless flags were explicitly enabled.
+1. **Feature flags** — Set `MEGACOMPACT_RAPTOR_MULTILEVEL=false` to revert to leaf-only retrieval.
 
 2. **Code rollback** — Revert changes to:
    - `src/vectorStore.ts` — `raptorSearchHits()` reverts to `stagedExpansion()` call
    - `src/config/dedup.ts` — remove new RAPTOR config fields
-   - `src/dedup/raptor/index.ts` — remove build history + enrichment calls
-   - `src/store/sqlite.ts` — new table (`raptor_build_history`) and columns are additive and unused by old code; no migration rollback needed
+   - `src/dedup/raptor/index.ts` — remove build history calls
+   - `src/store/sqlite.ts` — new table (`raptor_build_history`) is additive and unused by old code; no migration rollback needed
 
-3. **Database** — `raptor_build_history` table and enrichment columns are additive (new table + ALTER TABLE). Old code ignores them. No data loss on rollback.
+3. **Database** — `raptor_build_history` table is additive (new table). Old code ignores it. No data loss on rollback.
 
 ---
 
@@ -544,10 +459,6 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 
 1. **Level-weight tuning** — Default weights `[1.0, 0.9, 0.8, 0.7, 0.5]` may not be optimal for all session sizes. Short sessions (10–20 leaves) may not benefit from multi-level retrieval. Mitigation: weights are configurable via env; short sessions have shallow trees (1–2 levels) where the weight difference is minimal.
 
-2. **Enrichment latency** — LLM enrichment (Ollama) may be slow (1–5s per node). With batch size 5, enrichment takes 5–25s per tick. Mitigation: enrichment is fire-and-forget, non-blocking, and disabled by default.
+2. **Cluster node injection into recall** — RAPTOR cluster nodes are not checkpoints. Injecting them into the recall block requires extending `SearchHit` and `formatRecallBlock()`. This is a new pattern that could surprise downstream consumers. Mitigation: `raptorSummary` is optional and only set for RAPTOR cluster hits; existing consumers are unaffected.
 
-3. **Cluster node injection into recall** — RAPTOR cluster nodes are not checkpoints. Injecting them into the recall block requires extending `SearchHit` and `formatRecallBlock()`. This is a new pattern that could surprise downstream consumers. Mitigation: `raptorSummary` is optional and only set for RAPTOR cluster hits; existing consumers are unaffected.
-
-4. **SQLite migration** — Adding columns to `raptor_nodes` via ALTER TABLE is safe on existing databases but requires careful testing with pre-existing data. Mitigation: columns have DEFAULT values; migration is additive.
-
-5. **Ollama dependency for enrichment** — Enrichment requires a running localhost Ollama instance. If Ollama is unavailable, enrichment silently falls back to extractive (same pattern as `summarizer.ts:73–76`). No user-visible failure.
+3. **SQLite migration** — Adding the `raptor_build_history` table is safe on existing databases. Mitigation: `CREATE TABLE IF NOT EXISTS` makes it idempotent; no data migration needed.
