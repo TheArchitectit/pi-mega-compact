@@ -10,21 +10,15 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { join } from "node:path";
 import { appendFileSync, mkdirSync } from "node:fs";
-import { VectorStore, vectorStats, vectorRepoStats, vectorDataInvariant } from "../../src/vectorStore.js";
+import { VectorStore } from "../../src/vectorStore.js";
 import { toEngineMessages } from "../../src/adapt.js";
 import { normalizeSessionId } from "../../src/store.js";
 import { Logger } from "../../src/log.js";
 import {
-	latestModelSnapshot,
-	recordPerfSample,
-	recordSessionHeartbeat,
-	appendTokenSample,
 	type ModelSnapshot,
 	type GameState,
 } from "../../src/store/sqlite.js";
-import { detectCrossRepoDrift } from "../../src/driftDetection.js";
 import {
-	resolveRepoRoot,
 	pressureRatio,
 	pressureFromPct,
 	pressureBand,
@@ -44,14 +38,12 @@ import {
 	type WidgetData,
 } from "./widget.js";
 import { type FSWatcher } from "node:fs";
-import { computeMegaSnapshot } from "./snapshot.js";
 import {
 	ensureGameStateWatcherImpl,
 	getCachedGameStateImpl,
 	refreshWidgetGameStateImpl,
 	bumpGameStateImpl,
 } from "./game-state.js";
-import { turnLevel } from "../../src/game/scoring.js";
 import {
 	setEffectImpl,
 	armMegaCacheFlareImpl,
@@ -62,7 +54,7 @@ import {
 import { ensurePerfIntervalImpl, disposePerf } from "./perf.js";
 import { captureModelImpl } from "./capture-model.js";
 import { bindRepoImpl } from "./bind-repo.js";
-import { buildDashboardSnapshot } from "./dashboard-snapshot.js";
+import { snapshotImpl } from "./runtime-snapshot.js";
 
 export class MegaRuntime {
 	config: MegaConfig;
@@ -190,7 +182,7 @@ export class MegaRuntime {
 	// SQLite opens) + writeFileSync(dashboard.json) are skipped — only the
 	// (already-registered) widget factory is refreshed. Kills the per-event
 	// main-thread block during typing/idle streaming with no material change.
-	private lastSnapshotSig: string | null = null;
+	lastSnapshotSig: string | null = null;
 	// v0.8.5: bumped whenever the cached game-state memo is evicted (bumpGameState
 	// for in-process /mega-game writes, the fs.watch callback for cross-process
 	// dashboard-server writes, and bindRepo on repo switch) so the snapshot gate
@@ -198,7 +190,7 @@ export class MegaRuntime {
 	gameStateBump = 0;
 	// Cached cross-repo drift status (recomputed at most every 30s — it opens the
 	// machine-wide registry DB, so we don't want to do it on every render frame).
-	private driftCache: { at: number; status: "ok" | "warn" } | null = null;
+	driftCache: { at: number; status: "ok" | "warn" } | null = null;
 	// S31: cached game-mode state (game_mode_on/theme/tui_display_mode). Lazily
 	// read from the game_state SQLite row on the first widget render, then
 	// memoized until bumpGameState() evicts it (called by /mega-game after a
@@ -336,198 +328,7 @@ export class MegaRuntime {
 
 	/** Collect live state and write it to disk (+ paint the above-editor widget). */
 	snapshot(ctx?: ExtensionContext): void {
-		if (ctx) this.lastWidgetCtx = ctx;
-		if (ctx) this.bindRepo(ctx.cwd);
-		// v0.8.5: gate the expensive body (6 sync SQLite opens +
-		// writeFileSync(dashboard.json)) behind a cheap material-change signature.
-		// During typing / idle / no-compaction streaming, the 'context' event
-		// fires repeatedly with NO material change — skip the recompute + write and
-		// just re-register the (live) widget factory, which reads the cached
-		// widgetData every frame. This removes the per-event main-thread block
-		// WITHOUT changing write timing, so tests that read dashboard.json
-		// synchronously after a compaction still see it written (compaction changes
-		// compactCount/tokensSaved → the signature changes → the full recompute +
-		// write runs).
-		const sig = this.materialSig();
-		if (ctx && this.widgetData && this.lastSnapshotSig === sig) {
-			this.renderWidget(ctx);
-			return;
-		}
-		const perfT0 = performance.now();
-		const st = vectorStats(this.store, this.rt.sessionId);
-		const repo = vectorRepoStats(this.store);
-		const di = vectorDataInvariant(this.store);
-		// Effective threshold + armed/ready status for the dashboard.
-		// effectiveThresholdPct: the live fire point as a % of the window (null for
-		// `custom`, which has no tierPct). S29: honors MEGACOMPACT_AUTO_PCT_TRIGGER
-		// override so the dashboard's armed/ready match the context-handler gate
-		// (which fires on this same %). Used by armed/ready + the dashboard.
-		const effectiveThresholdPct =
-			this.config.tierPct != null
-				? (this.config.autoPctTrigger ?? this.config.tierPct) * 100
-				: null;
-		// armed lights at/above the REAL fire point: max(effectiveThresholdPct,
-		// fastGatePct). fastGatePct already equals tierPct*100 by default, but a
-		// MEGACOMPACT_FAST_GATE_PCT override can raise it, so we take the max.
-		const armed =
-			this.lastCtxPercent != null &&
-			this.lastCtxPercent >=
-				Math.max(effectiveThresholdPct ?? 0, this.config.fastGatePct);
-		// S29: ready mirrors the context-handler gate's basis — percent for tiered
-		// (the gate fires on pct), tokens for custom (the gate fires on tokens).
-		// Previously this always required tokens, so the dashboard could show
-		// "armed" (percent high) but never "ready" when tokens were under-reported
-		// — the same inconsistency the S29 gate fix removes.
-		const ready =
-			this.config.tierPct != null
-				? armed && (this.lastCtxPercent ?? 0) >= (effectiveThresholdPct ?? 0)
-				: armed && (this.lastCtxTokens ?? 0) >= this.effectiveThreshold;
-		this.dashboard.snapshot(
-			buildDashboardSnapshot({
-				config: this.config,
-				rt: this.rt,
-				pressureBand: this.pressureBand,
-				pressure: this.pressure,
-				effectiveThreshold: this.effectiveThreshold,
-				statusKey: this.statusKey,
-				lastCtxTokens: this.lastCtxTokens,
-				lastCtxPercent: this.lastCtxPercent,
-				lastCtxWindow: this.lastCtxWindow,
-				diagCtxFastGate: this.diagCtxFastGate,
-				diagLiveTrimFires: this.diagLiveTrimFires,
-				diagLiveTrimReplays: this.diagLiveTrimReplays,
-				errorRetryCount: this.rt.errorRetryCount,
-				consecutiveErrors: this.rt.consecutiveErrors,
-				ERROR_RETRY_MAX_CONSECUTIVE: this.config.maxConsecutiveErrors,
-				errorRetryHardStop: this.config.errorRetryHardStop,
-				activeAgents: this.activeAgents,
-				currentTurn: this.currentTurn,
-				currentModel: this.currentModel,
-				st,
-				repo,
-				di,
-			}),
-		);
-		const perfDiskMs = this.dashboard.lastWriteMs;
-
-		// S39: record a session heartbeat + token sample into the shared
-		// machine-wide index.sqlite so the dashboard can show a real-time
-		// stacked-memory graph across all active pi processes. Behind the
-		// material-change gate (this code only runs when sig changed). Non-fatal
-		// try/catch mirrors the recordPerfSample pattern below. Skip the token
-		// sample when lastCtxTokens is null (no context data yet).
-		try {
-			const repo = resolveRepoRoot(ctx?.cwd ?? this.currentStateDir) ?? this.currentStateDir;
-			recordSessionHeartbeat(
-				process.pid,
-				this.rt.sessionId,
-				repo,
-				this.currentStateDir,
-				this.lastCtxWindow || 0,
-			);
-			if (this.lastCtxTokens != null) {
-				appendTokenSample(
-					this.rt.sessionId,
-					repo,
-					this.lastCtxTokens,
-					this.lastCtxPercent ?? 0,
-					this.lastCtxWindow || 0,
-					join(this.currentStateDir, "events.log"),
-				);
-			}
-		} catch {
-			/* non-fatal: S39 monitoring must never block the snapshot path */
-		}
-
-		// Live stats widget above the editor
-		if (ctx) {
-			// S31: game-mode state — fetched before the widget computation so the
-			// pure function gets a plain value rather than another callback.
-			const gs = this.getCachedGameState();
-			// S34: derive the level-up flare from the turn count. This side-effect
-			// check must happen BEFORE computeMegaSnapshot so the flare and the
-			// ambient effect are armed for the current frame.
-			const curLevel = this.getTurnLevel();
-			if (curLevel > this.lastLevel) {
-				this.levelUpFlare = true;
-				// v0.8.3: arm a pulse border effect to celebrate the level-up.
-				this.setEffect("pulse", "accent", 1500);
-			}
-			// ── gather widget data (computed per snapshot, rendered per frame) ────
-			const modelSnap = latestModelSnapshot(this.currentStateDir);
-			const _snapResult = computeMegaSnapshot({
-				lastCtxTokens: this.lastCtxTokens,
-				lastCtxWindow: this.lastCtxWindow,
-				lastCtxPercent: this.lastCtxPercent,
-				activeAgents: this.activeAgents,
-				currentTurn: this.currentTurn,
-				statusKey: this.statusKey,
-				st,
-				repo,
-				rtTokensSaved: this.rt.tokensSaved,
-				lastCompactAt: this.rt.lastCompactAt,
-				ticker: this.ticker,
-				lastWhy: this.lastWhy,
-				tierTrace: this.tierTrace,
-				pulsing: this.pulsing,
-				getCachedGameState: () => gs,
-				getTurnLevel: () => this.getTurnLevel(),
-				embedderName: () => this.embedderName(),
-				driftStatus: () => this.driftStatus(),
-				megaCacheFlare: this.megaCacheFlare,
-				megaCacheFlarePct: this.megaCacheFlarePct,
-				levelUpFlare: this.levelUpFlare,
-				achievementFlare: this.achievementFlare,
-				achievementFlareTitles: this.achievementFlareTitles,
-				activeEffect: this.activeEffect,
-				lastActivityAt: this.lastActivityAt,
-				pressureBand: this.pressureBand,
-				configTier: this.config.tier,
-				ready,
-				armed,
-				modelSnap,
-			});
-			this.widgetData = _snapResult.widgetData;
-			// S33: consume the flare after copying it into widgetData so it fires
-			// for exactly one render cycle (the gag flares once, then clears).
-			this.megaCacheFlare = false;
-			this.megaCacheFlarePct = 0;
-
-			// S34: consume the level-up flare after one render cycle (mirrors the
-			// megaCacheFlare one-shot semantics), and advance lastLevel.
-			this.levelUpFlare = false;
-			this.lastLevel = curLevel;
-			// S35: consume the achievement-unlock flare after one render cycle
-			// (mirrors the megaCacheFlare/levelUpFlare one-shot semantics).
-			this.achievementFlare = false;
-			this.achievementFlareTitles = [];
-			// v0.8.3: expire the ambient border effect once its time window has
-			// elapsed. SEPARATE from the one-shot flares above (those are per-cycle
-			// consumes; activeEffect is time-windowed and cleared when Date.now()
-			// crosses startedAt + durationMs). The widget also defends this per-frame
-			// (effectBorderSgr returns '' once expired), so this is bookkeeping to
-			// free the slot and prevent a stale effect lingering between snapshots.
-			if (
-				this.activeEffect &&
-				Date.now() - this.activeEffect.startedAt >=
-					this.activeEffect.durationMs
-			) {
-				this.activeEffect = null;
-			}
-			// Auto-fit: register a factory so pi re-renders the panel at the REAL
-			// terminal width every frame (tui.columns), instead of guessing with
-			// process.stdout.columns. buildWidgetLines reads this.widgetData live.
-			this.renderWidget(ctx);
-		}
-		// v0.8.5: record the material-change signature computed at the top so the
-		// next snapshot() can skip this whole body when nothing material changed.
-		try {
-			recordPerfSample(this.currentStateDir, "db_recompute_ms", performance.now() - perfT0);
-			recordPerfSample(this.currentStateDir, "disk_write_ms", perfDiskMs);
-		} catch {
-			/* non-fatal: perf instrumentation never blocks the agent */
-		}
-		this.lastSnapshotSig = sig;
+		snapshotImpl(this, ctx);
 	}
 
 	/** Register the above-editor widget as a width-aware factory so pi re-renders
@@ -548,61 +349,6 @@ export class MegaRuntime {
 			}),
 			{ placement: "aboveEditor" },
 		);
-	}
-
-	/** v0.8.5: cheap material-change signature over live runtime fields (no
-	 *  SQLite). Two snapshots with the same signature produce identical
-	 *  dashboard.json + widgetData, so the 6 synchronous SQLite opens + the
-	 *  writeFileSync(dashboard.json) can be skipped. Built from in-memory state
-	 *  only; gameStateBump covers cross-process game_state edits (fs.watch) +
-	 *  in-process /mega-game writes (bumpGameState) + repo switches (bindRepo).
-	 *  The transient flare flags are included so a one-shot flare forces the
-	 *  recompute that renders (then clears) it for exactly one cycle. */
-	private materialSig(): string {
-		const rt = this.rt;
-		const ae = this.activeEffect;
-		return JSON.stringify([
-			this.lastCtxTokens, this.lastCtxPercent, this.lastCtxWindow,
-			this.activeAgents, this.currentTurn,
-			rt.compactCount, rt.tokensSaved, rt.dedupSkips, rt.dedupAttempts,
-			rt.recallInjections, rt.cacheHitTokens, rt.persistedThisSession,
-			rt.lastCheckpointId ?? null, rt.lastCompactedFrom, rt.lastCompactedTokens,
-			this.statusKey ?? null,
-			this.currentModel?.modelId ?? null, this.currentModel?.provider ?? null,
-			ae ? `${ae.type}:${ae.role}:${ae.startedAt}` : null,
-			this.gameStateBump,
-			this.megaCacheFlare, this.megaCacheFlarePct,
-			this.levelUpFlare, this.achievementFlare,
-			this.achievementFlareTitles.join("|"),
-			this.tierTrace ?? null, this.lastWhy ?? null, this.pulsing,
-			this.ticker.length,
-		]);
-	}
-
-	/** Active embedder name for the memory-store line (Trigram default / MiniLM). */
-	private embedderName(): string {
-		// MINILM_EMBEDDER flag lives in src/config/dedup.ts; read the same env var
-		// the embedder factory uses so the label matches what's actually running.
-		return process.env.MEGACOMPACT_MINILM === "true" ||
-			process.env.MEGACOMPACT_MINILM === "1"
-			? "MiniLM"
-			: "Trigram";
-	}
-
-	/** Cross-repo drift status (ok | warn), cached for 30s (opens the registry DB). */
-	private driftStatus(): "ok" | "warn" {
-		const now = Date.now();
-		if (this.driftCache && now - this.driftCache.at < 30_000)
-			return this.driftCache.status;
-		let status: "ok" | "warn" = "ok";
-		try {
-			const report = detectCrossRepoDrift();
-			status = report.totals.warn > 0 ? "warn" : "ok";
-		} catch {
-			status = "ok";
-		}
-		this.driftCache = { at: now, status };
-		return status;
 	}
 
 	setStatus(ctx: ExtensionContext, text: string | undefined): void {
@@ -737,12 +483,6 @@ export class MegaRuntime {
 	 *  the panel picks up theme/mode/toggle changes live. */
 	bumpGameState(): void {
 		bumpGameStateImpl(this);
-	}
-
-	/** S33: player level for game mode — floor(log2(turns+1))+1 (gentle).
-	 *  Defensive: non-finite/negative collapses to 1 (never NaN). */
-	private getTurnLevel(): number {
-		return turnLevel(this.currentTurn);
 	}
 
 	armMegaCacheFlare(peakPct: number): void {
