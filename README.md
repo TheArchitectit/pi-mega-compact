@@ -88,7 +88,7 @@ Testing guide: [`TESTER_GUIDE.md`](TESTER_GUIDE.md)
 
 ## License
 
-BSD-2-Clause
+BSD 3-Clause
 
 ## ☕ Support
 
