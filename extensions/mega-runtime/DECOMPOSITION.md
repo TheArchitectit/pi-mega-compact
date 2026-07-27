@@ -105,6 +105,54 @@ call `this.snapshot(ctx)`) are unchanged — the thin in-class delegate
 preserves the existing API. Verified: `tsc --noEmit` passes; full suite
 green (649 tests across 61 files).
 
+## Completed — Phase 2d: Maximal split of `runtime.ts` (~522 → ~437 lines, zero method bodies)
+
+The maximal split moves **every** remaining method body in `runtime.ts` into
+its own single-responsibility module, leaving the class as field declarations,
+the constructor, and 1-line delegates only. This completes the decomposition
+charter: no logic lives in the orchestrator file anymore.
+
+| New file | Content | Source of the code |
+|---|---|---|
+| `pressure-getters.ts` | `PressureContext` + `pressureImpl` / `effectiveThresholdImpl` / `pressureBandImpl` | moved verbatim from the `pressure` / `effectiveThreshold` / `pressureBand` getters |
+| `reset-runtime.ts` | `ResetRuntimeContext` + `resetRuntimeImpl(self, sessionId)` | moved verbatim from `resetRuntime()` |
+| `append-event.ts` | `AppendEventContext` + `appendEventImpl(self, event, fields)` | moved verbatim from `appendEvent()` |
+| `get-state-dir.ts` | `GetStateDirContext` + `getStateDirImpl(self)` | moved verbatim from `getStateDir()` |
+| `render-widget.ts` | `RenderWidgetContext` + `renderWidgetImpl(self, ctx)` | moved verbatim from `renderWidget()` |
+| `status.ts` | `SetStatusContext` + `setStatusImpl(self, ctx, text)` | moved verbatim from `setStatus()` |
+| `engine-view.ts` | `engineViewImpl(messages)` | moved verbatim from `engineView()` |
+| `game-state.ts` (+append) | `DisposeRuntimeContext` + `disposeRuntimeImpl(self)` | moved verbatim from `dispose()` (game-state.ts already owns the watcher context, so this lands there alongside `ensureGameStateWatcherImpl`) |
+
+**What moved / changed:**
+- `runtime.ts` import block rewritten: dropped `appendFileSync`/`mkdirSync`,
+  `STATUS_KEY`/`WIDGET_KEY`, `buildWidgetLines`, and
+  `pressureRatio`/`pressureFromPct`/`pressureBand`/`effectiveThresholdTokens`
+  (now consumed only in their respective modules); added imports of the 7 new
+  `*Impl` functions + `disposeRuntimeImpl`. `toEngineMessages` is kept
+  (`engineView`'s return type still references it); `normalizeSessionId` is kept
+  (the `rt` field initializer still uses it).
+- The big pressure doc comment moved to `pressure-getters.ts`; `runtime.ts`
+  keeps a one-line pointer comment per delegate.
+- `dispose()` delegates to `disposeRuntimeImpl` (in `game-state.ts`), which
+  composes `GameStateContext` + `PerfContext` and calls the existing
+  `disposePerf` — so `disposePerf` is no longer imported by `runtime.ts`.
+
+**Why maximal:** the soft `~500 line` doc-length target (CLAUDE.md §6) applies to
+source files too. `runtime.ts` at 522 lines was the only mega-runtime source
+file over the target; the split brings it to **437 lines** (delegates + fields +
+constructor only), with every new file ≤96 lines. The pattern (context-interface
++ free-function + thin-delegate) is the same one established in Phase 1
+(`effects.ts`/`game-state.ts`/`capture-model.ts`/`bind-repo.ts`/`perf.ts`) and
+extended in Phase 2b/2c (`runtime-helpers.ts`/`runtime-snapshot.ts`).
+
+Verified: `tsc --noEmit` passes; `npm run lint` (tsc + guardrails-scan +
+semantic-scan) green; `npm test` green (678 tests, 61 files, 0 failures);
+`python3 scripts/regression_check.py --all` green; 8-point structural audit
+green (line counts, no logic primitives left, 22 `Impl(this)` delegates, no
+`this.` in new files, each `*Impl` defined exactly once, git scope limited to
+the 2 modified + 7 new files, game-state.ts diff is purely additive, tsc clean).
+
+
 ### Deferred — effects wrappers
 
 The `armMegaCacheFlare` / `armAchievementFlare` / `setEffect` / `pushTicker`
