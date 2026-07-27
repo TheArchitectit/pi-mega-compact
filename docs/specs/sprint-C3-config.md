@@ -4,7 +4,7 @@
 **Focus:** Configuration management tab + Game Mode settings integration
 **Priority:** P1
 **Effort:** S (≈ ½ day)
-**Status:** PLANNED
+**Status:** DONE — shipped v0.8.14 (React dashboard parity release)
 **Depends on:** Sprint C2 (repos/metrics tabs)
 
 ---
@@ -13,9 +13,11 @@
 
 - Read `docs/AGENT_GUARDRAILS.md` + `skills/shared-prompts/four-laws.md` first.
 - Gate before commit:
+
   ```bash
   npm run build && npm run build:dashboard && npm test && npm run lint && python3 scripts/regression_check.py --all && node scripts/guardrails-scan.mjs
   ```
+
 - PREVENT-PI-004: all API calls use relative paths. No external network.
 - PREVENT-PI-004 annotation: PUT `/api/game-state` is annotated `// guardrails-allow PREVENT-PI-004: localhost dashboard settings (loopback-only)`.
 
@@ -30,6 +32,7 @@ Game mode settings (theme, TUI display, on/off) are only configurable via `/mega
 ## SCOPE BOUNDARY
 
 **IN SCOPE (may modify):**
+
 - `extensions/dashboard-client/src/tabs/ConfigTab.tsx` (NEW)
 - `extensions/dashboard-client/src/components/GameModeSettings.tsx` (NEW)
 - `extensions/dashboard-client/src/components/ConfigDisplay.tsx` (NEW) — read-only config.
@@ -38,6 +41,7 @@ Game mode settings (theme, TUI display, on/off) are only configurable via `/mega
 - `extensions/dashboard-client/src/api/client.ts` — add `putGameState()` + `fetchGameState()`.
 
 **OUT OF SCOPE:**
+
 - Server-side changes (game-state endpoints already exist from S32).
 - New game features.
 - `src/` modules.

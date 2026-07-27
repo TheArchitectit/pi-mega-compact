@@ -1,6 +1,6 @@
 # Sprint 39 — Real-time Multi-pi Stacked Memory Graph
 
-**Status**: PLANNED
+**Status**: DONE — shipped v0.8.18–v0.8.21 (Sessions tab, `session_heartbeats`, `token_samples`; `SessionsTab.tsx`)
 **Branch**: `feat/multi-pi-memory-graph`
 **Prereq**: v0.8.16 (S38 error-retry shipped; dashboard-server multi-repo aggregation + React client already exist).
 
@@ -69,24 +69,31 @@ React client (dashboard-client, recharts)
 ## Execution (commits, one per step)
 
 ### Step 0 — Verify the already-written 400 context-overflow fix (FIRST, separate commit)
+
 The OpenRouter "maximum context length ... requires at least N tokens ... reduce your input" 400 error did not match the existing S38.8 `context-overflow` regex (`too long|context window|...`) and fell through to the transient branch, firing 5 blind retry nudges that re-submitted the same oversized prompt → re-400 → busy-loop. The fix (already in the working tree, unverified):
+
 - `extensions/mega-events/error-classifier.ts` — broaden the regex to also match `maximum context length|context length exceeded|requires at least \d+ tokens|reduce your input`.
 - `extensions/mega-compact-s38.test.ts` — 3 regression tests with the exact user-facing error string.
 - Gate: `npm run build` → `node --test dist/extensions/mega-compact-s38.test.js` → `node scripts/guardrails-scan.mjs` → `python3 scripts/regression_check.py --all`. Commit as `fix(error-classifier): broaden context-overflow regex for OpenRouter max-context 400`.
 
 ### Step 1 — Shared time-series store (`src/store/sqlite/global-index.ts`)
+
 Extend `openIndexStore` schema with two new tables + indexes. Add helpers: `recordSessionHeartbeat`, `appendTokenSample`, `pruneStaleSessions`, `pruneTokenSamples`, `readActiveSessions`, `readSessionTimeseries`, `clearSessionHeartbeat`. All parameterized; mirror the `upsertRepoRegistry` / `markInjectedGlobal` conventions.
 
 ### Step 2 — Runtime hook (`extensions/mega-runtime/state.ts`)
+
 Inside `snapshot()`, right after `this.dashboard.snapshot({...})` (line ~449), behind the existing material-change signature gate (`this.lastSnapshotSig === sig` already computed at 399-403 — no new throttle): call `recordSessionHeartbeat` + `appendTokenSample` with `process.pid`, `this.rt.sessionId`, `resolveRepoRoot(ctx.cwd) ?? this.currentStateDir`, `this.lastCtxTokens/Percent/Window`. try/catch non-fatal. Skip sample when `lastCtxTokens == null`.
 
 ### Step 3 — Server endpoints (`extensions/dashboard-server/server.ts` + api-contracts)
+
 `GET /api/sessions` (active list + prune), `GET /api/sessions/timeseries?minutes=N` (recharts shape + total + stable per-session colors, minutes clamped [1,1440]). Extend `overlayCurrentRepo` → `overlayActiveSessions` for all active sessions (not just launcher). New contracts `ActiveSession` / `SessionsResponse` / `SessionTimeseriesResponse` / `SessionSeries` in `api-contracts/` + `endpoints.ts` registry.
 
 ### Step 4 — Client: recharts + Sessions tab (`extensions/dashboard-client/`)
+
 Add `recharts` dep. New `SessionsMemoryChart` (stacked `<Area>` + total `<Line>` + `<Tooltip>` + `<Legend>` + `<ResponsiveContainer>`), `ActiveSessionsTable` (per-session rows + sparkline), `SessionsTab` (2s poll + SSE, window selector 5/15/30/60). Wire `sessions` tab into `App.tsx`. `fetchSessions` + `fetchSessionTimeseries` in `api/client.ts`. Styles in `src/styles/`.
 
 ### Step 5 — SSE real-time push (polish, low effort)
+
 `appendTokenSample` also appends a `{type:'session_sample', ts, sessionId, tokens, percent}` line to the launcher repo's `events.log`. The existing `/api/events` SSE tail streams it for free → chart updates instantly between polls.
 
 ---

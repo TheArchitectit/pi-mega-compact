@@ -4,7 +4,7 @@
 **Focus:** Surface per-agent and per-sub-agent token usage + status in the mega-compact widget and dashboard.
 **Priority:** P2
 **Effort:** L (≈3 days, gated on P0 research)
-**Status:** DRAFT (plan) — does NOT modify code.
+**Status:** DONE — shipped v0.7.1 (widget "Agent telemetry group"; commit 229c6e8)
 **Depends on:** Sprint 26 (rich cost card), S24 (unified pressure), S25 (cross-repo + model snapshots), mega-runtime widget (S26 full-width panel).
 
 ---

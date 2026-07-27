@@ -4,7 +4,7 @@
 **Focus:** Secure remote dashboard access via Tailscale with auth and CSRF protection
 **Priority:** P2
 **Effort:** M (≈ 1 day)
-**Status:** PLANNED
+**Status:** DONE — shipped v0.8.14 (Tailscale remote access + CSRF protection)
 **Depends on:** Sprint D3 (docs/release)
 
 ---
@@ -13,9 +13,11 @@
 
 - Read `docs/AGENT_GUARDRAILS.md` + `skills/shared-prompts/four-laws.md` first.
 - Gate before commit:
+
   ```bash
   npm run build && npm run build:dashboard && npm test && npm run lint && python3 scripts/regression_check.py --all && node scripts/guardrails-scan.mjs
   ```
+
 - PREVENT-PI-004: Tailscale access is localhost/VPN only. No public internet exposure.
 - PREVENT-003: no hardcoded credentials. Auth tokens are generated per-session.
 - Security review required before merge.
@@ -31,6 +33,7 @@ The dashboard only works on localhost. Users running pi on a remote machine (SSH
 ## SCOPE BOUNDARY
 
 **IN SCOPE (may modify):**
+
 - `extensions/dashboard-server/server.ts` — bind to `0.0.0.0` when `MEGACOMPACT_DASHBOARD_BIND=ts` (Tailscale interface detection).
 - `extensions/dashboard-server/auth.ts` (NEW) — token-based auth for remote access.
 - `extensions/dashboard-server/csrf.ts` (NEW) — CSRF token generation + validation.
@@ -41,6 +44,7 @@ The dashboard only works on localhost. Users running pi on a remote machine (SSH
 - `README.md` — add Tailscale setup instructions.
 
 **OUT OF SCOPE:**
+
 - Public internet access.
 - OAuth/OIDC integration.
 - `src/` modules.

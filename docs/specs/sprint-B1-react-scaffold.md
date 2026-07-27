@@ -4,7 +4,7 @@
 **Focus:** Add React + Vite build pipeline; create shell app with routing, layout, SSE hook
 **Priority:** P0
 **Effort:** M (≈ 1 day)
-**Status:** PLANNED
+**Status:** DONE — shipped v0.8.14 (React dashboard parity release)
 **Depends on:** Sprint A1 (API contracts)
 
 ---
@@ -13,9 +13,11 @@
 
 - Read `docs/AGENT_GUARDRAILS.md` + `skills/shared-prompts/four-laws.md` first.
 - Gate before commit:
+
   ```bash
   npm run build && npm test && npm run lint && python3 scripts/regression_check.py --all && node scripts/guardrails-scan.mjs
   ```
+
 - PREVENT-PI-004: React dev server runs on localhost only. Production build is static files served by the existing Node HTTP server. No external network calls.
 - PREVENT-PI-004 annotation: every `fetch()` in client code must target `window.location.origin` or relative paths (loopback-only).
 - `src/` remains pi-agnostic. React code goes in `extensions/dashboard-client/`.
@@ -33,6 +35,7 @@ The dashboard is a 1072-line inline HTML template (`html.ts`) with embedded `<sc
 ## SCOPE BOUNDARY
 
 **IN SCOPE (may modify):**
+
 - `extensions/dashboard-client/` (NEW directory) — React app source.
   - `package.json` — workspace or sub-project with React, Vite, TypeScript.
   - `vite.config.ts` — build config; output to `extensions/dashboard-client/dist/`.
@@ -49,6 +52,7 @@ The dashboard is a 1072-line inline HTML template (`html.ts`) with embedded `<sc
 - `package.json` (root) — add `build:dashboard` script.
 
 **OUT OF SCOPE:**
+
 - Tab content components (Sprint C1+).
 - `src/` modules.
 - Tailscale/auth (Sprint T1).
@@ -81,6 +85,7 @@ The dashboard is a 1072-line inline HTML template (`html.ts`) with embedded `<sc
 ```
 
 **Key details:**
+
 - Client builds to `extensions/dashboard-client/dist/` (static files).
 - Server checks `existsSync(join(here, "../dashboard-client/dist/index.html"))` at startup.
 - SSE hook uses native `EventSource` (no polyfill needed for modern browsers).

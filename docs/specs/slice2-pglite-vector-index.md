@@ -4,7 +4,7 @@
 **Parent plan:** `.claude/plans/backend-pglite-sqlite.md` (Slice 2 of 3)
 **Depends on:** Slice 1 (node:sqlite primary store) ✅ committed
 **Priority:** P1 (delivers the original pgvector HNSW vision; unblocks cross-repo recall)
-**Status:** PLANNED
+**Status:** DONE — shipped v0.4.25 (PGlite + pglite-pgvector async HNSW index at `~/.pi/mega-compact-vector`; `src/store/vectorIndex.ts`)
 
 ---
 
@@ -50,6 +50,7 @@ Today `VectorStore.search()` is an O(n) linear cosine scan over one session's `e
 ## SCOPE
 
 **IN SCOPE**
+
 - `src/store/vectorIndex.ts` (new): async PGlite wrapper — `initVectorIndex()`, `upsertEmbedding()`, `searchAsync()`, `rebuildFromSqlite()`, `closeVectorIndex()`. Lazy singleton init.
 - `src/vectorStore.ts`: after a NEW checkpoint is stored in `add()`, best-effort fire the async `upsertEmbedding` (do NOT await — schedule via microtask/queue, swallow errors). Add async `searchAsync(query, k, {repoId?})` method that delegates to the index, with sync-scan fallback.
 - `src/recall.ts`: optional `searchAsync` path for cross-repo recall (bonus; the sync `search` remains default). Bounded + inline-deduped exactly as Fix C.
@@ -57,6 +58,7 @@ Today `VectorStore.search()` is an O(n) linear cosine scan over one session's `e
 - Test: `src/store/vectorIndex.test.ts` — proves HNSW NN across two synthetic repos/sessions, and proves graceful degradation when the index is disabled.
 
 **OUT OF SCOPE**
+
 - Making the sync store async (explicitly forbidden).
 - Removing the sync linear scan (stays the default).
 - Slice 3 packaging polish (README/CLAUDE dual-backend docs, `.npmrc` review) — separate slice. Ship via npm ONLY (no tarball/symlink — npm is the sole cross-device path, per memory `pi-npm-workflow`).
@@ -67,7 +69,9 @@ Today `VectorStore.search()` is an O(n) linear cosine scan over one session's `e
 ## EXECUTION
 
 ### 1. `src/store/vectorIndex.ts` (new)
+
 - Lazy singleton: `let db: PGlite | undefined`. `initVectorIndex()` — `import`s PGlite + pgvector extension, opens `~/.pi/mega-compact/vector.pglite`, `CREATE EXTENSION IF NOT EXISTS vector`, creates table + HNSW index if absent:
+
   ```sql
   CREATE TABLE IF NOT EXISTS vector_index (
     repo_id     TEXT NOT NULL,
@@ -79,23 +83,28 @@ Today `VectorStore.search()` is an O(n) linear cosine scan over one session's `e
   CREATE INDEX IF NOT EXISTS vector_index_hnsw
     ON vector_index USING hnsw (embedding vector_cosine_ops);
   ```
+
 - `upsertEmbedding(repoId, sessionId, checkpointId, vector)` — parameterized `INSERT ... ON CONFLICT DO UPDATE`. Vector serialized to pgvector literal `[a,b,...]`. **Dimension guard**: reject/skip vectors whose length ≠ 512 (the TrigramEmbedder default) so a BYO-embedder dim mismatch degrades rather than corrupts the index.
 - `searchAsync(queryVec, k, {repoId?})` — `SELECT ... ORDER BY embedding <=> $1 LIMIT $2`, with `WHERE repo_id = $3` when `repoId` given. Returns `{repoId, sessionId, checkpointId, score}[]` (score = `1 - distance`).
 - `rebuildFromSqlite()` — enumerate repo state dirs (reuse the multi-repo index helper), read `embedding_blob` rows, bulk upsert. For backfill + DR rebuild.
 - All wrapped: init failure sets a `disabled` flag + logs once via `monitoring.logDecision`; subsequent calls no-op. `MEGACOMPACT_PGLITE_DISABLED=true` forces disabled.
 
 ### 2. `src/vectorStore.ts`
+
 - In `add()`, at the "genuinely new checkpoint stored" tail (after `upsertCheckpoint`), fire best-effort:
   `void indexUpsertBestEffort(this.repoId, sessionId, checkpointId, embedding)` — a helper that calls `initVectorIndex().then(upsert).catch(logOnce)`. **Never awaited**, never throws into the sync path. `repoId` derived from `stateDir` (stable hash / repo path — reuse the multi-repo index's repo key).
 - Add `async searchAsync(query, k = 3, opts?: {repoId?}): Promise<SearchHit[]>` — embeds query (sync), calls `vectorIndex.searchAsync`, hydrates `StoredCheckpoint`s from node:sqlite by (repo,session,cpId). On any failure → fall back to the sync `search(sessionId, query, k)` for the current repo. MMR-dedupe the merged set (reuse `mmrRerank`).
 
 ### 3. `src/recall.ts`
+
 - Add an optional `crossRepo?: boolean` to `recallAndInline`; when set, use `searchAsync` (await) instead of sync `search`. Default path unchanged (sync, per-session). Keep Fix C bounds (`recallMaxTokens`) + inline window dedupe.
 
 ### 4. `package.json`
+
 - deps: `@electric-sql/pglite`, `@electric-sql/pglite-pgvector`. Version → 0.4.25. (Both are WASM/JS, no install script — survive pi's block; no `.npmrc` change needed.)
 
 ### 5. Tests — `src/store/vectorIndex.test.ts`
+
 - Seed two repo_ids × two sessions with distinct embeddings; assert `searchAsync(q)` returns the nearest across repos, and `searchAsync(q, k, {repoId})` filters to one repo.
 - Assert graceful degradation: with `MEGACOMPACT_PGLITE_DISABLED=true`, `VectorStore.searchAsync` returns the same shape via sync fallback and `add()` still succeeds.
 - Assert dimension guard skips a non-512 vector without throwing.

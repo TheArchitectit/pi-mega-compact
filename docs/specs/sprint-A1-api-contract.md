@@ -4,7 +4,7 @@
 **Focus:** Formalize all dashboard HTTP endpoints into typed TypeScript contracts
 **Priority:** P0 (foundation for React frontend)
 **Effort:** S (≈ ½ day)
-**Status:** PLANNED
+**Status:** DONE — shipped v0.8.14 (React dashboard parity release)
 **Depends on:** Existing `extensions/dashboard-server/server.ts` endpoints
 
 ---
@@ -13,9 +13,11 @@
 
 - Read `docs/AGENT_GUARDRAILS.md` + `skills/shared-prompts/four-laws.md` first.
 - Gate before commit:
+
   ```bash
   npm run build && npm test && npm run lint && python3 scripts/regression_check.py --all && node scripts/guardrails-scan.mjs
   ```
+
 - PREVENT-PI-004: contract types are pure TypeScript — zero network. No runtime fetch/http.
 - PREVENT-011: all interfaces explicitly typed, no `any`.
 - No feature creep: only files in SCOPE below.
@@ -33,11 +35,13 @@ The dashboard server (`extensions/dashboard-server/server.ts`, 607 lines) serves
 ## SCOPE BOUNDARY
 
 **IN SCOPE (may modify):**
+
 - `extensions/dashboard-server/api-contracts.ts` (NEW) — all request/response interfaces, endpoint constants, status codes.
 - `extensions/dashboard-server/types.ts` — refactor: re-export from `api-contracts.ts` where shapes overlap; keep backward compat.
 - `extensions/dashboard-server/api-contracts.test.ts` (NEW) — compile-time structural tests (satisfies checks) + runtime JSON schema validation.
 
 **OUT OF SCOPE:**
+
 - Server handler changes (existing behavior preserved).
 - React/frontend code (Sprint B1+).
 - New endpoints not already served.
@@ -65,6 +69,7 @@ The dashboard server (`extensions/dashboard-server/server.ts`, 607 lines) serves
 ```
 
 **Key details:**
+
 - `EndpointDef<M, Req, Res>` = `{ method: M; path: string; query?: Req; response: Res; description: string }`.
 - SSE endpoint typed as `{ type: 'sse'; path: string; event: string; data: SseEvent }`.
 - All numeric fields documented with units (tokens, seconds, bytes, percent).

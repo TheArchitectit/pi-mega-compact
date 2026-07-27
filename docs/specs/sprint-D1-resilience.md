@@ -4,7 +4,7 @@
 **Focus:** Error boundaries, offline detection, retry logic, stale data indicators
 **Priority:** P1
 **Effort:** M (≈ 1 day)
-**Status:** PLANNED
+**Status:** DONE — shipped v0.8.14 (React dashboard parity release)
 **Depends on:** Sprint C3 (config tab)
 
 ---
@@ -13,9 +13,11 @@
 
 - Read `docs/AGENT_GUARDRAILS.md` + `skills/shared-prompts/four-laws.md` first.
 - Gate before commit:
+
   ```bash
   npm run build && npm run build:dashboard && npm test && npm run lint && python3 scripts/regression_check.py --all && node scripts/guardrails-scan.mjs
   ```
+
 - PREVENT-PI-004: all API calls use relative paths. No external network.
 - SEMANTIC-001: all async paths have `.catch()` / try-catch.
 
@@ -30,6 +32,7 @@ The dashboard has no resilience patterns. When the server is down, requests fail
 ## SCOPE BOUNDARY
 
 **IN SCOPE (may modify):**
+
 - `extensions/dashboard-client/src/hooks/useApi.ts` — add retry logic, stale detection.
 - `extensions/dashboard-client/src/hooks/useSSE.ts` — reconnect with exponential backoff.
 - `extensions/dashboard-client/src/components/OfflineBanner.tsx` (NEW)
@@ -41,6 +44,7 @@ The dashboard has no resilience patterns. When the server is down, requests fail
 - `extensions/dashboard-client/src/App.tsx` — integrate OfflineBanner.
 
 **OUT OF SCOPE:**
+
 - Server-side changes.
 - New features beyond resilience.
 - `src/` modules.
