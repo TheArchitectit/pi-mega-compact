@@ -15,7 +15,7 @@
  */
 
 import { recall as searchRecall } from "./engine.js";
-import type { SearchHit, VectorStore } from "./vectorStore.js";
+import { vectorWasInjected, vectorMarkInjected, type SearchHit, type VectorStore, vectorSearchAsync } from "./vectorStore.js";
 import { estimateBlockTokens } from "./tokens.js";
 import { defaultEmbedder, cosineSimilarity } from "./embedder.js";
 
@@ -107,7 +107,7 @@ export function formatRecallBlock(hits: SearchHit[]): string {
  */
 export function recallAndInline(
   opts: RecallInjectOptions,
-  store: Pick<VectorStore, "search" | "wasInjected" | "markInjected">,
+  store: VectorStore,
 ): RecallInjectResult {
   // ── S27 Recall Demotion ─────────────────────────────────────────────
   //
@@ -134,7 +134,7 @@ export function recallAndInline(
 
   const { hits } = searchRecall(
     { sessionId: opts.sessionId, query: opts.query, limit, skipInjected: false },
-    store as VectorStore,
+    store,
   );
 
   // Precompute live-window embeddings once for inline dedupe (Fix C). Trigram
@@ -152,7 +152,7 @@ export function recallAndInline(
   let blockTokens = 0;
 
   for (const h of hits) {
-    if (skip && store.wasInjected(opts.sessionId, h.checkpoint.checkpointId)) continue;
+    if (skip && vectorWasInjected(store, opts.sessionId, h.checkpoint.checkpointId)) continue;
 
     // Inline dedupe: skip a hit already resident in the live window (Fix C).
     if (doWindowDedupe && liveEmbeddings.length > 0) {
@@ -168,7 +168,7 @@ export function recallAndInline(
     parts.push(part);
     toInject.push(h);
     blockTokens += partTokens;
-    store.markInjected(opts.sessionId, h.checkpoint.checkpointId);
+    vectorMarkInjected(store, opts.sessionId, h.checkpoint.checkpointId);
   }
 
   const block = parts.join("\n");
@@ -285,7 +285,7 @@ export async function recallMemoriesAndInline(
  */
 export async function recallAndInlineAsync(
   opts: RecallInjectOptions & { crossRepo?: boolean; repoId?: string },
-  store: Pick<VectorStore, "searchAsync" | "wasInjected" | "markInjected">,
+  store: VectorStore,
 ): Promise<RecallInjectResult> {
   const limit = opts.limit ?? 3;
   const skip = opts.skipInjected ?? true;
@@ -295,7 +295,7 @@ export async function recallAndInlineAsync(
 
   let hits: SearchHit[] = [];
   try {
-    hits = await store.searchAsync(opts.sessionId, opts.query, limit, {
+    hits = await vectorSearchAsync(store, opts.sessionId, opts.query, limit, {
       crossRepo: opts.crossRepo,
       repoId: opts.repoId,
     });
@@ -314,7 +314,7 @@ export async function recallAndInlineAsync(
   let blockTokens = 0;
 
   for (const h of hits) {
-    if (skip && store.wasInjected(opts.sessionId, h.checkpoint.checkpointId)) continue;
+    if (skip && vectorWasInjected(store, opts.sessionId, h.checkpoint.checkpointId)) continue;
     // S18: machine-wide injected-set — a foreign checkpoint already injected
     // (in any session) is never re-injected. Only applies to cross-repo hits
     // (same-repo hits have no repoId and are handled by the per-session set).
@@ -336,7 +336,7 @@ export async function recallAndInlineAsync(
     parts.push(part);
     toInject.push(h);
     blockTokens += partTokens;
-    store.markInjected(opts.sessionId, h.checkpoint.checkpointId);
+    vectorMarkInjected(store, opts.sessionId, h.checkpoint.checkpointId);
     // S18: record the cross-repo injection machine-wide so it's not re-injected
     // by a later recall (same or different session).
     if (opts.globalIndexDir && h.repoId) {

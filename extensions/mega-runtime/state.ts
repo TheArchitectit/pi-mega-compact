@@ -14,7 +14,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { join } from "node:path";
 import { appendFileSync, mkdirSync } from "node:fs";
-import { VectorStore } from "../../src/vectorStore.js";
+import { VectorStore, vectorStats, vectorRepoStats, vectorDataInvariant } from "../../src/vectorStore.js";
 import { toEngineMessages } from "../../src/adapt.js";
 import { normalizeSessionId } from "../../src/store.js";
 import { Logger } from "../../src/log.js";
@@ -365,8 +365,8 @@ export class MegaRuntime {
 		// never break the per-repo compaction path. Runs only on repo-switch
 		// (this branch), so it's infrequent — not per-context-event.
 		try {
-			const repo = this.store.repoStats();
-			const di = this.store.dataInvariant();
+			const repo = vectorRepoStats(this.store);
+			const di = vectorDataInvariant(this.store);
 			const root = key !== dir ? key : (resolveRepoRoot(cwd ?? dir) ?? dir);
 			upsertRepoRegistry({
 				repoRoot: root,
@@ -404,9 +404,9 @@ export class MegaRuntime {
 			return;
 		}
 		const perfT0 = performance.now();
-		const st = this.store.stats(this.rt.sessionId);
-		const repo = this.store.repoStats();
-		const di = this.store.dataInvariant();
+		const st = vectorStats(this.store, this.rt.sessionId);
+		const repo = vectorRepoStats(this.store);
+		const di = vectorDataInvariant(this.store);
 		// Live + store-wide cache-hit / compaction counters for the dashboard.
 		const ds = getDedupStats(this.currentStateDir);
 		const cacheHitsTotal = ds.deduped + getRecallInjected(this.currentStateDir);
@@ -555,7 +555,7 @@ export class MegaRuntime {
 				total: getCompactCount(this.currentStateDir),
 			},
 			timeSaved: {
-				compact: { sessionSec: sec(this.rt.tokensSaved), totalSec: sec(this.store.repoStats().tokensSaved) },
+				compact: { sessionSec: sec(this.rt.tokensSaved), totalSec: sec(vectorRepoStats(this.store).tokensSaved) },
 				cacheHit: { sessionSec: sec(this.rt.cacheHitTokens), totalSec: sec(cacheHitsTotalTokens) },
 			},
 			model,

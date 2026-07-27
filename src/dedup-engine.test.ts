@@ -17,7 +17,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { compactSession } from "./engine.js";
-import { VectorStore } from "./vectorStore.js";
+import { VectorStore, vectorList, vectorStats, vectorWasInjected, vectorMarkInjected, vectorSearch } from "./vectorStore.js";
 import { extractiveSummarize } from "./extractive.js";
 import { estimateSessionTokens, estimateMessageTokens } from "./tokens.js";
 import { autoCompactCheck } from "./compact.js";
@@ -181,7 +181,7 @@ describe("Dedupe Levels", () => {
     const r2 = compactFull(s, SESS, [makeMsg("user", region)]);
     assert.equal(r2.deduped, true);
     assert.equal(r2.checkpointId, r1.checkpointId);
-    assert.equal(s.list(SESS).length, 1);
+    assert.equal(vectorList(s,SESS).length, 1);
   });
 
   it("L0 only: distinct content stored twice creates two checkpoints", () => {
@@ -194,7 +194,7 @@ describe("Dedupe Levels", () => {
     assert.equal(r1.deduped, false);
     assert.equal(r2.deduped, false);
     assert.notEqual(r1.checkpointId, r2.checkpointId);
-    assert.equal(s.list(SESS).length, 2);
+    assert.equal(vectorList(s,SESS).length, 2);
   });
 
   it("L1 only: one-word variants collapse; major rewrites do not", () => {
@@ -209,11 +209,11 @@ describe("Dedupe Levels", () => {
 
     const r2 = s.add({ sessionId: SESS, summary: "migration", regionText: variant, timestamp: 2 });
     assert.equal(r2.deduped, true, "one-word variant should be collapsed by L1");
-    assert.equal(s.list(SESS).length, 1);
+    assert.equal(vectorList(s,SESS).length, 1);
 
     const r3 = s.add({ sessionId: SESS, summary: "frontend", regionText: rewrite, timestamp: 3 });
     assert.equal(r3.deduped, false, "major rewrite should not be collapsed by L1");
-    assert.equal(s.list(SESS).length, 2);
+    assert.equal(vectorList(s,SESS).length, 2);
   });
 
   it("L2 only: semantic paraphrases collapse; unrelated topics do not", () => {
@@ -233,11 +233,11 @@ describe("Dedupe Levels", () => {
 
     const r2 = s.add({ sessionId: SESS, summary: "auth paraphrase", regionText: paraphrase, timestamp: 2 });
     assert.equal(r2.deduped, true, "semantic paraphrase should be collapsed by L2");
-    assert.equal(s.list(SESS).length, 1);
+    assert.equal(vectorList(s,SESS).length, 1);
 
     const r3 = s.add({ sessionId: SESS, summary: "frontend", regionText: unrelated, timestamp: 3 });
     assert.equal(r3.deduped, false, "unrelated topic should not be collapsed by L2");
-    assert.equal(s.list(SESS).length, 2);
+    assert.equal(vectorList(s,SESS).length, 2);
   });
 
   it("All tiers disabled: every store.add() with different region text creates a distinct checkpoint", () => {
@@ -254,7 +254,7 @@ describe("Dedupe Levels", () => {
     assert.equal(r3.deduped, false);
     assert.notEqual(r1.checkpoint.checkpointId, r2.checkpoint.checkpointId);
     assert.notEqual(r2.checkpoint.checkpointId, r3.checkpoint.checkpointId);
-    assert.equal(s.list(SESS).length, 3);
+    assert.equal(vectorList(s,SESS).length, 3);
   });
 
   it("Combined L0+L1+L2: layered behavior exact -> near -> semantic", () => {
@@ -284,8 +284,8 @@ describe("Dedupe Levels", () => {
       okReason(r4.dedupReason, ["contentSimilarity", "l1MinHash"]);
     }
 
-    assert.ok(s.list(SESS).length >= 1, "layered dedup keeps at least one checkpoint");
-    assert.ok(s.list(SESS).length <= 4, "layered dedup should not explode to many checkpoints");
+    assert.ok(vectorList(s,SESS).length >= 1, "layered dedup keeps at least one checkpoint");
+    assert.ok(vectorList(s,SESS).length <= 4, "layered dedup should not explode to many checkpoints");
   });
 });
 
@@ -354,18 +354,18 @@ describe("Compression / Store Stats", () => {
     const dup = "duplicate topic about payment gateway integration";
     compactFull(s, SESS, [makeMsg("user", dup)], 1);
 
-    const statsBefore = s.stats(SESS);
+    const statsBefore = vectorStats(s,SESS);
     assert.ok(statsBefore.checkpointCount >= 1, "checkpointCount should be positive");
     assert.ok(statsBefore.totalTokenEstimate >= 0, "totalTokenEstimate should be non-negative");
     assert.equal(statsBefore.dedupHitRate, 0, "no injections yet => dedupHitRate 0");
     assert.equal(statsBefore.injectedCount, 0, "no injections yet => injectedCount 0");
 
-    const hits = s.search(SESS, "payment gateway", 5);
+    const hits = vectorSearch(s, SESS, "payment gateway", 5);
     assert.ok(hits.length > 0, "should find the stored checkpoint");
     const cpId = hits[0].checkpoint.checkpointId;
 
-    s.markInjected(SESS, cpId);
-    const statsAfter = s.stats(SESS);
+    vectorMarkInjected(s,SESS, cpId);
+    const statsAfter = vectorStats(s,SESS);
     assert.equal(statsAfter.injectedCount, 1, "injectedCount tracks markInjected");
     if (statsAfter.checkpointCount > 0) {
       assert.ok(
@@ -387,10 +387,10 @@ describe("Compression / Store Stats", () => {
     compactFull(s, SESS, [makeMsg("user", "unique region for hit-rate measurement variant")], 1);
 
     // Mark the first as injected.
-    const first = s.search(SESS, base, 1)[0]?.checkpoint.checkpointId;
-    if (first) s.markInjected(SESS, first);
+    const first = vectorSearch(s, SESS, base, 1)[0]?.checkpoint.checkpointId;
+    if (first) vectorMarkInjected(s,SESS, first);
 
-    const stats = s.stats(SESS);
+    const stats = vectorStats(s,SESS);
     assert.ok(stats.checkpointCount >= 1);
     assert.ok(
       stats.dedupHitRate > 0 || stats.checkpointCount === 1,
@@ -444,16 +444,16 @@ describe("Recall & Dedup Sentinel", () => {
     const region = "manual sentinel tracking without recallAndInline";
     compactFull(s, SESS, [makeMsg("user", region)]);
 
-    const hits = s.search(SESS, "manual sentinel", 3);
+    const hits = vectorSearch(s, SESS, "manual sentinel", 3);
     assert.ok(hits.length > 0, "search should return checkpoint");
     const cpId = hits[0].checkpoint.checkpointId;
-    assert.equal(s.wasInjected(SESS, cpId), false, "not yet injected");
+    assert.equal(vectorWasInjected(s,SESS, cpId), false, "not yet injected");
 
-    s.markInjected(SESS, cpId);
-    assert.equal(s.wasInjected(SESS, cpId), true, "markInjected recorded");
+    vectorMarkInjected(s,SESS, cpId);
+    assert.equal(vectorWasInjected(s,SESS, cpId), true, "markInjected recorded");
 
-    const hits2 = s.search(SESS, "manual sentinel", 3).filter(
-      (h) => !s.wasInjected(SESS, h.checkpoint.checkpointId),
+    const hits2 = vectorSearch(s, SESS, "manual sentinel", 3).filter(
+      (h) => !vectorWasInjected(s,SESS, h.checkpoint.checkpointId),
     );
     assert.equal(hits2.length, 0, "filtered search excludes injected checkpoint");
   });
@@ -469,7 +469,7 @@ describe("Edge Cases", () => {
     const r = compactSession({ sessionId: SESS, messages: [], keepFrom: 0 }, s);
     assert.equal(r.skipped, true);
     assert.equal(r.summary, "");
-    assert.equal(s.list(SESS).length, 0);
+    assert.equal(vectorList(s,SESS).length, 0);
   });
 
   it("single message with keepFrom=0 returns skipped", () => {
@@ -479,7 +479,7 @@ describe("Edge Cases", () => {
       s,
     );
     assert.equal(r.skipped, true);
-    assert.equal(s.list(SESS).length, 0);
+    assert.equal(vectorList(s,SESS).length, 0);
   });
 
   it("keepFrom at messages.length compacts all prior messages (verified behavior)", () => {
@@ -491,7 +491,7 @@ describe("Edge Cases", () => {
     const r = compactSession({ sessionId: SESS, messages, keepFrom: messages.length }, s);
     assert.equal(r.skipped, false);
     assert.ok(r.checkpointId);
-    assert.equal(s.list(SESS).length, 1);
+    assert.equal(vectorList(s,SESS).length, 1);
   });
 
   it("unicode and emoji messages store and retrieve intact", () => {
@@ -501,7 +501,7 @@ describe("Edge Cases", () => {
       "日本語テキスト 日本語テキスト 👍🔥";
     const r = compactFull(s, SESS, [makeMsg("user", text)], 1);
     assert.equal(r.skipped, false);
-    const stored = s.list(SESS)[0];
+    const stored = vectorList(s,SESS)[0];
     assert.ok(stored);
     const recovered = Buffer.from(stored.compressedOriginal ?? Buffer.alloc(0));
     assert.ok(
@@ -518,8 +518,8 @@ describe("Edge Cases", () => {
     const r = compactFull(s, SESS, [makeMsg("user", big)], 1);
     assert.equal(r.skipped, false);
     assert.ok(r.checkpointId);
-    assert.equal(s.list(SESS).length, 1);
-    const stats = s.stats(SESS);
+    assert.equal(vectorList(s,SESS).length, 1);
+    const stats = vectorStats(s,SESS);
     assert.ok(stats.totalTokenEstimate > 0);
   });
 
@@ -542,7 +542,7 @@ describe("Edge Cases", () => {
         r.summary.includes("assistant"),
       "summary should reference roles or tools",
     );
-    assert.equal(s.list(SESS).length, 1);
+    assert.equal(vectorList(s,SESS).length, 1);
   });
 });
 

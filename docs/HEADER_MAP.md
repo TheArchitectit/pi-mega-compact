@@ -288,6 +288,119 @@
 | Rollback | 104 | 0 |
 | Relationship to S28 | 112 | 0 |
 
+## docs/specs/s40-importance-scoring.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Safety Protocols | 12 | 0 |
+| Problem | 22 | 0 |
+| Scope | 38 | 0 |
+| Execution — S40A: Core Scoring Engine | 60 | 0 |
+| Execution — S40B: Integration into compactSession | 211 | 0 |
+| Acceptance Criteria | 319 | 0 |
+| Rollback | 334 | 0 |
+| Risks | 343 | 0 |
+
+## docs/specs/s41-self-rag-quality-gate.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Safety Protocols | 12 | 0 |
+| Problem | 22 | 0 |
+| Scope | 40 | 0 |
+| Execution — S41A: Core Critique Engine | 63 | 0 |
+| Execution — S41B: Integration into recallAndInline | 234 | 0 |
+| Acceptance Criteria | 346 | 0 |
+| Rollback | 362 | 0 |
+| Risks | 371 | 0 |
+
+## docs/specs/s42-raptor-multilevel-retrieval.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Safety Protocols | 12 | 0 |
+| Problem | 31 | 0 |
+| Scope | 50 | 0 |
+| Execution — S42A: Multi-Level Search | 73 | 0 |
+| Execution — S42B: Cluster Enrichment | 140 | 0 |
+| Acceptance Criteria | 210 | 0 |
+| Rollback | 225 | 0 |
+| Risks | 232 | 0 |
+
+## docs/specs/s43-hyde-vague-queries.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Safety Protocols | 12 | 0 |
+| Problem | 30 | 0 |
+| Scope | 48 | 0 |
+| Execution — S43A: Vagueness Detection | 70 | 0 |
+| Execution — S43B: Hypothetical Document Embedding | 140 | 0 |
+| Execution — S43C: Multi-Query + RRF Fusion | 210 | 0 |
+| Acceptance Criteria | 280 | 0 |
+| Rollback | 295 | 0 |
+| Risks | 302 | 0 |
+
+## docs/specs/s44-three-tier-latency-routing.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Safety Protocols | 12 | 0 |
+| Problem | 24 | 0 |
+| Scope | 44 | 0 |
+| Execution — S44A: Embedding Cache + L0 Result Cache | 67 | 0 |
+| Execution — S44B: L1 FTS5 Trigram Search Tier | 107 | 0 |
+| Execution — S44C: L2 HNSW Async Tier + Routing Logic | 137 | 0 |
+| Execution — S44D: Integration + Dashboard | 170 | 0 |
+| Acceptance Criteria | 200 | 0 |
+| Rollback | 211 | 0 |
+| Risks | 219 | 0 |
+
+## docs/specs/s45-crag-quality-metrics.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Safety Protocols | 12 | 0 |
+| Problem | 24 | 0 |
+| Scope | 42 | 0 |
+| Execution — S45A: Core Quality Metrics | 63 | 0 |
+| Execution — S45B: Query Expansion Strategies | 120 | 0 |
+| Execution — S45C: Integration into Recall Path | 157 | 0 |
+| Execution — S45D: Dashboard Quality Telemetry | 192 | 0 |
+| Acceptance Criteria | 208 | 0 |
+| Rollback | 218 | 0 |
+| Risks | 226 | 0 |
+
+## docs/specs/s46-visual-memory-map.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Safety Protocols | 12 | 0 |
+| Problem | 26 | 0 |
+| Scope | 42 | 0 |
+| Execution — S46A: Graph Data Generation (Backend) | 63 | 0 |
+| Execution — S46B: Dashboard API Endpoint | 110 | 0 |
+| Execution — S46C: Frontend — React Flow Graph Component | 135 | 0 |
+| Execution — S46D: Integration Tests + Polish | 185 | 0 |
+| Acceptance Criteria | 205 | 0 |
+| Rollback | 215 | 0 |
+| Risks | 223 | 0 |
+
+## docs/specs/s47-auto-categorizing-wiki.md
+
+| Section | Line | Offset |
+|---------|------|--------|
+| Safety Protocols | 12 | 0 |
+| Problem | 26 | 0 |
+| Scope | 43 | 0 |
+| Execution — S47A: Topic Model (Rule-Based) | 64 | 0 |
+| Execution — S47B: Topic Storage + LLM Classification | 110 | 0 |
+| Execution — S47C: Wiki Page Generation | 155 | 0 |
+| Execution — S47D: Dashboard Wiki Tab | 195 | 0 |
+| Acceptance Criteria | 225 | 0 |
+| Rollback | 236 | 0 |
+| Risks | 244 | 0 |
+
 ## docs/specs/s39-multi-pi-memory-graph.md
 
 | Section | Line | Offset |

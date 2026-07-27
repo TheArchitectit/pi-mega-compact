@@ -9,44 +9,29 @@
  */
 
 import { createHash } from "node:crypto";
-import type { Embedder, Vector } from "./embedder.js";
+import type { Embedder } from "./embedder.js";
 import { cosineSimilarity, defaultEmbedder } from "./embedder.js";
 import { loadDedupConfig, type DedupConfigShape, type DedupTier } from "./config/dedup.js";
 import { logDecision } from "./monitoring.js";
-import type { StoredCheckpoint, SessionState } from "./store.js";
+import type { StoredCheckpoint } from "./store.js";
 import { getStateDir, normalizeSessionId, compressSmart } from "./store.js";
 import { computeContentDigest } from "./dedup/digest.js";
 import { minhashSignature, SIGNATURE_VERSION, NUM_HASHES } from "./dedup/l1-minhash.js";
 import { lshBands } from "./dedup/l1-lsh.js";
 import { isNearDuplicate } from "./dedup/l1-verify.js";
-import { mmrRerank, type MmrItem } from "./dedup/mmr.js";
-import { topK } from "./dedup/topk.js";
 import { openBloom, saveBloom } from "./store/bloom.js";
 import {
   listCheckpoints,
   nextCheckpointId,
   upsertCheckpoint,
-  getCheckpoint,
   loadSessionState,
   saveSessionState,
   upsertMinhashSignature,
   insertLshBuckets,
   lshCandidateChunks,
-  setDedupStatus,
   addTokensSaved,
-  getDedupStats,
   bumpDedupStats,
-  repoStats as repoStatsFromStore,
-  dataInvariantStats,
-  maxCheckpointTimestamp,
 } from "./store/sqlite.js";
-import {
-  initVectorIndex,
-  searchAsync as vectorIndexSearch,
-  type VectorIndexHit,
-} from "./store/vectorIndex.js";
-import { rehydrateRaptorTree, isShadowMode } from "./dedup/raptor/index.js";
-import { stagedExpansion } from "./dedup/raptor/retrieval.js";
 import { migrateJsonToSqlite } from "./store/migrate.js";
 
 export interface SearchHit {
@@ -102,11 +87,16 @@ export function computeRegionHash(regionText: string): string {
 }
 
 export class VectorStore {
-  private readonly embedder: Embedder;
-  private readonly stateDir: string;
+  // These fields are `readonly` (set once in the constructor) but NOT private:
+  // the read/search/dedup helpers split into vector-read.ts, vector-search.ts,
+  // and vector-dedup.ts access them directly. Marking them private would force
+  // ugly `as unknown as` casts in those modules; keeping them package-public
+  // makes VectorStore a thin barrel whose helpers live in sibling files.
+  readonly embedder: Embedder;
+  readonly stateDir: string;
   private readonly l2Threshold: number;
   /** Single source of truth for tier flags + thresholds (Sprint 14). */
-  private readonly cfg: DedupConfigShape;
+  readonly cfg: DedupConfigShape;
   /** Optional monitoring target (Sprint 14). Undefined → no monitoring. */
   private readonly eventsPath?: string;
   /**
@@ -115,7 +105,7 @@ export class VectorStore {
    * without crossing into the pi-runtime layer (src/ stays pi-agnostic). The
    * global index keys on repoId so recall can span repos.
    */
-  private readonly repoId: string;
+  readonly repoId: string;
 
   constructor(
     opts: {
@@ -153,7 +143,7 @@ export class VectorStore {
   }
 
   /** Emit a structured dedup-decision event (best-effort, never throws). */
-  private record(tier: DedupTier, result: "deduped" | "new" | "mark_only", reason: string | undefined, latencyMs: number): void {
+  record(tier: DedupTier, result: "deduped" | "new" | "mark_only", reason: string | undefined, latencyMs: number): void {
     if (!this.eventsPath) return;
     logDecision(this.eventsPath, {
       ts: Date.now(),
@@ -432,338 +422,21 @@ export class VectorStore {
     }
     return undefined;
   }
-
-  /**
-   * Semantic search within a session's checkpoints. Returns top-K by cosine
-   * similarity, diversified via MMR (QA #10) so a cluster of near-identical
-   * hits yields at most a few distinct-relevance results.
-   *
-   * Heap-based top-K (QA #4, O(N log k)) replaces the old full sort; MMR then
-   * reranks the candidate window for diversity.
-   */
-  search(sessionId: string, query: string, k = 3): SearchHit[] {
-    const sid = normalizeSessionId(sessionId);
-    const checkpoints = listCheckpoints(sid, this.stateDir).filter(
-      (cp) => cp.dedupStatus !== "removed", // SemDeDup: exclude removed rows
-    );
-    if (checkpoints.length === 0) return [];
-    const qv = this.embedder.embed(query);
-
-    const scored: SearchHit[] = checkpoints.map((cp) => ({
-      checkpoint: cp,
-      score: cosineSimilarity(qv, cp.embedding),
-    }));
-
-    // Heap top-K over a widened window (2k) so MMR has diverse candidates.
-    const window = topK(
-      scored.map((h) => ({ item: h, score: h.score })),
-      Math.max(k * 2, k),
-    ).map((s) => s.item);
-    // MMR (QA #10) is part of the L2 semantic tier: skip it when L2 is disabled
-    // (Sprint 14 flag), returning the plain relevance-ranked window instead.
-    if (!this.cfg.L2_ENABLED) return window.slice(0, k);
-
-    // Fix D: when RAPTOR is promoted, ALSO recall high-level tree summaries and
-    // merge them with the flat hits via MMR so RAPTOR + flat don't double-cover.
-    // RAPTOR returns fewer, broader hits (O(log n) high-level nodes) than the
-    // O(n) flat leaves, tightening the block at read time.
-    if (this.cfg.RAPTOR_ENABLED) {
-      const raptorHits = this.raptorSearchHits(sid, query, k);
-      if (raptorHits.length > 0) {
-        const merged: SearchHit[] = [...window];
-        for (const rh of raptorHits) {
-          if (!merged.some((m) => m.checkpoint.checkpointId === rh.checkpoint.checkpointId)) {
-            merged.push(rh);
-          }
-        }
-        const mmrItems: MmrItem<SearchHit>[] = merged.map((h) => ({
-          item: h,
-          vector: h.checkpoint.embedding,
-          relevance: h.score,
-        }));
-        return mmrRerank(mmrItems, k, this.cfg.MMR_LAMBDA);
-      }
-    }
-
-    const mmrItems: MmrItem<SearchHit>[] = window.map((h) => ({
-      item: h,
-      vector: h.checkpoint.embedding,
-      relevance: h.score,
-    }));
-    const ranked = mmrRerank(mmrItems, k, this.cfg.MMR_LAMBDA);
-    return ranked;
-  }
-
-  /**
-   * Slice 2: async cross-repo (or single-repo) recall via the PGlite/HNSW index.
-   *
-   * This is the ONLY async recall surface and is a BONUS path — the synchronous
-   * `search()` above remains the default. `opts.repoId` scopes to one repo; omit
-   * it for cross-repo nearest-neighbor recall (the headline capability the sync
-   * per-session scan cannot provide).
-   *
-   * Best-effort: if the index is disabled/empty/failing, we fall back to the
-   * synchronous per-session `search()` for THIS repo so callers always get a
-   * sensible result. Hydrates each hit's StoredCheckpoint from the authoritative
-   * node:sqlite store (the hit's repoId doubles as that repo's stateDir), then
-   * MMR-dedupes the merged set.
-   */
-  async searchAsync(
-    sessionId: string,
-    query: string,
-    k = 3,
-    opts: { repoId?: string; crossRepo?: boolean } = {},
-  ): Promise<SearchHit[]> {
-    const sid = normalizeSessionId(sessionId);
-    const qv = this.embedder.embed(query);
-    // repoId filter: explicit opts.repoId wins; else this repo unless crossRepo.
-    const repoId = opts.repoId ?? (opts.crossRepo ? undefined : this.repoId);
-    let indexHits: VectorIndexHit[] = [];
-    try {
-      await initVectorIndex();
-      indexHits = await vectorIndexSearch(qv, { k: Math.max(k * 2, k), repoId });
-    } catch {
-      indexHits = [];
-    }
-    if (indexHits.length === 0) {
-      // Index empty/unavailable → synchronous per-session fallback (this repo).
-      return this.search(sid, query, k);
-    }
-    // Hydrate each index hit from the authoritative node:sqlite store. repoId is
-    // that repo's stateDir, so cross-repo hits resolve against their own store.
-    // Tag cross-repo hits with their source repoId so the recall block can label
-    // them ("from repo <name>"); same-repo hits stay unlabeled.
-    const selfRepo = this.repoId;
-    const hydrated: SearchHit[] = [];
-    for (const h of indexHits) {
-      const cp = getCheckpoint(h.sessionId, h.checkpointId, h.repoId);
-      if (cp && cp.dedupStatus !== "removed") {
-        const crossRepo = opts.crossRepo && selfRepo && h.repoId && h.repoId !== selfRepo;
-        hydrated.push({ checkpoint: cp, score: h.score, repoId: crossRepo ? h.repoId : undefined });
-      }
-    }
-    if (hydrated.length === 0) return this.search(sid, query, k);
-    // MMR-dedupe the merged candidate set for diversity (mirrors sync search).
-    const mmrItems: MmrItem<SearchHit>[] = hydrated.map((h) => ({
-      item: h,
-      vector: h.checkpoint.embedding,
-      relevance: h.score,
-    }));
-    return mmrRerank(mmrItems, k, this.cfg.MMR_LAMBDA);
-  }
-
-  /**
-   * Serve the RAPTOR tree for a query (Fix D): rehydrate the persisted tree and
-   * return its staged-expansion leaf hits as SearchHits. Returns [] when no tree
-   * exists (small sessions — flat search remains the path). Best-effort/non-fatal.
-   */
-  private raptorSearchHits(sid: string, query: string, k: number): SearchHit[] {
-    const t0 = Date.now();
-    try {
-      // S25 gate (a): honor the shadow contract at SERVE time. The tree is still
-      // built + persisted (logging-only) but NOT merged into recall while
-      // RAPTOR_SHADOW_MODE is anything other than "false".
-      if (isShadowMode()) return [];
-      const tree = rehydrateRaptorTree(sid, this.stateDir);
-      if (!tree || !tree.rootId) return [];
-      // S25 gate (b): freshness + fallback guards. Skip a tree built before the
-      // newest checkpoint (stale → may reference trimmed/deduped leaves) or one
-      // whose root is a budget-exhausted extractive fallback (level 99).
-      if (tree.timedOut) return [];
-      const maxTs = maxCheckpointTimestamp(sid, this.stateDir);
-      if (tree.builtAt && tree.builtAt < maxTs) return [];
-      const leafIds = stagedExpansion(query, tree, {
-        embedder: this.embedder,
-        k,
-        topM: this.cfg.RAPTOR_CLUSTERS_PER_LEVEL,
-        mmrLambda: this.cfg.MMR_LAMBDA,
-      });
-      if (leafIds.length === 0) return [];
-      const all = listCheckpoints(sid, this.stateDir).filter(
-        (cp) => cp.dedupStatus !== "removed",
-      );
-      const qv = this.embedder.embed(query);
-      const hits: SearchHit[] = [];
-      for (const id of leafIds) {
-        const cp = all.find((c) => c.checkpointId === id);
-        if (cp) hits.push({ checkpoint: cp, score: cosineSimilarity(qv, cp.embedding) });
-      }
-      // S25 monitoring: emit a raptor_serve decision so canary.ts can track
-      // p95 latency + the tier's live traffic (non-fatal, best-effort).
-      this.record("RAPTOR", hits.length > 0 ? "new" : "mark_only", `leaves=${leafIds.length}`, Date.now() - t0);
-      return hits;
-    } catch {
-      return [];
-    }
-  }
-
-  /**
-   * SemDeDup offline cleanup (Sprint 12, QA #17): within a session, mark the
-   * lower-quality row of any pair scoring cosine > `threshold` as
-   * `dedup_status='removed'` (kept, not deleted — retrieval excludes it). Keeps
-   * the row with the higher `tokenEstimate` (more context preserved). Runs as a
-   * single scan; idempotent (re-running skips already-removed rows).
-   *
-   * Returns the number of rows marked removed.
-   */
-  semDedup(sessionId: string, threshold = this.cfg.SEMDEDUP_COSINE): number {
-    const sid = normalizeSessionId(sessionId);
-    const cps = listCheckpoints(sid, this.stateDir).filter(
-      (c) => c.dedupStatus !== "removed",
-    );
-    let removed = 0;
-    for (let i = 0; i < cps.length; i++) {
-      for (let j = i + 1; j < cps.length; j++) {
-        const a = cps[i];
-        const b = cps[j];
-        if (a.dedupStatus === "removed" || b.dedupStatus === "removed") continue;
-        if (cosineSimilarity(a.embedding, b.embedding) > threshold) {
-          // Keep the higher-tokenEstimate row; remove the other.
-          const keep = a.tokenEstimate >= b.tokenEstimate ? a : b;
-          const drop = keep === a ? b : a;
-          setDedupStatus(drop.checkpointId, sid, "removed", this.stateDir);
-          drop.dedupStatus = "removed";
-          removed++;
-        }
-      }
-    }
-    return removed;
-  }
-
-  /**
-   * Dedup sentinel check: has this region already been stored/represented?
-   * Consulted by both the persist path and the recall/inline path.
-   */
-  dedupe(sessionId: string, regionHashOrText: string, isText = false): boolean {
-    const sid = normalizeSessionId(sessionId);
-    const hash = isText
-      ? computeRegionHash(regionHashOrText)
-      : regionHashOrText;
-    const state = loadSessionState(sid, this.stateDir);
-    if (state.storedRegionHashes.includes(hash)) return true;
-    return listCheckpoints(sid, this.stateDir).some(
-      (c) => c.regionHash === hash,
-    );
-  }
-
-  /** Mark a checkpoint as injected into the window (recall dedup). */
-  markInjected(sessionId: string, checkpointId: string): void {
-    const sid = normalizeSessionId(sessionId);
-    const state = loadSessionState(sid, this.stateDir);
-    if (!state.injectedCheckpointIds.includes(checkpointId)) {
-      state.injectedCheckpointIds.push(checkpointId);
-      saveSessionState(sid, state, this.stateDir);
-    }
-  }
-
-  /** True if this checkpoint was already injected this session. */
-  wasInjected(sessionId: string, checkpointId: string): boolean {
-    const state: SessionState = loadSessionState(
-      normalizeSessionId(sessionId),
-      this.stateDir,
-    );
-    return state.injectedCheckpointIds.includes(checkpointId);
-  }
-
-  /** Convenience for a raw vector cosine (exposed for tests). */
-  similarity(a: Vector, b: Vector): number {
-    return cosineSimilarity(a, b);
-  }
-
-  /** All checkpoints for a session (sorted by checkpointId). */
-  list(sessionId: string): StoredCheckpoint[] {
-    return listCheckpoints(normalizeSessionId(sessionId), this.stateDir);
-  }
-
-  /**
-   * Return the n most similar checkpoints to the current (most recent) checkpoint
-   * by cosine similarity. Returns fewer than n if the session has fewer checkpoints.
-   * The current checkpoint itself is excluded from results.
-   */
-  topSimilar(sessionId: string, n: number): SearchHit[] {
-    const sid = normalizeSessionId(sessionId);
-    const checkpoints = listCheckpoints(sid, this.stateDir);
-    if (checkpoints.length <= 1) return [];
-
-    // Find the most recent checkpoint (by checkpointId, which is sequential)
-    const ordered = [...checkpoints].sort((a, b) =>
-      a.checkpointId.localeCompare(b.checkpointId),
-    );
-    const current = ordered[ordered.length - 1];
-
-    // Score all other checkpoints by similarity to current
-    const scored: SearchHit[] = ordered
-      .filter((cp) => cp.checkpointId !== current.checkpointId)
-      .map((cp) => ({
-        checkpoint: cp,
-        score: cosineSimilarity(current.embedding, cp.embedding),
-      }))
-      .sort((a, b) => b.score - a.score);
-
-    return scored.slice(0, n);
-  }
-
-  /**
-   * Store statistics for status reporting / logging. Returns counts + the last
-   * (highest-numbered) checkpoint, or nulls when the session is empty.
-   */
-  stats(sessionId: string): {
-    checkpointCount: number;
-    totalTokenEstimate: number;
-    lastCheckpointId: string | undefined;
-    lastSummary: string | undefined;
-    injectedCount: number;
-    dedupHitRate: number; // injected / checkpoints, 0..1
-    storageDedupRate: number; // deduped adds / total adds, 0..1 (cumulative)
-    tokensSaved: number; // Σ(original − stored) for this session's checkpoints
-    originalTokens: number; // Σ original region size for this session's checkpoints
-    dedupAttempts: number; // cumulative add() calls (store-wide)
-    dedupCollapsed: number; // cumulative deduped collapses (store-wide)
-  } {
-    const sid = normalizeSessionId(sessionId);
-    const cps = listCheckpoints(sid, this.stateDir);
-    const state = loadSessionState(sid, this.stateDir);
-    const ordered = [...cps].sort((a, b) =>
-      a.checkpointId.localeCompare(b.checkpointId),
-    );
-    const last = ordered[ordered.length - 1];
-    const injected = state.injectedCheckpointIds.length;
-    const ds = getDedupStats(this.stateDir);
-    const sessionTok = cps.reduce((s, c) => s + (c.tokenEstimate ?? 0), 0);
-    const sessionOrig = cps.reduce((s, c) => s + (c.originalTokenEstimate ?? 0), 0);
-    // Per-session "tokens saved" = Σ(original − stored) over this session's
-    // stored checkpoints. Deduped adds (whole region discarded, nothing stored)
-    // are counted in the repo-wide meta counter via repoStats(); the per-session
-    // DB sum here covers the rows that exist.
-    const sessionSaved = cps.reduce(
-      (s, c) => s + Math.max(0, (c.originalTokenEstimate ?? 0) - (c.tokenEstimate ?? 0)),
-      0,
-    );
-    return {
-      checkpointCount: cps.length,
-      totalTokenEstimate: sessionTok,
-      lastCheckpointId: last?.checkpointId,
-      lastSummary: last?.summary,
-      injectedCount: injected,
-      dedupHitRate: cps.length === 0 ? 0 : injected / cps.length,
-      storageDedupRate: ds.attempts === 0 ? 0 : ds.deduped / ds.attempts,
-      tokensSaved: sessionSaved,
-      originalTokens: sessionOrig,
-      dedupAttempts: ds.attempts,
-      dedupCollapsed: ds.deduped,
-    };
-  }
-
-  /**
-   * Repo-wide stats — aggregates every session in this store (one per repo).
-   * Cumulative, resumable, cross-device. Surfaces the dashboard's "Repo …"
-   * figures; distinct from {@link stats} (per-session).
-   */
-  repoStats(): ReturnType<typeof repoStatsFromStore> {
-    return repoStatsFromStore(this.stateDir);
-  }
-  /** Data-safety invariant (Phase 0): regions retained vs bytes permanently deleted. */
-  dataInvariant(): ReturnType<typeof dataInvariantStats> {
-    return dataInvariantStats(this.stateDir);
-  }
 }
+
+// Re-exports (back-compat): existing call sites keep importing from "./vectorStore.js"
+export {
+  vectorSemDedup,
+  vectorDedupe,
+  vectorMarkInjected,
+  vectorWasInjected,
+  vectorSimilarity,
+  vectorList,
+  vectorTopSimilar,
+  vectorStats,
+  vectorRepoStats,
+  vectorDataInvariant,
+} from "./vector-read.js";
+
+// Re-exports: vectorSearch / vectorSearchAsync (moved to vector-search.ts)
+export { vectorSearch, vectorSearchAsync } from "./vector-search.js";

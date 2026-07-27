@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { VectorStore } from "../vectorStore.js";
+import { VectorStore, vectorList, vectorRepoStats } from "../vectorStore.js";
 import { normalize } from "../dedup/normalize.js";
 import { openBloom, closeBloom } from "./bloom.js";
 import { backfillContentHashes, isBackfillComplete } from "./backfill.js";
@@ -29,7 +29,7 @@ test("Sprint 10 L0: case/whitespace/ANSI variants dedup to one row", () => {
     const r = s.add({ sessionId: "sess_norm", summary: "x", regionText: v, timestamp: added + 1 });
     if (!r.deduped) added++;
   }
-  assert.equal(s.list("sess_norm").length, 1);
+  assert.equal(vectorList(s, "sess_norm").length, 1);
 });
 
 test("normalize case-folds so Foo/foo/FOO are equal", () => {
@@ -74,7 +74,7 @@ test("duplicate add is idempotent (no partial rows, single checkpoint)", () => {
   const b = s.add({ sessionId: "sess_atom", summary: "x", regionText: raw, timestamp: 2 });
   assert.equal(a.deduped, false);
   assert.equal(b.deduped, true);
-  assert.equal(s.list("sess_atom").length, 1);
+  assert.equal(vectorList(s, "sess_atom").length, 1);
 });
 
 // --- Backfill orchestrator -------------------------------------------------
@@ -196,14 +196,14 @@ test("Sprint 10 migration: pre-0.4.2 db gains original_token_estimate and repoSt
     originalTokenEstimate: 500,
     timestamp: 1,
   });
-  const repo = vs.repoStats();
+  const repo = vectorRepoStats(vs);
   // No "no such column" crash = migration succeeded; totals reflect the new col.
   assert.equal(repo.checkpointCount, 1);
   assert.equal(repo.originalTokens, 500, "originalTokens read from migrated column");
   // Re-open a second time to prove idempotency (column already exists).
   closeStore(dir);
   const vs2 = new VectorStore({ dedupSim: 0.9, stateDir: dir });
-  assert.equal(vs2.repoStats().originalTokens, 500, "stable across re-open");
+  assert.equal(vectorRepoStats(vs2).originalTokens, 500, "stable across re-open");
 });
 
 // --- cleanup ---------------------------------------------------------------

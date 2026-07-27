@@ -20,6 +20,7 @@ import { isMegaCache } from "../../src/game/scoring.js";
 import { resolveRepoRoot } from "../mega-config.js";
 import { classifyError } from "./error-classifier.js";
 import { safeSendUserMessage } from "./send-safe.js";
+import { vectorStats } from "../../src/vectorStore.js";
 
 /** Register agent/turn tracking event handlers. */
 export function registerAgentHandlers(
@@ -244,7 +245,7 @@ export function registerAgentHandlers(
 		try {
 			if (runtime.getCachedGameState().game_mode_on) {
 				const repo = resolveRepoRoot(ctx.cwd) ?? runtime.currentStateDir;
-				const st = runtime.store.stats(runtime.rt.sessionId);
+				const st = vectorStats(runtime.store, runtime.rt.sessionId);
 				const cachePct = st.dedupHitRate * 100;
 				const modelId = runtime.currentModel?.modelId ?? "unknown";
 				recordScore(runtime.currentStateDir, {

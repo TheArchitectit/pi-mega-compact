@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { VectorStore, computeRegionHash } from "./vectorStore.js";
+import { VectorStore, computeRegionHash, vectorList, vectorSemDedup, vectorWasInjected, vectorMarkInjected, vectorTopSimilar, vectorStats, vectorSearch } from "./vectorStore.js";
 import { compactSession, recall, supersededCount } from "./engine.js";
 import { loadDedupConfig, type DedupConfigShape } from "./config/dedup.js";
 import { defaultEmbedder } from "./embedder.js";
@@ -123,8 +123,8 @@ test("1. Full compaction pipeline: SUPERSEDE → COLLAPSE → CLUSTER", () => {
   assert.ok(r.checkpointId, "checkpointId should be set");
   assert.match(r.checkpointId!, /^chkpt_001$/);
 
-  // Verify: checkpoint is searchable via store.search()
-  const hits = s.search(SESS, "server.ts memory leak JWT auth", 5);
+  // Verify: checkpoint is searchable via vectorSearch(store, )
+  const hits = vectorSearch(s, SESS, "server.ts memory leak JWT auth", 5);
   assert.ok(hits.length > 0, "checkpoint should be searchable");
   assert.equal(hits[0].checkpoint.checkpointId, r.checkpointId);
 });
@@ -164,7 +164,7 @@ test("2. Multi-session dedup: identical content in same session detected by L0",
     `dedup reason should be L0 (regionHash or contentHash), got ${rB.dedupReason}`);
 
   // Search should still return the checkpoint
-  const hits = s.search("sess_multi_a", "database connection pooling", 5);
+  const hits = vectorSearch(s, "sess_multi_a", "database connection pooling", 5);
   assert.ok(hits.length > 0, "search returns the deduped result");
   assert.equal(hits[0].checkpoint.checkpointId, rA.checkpointId);
 });
@@ -198,7 +198,7 @@ test("3. Near-duplicate detection: L1 MinHash/LSH catches one-word edits that L0
   // L1 should catch the near-dup
   assert.equal(r2.deduped, true, "L1 should catch the near-duplicate");
   assert.equal(r2.reason, "l1MinHash", "dedup reason should be l1MinHash");
-  assert.equal(s.list(SESS).length, 1, "only one checkpoint stored");
+  assert.equal(vectorList(s,SESS).length, 1, "only one checkpoint stored");
 });
 
 test("3b. Negative: L1 does NOT collapse genuinely different content", () => {
@@ -220,7 +220,7 @@ test("3b. Negative: L1 does NOT collapse genuinely different content", () => {
   });
 
   assert.equal(r2.deduped, false, "distinct content should not be deduped");
-  assert.equal(s.list(SESS).length, 2, "both checkpoints stored");
+  assert.equal(vectorList(s,SESS).length, 2, "both checkpoints stored");
 });
 
 // ---------------------------------------------------------------------------
@@ -254,7 +254,7 @@ test("4. Semantic dedup: L2 cosine catches highly similar content that L0/L1 mis
   assert.equal(r2.deduped, true, "L2 should catch the high-similarity paraphrase");
   assert.ok(r2.reason === "contentSimilarity" || r2.reason === "l1MinHash",
     `dedup reason should be L2 contentSimilarity or L1 l1MinHash, got ${r2.reason}`);
-  assert.equal(s.list(SESS).length, 1, "only one checkpoint after semantic dedup");
+  assert.equal(vectorList(s,SESS).length, 1, "only one checkpoint after semantic dedup");
 });
 
 test("4b. MMR diversifies search results", () => {
@@ -280,7 +280,7 @@ test("4b. MMR diversifies search results", () => {
   }
 
   // Search for parser-related content — should return relevant results
-  const hits = s.search(SESS, "parser tokenization source code files", 4);
+  const hits = vectorSearch(s, SESS, "parser tokenization source code files", 4);
   assert.ok(hits.length >= 1, "should return at least one result");
 
   // The top hit should be the parser checkpoint
@@ -311,23 +311,23 @@ test("5. SemDeDup offline cleanup: redundant rows marked removed, not deleted", 
   ]);
 
   // Run SemDeDup with threshold that catches the near-identical pair
-  const removed = s.semDedup(SESS, 0.85);
+  const removed = vectorSemDedup(s,SESS, 0.85);
   assert.equal(removed, 1, "one redundant row should be marked removed");
 
   // Verify: the lower-tokenEstimate row is the one removed
-  const all = s.list(SESS);
+  const all = vectorList(s,SESS);
   const dropped = all.find((c) => c.dedupStatus === "removed");
   assert.ok(dropped, "a row should have dedup_status='removed'");
   assert.equal(dropped!.checkpointId, "chkpt_001", "lower tokenEstimate row removed");
   assert.equal(dropped!.dedupStatus, "removed");
 
   // Verify: search excludes removed rows (3 total, 1 removed → 2 active)
-  const hits = s.search(SESS, "cache parsed ast nodes frontend virtualized list", 10);
+  const hits = vectorSearch(s, SESS, "cache parsed ast nodes frontend virtualized list", 10);
   assert.equal(hits.length, 2, "search excludes the removed row, returns 2 active");
   assert.ok(hits.every((h) => h.checkpoint.dedupStatus !== "removed"), "no removed rows in search");
 
   // Verify: idempotent re-run removes nothing new
-  const secondRun = s.semDedup(SESS, 0.85);
+  const secondRun = vectorSemDedup(s,SESS, 0.85);
   assert.equal(secondRun, 0, "idempotent re-run removes nothing new");
 
   closeStore(dir);
@@ -359,7 +359,7 @@ test("6. Recall + inline with dedup sentinel: injected checkpoints are skipped",
 
   // Mark it injected
   const cpId = first.hits[0].checkpoint.checkpointId;
-  s.markInjected(SESS, cpId);
+  vectorMarkInjected(s,SESS, cpId);
 
   // Recall again — should skip the injected checkpoint
   const second = recall({ sessionId: SESS, query: "vectorStore dedup cascade", limit: 5, skipInjected: true }, s);
@@ -369,8 +369,8 @@ test("6. Recall + inline with dedup sentinel: injected checkpoints are skipped",
   assert.equal(second.hits.length, 1, "hits still surface without skipInjected");
 
   // Verify wasInjected
-  assert.equal(s.wasInjected(SESS, cpId), true, "wasInjected returns true for injected checkpoint");
-  assert.equal(s.wasInjected(SESS, "chkpt_999"), false, "wasInjected returns false for non-injected");
+  assert.equal(vectorWasInjected(s,SESS, cpId), true, "wasInjected returns true for injected checkpoint");
+  assert.equal(vectorWasInjected(s,SESS, "chkpt_999"), false, "wasInjected returns false for non-injected");
 });
 
 // ---------------------------------------------------------------------------
@@ -400,12 +400,12 @@ test("7. topSimilar: returns n most cosine-similar checkpoints", () => {
   }
 
   // Call topSimilar(3)
-  const hits = s.topSimilar(SESS, 3);
+  const hits = vectorTopSimilar(s,SESS, 3);
   assert.ok(hits.length <= 3, "should respect n limit");
   assert.ok(hits.length > 0, "should return results");
 
   // Verify self-exclusion: the most recent checkpoint should not be in results
-  const all = s.list(SESS);
+  const all = vectorList(s,SESS);
   const ordered = [...all].sort((a, b) => a.checkpointId.localeCompare(b.checkpointId));
   const current = ordered[ordered.length - 1];
   assert.ok(!hits.some((h) => h.checkpoint.checkpointId === current.checkpointId), "current checkpoint excluded");
@@ -438,15 +438,15 @@ test("7b. topSimilar respects n limit strictly", () => {
     });
   }
 
-  const hits = s.topSimilar(SESS, 2);
+  const hits = vectorTopSimilar(s,SESS, 2);
   assert.equal(hits.length, 2, "n limit respected");
 });
 
 test("7c. topSimilar returns empty for sessions with 0 or 1 checkpoints", () => {
   const s = store();
-  assert.deepEqual(s.topSimilar("sess_empty", 5), []);
+  assert.deepEqual(vectorTopSimilar(s,"sess_empty", 5), []);
   s.add({ sessionId: "sess_one", summary: "solo", regionText: "only checkpoint here", timestamp: 1 });
-  assert.deepEqual(s.topSimilar("sess_one", 5), []);
+  assert.deepEqual(vectorTopSimilar(s,"sess_one", 5), []);
 });
 
 // ---------------------------------------------------------------------------
@@ -476,7 +476,7 @@ test("8. Compression round-trip: decompression produces original content", () =>
   });
 
   // Retrieve and verify decompression
-  const cp = s.list(SESS)[0];
+  const cp = vectorList(s,SESS)[0];
   assert.ok(cp.compressedOriginal instanceof Buffer, "compressedOriginal is a Buffer");
 
   const restored = decompressSmart(cp.compressedOriginal as Buffer).toString("utf-8");
@@ -499,7 +499,7 @@ test("8b. Compression round-trip with different content sizes", () => {
   const large = "detailed region text with lots of context about the codebase. ".repeat(200);
   s.add({ sessionId: SESS, summary: "large", regionText: large, timestamp: 3 });
 
-  const checkpoints = s.list(SESS);
+  const checkpoints = vectorList(s,SESS);
   assert.equal(checkpoints.length, 3);
 
   // Verify each round-trips correctly
@@ -543,7 +543,7 @@ test("9. Store stats and metrics reflect actual state after compactions", () => 
   assert.equal(r3.deduped, false);
 
   // Get stats
-  const st = s.stats(SESS);
+  const st = vectorStats(s,SESS);
   assert.equal(st.checkpointCount, 3, "three checkpoints stored");
   assert.ok(st.totalTokenEstimate > 0, "totalTokenEstimate should be positive");
   assert.equal(st.lastCheckpointId, "chkpt_003", "last checkpoint id correct");
@@ -552,15 +552,15 @@ test("9. Store stats and metrics reflect actual state after compactions", () => 
   assert.equal(st.dedupHitRate, 0, "dedupHitRate is 0 with no injections");
 
   // Mark one injected and re-check
-  s.markInjected(SESS, "chkpt_001");
-  const st2 = s.stats(SESS);
+  vectorMarkInjected(s,SESS, "chkpt_001");
+  const st2 = vectorStats(s,SESS);
   assert.equal(st2.injectedCount, 1, "one injection tracked");
   assert.ok(Math.abs(st2.dedupHitRate - 1 / 3) < 1e-9, "dedupHitRate = injected/checkpoints");
 });
 
 test("9b. Stats on empty session returns zeros", () => {
   const s = store();
-  const st = s.stats("sess_nothing");
+  const st = vectorStats(s,"sess_nothing");
   assert.equal(st.checkpointCount, 0);
   assert.equal(st.totalTokenEstimate, 0);
   assert.equal(st.lastCheckpointId, undefined);
@@ -605,20 +605,20 @@ test("10. Concurrent sessions: no cross-contamination", () => {
 
   // Verify: each session has exactly one checkpoint
   sessions.forEach((sess) => {
-    const cps = s.list(sess.id);
+    const cps = vectorList(s,sess.id);
     assert.equal(cps.length, 1, `${sess.id} should have 1 checkpoint`);
   });
 
   // Verify: search in one session doesn't return another session's checkpoints
-  const hitsA = s.search("sess_concurrent_a", "authentication JWT", 5);
+  const hitsA = vectorSearch(s, "sess_concurrent_a", "authentication JWT", 5);
   assert.ok(hitsA.every((h) => h.checkpoint.sessionId === "sess_concurrent_a"),
     "search in A returns only A's checkpoints");
 
-  const hitsB = s.search("sess_concurrent_b", "database queries indexes", 5);
+  const hitsB = vectorSearch(s, "sess_concurrent_b", "database queries indexes", 5);
   assert.ok(hitsB.every((h) => h.checkpoint.sessionId === "sess_concurrent_b"),
     "search in B returns only B's checkpoints");
 
-  const hitsC = s.search("sess_concurrent_c", "canvas rendering bug", 5);
+  const hitsC = vectorSearch(s, "sess_concurrent_c", "canvas rendering bug", 5);
   assert.ok(hitsC.every((h) => h.checkpoint.sessionId === "sess_concurrent_c"),
     "search in C returns only C's checkpoints");
 });
@@ -633,7 +633,7 @@ test("11a. Empty session (no messages) — compactSession should skip", () => {
   assert.equal(r.skipped, true, "empty session should be skipped");
   assert.equal(r.summary, "");
   assert.equal(r.regionHash, "");
-  assert.equal(s.list("sess_empty_msgs").length, 0);
+  assert.equal(vectorList(s,"sess_empty_msgs").length, 0);
 });
 
 test("11b. Single message session — should skip or handle gracefully", () => {
@@ -671,7 +671,7 @@ test("11c. Very large region text — should still compact and store", () => {
   assert.ok(r.summary.length > 0, "summary produced");
 
   // Verify it's searchable
-  const hits = s.search(SESS, "module feature fix review", 3);
+  const hits = vectorSearch(s, SESS, "module feature fix review", 3);
   assert.ok(hits.length > 0, "large checkpoint is searchable");
 });
 
@@ -691,7 +691,7 @@ test("11d. Unicode and emoji content — should normalize and hash correctly", (
   assert.ok(r.regionHash.length > 0, "regionHash computed for unicode content");
 
   // Verify the checkpoint exists and is searchable
-  const hits = s.search(SESS, "中文 translation 本地化", 3);
+  const hits = vectorSearch(s, SESS, "中文 translation 本地化", 3);
   assert.ok(hits.length > 0, "unicode checkpoint is searchable");
 
   // Verify regionHash is deterministic for the same unicode content
@@ -717,7 +717,7 @@ test("11e. All messages in preserve-recent window — nothing to compact", () =>
     timestamp: 1,
   }, s);
   assert.equal(r.skipped, true, "should skip when keepFrom=0 (nothing to compact)");
-  assert.equal(s.list("sess_all_preserved").length, 0, "no checkpoints stored");
+  assert.equal(vectorList(s,"sess_all_preserved").length, 0, "no checkpoints stored");
 });
 
 // ---------------------------------------------------------------------------
@@ -749,7 +749,7 @@ test("12a. L0_ENABLED=false — L0 does not collapse exact dups", () => {
   assert.equal(r1.deduped, false);
   // With L0 off (and L1/L2 off too), near-dup should NOT be collapsed
   assert.equal(r2.deduped, false, "L0 disabled → near-dup not collapsed");
-  assert.equal(s.list(SESS).length, 2, "both checkpoints stored when L0 is off");
+  assert.equal(vectorList(s,SESS).length, 2, "both checkpoints stored when L0 is off");
 });
 
 test("12b. MARK_ONLY_L1=true — L1 records but does not collapse", () => {
@@ -773,10 +773,10 @@ test("12b. MARK_ONLY_L1=true — L1 records but does not collapse", () => {
   assert.equal(r1.deduped, false);
   // MARK_ONLY_L1 → L1 detects the near-dup but does NOT collapse
   assert.equal(r2.deduped, false, "MARK_ONLY_L1 → not collapsed");
-  assert.equal(s.list(SESS).length, 2, "both checkpoints stored (mark only)");
+  assert.equal(vectorList(s,SESS).length, 2, "both checkpoints stored (mark only)");
 
   // Both should be active (not removed)
-  const all = s.list(SESS);
+  const all = vectorList(s,SESS);
   assert.ok(all.every((c) => c.dedupStatus === "active"), "both rows active under MARK_ONLY");
 });
 
@@ -831,7 +831,7 @@ test("12d. All tiers disabled — nothing deduped, everything stored", () => {
 
   assert.equal(r1.deduped, false);
   assert.equal(r2.deduped, false, "all tiers off → nothing deduped");
-  assert.equal(s.list(SESS).length, 2, "both stored");
+  assert.equal(vectorList(s,SESS).length, 2, "both stored");
 });
 
 // ---------------------------------------------------------------------------

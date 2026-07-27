@@ -19,7 +19,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
-import { VectorStore, computeRegionHash } from "./vectorStore.js";
+import { VectorStore, computeRegionHash, vectorStats, vectorWasInjected, vectorMarkInjected, vectorTopSimilar } from "./vectorStore.js";
 import type { SearchHit } from "./vectorStore.js";
 import { findSuperseded } from "./supersede.js";
 import { autoCompactCheck, isChatty } from "./compact.js";
@@ -635,7 +635,7 @@ describe("Dedup Hit Rates by Similarity Level", () => {
 
     // Check stats for each session
     for (const sid of sessionIds) {
-      const stats = store.stats(sid);
+      const stats = vectorStats(store,sid);
       console.log(
         `    ${sid}: ${stats.checkpointCount} checkpoint(s), dedup rate: ${(stats.dedupHitRate * 100).toFixed(0)}%`,
       );
@@ -663,7 +663,7 @@ describe("Dedup Hit Rates by Similarity Level", () => {
     // Check stats across sessions
     let totalCheckpoints = 0;
     for (let i = 0; i < variations.length; i++) {
-      const stats = store.stats(`sess_l1_${i}`);
+      const stats = vectorStats(store,`sess_l1_${i}`);
       totalCheckpoints += stats.checkpointCount;
     }
 
@@ -693,7 +693,7 @@ describe("Dedup Hit Rates by Similarity Level", () => {
 
     let totalCheckpoints = 0;
     for (let i = 0; i < variations.length; i++) {
-      const stats = store.stats(`sess_l1neg_${i}`);
+      const stats = vectorStats(store,`sess_l1neg_${i}`);
       totalCheckpoints += stats.checkpointCount;
     }
 
@@ -733,7 +733,7 @@ describe("Dedup Hit Rates by Similarity Level", () => {
 
     let totalCheckpoints = 0;
     for (let i = 0; i < paraphrases.length; i++) {
-      const stats = store.stats(`sess_l2_${i}`);
+      const stats = vectorStats(store,`sess_l2_${i}`);
       totalCheckpoints += stats.checkpointCount;
     }
 
@@ -798,7 +798,7 @@ describe("Dedup Hit Rates by Similarity Level", () => {
       });
     }
 
-    const stats = store.stats(dedupSession);
+    const stats = vectorStats(store,dedupSession);
     const totalAdded = 3 + 4 + 3;
 
     console.log(`    Total added: ${totalAdded}`);
@@ -1113,7 +1113,7 @@ describe("Store Stats & Dedup Metrics", () => {
       });
     }
 
-    const stats = store.stats(session);
+    const stats = vectorStats(store,session);
 
     console.log(`    Total added: 5`);
     console.log(`    Checkpoints stored: ${stats.checkpointCount}`);
@@ -1136,34 +1136,34 @@ describe("Store Stats & Dedup Metrics", () => {
     const sid = "sess_inject";
 
     assert.equal(
-      store.wasInjected(sid, id1),
+      vectorWasInjected(store,sid, id1),
       false,
       "Should not be injected initially",
     );
 
-    store.markInjected(sid, id1);
+    vectorMarkInjected(store,sid, id1);
     assert.equal(
-      store.wasInjected(sid, id1),
+      vectorWasInjected(store,sid, id1),
       true,
       "Should be injected after mark",
     );
     assert.equal(
-      store.wasInjected(sid, id2),
+      vectorWasInjected(store,sid, id2),
       false,
       "Different ID should not be affected",
     );
 
-    store.markInjected(sid, id2);
+    vectorMarkInjected(store,sid, id2);
     assert.equal(
-      store.wasInjected(sid, id2),
+      vectorWasInjected(store,sid, id2),
       true,
       "Second ID should also be injected",
     );
 
     // Idempotent
-    store.markInjected(sid, id1);
+    vectorMarkInjected(store,sid, id1);
     assert.equal(
-      store.wasInjected(sid, id1),
+      vectorWasInjected(store,sid, id1),
       true,
       "Re-mark should be idempotent",
     );
@@ -1200,7 +1200,7 @@ describe("Store Stats & Dedup Metrics", () => {
     );
 
     // Mark first hit as injected
-    store.markInjected(
+    vectorMarkInjected(store,
       sid,
       results1.hits[0].checkpoint.checkpointId,
     );
@@ -1272,7 +1272,7 @@ describe("topSimilar Edge Cases & Coverage", () => {
     }
 
     for (const n of [1, 3, 5, 10]) {
-      const results = store.topSimilar(sid, n);
+      const results = vectorTopSimilar(store,sid, n);
       assert.ok(
         results.length <= n,
         `topSimilar(${n}) returned ${results.length} results (should be <= ${n})`,
@@ -1282,7 +1282,7 @@ describe("topSimilar Edge Cases & Coverage", () => {
   });
 
   it("topSimilar returns empty for empty session", () => {
-    const results = store.topSimilar("sess_unknown_empty", 5);
+    const results = vectorTopSimilar(store,"sess_unknown_empty", 5);
     assert.equal(results.length, 0, "Empty session should return no results");
   });
 });

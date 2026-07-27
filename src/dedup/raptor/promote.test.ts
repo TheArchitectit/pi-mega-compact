@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { VectorStore } from "../../vectorStore.js";
+import { VectorStore, vectorList, vectorSearch } from "../../vectorStore.js";
 import { runRaptor } from "./index.js";
 import { compactSession } from "../../engine.js";
 import { Logger } from "../../log.js";
@@ -44,11 +44,11 @@ test("Fix D: vectorStore.search serves a persisted RAPTOR tree (broader recall)"
 
   // No tree yet → flat search only, returns hits, no RAPTOR coverage.
   assert.equal(listRaptorNodes(SESS, stateDir).length, 0, "no tree initially");
-  const flat = s.search(SESS, "alpha wire bootstrap", 3);
+  const flat = vectorSearch(s, SESS, "alpha wire bootstrap", 3);
   assert.ok(flat.length > 0, "flat search returns hits");
 
   // Build + persist a RAPTOR tree for the session (mirrors runCompact refresh).
-  const all = s.list(SESS);
+  const all = vectorList(s, SESS);
   const leaves = all.map((cp) => ({
     id: cp.checkpointId,
     messages: [],
@@ -60,7 +60,7 @@ test("Fix D: vectorStore.search serves a persisted RAPTOR tree (broader recall)"
 
   // With the tree live + RAPTOR_ENABLED, search still returns hits and now
   // exercises the RAPTOR-served path without regression.
-  const withTree = s.search(SESS, "alpha wire bootstrap", 3);
+  const withTree = vectorSearch(s, SESS, "alpha wire bootstrap", 3);
   assert.ok(withTree.length > 0, "search returns hits with RAPTOR promoted");
   // Every returned hit is a real checkpoint in the session.
   for (const h of withTree) {
@@ -72,7 +72,7 @@ test("Fix D: search still works for a session with <2 leaves (no tree)", () => {
   const stateDir = join(baseTmp, `run-${counter++}`);
   const s = new VectorStore({ dedupSim: 0.9, stateDir, config: raptorConfig() });
   compactSession({ sessionId: SESS, messages: [msg("only one topic here"), msg("ok", "Edit")], keepFrom: 2, timestamp: 1 }, s);
-  const r = s.search(SESS, "only one topic", 3);
+  const r = vectorSearch(s, SESS, "only one topic", 3);
   assert.ok(r.length > 0, "single-checkpoint search still works (no tree)");
   assert.equal(listRaptorNodes(SESS, stateDir).length, 0, "no tree built for <2 leaves");
 });

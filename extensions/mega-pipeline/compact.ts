@@ -27,6 +27,7 @@ import { runRaptor } from "../../src/dedup/raptor/index.js";
 import { loadDedupConfig } from "../../src/config/dedup.js";
 import { upsertEmbedding as indexUpsertEmbedding } from "../../src/store/vectorIndex.js";
 import { runMemoryReview } from "./memory-review.js";
+import { vectorList } from "../../src/vectorStore.js";
 
 export type RunCompactResult =
   | { skipped: true }
@@ -212,7 +213,7 @@ function doCompact(
   if (config.raptorEnabled && !result.deduped) {
     try {
       const dd = loadDedupConfig();
-      const all = runtime.store.list(sid);
+      const all = vectorList(runtime.store, sid);
       const leaves = all.map((cp) => ({
         id: cp.checkpointId,
         messages: [],
@@ -248,7 +249,7 @@ function doCompact(
   // Non-fatal: a WASM init failure degrades to the sync scan silently.
   if (!result.deduped) {
     try {
-      const all = runtime.store.list(sid);
+      const all = vectorList(runtime.store, sid);
       const latest = all.find((cp) => cp.checkpointId === result.checkpointId);
       if (latest?.embedding) {
         void indexUpsertEmbedding(

@@ -17,6 +17,7 @@ import {
 	doRecallAsync,
 } from "../mega-pipeline.js";
 import { recallMemoriesAndInline } from "../../src/recall.js";
+import { vectorStats } from "../../src/vectorStore.js";
 import type { MegaConfig } from "../mega-config.js";
 
 /** Register session lifecycle event handlers. */
@@ -50,7 +51,7 @@ export function registerSessionHandlers(
 		if (config.autoInline) {
 			const sid = normalizeSessionId(ctx.sessionManager.getSessionId());
 			const query = recentUserQuery(ctx);
-			if (query && runtime.store.stats(sid).checkpointCount > 0) {
+			if (query && vectorStats(runtime.store, sid).checkpointCount > 0) {
 				// S17: use the async variant on resume so cross-repo HNSW recall can
 				// augment when this repo's store is thin. session_start is an async-safe
 				// point (unlike the mid-turn context handler, which stays sync).

@@ -16,7 +16,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { VectorStore } from "../vectorStore.js";
+import { VectorStore, vectorMarkInjected, vectorWasInjected, vectorSearch } from "../vectorStore.js";
 import { writeGzJson } from "../store.js";
 import type { StoredCheckpoint } from "../store.js";
 import { migrateJsonToSqlite, readLegacyCheckpointFile } from "../store/migrate.js";
@@ -123,7 +123,7 @@ test("cross-process recall: fresh VectorStore over same dir recalls prior checkp
 
   // Process B: brand-new VectorStore, same stateDir.
   const b = new VectorStore({ stateDir: dir });
-  const hits = b.search(sid, "cross process recall proof", 5);
+  const hits = vectorSearch(b, sid, "cross process recall proof", 5);
   assert.equal(hits.length, 1, "checkpoint survives cross-process reopen");
   assert.equal(hits[0].checkpoint.checkpointId, "chkpt_001");
   assert.ok(hits[0].score > 0.5, "recall is relevant");
@@ -142,13 +142,13 @@ test("cross-process recall: injected state persists across reopen", () => {
     regionText: "injected state persists across process reopen test",
     timestamp: 1,
   });
-  a.markInjected(sid, added.checkpoint.checkpointId);
-  assert.equal(a.wasInjected(sid, added.checkpoint.checkpointId), true);
+  vectorMarkInjected(a, sid, added.checkpoint.checkpointId);
+  assert.equal(vectorWasInjected(a, sid, added.checkpoint.checkpointId), true);
 
   closeStore(dir);
 
   const b = new VectorStore({ stateDir: dir });
-  assert.equal(b.wasInjected(sid, added.checkpoint.checkpointId), true, "injection remembered");
+  assert.equal(vectorWasInjected(b, sid, added.checkpoint.checkpointId), true, "injection remembered");
 
   closeStore(dir);
 });
