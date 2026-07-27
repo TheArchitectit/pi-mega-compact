@@ -33,7 +33,7 @@ function isLeafId(id: string, tree: RaptorTree): boolean {
 }
 
 /** All leaf (raw) ids reachable beneath a node via BFS. */
-function leafDescendants(node: RaptorNode, tree: RaptorTree): string[] {
+export function leafDescendants(node: RaptorNode, tree: RaptorTree): string[] {
   const out: string[] = [];
   const queue = [node];
   while (queue.length) {
