@@ -3,7 +3,7 @@
 **Date:** 2026-07-16
 **Type:** Investigation / bug-finding (no code change in this doc)
 **Severity:** Low–Medium (cosmetic/observability; misleads testers, not data loss)
-**Status:** Confirmed root cause (code-path analysis); fix not yet written
+**Status:** RESOLVED — the dual-basis switch was eliminated by the S27 db-mirror stabilization (shipped v0.7.4/v0.7.5); see `sprint-27-db-mirror-cache-stability.md`. Resolution note added 2026-07-27.
 **Branch:** feat/verify-s24
 
 ---
@@ -85,6 +85,7 @@ get pressure(): number {
 
 `pressure` is computed two **disagreeing** ways depending on which signal the
 last context event carried:
+
 - **Basis A** (`token / threshold`) when the event includes a token count.
 - **Basis B** (`pressureFromPct(lastCtxPercent)`) when the event carries only a
   usage percentage (no token count).

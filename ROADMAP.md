@@ -1,8 +1,9 @@
 # Roadmap — RAPTOR Promotion + Dedup Pipeline (raptor-promotion branch)
 
-> Consolidated roadmap for P1 and P2 deferred work. This branch focuses on RAPTOR
+> Consolidated roadmap for P1 deferred work. This branch focuses on RAPTOR
 > Promotion as the primary deliverable, with cross-repo E2E and memory round-trip
-> as parallel P1 items, and Phase 2-4 compression/dedup enhancements as P2.
+> as parallel P1 items. (The original PLAN.md Phase 2-4 compression/dedup work
+> shipped as sprints 9-11; the P2 section below is kept for reference only.)
 
 **Branch:** `raptor-promotion`
 **Created:** 2026-07-20
@@ -120,10 +121,20 @@
 
 ## P2 — Medium Priority (Phase 2-4 from PLAN.md)
 
+> **⚠ SUPERSEDED (2026-07-27):** All three phases below already shipped as
+> **sprints 9-11** (see `docs/specs/sprint-09.md`, `sprint-10.md`, `sprint-11.md`):
+> zstd/compression tiers and content-addressable SHA-256 dedup (Sprint 9,
+> `src/store/compression.ts` + `content_hash` migration), normalized L0 exact-match
+> with Bloom pre-check replacing the optional Redis accelerator (Sprint 10,
+> `src/store/bloom.ts`), and MinHash+LSH L1 near-dup with FTS5 trigram verification
+> (Sprint 11, `src/dedup/l1-minhash.ts`, `src/dedup/l1-lsh.ts`,
+> `minhash_signatures` table). The sections below are kept for historical
+> reference only — do NOT treat them as pending work.
+
 ### Phase 2 — Enhanced Compression + Content-Addressable Dedup
 
 **Source:** `PLAN.md` Phase 2
-**Status:** ⬜ NOT STARTED
+**Status:** ✅ SHIPPED — Sprint 9 (v0.1.x, 2026-07-13; `docs/specs/sprint-09.md`)
 **Priority:** P2
 
 **Work Items (7 tasks):**
@@ -147,7 +158,9 @@
 ### Phase 3 — Tier 0 Exact Match Upgrade
 
 **Source:** `PLAN.md` Phase 3
-**Status:** ⬜ NOT STARTED
+**Status:** ✅ SHIPPED — Sprint 10 (v0.1.x, 2026-07-13; `docs/specs/sprint-10.md`;
+the Redis cache item was descoped — PREVENT-PI-004 forbids network deps — and
+replaced by the local Bloom pre-check in `src/store/bloom.ts`)
 **Priority:** P2
 
 **Work Items (7 tasks):**
@@ -171,7 +184,7 @@
 ### Phase 4 — Tier 1 Near-Duplicate (MinHash + LSH)
 
 **Source:** `PLAN.md` Phase 4
-**Status:** ⬜ NOT STARTED
+**Status:** ✅ SHIPPED — Sprint 11 (v0.1.x, 2026-07-13; `docs/specs/sprint-11.md`)
 **Priority:** P2
 
 **Work Items (6 tasks):**
@@ -199,11 +212,11 @@
 2. S25-B Cross-Repo E2E (parallel, test-only)
 3. S25-C Memory Round-Trip (parallel, test-only)
 
-**Sprint 2 (P2 - optional, future branch):**
+**Sprint 2 (P2) — ✅ ALREADY SHIPPED (sprints 9-11, see superseded note above):**
 
-1. Phase 2: Zstd + Content Dedup
-2. Phase 3: Tier 0 Exact Match
-3. Phase 4: Tier 1 Near-Duplicate
+1. ~~Phase 2: Zstd + Content Dedup~~ — Sprint 9
+2. ~~Phase 3: Tier 0 Exact Match~~ — Sprint 10
+3. ~~Phase 4: Tier 1 Near-Duplicate~~ — Sprint 11
 
 ---
 
@@ -219,10 +232,11 @@
 
 ### P2 Acceptance
 
-- [ ] Zstd compression working with backward compatibility
-- [ ] Content-addressable dedup reduces storage
-- [ ] MinHash/LSH catches near-duplicates that exact-hash misses
-- [ ] All P1 acceptance criteria still pass
+- [x] Zstd compression working with backward compatibility (sync path stays
+  brotli; zstd async DR-export helper gated, Sprint 9)
+- [x] Content-addressable dedup reduces storage (Sprint 9, `content_hash` + digest mirror)
+- [x] MinHash/LSH catches near-duplicates that exact-hash misses (Sprint 11)
+- [ ] All P1 acceptance criteria still pass (open until S25 lands)
 
 ---
 
@@ -248,4 +262,10 @@ P2 items are **feature-flagged** and can be disabled individually.
 
 ---
 
-*Last updated: 2026-07-20*
+*Last updated: 2026-07-27 (P2 phases marked shipped; stale sprint-spec headers synced)*
+
+> **Numbering note:** the newer RAG specs (`docs/specs/s40`-`s47`) reuse sprint
+> numbers already assigned to earlier shipped work (S40 dashboard overhaul,
+> S41 tiered threshold, S42 auto-continue, S43 auto-trigger, S44-S47 game mode).
+> Treat the `docs/specs/s4x-*.md` files as a separate *RAG suite* series; the
+> BACKLOG 'Shipped Items' entries use the original numbering.

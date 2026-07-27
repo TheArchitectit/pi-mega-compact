@@ -4,7 +4,7 @@
 **Focus:** Update all documentation, release notes, migration guide, tester guide
 **Priority:** P1
 **Effort:** S (≈ ½ day)
-**Status:** PLANNED
+**Status:** DONE — shipped v0.8.14 (React dashboard parity release)
 **Depends on:** Sprint D2 (observability)
 
 ---
@@ -13,6 +13,7 @@
 
 - Read `docs/AGENT_GUARDRAILS.md` + `skills/shared-prompts/four-laws.md` first.
 - Gate before commit:
+
   ```bash
   npm run build && npm run build:dashboard && npm test && npm run lint && python3 scripts/regression_check.py --all && node scripts/guardrails-scan.mjs
   ```
@@ -28,6 +29,7 @@ The React dashboard is a significant change from the HTML template. Documentatio
 ## SCOPE BOUNDARY
 
 **IN SCOPE (may modify):**
+
 - `extensions/DASHBOARD.md` — update architecture, quick start, development section.
 - `TESTER_GUIDE.md` — add React dashboard testing checklist.
 - `RELEASE_NOTES.md` — add dashboard v2 section.
@@ -38,6 +40,7 @@ The React dashboard is a significant change from the HTML template. Documentatio
 - `extensions/dashboard-client/README.md` (NEW) — development setup.
 
 **OUT OF SCOPE:**
+
 - Code changes.
 - `src/` modules.
 

@@ -1,5 +1,27 @@
 # Release Notes — pi-mega-compact
 
+## v0.8.24 (2026-07-27)
+
+**Fully decomposed runtime.** The mega-runtime monolith is gone: Phases 1, 2, and 2d split it into per-section modules under `extensions/mega-runtime/` with `runtime.ts` reduced to a delegates-only shell (~437 lines). Purely structural — no behavior change; smaller edit surfaces and safer future changes. Merged from the `raptor-promotion` branch.
+
+No migration required. Full gate green (`build` + `test` + `lint` + `regression_check` + `guardrails-scan`).
+
+## v0.8.23 (2026-07-27)
+
+**S42A — multi-level RAPTOR retrieval engine.** `src/dedup/raptor/multilevel.ts` adds level-weighted scoring with leaf expansion and build-history freshness metadata. Feature flags default ON (per the S42 re-plan). **Heads-up:** the engine is not yet wired into recall — zero behavior change until the S42B sub-sprint lands. Extractive cluster summaries are permanent (the Ollama enrichment sub-sprint was deleted, keeping the extension fully local).
+
+## v0.8.22 (2026-07-27)
+
+**New license, new safety guard, new scoring engine groundwork.**
+
+- **License switched to BSD 3-Clause.**
+- **S38.5 compact-dedup race guard** — chunks already compacted by an earlier handler in the same event are no longer re-processed (postmortem: `docs/specs/postmortem-already-compacted-race.md`).
+- **S40A importance scoring engine** (`src/importance.ts`) — groundwork for importance-aware compaction; not yet wired into the compaction path (S40B pending).
+- **S40–S47 RAG sprint specs** added (self-RAG gate, HyDE, latency routing, CRAG metrics, memory map, auto-wiki).
+- Structural barrel splits of `vectorStore` and the dashboard server.
+
+No migration required. Full gate green.
+
 ## v0.8.21 (2026-07-27)
 
 **ESC abort now cleanly skips retry nudges + real-time session gauges + stacked memory charts.** Three features (S39 session-timeseries charts, S40 per-repo context gauges, S38 ESC-cancel fix) and a critical P1 bug fix: pressing ESC mid-task previously fired up to 5 blind retry nudges that re-ran the exact task you just cancelled. That's fixed — the new `'cancelled'` error category short-circuits the retry safety net on any user-initiated abort.
@@ -20,6 +42,7 @@
 ### Tests
 
 S38 file: **37 tests** (up from 33). New:
+
 - `classifyError` returns `'cancelled'` for `stopReason: "aborted"` — 3 variants (plain, "Operation aborted", "Aborted after N retry attempts")
 - Defense: `stopReason: "error"` + `errorMessage` containing "aborted" still returns `'transient'` (not `'cancelled'`)
 - Integration: ESC abort fires NO nudge + logs `error_retry_cancelled`

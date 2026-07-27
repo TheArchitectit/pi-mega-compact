@@ -4,7 +4,7 @@
 **Focus:** Overview + Events tabs — the primary monitoring views
 **Priority:** P0
 **Effort:** M (≈ 1 day)
-**Status:** PLANNED
+**Status:** DONE — shipped v0.8.14 (React dashboard parity release)
 **Depends on:** Sprint B1 (React scaffold)
 
 ---
@@ -13,9 +13,11 @@
 
 - Read `docs/AGENT_GUARDRAILS.md` + `skills/shared-prompts/four-laws.md` first.
 - Gate before commit:
+
   ```bash
   npm run build && npm run build:dashboard && npm test && npm run lint && python3 scripts/regression_check.py --all && node scripts/guardrails-scan.mjs
   ```
+
 - PREVENT-PI-004: all API calls use relative paths (`/api/*`). No external network.
 - `src/` remains pi-agnostic.
 
@@ -30,6 +32,7 @@ The React scaffold (B1) has empty tab panels. Users need the Overview tab (conte
 ## SCOPE BOUNDARY
 
 **IN SCOPE (may modify):**
+
 - `extensions/dashboard-client/src/tabs/OverviewTab.tsx` (NEW)
 - `extensions/dashboard-client/src/tabs/EventsTab.tsx` (NEW)
 - `extensions/dashboard-client/src/components/ContextGauge.tsx` (NEW) — token usage meter.
@@ -40,6 +43,7 @@ The React scaffold (B1) has empty tab panels. Users need the Overview tab (conte
 - `extensions/dashboard-client/src/App.tsx` — wire tabs.
 
 **OUT OF SCOPE:**
+
 - Repos tab (C2), Config tab (C3), Game tab (C4+).
 - Server-side changes.
 - `src/` modules.

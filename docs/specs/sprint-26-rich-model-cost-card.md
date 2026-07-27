@@ -5,7 +5,7 @@
 **Focus:** Make the dashboard cost card multi-dimensional, historical, and actionable
 **Priority:** P1
 **Effort:** M (≈1.5 days)
-**Status:** DRAFT
+**Status:** DONE — shipped v0.7.1 ("Savings by Model" enrichment; `SavingsByModelTable.tsx`)
 **Depends on:** Sprints 8 (SQLite store), 15 (dashboard v0.2.0), S24 (unified pressure), S25 (cross-repo + model snapshots)
 
 ---
