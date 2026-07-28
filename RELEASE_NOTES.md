@@ -1,5 +1,24 @@
 # Release Notes — pi-mega-compact
 
+## Unreleased (2026-07-28 end-of-day)
+
+Staged for the next patch bump. Five commits on `master`, awaiting publish via `npm publish` (device pick-up via `pi update --extensions`).
+
+### Fixes & plumbing
+
+- **RAPTOR `parentId` plumbing.** During a re-cluster pass every internal RAPTOR node now links to its first-leaf ancestor (`null` → concrete id). Downstream consumers that relied on the pointer (S42B dot-graph viewer, S48 branch tracing) now have a real link.
+
+### Test infrastructure hardening
+
+- **Cross-repo E2E driver.** `scripts/cross-repo-e2e.mjs` exercises the `compactSession` → `persistState` → `recallMemories` handshake across two fake repos sharing a state dir. Pins the S25-B contract.
+- **Memory DB round-trip suite (`src/memoryRoundtrip.test.ts`).** Write → persist → recall → format carries content+category (`R1`), `MEMORY_MAX_ROWS` bloat cap (`R2`), apply-time hallucination guard (`R3`).
+- **`src/memory.test.ts` E5 pins + `src/sprint4x-rag-verification.test.ts`.** 160-char truncation guard, verbatim-grounded hallucination fence, single-token REMOVE over-match pin; S42 RAPTOR default-ON claim exposed (S40 wiring gap pinned as `absent-from-DedupConfig`).
+- **`scripts/run-tests.mjs`: solo adjudication.** Any file that fails under the parallel pool is re-run one-at-a-time before being declared failed — a flake under the pool is reported as `FLAKY`, not `FAILED`. Per-file hard cap tightened 3 min → 2 min (user directive).
+
+### Specs pinned
+
+- **S49 — conversation-tracking DB + Dashboard conversations tab.** Spec at `docs/specs/s49-conversation-db-dashboard.md`. Implementation is **NOT** in this snapshot; that is the next session's work (background agent draft pending).
+
 ## v0.8.26 (2026-07-28)
 
 **Documentation release — complete v0.8.25 release notes now ship with the package.** No code changes. v0.8.25's RAPTOR promotion landed without CHANGELOG/RELEASE_NOTES entries; this release closes that gap.
