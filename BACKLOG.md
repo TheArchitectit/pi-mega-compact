@@ -189,6 +189,7 @@
 | P3 | Game Mode: Time-windowed leaderboards | game-mode-sprint-plan.md | ⬜ |
 | P3 | Game Mode: Per-repo themes | game-mode-sprint-plan.md | ⬜ |
 | P3 | Game Mode: Theme transitions | game-mode-sprint-plan.md | ⬜ |
+| P2 | **S49: conversation-tracking DB + Dashboard tab (turns / turn_recall / conversation_branches → dedicated DB + prune/vacuum/threshold controls)** | [docs/specs/s49-conversation-db-dashboard.md](docs/specs/s49-conversation-db-dashboard.md) | ⬜ |
 
 ---
 
