@@ -230,6 +230,17 @@ export function buildRaptorTree(leaves: Leaf[], opts: BuildOptions): RaptorTree 
         qualityMarker,
         tokenEstimate,
       });
+      // Populate parentId for the internal nodes being absorbed into this
+      // parent summary. Group members with ids in `nodes` are internal summary
+      // nodes (level >= 1); raw leaf ids are not in `nodes` (per-leaf wrappers
+      // are intentionally absent) and are correctly skipped — leaf→summary
+      // walks go through the parent's `children` list instead.
+      for (const c of group) {
+        const child = nodes.get(c.id);
+        if (child && child.id !== merged.id) {
+          child.parentId = merged.id;
+        }
+      }
       nextLevel.push(merged);
     }
     currentLevel = nextLevel;
