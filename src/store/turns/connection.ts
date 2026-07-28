@@ -13,7 +13,9 @@ import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { getStateDir } from "../../store.js";
+import { TurnsConfig } from "../../config/turns.js";
 import { initTurnSchema } from "./schema.js";
+import { migrateTurnTablesIfNeeded } from "./migrations.js";
 
 /** Default turns.db filename within a state dir (override via TURNS_DB_PATH). */
 export const TURNS_DB_FILE = "turns.db";
@@ -49,6 +51,12 @@ export function openTurnStore(stateDir: string = getStateDir()): DatabaseSync {
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
   initTurnSchema(db);
+  // S49B: one-time move of legacy main-db turn tables into turns.db (idempotent,
+  // non-fatal). Runs only when the isolated store is enabled. Uses the real main
+  // db file (sqlite.db) in the SAME state dir — never the test-only turns.db path.
+  if (TurnsConfig.TURNS_DB_ENABLED) {
+    migrateTurnTablesIfNeeded(db, stateDir);
+  }
   cache.set(path, db);
   return db;
 }

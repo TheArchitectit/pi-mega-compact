@@ -7,6 +7,7 @@
 export { createTurnStore, newConversationId } from "./turnStore.js";
 export { openTurnStore, closeTurnStore, turnDbPath, TURNS_DB_FILE } from "./connection.js";
 export { initTurnSchema } from "./schema.js";
+export { migrateTurnTablesIfNeeded } from "./migrations.js";
 export type {
   ConversationBranch,
   ForkResult,
