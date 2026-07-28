@@ -1,23 +1,31 @@
 # Release Notes — pi-mega-compact
 
-## Unreleased (2026-07-28 end-of-day)
+## v0.9.0 (2026-07-29)
 
-Staged for the next patch bump. Five commits on `master`, awaiting publish via `npm publish` (device pick-up via `pi update --extensions`).
+**The trust release.** v0.8.25 shipped a lot of memory machinery; v0.9.0 is the work that makes it verifiable end-to-end. Six commits built on top of v0.8.26's docs release, keyed around proving what the pipeline actually does rather than assuming it.
 
-### Fixes & plumbing
+### What's new
 
 - **RAPTOR `parentId` plumbing.** During a re-cluster pass every internal RAPTOR node now links to its first-leaf ancestor (`null` → concrete id). Downstream consumers that relied on the pointer (S42B dot-graph viewer, S48 branch tracing) now have a real link.
+- **Cross-repo E2E.** `scripts/cross-repo-e2e.mjs` runs the full loop (compact → persist → recall) against two fake repos sharing a state dir. Pins the S25-B contract so cross-repo recall can't silently break.
+- **Memory DB round-trip suite.** `src/memoryRoundtrip.test.ts` walks the chain per phase: write → persist → recall → format carries content+category (R1), `MEMORY_MAX_ROWS` bloat cap holds under 50 iterations (R2), and the apply-time hallucination guard actually drops ungrounded ops (R3).
+- **S4x RAG verification.** `src/sprint4x-rag-verification.test.ts` pins the current default-enable claims: S42 RAPTOR flags hold, S40 wiring gap documented, S41/S43–S47 remain spec-only — pinned absent so a future wiring can't sneak in wrong.
 
-### Test infrastructure hardening
+### Test runner hardening
 
-- **Cross-repo E2E driver.** `scripts/cross-repo-e2e.mjs` exercises the `compactSession` → `persistState` → `recallMemories` handshake across two fake repos sharing a state dir. Pins the S25-B contract.
-- **Memory DB round-trip suite (`src/memoryRoundtrip.test.ts`).** Write → persist → recall → format carries content+category (`R1`), `MEMORY_MAX_ROWS` bloat cap (`R2`), apply-time hallucination guard (`R3`).
-- **`src/memory.test.ts` E5 pins + `src/sprint4x-rag-verification.test.ts`.** 160-char truncation guard, verbatim-grounded hallucination fence, single-token REMOVE over-match pin; S42 RAPTOR default-ON claim exposed (S40 wiring gap pinned as `absent-from-DedupConfig`).
-- **`scripts/run-tests.mjs`: solo adjudication.** Any file that fails under the parallel pool is re-run one-at-a-time before being declared failed — a flake under the pool is reported as `FLAKY`, not `FAILED`. Per-file hard cap tightened 3 min → 2 min (user directive).
+- **Solo adjudication.** Files that fail in the parallel pool are re-run one-at-a-time; a pool-only failure is reported as FLAKY, not FAILED. No false negatives under CPU contention.
+- **Hard cap lowered.** Per-file timeout 3 min → 2 min; a file that stops responds inside the cap or it gets SIGKILLed and reported.
+- **Wasm-handle exit fix.** The memory round-trip file disables the PGlite mirror cleanly — no more 2-minute hangs waiting on WASM teardown.
 
 ### Specs pinned
 
-- **S49 — conversation-tracking DB + Dashboard conversations tab.** Spec at `docs/specs/s49-conversation-db-dashboard.md`. Implementation is **NOT** in this snapshot; that is the next session's work (background agent draft pending).
+- **S49 — conversation-tracking DB + Dashboard conversations tab.** Spec at `docs/specs/s49-conversation-db-dashboard.md`. Implementation follows in v0.9.x.
+
+### Migration
+
+None. All flags default ON as before; the pinned S4x suite documents existing defaults, no new env vars.
+
+---
 
 ## v0.8.26 (2026-07-28)
 
