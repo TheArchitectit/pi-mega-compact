@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { reviewConversation } from "./memory.js";
+import { reviewConversation, type MemoryOp } from "./memory.js";
+import type { EngineMessage } from "./types.js";
 
 test("reviewConversation: yields an ADD op for a stated decision", () => {
   const msgs = [
@@ -43,4 +44,49 @@ test("reviewConversation: REMOVE requires topic overlap (no accidental drop)", (
   const msgs = [{ role: "user", text: "drop it" }] as any;
   const ops = reviewConversation(msgs, existing);
   assert.equal(ops.filter((o) => o.op === "remove").length, 0, "vague 'drop it' with no topic overlap does not remove anything");
+});
+
+// ---- E5 (docs/specs/s25-memory-db-roundtrip.md): hallucination-guard pins ----
+
+test("E5.3 — truncation pin: long decision truncates to 160 chars and stays message-grounded", () => {
+  // collectRecentUserRequests truncates user text at 160 chars before review.
+  // A long decision is silently clipped — undocumented before S25; this pins
+  // the boundary.
+  const long =
+    "we decided to use node:sqlite for the authoritative store backend after evaluating better-sqlite3, pglite and libsql and rejecting all three";
+  const msgs = [{ role: "user", text: long }] as any;
+  const ops = reviewConversation(msgs);
+  const add = ops.find((o) => o.op === "add") as Extract<MemoryOp, { op: "add" }> | undefined;
+  assert.ok(add, "a decision inside a long user message produces an add");
+  assert.ok(
+    add!.memory.content.length <= 160,
+    "stored content is 160-char truncated",
+  );
+  assert.ok(
+    long.includes(add!.memory.content),
+    "truncated content is still verbatim-grounded in the message",
+  );
+});
+
+test("E5.1 — hallucination guard: every surviving add/replace is verbatim from a real message", () => {
+  const msgs = [{ role: "user", text: "the pipeline uses dagster for orchestration" }] as EngineMessage[];
+  const ops = reviewConversation(msgs, [{ content: "we use better-sqlite3 for the store" }]);
+  for (const o of ops) {
+    if (o.op === "remove") continue; // REMOVE is exempt by design (:70-74)
+    assert.ok(
+      msgs.some((m) => String(m.text ?? "").includes(o.memory.content)),
+      "every add/replace content is verbatim from a real message",
+    );
+  }
+  assert.equal(ops.filter((o) => o.op !== "remove").length, 0, "non-decision text produces no add/replace");
+});
+
+test("E5.4 — REMOVE over-match pin: single-token topic overlap fires REMOVE", () => {
+  const existing = [{ content: "we use redis for the cache" }];
+  const msgs = [{ role: "user", text: "stop using redis" }] as any;
+  const ops = reviewConversation(msgs, existing);
+  assert.ok(
+    ops.some((o) => o.op === "remove" && /redis/i.test(o.content)),
+    "single-token overlap removes the matching memory (current behavior — KNOWN: weak topic match)",
+  );
 });
