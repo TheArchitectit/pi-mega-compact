@@ -94,6 +94,7 @@
 | release pipeline, publish gate, deploy.sh, npm publish gate (v0.8.16) | [scripts/deploy.sh](../scripts/deploy.sh) | scripts/ |
 | S25-B spec (cross-repo + durable-memory headless two-repo E2E — repoKey unification, kill-switch + corrupt-dir fallback) | [specs/s25-cross-repo.md](specs/s25-cross-repo.md) | docs/specs/ |
 | S25-B two-repo driver (checkpoint + memory cross-repo through real handlers) | [scripts/cross-repo-e2e.mjs](../scripts/cross-repo-e2e.mjs) | scripts/ |
+| **S49 spec (conversation-tracking DB + Dashboard conversations tab — turns / recall provenance / branches with prune + vacuum + threshold controls)** | [specs/s49-conversation-db-dashboard.md](specs/s49-conversation-db-dashboard.md) | docs/specs/ |
 | dashboard, live monitoring, widget, SSE, token gauge | [DASHBOARD.md](../extensions/DASHBOARD.md) | extensions/ |
 
 ---
