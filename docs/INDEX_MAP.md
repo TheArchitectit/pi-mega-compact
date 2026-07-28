@@ -92,6 +92,8 @@
 | release notes, v0.2.0, migration guide, breaking change, what's new | [RELEASE_NOTES.md](../RELEASE_NOTES.md) | repo root |
 | changelog, per-release changes, sprint breakdown | [CHANGELOG.md](../CHANGELOG.md) | repo root |
 | release pipeline, publish gate, deploy.sh, npm publish gate (v0.8.16) | [scripts/deploy.sh](../scripts/deploy.sh) | scripts/ |
+| S25-B spec (cross-repo + durable-memory headless two-repo E2E — repoKey unification, kill-switch + corrupt-dir fallback) | [specs/s25-cross-repo.md](specs/s25-cross-repo.md) | docs/specs/ |
+| S25-B two-repo driver (checkpoint + memory cross-repo through real handlers) | [scripts/cross-repo-e2e.mjs](../scripts/cross-repo-e2e.mjs) | scripts/ |
 | dashboard, live monitoring, widget, SSE, token gauge | [DASHBOARD.md](../extensions/DASHBOARD.md) | extensions/ |
 
 ---

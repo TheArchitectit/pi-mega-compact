@@ -600,6 +600,19 @@ rebuild from legacy JSON snapshots.
 - No duplicate foreign injection across resumes.
 - Kill-switch confines recall to the current repo.
 
+**Headless two-repo E2E harness (S25-B, v0.8.27):**
+
+```sh
+node scripts/cross-repo-e2e.mjs
+```
+
+Drives the real two-repo contract: repo A compacts a checkpoint + saves a
+decision memory; repo B's recall surfaces BOTH, repo-labeled; the
+`MEGACOMPACT_PGLITE_DISABLED=1` kill-switch degrades to same-repo-only without
+error; a torn PGlite dir self-heals (delete + retry) without crashing. The
+PGlite dirs (`~/.pi/mega-compact-vector` and `.../memory`) are safe to delete
+— the sync node:sqlite store is authoritative and the index rebuilds from it.
+
 ---
 
 ### 10. Durable memory (auto-review → RAG)
