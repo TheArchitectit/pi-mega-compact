@@ -5,7 +5,7 @@
  * Phase 2d (maximal split): the class body is field declarations, the
  * constructor, and 1-line delegates only. Every method body lives in its own
  * module following the context-interface + free-function + thin-delegate
- * pattern: pressure-getters.ts / reset-runtime.ts / append-event.ts /
+ * pattern: pressure-getters.ts / append-event.ts /
  * get-state-dir.ts / render-widget.ts / status.ts / engine-view.ts /
  * runtime-snapshot.ts / runtime-helpers.ts / effects.ts / game-state.ts /
  * capture-model.ts / bind-repo.ts / perf.ts. state.ts re-exports the class for

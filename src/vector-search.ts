@@ -123,6 +123,9 @@ function raptorSearchHits(
 					hits.push({ checkpoint: cp, score: mh.score });
 					continue;
 				}
+				// Orphaned leaf (checkpoint missing from the stored list, e.g. SemDeDup
+				// removed) — skip; synthesizing it would yield an empty cluster block.
+				if (mh.isLeaf) continue;
 				// Cluster hit: synthesize a SearchHit so the recall block can surface
 				// the hierarchical summary (not a stored checkpoint). The minimal
 				// StoredCheckpoint carries the node's centroid embedding for any
