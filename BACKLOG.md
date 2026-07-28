@@ -197,6 +197,7 @@
 
 - **RAPTOR Promotion** fully shipped v0.8.25 — serve gate, freshness, session cache, monitor events, 5-gate acceptance suite, and the Phase-2 `RAPTOR_INJECT_SUMMARIES` flag all live.
 - **Cross-Repo E2E** is a missing test proof, not new functionality — the feature shipped in v0.5.0 but lacks automated two-repo verification.
+- **S4x RAG verification** (v0.8.27) — `src/sprint4x-rag-verification.test.ts` pins the CURRENT default-enable claims: S42 RAPTOR flags hold (default ON, env-overridable off), while S40 wiring + S41/S43–S47 remain spec-only (no consumer code, no flag) — the file pins the absence so future wiring cannot silently add them in the wrong state.
 - **Phase 2-4** shipped as sprints 9-11 (2026-07-13); sections retained for reference.
 - **Sprint numbering collision:** `docs/specs/s40`-`s47` (RAG suite) reuse numbers already spent on earlier shipped work (see BACKLOG Shipped Items + ROADMAP numbering note).
 
