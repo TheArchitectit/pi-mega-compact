@@ -182,9 +182,11 @@ test("S25-P2: formatRaptorBlock labels root as 'Session overview' + clusters as 
 // so shadow mode does NOT suppress it via the serve gate. Verify the behavior:
 // the overview IS emitted in shadow mode (the tree exists and is rehydrated).
 // This is acceptable — the overview is a session map, not a live-serve decision.
-// Documenting the actual behavior so a future change is intentional.
+// QA finding #1 (v0.8.25): the overview previously bypassed the shadow gate —
+// the tree was injected into recall while RAPTOR_SERVE was logging-only. The
+// gate now applies to the inject path too: shadow mode = no overview.
 
-test("S25-P2: overview is readable in shadow mode (documents actual behavior)", () => {
+test("S25-P2: overview is suppressed in shadow mode (QA fix)", () => {
 	const sd = stateDir();
 	const s = new VectorStore({ dedupSim: 0.9, stateDir: sd, config: cfg() });
 	const sid = "shadow";
@@ -197,11 +199,11 @@ test("S25-P2: overview is readable in shadow mode (documents actual behavior)", 
 			{ sessionId: sid, query: "database pool", source: "resume", limit: 3 },
 			s,
 		);
-		// The overview reads the persisted tree directly (not gated by the serve
-		// gate) — so it IS present in shadow mode. This is the documented behavior.
+		// Shadow mode = build + persist + log only; nothing RAPTOR-derived is
+		// injected into recall, including the overview header.
 		assert.ok(
-			r.block.includes("hierarchical overview"),
-			"overview present in shadow mode (reads tree directly)",
+			!r.block.includes("hierarchical overview"),
+			"overview suppressed in shadow mode",
 		);
 	} finally {
 		if (orig === undefined) delete process.env.RAPTOR_SHADOW_MODE;

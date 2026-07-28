@@ -18,7 +18,8 @@ import { recall as searchRecall } from "./engine.js";
 import { vectorWasInjected, vectorMarkInjected, type SearchHit, type VectorStore, vectorSearchAsync } from "./vectorStore.js";
 import { estimateBlockTokens } from "./tokens.js";
 import { defaultEmbedder, cosineSimilarity } from "./embedder.js";
-import { rehydrateRaptorTree } from "./dedup/raptor/index.js";
+import { rehydrateRaptorTree, isShadowMode } from "./dedup/raptor/index.js";
+import { maxCheckpointTimestamp } from "./store/sqlite.js";
 import { normalizeSessionId } from "./store.js";
 
 export type RecallSource = "resume" | "command" | "sentinel";
@@ -260,8 +261,15 @@ function raptorOverviewBlock(
 ): string {
   try {
     const sid = normalizeSessionId(sessionId);
+    // S25 gate: the overview header is part of the RAPTOR serve surface, so it
+    // must honor the same contract as raptorSearchHits — shadow mode is
+    // logging-only building, not injection.
+    if (isShadowMode()) return "";
     const tree = rehydrateRaptorTree(sid, store.stateDir);
     if (!tree || !tree.rootId || tree.timedOut) return "";
+    // Freshness: a tree built before the session's latest checkpoint is stale.
+    const maxTs = maxCheckpointTimestamp(sid, store.stateDir);
+    if (tree.builtAt && tree.builtAt < maxTs) return "";
     const root = tree.nodes.get(tree.rootId);
     if (!root) return "";
     const qv = store.embedder.embed(query);

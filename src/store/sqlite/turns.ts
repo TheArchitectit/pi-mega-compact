@@ -12,7 +12,7 @@
  * `forkConversation(parent, forkTurnId)` copies a parent conversation's
  * recall state at `forkTurnId` into a fresh conversation's injected-set, so a
  * forked session starts with exactly the context conversation X had at turn N
- * (a recall-fork, not a live-window replay — see docs/specs/s43-per-turn-vector-tracking.md).
+ * (a recall-fork, not a live-window replay — see docs/specs/s48-per-turn-vector-tracking.md).
  *
  * No network. Pure SQLite (PREVENT-PI-004). All queries parameterized (PREVENT-002).
  */
