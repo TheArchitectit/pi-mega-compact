@@ -86,6 +86,32 @@ npm run lint      # Type check + guardrails scan
 
 Testing guide: [`TESTER_GUIDE.md`](TESTER_GUIDE.md)
 
+## Troubleshooting
+
+### npm lifecycle scripts disabled
+
+Some package managers disable lifecycle scripts by default. PGlite and `@mongodb-js/zstd` need scripts enabled to build their native components.
+
+```bash
+# Re-enable install scripts
+npm config set ignore-scripts false
+npm install
+
+# Or allow scripts for specific packages only
+npm install --install-strategy=linked
+```
+
+### node:sqlite not found / experimental flag required
+
+pi-mega-compact requires Node ≥22.13 for the built-in `node:sqlite` module. If you're on an older version or your Node build doesn't include it by default:
+
+```bash
+export NODE_OPTIONS="--experimental-sqlite"
+pi
+```
+
+Add the export to your shell profile (`.bashrc`, `.zshrc`, etc.) to make it permanent.
+
 ## License
 
 BSD 3-Clause
