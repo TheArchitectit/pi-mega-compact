@@ -59,12 +59,18 @@ function msg(text: string, toolName?: string): EngineMessage {
 }
 
 function seedTwoTopics(store: VectorStore, sid: string, per: number) {
-	const topics = ["database connection pool postgres", "user interface button react"];
+	const topics = [
+		"database connection pool postgres",
+		"user interface button react",
+	];
 	for (let i = 1; i <= per * 2; i++) {
 		compactSession(
 			{
 				sessionId: sid,
-				messages: [msg(`${topics[i % 2]} checkpoint ${i} alpha beta`), msg(`ack ${i}`, "Edit")],
+				messages: [
+					msg(`${topics[i % 2]} checkpoint ${i} alpha beta`),
+					msg(`ack ${i}`, "Edit"),
+				],
 				keepFrom: 2,
 				timestamp: i,
 			},
@@ -109,7 +115,8 @@ test("S25-P2: RAPTOR_INJECT_SUMMARIES=true prepends a hierarchical overview head
 		"detailed recall block still present after overview",
 	);
 	assert.ok(
-		r.block.indexOf("hierarchical overview") < r.block.indexOf("Recalled context"),
+		r.block.indexOf("hierarchical overview") <
+			r.block.indexOf("Recalled context"),
 		"overview precedes detail",
 	);
 });
@@ -168,9 +175,18 @@ test("S25-P2: formatRaptorBlock labels root as 'Session overview' + clusters as 
 		{ summary: "root overview text", level: 0, score: 0.9 },
 		{ summary: "cluster A text", level: 1, score: 0.7 },
 	]);
-	assert.ok(/The following hierarchical overview/.test(block), "preamble present");
-	assert.ok(/Session overview \[1\] \(relevance 90%\)/.test(block), "root labeled");
-	assert.ok(/Cluster summary \[2\] \(level 1\) \(relevance 70%\)/.test(block), "cluster labeled");
+	assert.ok(
+		/The following hierarchical overview/.test(block),
+		"preamble present",
+	);
+	assert.ok(
+		/Session overview \[1\] \(relevance 90%\)/.test(block),
+		"root labeled",
+	);
+	assert.ok(
+		/Cluster summary \[2\] \(level 1\) \(relevance 70%\)/.test(block),
+		"cluster labeled",
+	);
 	assert.ok(block.includes("root overview text"), "root body present");
 	assert.ok(block.includes("cluster A text"), "cluster body present");
 	assert.equal(formatRaptorBlock([]), "", "empty input → empty string");
