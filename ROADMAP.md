@@ -16,7 +16,7 @@
 ### S25-A — RAPTOR Promotion: Harden Live Hierarchical Recall
 
 **Source:** `docs/specs/s25-raptor-promote.md`
-**Status:** 🟡 IN PROGRESS (6/10 done — gates + freshness + monitoring shipped; cache + acceptance tests remain)
+**Status:** ✅ SHIPPED — v0.8.25 (2026-07-28); 10/10 tasks + 5-gate acceptance suite
 **Priority:** P1 (correctness + latency hardening)
 
 **Problem:** RAPTOR was promoted from shadow to live but the promotion is implicit and fragile:
@@ -208,9 +208,9 @@ replaced by the local Bloom pre-check in `src/store/bloom.ts`)
 
 **Sprint 1 (P1):**
 
-1. S25-A RAPTOR Promotion (primary focus)
-2. S25-B Cross-Repo E2E (parallel, test-only)
-3. S25-C Memory Round-Trip (parallel, test-only)
+1. ~~S25-A RAPTOR Promotion~~ ✅ v0.8.25
+2. S25-B Cross-Repo E2E (parallel, test-only) — **next P1**
+3. S25-C Memory Round-Trip (parallel, test-only) — **next P1**
 
 **Sprint 2 (P2) — ✅ ALREADY SHIPPED (sprints 9-11, see superseded note above):**
 
@@ -224,7 +224,7 @@ replaced by the local Bloom pre-check in `src/store/bloom.ts`)
 
 ### P1 Acceptance
 
-- [ ] RAPTOR: `RAPTOR_SHADOW_MODE=false` disables serving; freshness guard works; p95 < 100ms
+- [x] RAPTOR: `RAPTOR_SHADOW_MODE=false` disables serving; freshness guard works; p95 < 100ms (shipped v0.8.25)
 - [ ] Cross-Repo: Two-repo E2E passes all phases (checkpoint + memory + fallback)
 - [ ] Memory: Full round-trip proven; bloat bounded; hallucination guard verified
 - [ ] All existing tests green; no regressions

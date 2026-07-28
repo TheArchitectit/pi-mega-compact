@@ -6,7 +6,7 @@
 **Parent plan:** Memory RAG System (borrowed from radical-memory-mcp / R.A.D.1.C.A.1)
 **Depends on:** Sprint 13 (RAPTOR tree build), Sprint 14 (RAPTOR promoted to live recall), S41 (self-RAG quality gate), `src/dedup/raptor/`, `src/vectorStore.ts`, `src/recall.ts`
 **Priority:** P1
-**Status:** S42A ✅ SHIPPED (v0.8.23, commit `1b78948` — `multilevel.ts` engine + 9 tests) → S42B (config flags + `raptorSearchHits` wiring + `SearchHit.raptorSummary`) and S42D (build history + freshness auto-skip) implement-ready. S42C DELETED in re-plan.
+**Status:** S42A ✅ SHIPPED (v0.8.23, `1b78948`) → S42B + S42D ✅ SHIPPED (v0.8.25 — config flags + `raptorSearchHits` wiring + `SearchHit.raptorSummary` synthetic `Recalled cluster summary` hits, `raptor_build_history` table, freshness auto-skip in compact). S42C DELETED in re-plan.
 **Target version:** v0.9.x
 
 ---
