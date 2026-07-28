@@ -9,7 +9,7 @@
 ## AGENT_GUARDRAILS.md (docs/AGENT_GUARDRAILS.md)
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Applicability | 9 | 0 |
 | Purpose | 27 | 18 |
 | Four Laws (quick ref) | 49 | 40 |
@@ -28,7 +28,7 @@
 ## CLAUDE.md (repo root)
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Navigation Maps | 3 | 0 |
 | Context & Setup | 11 | 8 |
 | Token-Saving Rules | 21 | 18 |
@@ -42,7 +42,7 @@
 ## PLAN.md (repo root)
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Current Status (phases) | 18 | 0 |
 | Confirmed design decisions | 32 | 0 |
 | Architecture Overview | 56 | 0 |
@@ -59,7 +59,7 @@
 ## SPRINT_PLAN.md (repo root)
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Sprint 0 Bootstrap | 15 | 0 |
 | Sprint 1 Core engine | 45 | 0 |
 | Sprint 2 Vector store (done) | 67 | 0 |
@@ -84,7 +84,7 @@
 ## docs/RETENTION_POLICY.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Storage backend (source of truth) | 9 | 0 |
 | TTL — 90 days | 28 | 0 |
 | Soft-delete via dedup_status | 44 | 0 |
@@ -97,7 +97,7 @@
 ## docs/DEDUP_RUNBOOK.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Severity tiers | 9 | 0 |
 | First 15 minutes — checklist | 28 | 0 |
 | Tier reference | 62 | 0 |
@@ -111,7 +111,7 @@
 ## TESTER_GUIDE.md (repo root)
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Prerequisites | 10 | 0 |
 | Test Environment Setup | 53 | 0 |
 | Running the Test Suite | 91 | 0 |
@@ -132,7 +132,7 @@
 ## RELEASE_NOTES.md (repo root)
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | v0.2.0 (2026-07-13) | 3 | 0 |
 | Highlights | 10 | 0 |
 | Breaking Change | 26 | 0 |
@@ -147,7 +147,7 @@
 ## extensions/DASHBOARD.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Quick Start | 7 | 0 |
 | Commands | 20 | 0 |
 | Architecture | 28 | 0 |
@@ -162,7 +162,7 @@
 ## docs/dedup-implementation-plan.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Architecture Overview (4 tiers) | 35 | 0 |
 | Phase 1 L0 Exact + MMR | 89 | 0 |
 | Phase 2 RAPTOR | 289 | 0 |
@@ -182,7 +182,7 @@
 ## docs/specs/fix-durable-trim.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Safety Protocols | 13 | 0 |
 | Problem Statement | 27 | 0 |
 | Scope Boundary | 56 | 0 |
@@ -199,7 +199,7 @@
 ## docs/specs/slice2-pglite-vector-index.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Safety Protocols | 10 | 0 |
 | Decisions (locked) | 22 | 0 |
 | Problem / Motivation | 30 | 0 |
@@ -215,7 +215,7 @@
 ## docs/specs/fix-pglite-lazy-import.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Safety | 9 | 0 |
 | Problem | 18 | 0 |
 | Scope | 40 | 0 |
@@ -226,7 +226,7 @@
 ## docs/superpowers/CONTINUITY-BRANCH-ROADMAP.md (branch map for v0.5.0)
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | What this branch solves (audited findings) | 1 | 0 |
 | The core design decision (S16) | 2 | 0 |
 | Sprint map (S16–S23) | 3 | 0 |
@@ -239,7 +239,7 @@
 ## docs/superpowers/specs/2026-07-15-compaction-continuity-cross-repo-memory-design.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Context (why now) | 1 | 0 |
 | Goals / Non-goals | 2–3 | 0 |
 | Resolved decisions | 4 | 0 |
@@ -254,7 +254,7 @@
 ## docs/specs/s27-tiered-percent-threshold.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Safety Protocols | 12 | 0 |
 | Problem Statement | 22 | 0 |
 | Scope Boundary | 37 | 0 |
@@ -266,7 +266,7 @@
 ## docs/specs/s28-max-output-token-auto-continue.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Safety Protocols | 12 | 0 |
 | Problem Statement | 23 | 0 |
 | Scope Boundary | 43 | 0 |
@@ -279,7 +279,7 @@
 ## docs/specs/s29-percent-auto-trigger.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Safety Protocols | 12 | 0 |
 | Problem Statement | 24 | 0 |
 | Scope Boundary | 36 | 0 |
@@ -291,7 +291,7 @@
 ## docs/specs/s40-importance-scoring.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Safety Protocols | 12 | 0 |
 | Problem | 22 | 0 |
 | Scope | 38 | 0 |
@@ -304,7 +304,7 @@
 ## docs/specs/s41-self-rag-quality-gate.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Safety Protocols | 12 | 0 |
 | Problem | 22 | 0 |
 | Scope | 40 | 0 |
@@ -317,7 +317,7 @@
 ## docs/specs/s42-raptor-multilevel-retrieval.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Safety Protocols | 12 | 0 |
 | Problem | 31 | 0 |
 | Scope | 50 | 0 |
@@ -330,7 +330,7 @@
 ## docs/specs/s43-hyde-vague-queries.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Safety Protocols | 12 | 0 |
 | Problem | 30 | 0 |
 | Scope | 48 | 0 |
@@ -344,7 +344,7 @@
 ## docs/specs/s44-three-tier-latency-routing.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Safety Protocols | 12 | 0 |
 | Problem | 24 | 0 |
 | Scope | 44 | 0 |
@@ -359,7 +359,7 @@
 ## docs/specs/s45-crag-quality-metrics.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Safety Protocols | 12 | 0 |
 | Problem | 24 | 0 |
 | Scope | 42 | 0 |
@@ -374,7 +374,7 @@
 ## docs/specs/s46-visual-memory-map.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Safety Protocols | 12 | 0 |
 | Problem | 26 | 0 |
 | Scope | 42 | 0 |
@@ -389,7 +389,7 @@
 ## docs/specs/s47-auto-categorizing-wiki.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Safety Protocols | 12 | 0 |
 | Problem | 26 | 0 |
 | Scope | 43 | 0 |
@@ -404,7 +404,7 @@
 ## docs/specs/s39-multi-pi-memory-graph.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Status / Branch / Prereq | 3 | 0 |
 | Problem | 9 | 0 |
 | Safety | 23 | 0 |
@@ -417,7 +417,7 @@
 ## docs/superpowers/plans/2026-07-15-compaction-continuity-cross-repo-memory.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | File structure (all sprints) | top | 0 |
 | Sprint S16 — Compaction Continuity | S16 | 0 |
 | Sprint S17 — Cross-Repo Recall Wire-Up | S17 | 0 |
@@ -434,7 +434,7 @@
 ## docs/specs/game-mode-sprint-plan.md (docs/specs/game-mode-sprint-plan.md)
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Guardrail Adherence Review | 13 | 0 |
 | QA Review of the v0.2 Spec | 33 | 0 |
 | Sprint Roadmap (S30–S35) | 55 | 0 |
@@ -451,7 +451,7 @@
 ## docs/game-mode-design.md (docs/game-mode-design.md)
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Goal | 9 | 0 |
 | Scoring model | 17 | 0 |
 | MEGA CACHE | 30 | 0 |
@@ -468,7 +468,7 @@
 ## src/ (v0.5.0 source index)
 
 | File | Purpose (sprint) |
-|------|-------------------|
+| ------ | ------------------- |
 | `src/memory.ts` | Auto-review (`reviewConversation`) + consolidation (`consolidateMemories`) for the durable `memories` table (S20/S21). |
 | `src/memoryOps.ts` | Applies `reviewConversation` `MemoryOp`s to the `memories` table — thin layer over `src/store/sqlite.ts` helpers (S20.3). |
 | `src/memoryRecall.ts` | Semantic recall over `memories` with cosine + category/recency boosting; marks hits `last_referenced` (S21.1). |
@@ -484,7 +484,7 @@
 ## specs/s24-unified-pressure.md (docs/specs/s24-unified-pressure.md)
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | SAFETY PROTOCOLS | 11 | 0 |
 | DECISIONS (locked with user) | 25 | 14 |
 | PROBLEM / MOTIVATION | 44 | 33 |
@@ -498,7 +498,7 @@
 ## docs/specs/sprint-27-db-mirror-cache-stability.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | SAFETY PROTOCOLS | 15 | 0 |
 | PROBLEM (root cause: Date.now() + shifting slice) | 47 | 0 |
 | SCOPE (in/out) | 76 | 0 |
@@ -510,7 +510,7 @@
 ## src/mirror/ (S27 DB-mirror)
 
 | File | Purpose |
-|------|--------|
+| ------ | -------- |
 | `src/mirror/epoch.ts` | Deterministic epoch-id derivation (FNV-1a nonce, epochIdFor) |
 | `src/mirror/raw_transcript.ts` | Append-only raw message log (upsertRawTranscript, listRawTranscriptRange) |
 | `src/mirror/dedup.ts` | Dedup pipeline for space-efficient storage (dedupTranscript, getDedupRatio) |
@@ -518,7 +518,7 @@
 ## docs/specs/sprint-27-db-mirror-implementation.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | SAFETY PROTOCOLS | 11 | 0 |
 | DECISIONS (locked) | 20 | 9 |
 | SCOPE (in/out) | 37 | 26 |
@@ -540,7 +540,7 @@
 ## v0.8.8 Perf dashboard (new feature)
 
 | File | Purpose |
-|------|---------|
+| ------ | --------- |
 | `src/store/sqlite/perf-samples.ts` | `perf_samples` table accessors: `recordPerfSample` / `readPerfSamples` (parameterized SQL, pi-agnostic). |
 | `extensions/mega-events/perf-handler.ts` | Local event capture: turn/provider latency, TPS, cache hit %, 5s cpu/mem interval. |
 | `extensions/mega-runtime/state.ts` | `MegaRuntime.ensurePerfInterval` + snapshot() db_recompute_ms/disk_write_ms instrumentation + `diag` in the snapshot payload. |
@@ -551,10 +551,10 @@
 ## docs/specs/postmortem-already-compacted-race.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Summary (Failure ID FAIL-2026071701) | 11 | 0 |
 | Symptom (exact toast + throw sites in agent-session.js) | 30 | 22 |
-| Root Cause (agent_end vs _checkCompaction race) | 59 | 51 |
+| Root Cause (agent_end vs_checkCompaction race) | 59 | 51 |
 | Why It Produced the Symptom | 110 | 102 |
 | Fix (lastNativeCompactAt cooldown, commit 848c817) | 124 | 116 |
 | How It Was Found (repro + hypotheses rejected) | 163 | 155 |
@@ -565,7 +565,7 @@
 ## docs/specs/s38-error-retry.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | Problem | 9 | 0 |
 | Safety | 26 | 17 |
 | Architecture | 37 | 28 |
@@ -583,7 +583,7 @@
 ## docs/specs/sprint-A1-api-contract.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | SAFETY PROTOCOLS | 12 | 0 |
 | PROBLEM STATEMENT | 25 | 13 |
 | SCOPE BOUNDARY | 33 | 21 |
@@ -595,7 +595,7 @@
 ## docs/specs/sprint-B1-react-scaffold.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | SAFETY PROTOCOLS | 12 | 0 |
 | PROBLEM STATEMENT | 25 | 13 |
 | SCOPE BOUNDARY | 33 | 21 |
@@ -607,7 +607,7 @@
 ## docs/specs/sprint-C1-core-tabs.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | SAFETY PROTOCOLS | 12 | 0 |
 | PROBLEM STATEMENT | 24 | 12 |
 | SCOPE BOUNDARY | 30 | 18 |
@@ -619,7 +619,7 @@
 ## docs/specs/sprint-C2-repos-metrics.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | SAFETY PROTOCOLS | 12 | 0 |
 | PROBLEM STATEMENT | 23 | 11 |
 | SCOPE BOUNDARY | 29 | 17 |
@@ -631,7 +631,7 @@
 ## docs/specs/sprint-C3-config.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | SAFETY PROTOCOLS | 12 | 0 |
 | PROBLEM STATEMENT | 24 | 12 |
 | SCOPE BOUNDARY | 30 | 18 |
@@ -643,7 +643,7 @@
 ## docs/specs/sprint-D1-resilience.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | SAFETY PROTOCOLS | 12 | 0 |
 | PROBLEM STATEMENT | 24 | 12 |
 | SCOPE BOUNDARY | 30 | 18 |
@@ -655,7 +655,7 @@
 ## docs/specs/sprint-D2-observability.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | SAFETY PROTOCOLS | 12 | 0 |
 | PROBLEM STATEMENT | 23 | 11 |
 | SCOPE BOUNDARY | 31 | 19 |
@@ -667,7 +667,7 @@
 ## docs/specs/sprint-D3-docs-release.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | SAFETY PROTOCOLS | 12 | 0 |
 | PROBLEM STATEMENT | 22 | 10 |
 | SCOPE BOUNDARY | 28 | 16 |
@@ -679,7 +679,7 @@
 ## docs/specs/sprint-T1-tailscale.md
 
 | Section | Line | Offset |
-|---------|------|--------|
+| --------- | ------ | -------- |
 | SAFETY PROTOCOLS | 12 | 0 |
 | PROBLEM STATEMENT | 25 | 13 |
 | SCOPE BOUNDARY | 31 | 19 |
@@ -697,7 +697,7 @@
 ## extensions/dashboard-server/api-contracts/core.ts
 
 | Section | Line |
-|---------|------|
+| --------- | ------ |
 | EndpointDef + HttpMethod | 14 |
 | SseCompactStart | 24 |
 | SseCompactEnd | 31 |
@@ -718,7 +718,7 @@
 ## extensions/dashboard-server/api-contracts/snapshot.ts
 
 | Section | Line |
-|---------|------|
+| --------- | ------ |
 | SnapshotResponse | 11 |
 | TriggerResponse | 102 |
 | CompressionTotalsResponse | 112 |
@@ -729,7 +729,7 @@
 ## extensions/dashboard-server/api-contracts/multi-repo.ts
 
 | Section | Line |
-|---------|------|
+| --------- | ------ |
 | RepoListItem | 12 |
 | RepoSnapshotEntry | 23 |
 | RepoSnapshotMap | 38 |
@@ -744,7 +744,7 @@
 ## extensions/dashboard-server/api-contracts/game.ts
 
 | Section | Line |
-|---------|------|
+| --------- | ------ |
 | GameConfig | 12 |
 | GameStateResponse | 20 |
 | GameRitualStage | 31 |
@@ -757,7 +757,7 @@
 ## extensions/dashboard-server/api-contracts/infrastructure.ts
 
 | Section | Line |
-|---------|------|
+| --------- | ------ |
 | InfraHealthResponse | 13 |
 | InfraPerfSampleResponse | 22 |
 | InfraRateLimitStatus | 58 |
@@ -772,10 +772,37 @@
 ## extensions/dashboard-server/api-contracts/index.ts
 
 | Section | Line |
-|---------|------|
+| --------- | ------ |
 | Core re-exports | 11 |
 | Snapshot re-exports | 32 |
 | Multi-repo re-exports | 42 |
 | Game re-exports | 56 |
 | Infrastructure re-exports | 68 |
 | SseEvent composite union | 109 |
+
+## docs/specs/s49-program-per-turn-memory-platform.md
+
+| Section | Line | Offset |
+| --------- | ------ | -------- |
+| Vision | 10 | 0 |
+| Why a program (S49–S52 table) | 14 | 0 |
+| Reuse architecture | 25 | 0 |
+| Storage decision (turns.db = node:sqlite) | 62 | 0 |
+| What already exists | 68 | 0 |
+| Cross-cutting guardrails | 76 | 0 |
+| Sprint specs | 87 | 0 |
+
+## docs/specs/s49-turn-db-foundation.md
+
+| Section | Line | Offset |
+| --------- | ------ | -------- |
+| Reuse Contract | 13 | 0 |
+| Safety Protocols | 30 | 0 |
+| Problem | 51 | 0 |
+| Scope (new/modified/out) | 72 | 0 |
+| Execution — S49A: Isolated store + types + connection | 122 | 0 |
+| Execution — S49B: Migration + config | 157 | 0 |
+| Execution — S49C: Retention + adapter re-point | 182 | 0 |
+| Acceptance Criteria | 212 | 0 |
+| Rollback | 229 | 0 |
+| Risks | 238 | 0 |
