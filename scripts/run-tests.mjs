@@ -14,12 +14,15 @@
  *     - the dashboard files get a dedicated SERIAL lane (run last) so their
  *       HTTP port ranges never overlap in parallel.
  *
- * Every file is hard-capped at PER_FILE_TIMEOUT_MS (default 180s = 3 min). A
+ * Every file is hard-capped at PER_FILE_TIMEOUT_MS (default 120s = 2 min). A
  * file that exceeds it is SIGKILLed. The runner always exits non-zero at the
  * very end if any file failed — but only after running ALL files.
+ * Any file that fails under the parallel pool is RE-RUN SOLO once, so a flake
+ * (port collision, CPU contention) never ships as a failure without the solo
+ * verdict first.
  *
  * Env overrides:
- *   MEGACOMPACT_TEST_TIMEOUT  per-file hard cap in ms (default 180000 = 3 min)
+ *   MEGACOMPACT_TEST_TIMEOUT  per-file hard cap in ms (default 120000 = 2 min)
  *   MEGACOMPACT_TEST_POOL     parallel worker count (default = CPU count, max 8)
  *   MEGACOMPACT_TEST_HANG_MS  silence-dead-time before force-kill (default 10000)
  *
@@ -37,7 +40,7 @@ const ROOT = join(fileURLToPath(import.meta.url), "..", "..");
 const DIST = join(ROOT, "dist");
 
 const PER_FILE_TIMEOUT_MS = Number(
-	process.env.MEGACOMPACT_TEST_TIMEOUT ?? 180_000,
+	process.env.MEGACOMPACT_TEST_TIMEOUT ?? 120_000,
 );
 const HARD_CAP_MS = PER_FILE_TIMEOUT_MS + 10_000; // small buffer over node's own timeout
 const SILENCE_MS = Number(process.env.MEGACOMPACT_TEST_HANG_MS ?? 10_000);
@@ -277,10 +280,41 @@ async function main() {
 		for (const f of perf) await runAndReport(f);
 	}
 
+	// Solo adjudication: re-run FAILED files one at a time. A file that fails
+	// under the pool but passes solo is a FLAKE — count it as a pass, flag it.
+	const flakes = [];
+	if (failed.length) {
+		console.error(
+			`\n▶ solo adjudication lane (${failed.length} files; re-running failures one-at-a-time)`,
+		);
+		for (const r of failed.slice()) {
+			console.error(`▶ solo: ${r.file}`);
+			const solo = await runOne(join(ROOT, r.file));
+			const soloOk = solo.fail === 0;
+			if (soloOk) {
+				// r.pass was already counted under the pool; only the stray fails roll back.
+				totalFail -= r.fail;
+				flakes.push(r.file);
+				failed.splice(failed.indexOf(r), 1);
+				console.error(
+					`✓ solo: ${r.file}  (${solo.pass} pass / 0 fail, ${fmt(solo.ms)})  (flake under pool)`,
+				);
+			} else {
+				console.error(
+					`✗ solo: ${r.file}  (confirms the failure — ${solo.pass} pass / ${solo.fail} fail)`,
+				);
+			}
+		}
+	}
+
 	const wall = fmt(Date.now() - wallStart);
 	console.error(
 		`\nTOTAL: ${totalPass} passed, ${totalFail} failed across ${all.length} files in ${wall}`,
 	);
+	if (flakes.length) {
+		console.error("FLAKY FILES (failed under the pool, passed solo):");
+		for (const f of flakes) console.error(`  - ${f}`);
+	}
 	if (failed.length) {
 		console.error("FAILED FILES:");
 		for (const r of failed) {
