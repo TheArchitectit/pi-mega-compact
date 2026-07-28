@@ -44,10 +44,34 @@ export interface SessionRuntime {
 	cacheHitTokens: number; // tokens saved via cache hits (dedup + recall) this session
 	lengthStopPending: boolean; // S28: set on turn_end when stopReason==='length'
 	errorRetryCount: number; // S38: consecutive error turns, reset on success/turn_start
-	errorRetryUntil: number; // S38: wall-clock ms debounce for error-retry nudge
+	errorRetryUntil: number; // S38: wall-clock ms before which the next nudge is suppressed (R1: now gating)
 	// S38.6: circuit-breaker state — consecutive error turns across the session.
 	// When this exceeds maxConsecutiveErrors, the extension stops retrying.
 	consecutiveErrors: number; // reset to 0 on successful turn_end
+	// R1 (retry redesign): in-flight nudge dedup. A nudge queued via
+	// deliverAs:'followUp' must not be re-sent until it has been consumed by an
+	// actual new agent turn (turn_start) or superseded by a successful turn.
+	// Without this, a fast-erroring provider + a per-turn nudge → N nudges queue
+	// up and pi dispatches N retry turns, each re-submitting the same failing
+	// prompt (the 2026-07-28 incident: ~60-message spam storm).
+	lastErrorRetryAt: number; // wall-clock ms of the last fired nudge (diagnostics)
+	retryNudgePending: boolean; // true while a queued nudge awaits consumption
+	// R2: session-global cap. Total S38 nudges per session across ALL bursts;
+	// independent of the per-burst max and the circuit breaker. Hitting it is
+	// terminal for the session — the extension stops nudging entirely.
+	errorRetrySessionCount: number; // nudges fired this session (across all bursts)
+	// R3: poisoned-context detection state. The classifier is stateless; the
+	// stateful "repeated identical error text" signal is tracked here and upgrades
+	// a 'transient' classification to 'poisoned-context' after the threshold.
+	lastErrorText: string | undefined; // normalized error signature from the last error turn
+	errorTextRepeatCount: number; // consecutive count of identical error signatures
+	// R3b: one-per-session /clear advise message throttle.
+	poisonedAdviseSent: boolean; // true after the advise message fires once
+	// R3c: one guarded compact per error signature (avoids re-compacting the
+	// same poisoned region repeatedly).
+	poisonedCompactSignatures: Set<string>; // signatures already attempted a compact for
+	// R7: poisoned-context event counter for the dashboard.
+	poisonedCount: number;
 }
 
 // ── ownVersion ─────────────────────────────────────────────────────────────

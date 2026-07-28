@@ -1,0 +1,17 @@
+[
+  {
+    "content": "Build + run full test suite to confirm Phase 2c is green",
+    "activeForm": "Building + running full test suite",
+    "status": "completed"
+  },
+  {
+    "content": "Update DECOMPOSITION.md: move Phase 2c to Completed, refresh file table + sprint backlog",
+    "activeForm": "Updating DECOMPOSITION.md",
+    "status": "in_progress"
+  },
+  {
+    "content": "Commit Phase 2c (runtime-snapshot.ts + runtime.ts edits + doc update)",
+    "activeForm": "Committing Phase 2c",
+    "status": "pending"
+  }
+]

@@ -14,11 +14,12 @@ import {
 	memoryReviewCadence,
 	type MegaConfig,
 } from "../mega-config.js";
-import { recordScore } from "../../src/store/sqlite.js";
+import { recordScore, recordTurn } from "../../src/store/sqlite.js";
 import { evaluateAndUnlockAchievements } from "../../src/store/sqlite/game-achievements.js";
+import { ensureConversationId } from "../../src/store/sqlite/turns.js";
 import { isMegaCache } from "../../src/game/scoring.js";
 import { resolveRepoRoot } from "../mega-config.js";
-import { classifyError } from "./error-classifier.js";
+import { classifyError, errorRetryBackoffMs, extractErrorSignature } from "./error-classifier.js";
 import { safeSendUserMessage } from "./send-safe.js";
 import { vectorStats } from "../../src/vectorStore.js";
 
@@ -230,6 +231,15 @@ export function registerAgentHandlers(
 		runtime.currentTurn = event.turnIndex;
 		runtime.rt.lengthStopPending = false; // S28: re-arm defensively each user turn
 		runtime.rt.errorRetryCount = 0; // S38: reset error-retry counter each user turn
+		// R4 (turn_end hygiene): a genuine new user prompt consumes any queued
+		// retry nudge (deliverAs:'followUp') — pi dispatches it as the prompt for
+		// this turn. Clearing retryNudgePending re-arms the dedup gate so the
+		// next error turn can fire a fresh nudge (subject to backoff).
+		// NOTE: the poisoned-repeat tracker (lastErrorText / errorTextRepeatCount)
+		// is NOT reset here — a retry turn consuming the queued nudge is still the
+		// same error sequence. The tracker resets on a SUCCESSFUL turn (null) or
+		// when a different error text appears, not on the turn boundary.
+		runtime.rt.retryNudgePending = false;
 		runtime.dashboard.event("turn_start", { turnIndex: event.turnIndex });
 		runtime.snapshot(ctx);
 	});
@@ -237,6 +247,26 @@ export function registerAgentHandlers(
 	pi.on("turn_end", async (event, ctx) => {
 		runtime.dashboard.event("turn_end", { turnIndex: event.turnIndex });
 		runtime.snapshot(ctx);
+
+		// S43 (per-turn tracking): record one turn row with the cached metrics so
+		// the turn layer is queryable + forkable. Best-effort + non-fatal: a write
+		// failure never breaks the agent loop.
+		try {
+			const convId = ensureConversationId(runtime.rt.sessionId, runtime.currentStateDir);
+			recordTurn({
+				conversationId: convId,
+				sessionId: runtime.rt.sessionId,
+				turnIndex: event.turnIndex,
+				endedAt: Date.now(),
+				startedAt: undefined,
+				ctxTokens: runtime.lastCtxTokens ?? undefined,
+				ctxPercent: runtime.lastCtxPercent ?? undefined,
+				pressureBand: runtime.pressureBand ?? undefined,
+				modelId: runtime.currentModel?.modelId ?? undefined,
+			}, runtime.currentStateDir);
+		} catch {
+			/* non-fatal: per-turn tracking never breaks the agent loop */
+		}
 
 		// S33: game-mode scoring — record turns + cache metrics per repo, and arm
 		// the MEGA CACHE flare (oopsie gag) when the real dedup hit rate exceeds
@@ -319,9 +349,11 @@ export function registerAgentHandlers(
 
 		// S38: broader error-retry safety net. S28 only catches stopReason==='length';
 		// this catches ALL other error types (provider failure, network timeout, 5xx,
-		// 429, auth, compaction-noop) that surface at turn_end. Non-fatal: wrapped in
-		// try/catch so a classifier/retry failure never breaks the agent loop.
-		// PREVENT-PI-003: retry nudge fires via pi.sendUserMessage (user-role).
+		// 429, auth, compaction-noop, poisoned-context) that surface at turn_end.
+		// Non-fatal: wrapped in try/catch so a classifier/retry failure never breaks
+		// the agent loop. PREVENT-PI-003: retry nudge fires via pi.sendUserMessage
+		// (user-role). R1-R4 (retry redesign) bound the loop: in-flight dedup,
+		// gating backoff, session-global cap, poisoned-context detection.
 		try {
 			// (1) S28 owns length — skip the classifier entirely for it.
 			const sr = (event.message as { stopReason?: string } | undefined)?.stopReason;
@@ -329,17 +361,51 @@ export function registerAgentHandlers(
 				// S28 handles; nothing for S38 to do here.
 			} else {
 				const category = classifyError(event.message);
-				if (category === null) {
+				// R3: stateful poisoned-context signal — repeated identical error text
+				// across consecutive turns. The classifier is stateless, so this
+				// upgrade happens here. A 'transient' (or 'poisoned-context') turn
+				// whose normalized error signature matches the previous one bumps
+				// errorTextRepeatCount; once it crosses the threshold, the category
+				// is upgraded to 'poisoned-context' (the request is deterministic).
+				// Conservative: only upgrade, never downgrade, and only for transient
+				// (a 'permanent' auth error repeating is still permanent).
+				let effectiveCategory = category;
+				const errSig = extractErrorSignature(event.message);
+				if (category === 'transient' || category === 'poisoned-context') {
+					if (errSig) {
+						if (runtime.rt.lastErrorText === errSig) {
+							runtime.rt.errorTextRepeatCount++;
+						} else {
+							runtime.rt.lastErrorText = errSig;
+							runtime.rt.errorTextRepeatCount = 1;
+						}
+						if (
+							runtime.rt.errorTextRepeatCount >= config.poisonedContextRepeatThreshold &&
+							category === 'transient'
+						) {
+							effectiveCategory = 'poisoned-context';
+						}
+					}
+				} else {
+					// Non-transient (success, cancelled, compaction-noop, context-overflow,
+					// permanent): a fresh non-identical signal clears the repeat tracker.
+					runtime.rt.lastErrorText = undefined;
+					runtime.rt.errorTextRepeatCount = 0;
+				}
+				if (effectiveCategory === null) {
 					// (3) success / normal flow / unknown-but-non-retryable — reset.
 					runtime.rt.errorRetryCount = 0;
 					runtime.rt.consecutiveErrors = 0; // S38.6: circuit-breaker reset on success
-				} else if (category === 'compaction-noop') {
+					// R4: a successful assistant turn consumes any queued nudge.
+					runtime.rt.retryNudgePending = false;
+				} else if (effectiveCategory === 'compaction-noop') {
 					// (4) pi race / manual compact catch — NOT retryable. The compaction
 					// already succeeded via pi's native path; retrying would race again
 					// (FAIL-2026071701). Log a diagnostic, reset the counter, and surface
 					// the original error WITHOUT firing a retry nudge.
 					runtime.rt.errorRetryCount = 0;
 					runtime.rt.consecutiveErrors = 0; // S38.6: circuit-breaker reset
+					runtime.rt.retryNudgePending = false; // R4: terminal for this burst
 					runtime.dashboard.event('compaction_noop_diagnostic', {
 						turnIndex: event.turnIndex,
 						sessionId: runtime.rt.sessionId,
@@ -348,13 +414,14 @@ export function registerAgentHandlers(
 						sessionId: runtime.rt.sessionId,
 						turnIndex: event.turnIndex,
 					});
-				} else if (category === 'cancelled') {
+				} else if (effectiveCategory === 'cancelled') {
 					// (4c) User ESC / Ctrl-C — stopReason === 'aborted'. NOT retryable:
 					// nudging would restart a task the user explicitly stopped.
 					// Reset both counters (a cancel is not an error for circuit-breaker
 					// purposes). Emit a diagnostic so the dashboard shows it.
 					runtime.rt.errorRetryCount = 0;
 					runtime.rt.consecutiveErrors = 0;
+					runtime.rt.retryNudgePending = false; // R4: terminal for this burst
 					runtime.dashboard.event('error_retry_cancelled', {
 						turnIndex: event.turnIndex,
 						sessionId: runtime.rt.sessionId,
@@ -363,7 +430,7 @@ export function registerAgentHandlers(
 						sessionId: runtime.rt.sessionId,
 						turnIndex: event.turnIndex,
 					});
-				} else if (category === 'context-overflow') {
+				} else if (effectiveCategory === 'context-overflow') {
 					// (4b) context-window overflow 400 ("too long... even after compaction").
 					// NOT a blind retry: re-submitting the same oversized prompt would just
 					// re-400 and busy-loop. Reset the counters (this turn is terminal, not
@@ -376,6 +443,7 @@ export function registerAgentHandlers(
 					// separate nudge here.
 					runtime.rt.errorRetryCount = 0;
 					runtime.rt.consecutiveErrors = 0;
+					runtime.rt.retryNudgePending = false; // R4: terminal for this burst
 					runtime.dashboard.event('context_overflow', {
 						turnIndex: event.turnIndex,
 						sessionId: runtime.rt.sessionId,
@@ -405,13 +473,76 @@ export function registerAgentHandlers(
 							}, 500);
 						}
 					}
+				} else if (effectiveCategory === 'poisoned-context') {
+					// R3: poisoned context — a DETERMINISTIC request-rejection that
+					// retrying cannot fix (0-token 'error', generic "request failed",
+					// 400 non-overflow, or repeated identical error text). NO blind
+					// retry nudge — re-submitting the same poisoned prompt re-triggers
+					// the same rejection (the 2026-07-28 incident: ~60-message spam).
+					// Instead: (a) dashboard event + warn log naming the suspected
+					// poison; (b) ONE user-role advise message (/clear or /new) per
+					// session, throttled; (c) if config.auto, ONE guarded compact per
+					// error signature (same race-guarded deferred path as context-
+					// overflow) — only if not already attempted for this signature.
+					runtime.rt.errorRetryCount = 0; // poisoned is terminal for this burst
+					runtime.rt.consecutiveErrors++; // still counts toward the circuit breaker
+					runtime.rt.poisonedCount++; // R7: dashboard counter
+					const sig = errSig || 'unknown';
+					// (a) dashboard + log
+					runtime.dashboard.event('poisoned_context', {
+						signature: sig,
+						repeatCount: runtime.rt.errorTextRepeatCount,
+						turnIndex: event.turnIndex,
+						sessionId: runtime.rt.sessionId,
+					});
+					runtime.logger.warn('poisoned-context', {
+						sessionId: runtime.rt.sessionId,
+						turnIndex: event.turnIndex,
+						signature: sig,
+						repeatCount: runtime.rt.errorTextRepeatCount,
+					});
+					// (b) one-per-session advise message (throttled by poisonedAdviseSent)
+					if (!runtime.rt.poisonedAdviseSent) {
+						runtime.rt.poisonedAdviseSent = true;
+						// PREVENT-PI-003: user-role sendUserMessage only.
+						await safeSendUserMessage(
+							pi,
+							'[mega-compact] this session\'s context may be poisoned (the provider is rejecting every request). Run /clear or /new to start a fresh context.',
+						);
+					}
+					// (c) one guarded compact per error signature (attempt to remove
+					// the poisoned region). Race-guarded + deferred, mirroring the
+					// context-overflow path. Only if not already attempted for this
+					// signature (poisonedCompactSignatures).
+					if (config.auto && !runtime.rt.poisonedCompactSignatures.has(sig)) {
+						runtime.rt.poisonedCompactSignatures.add(sig);
+						const nowP = Date.now();
+						const cooldownMsP = config.raceGuardStrict ? 30_000 : 10_000;
+						const sinceCompactP = nowP - (runtime.rt.lastNativeCompactAt ?? 0);
+						if (sinceCompactP >= cooldownMsP && !piCompactWouldNoop(ctx)) {
+							runtime.debounceUntil = nowP + 0;
+							const stampP = runtime.rt.lastNativeCompactAt;
+							const liveSidP = runtime.rt.sessionId;
+							setTimeout(() => {
+								try {
+									if (runtime.rt.sessionId !== liveSidP) return; // session reset
+									const sinceP = Date.now() - (runtime.rt.lastNativeCompactAt ?? 0);
+									if (runtime.rt.lastNativeCompactAt !== stampP && sinceP < cooldownMsP) return;
+									if (piCompactWouldNoop(ctx)) return;
+									ctx.compact({ customInstructions: undefined }); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; deferred + re-validated. One guarded compact after a poisoned-context detection.
+								} catch {
+									/* non-fatal */
+								}
+							}, 500);
+						}
+					}
 				} else {
 					// (5) transient or permanent — retry with exponential backoff.
 					// S38.7: hard-stop switch — bypass ALL retry logic when set.
 					if (config.errorRetryHardStop) {
 						runtime.rt.errorRetryCount = 0;
 						runtime.dashboard.event('error_retry_disabled', {
-							category,
+							category: effectiveCategory,
 							turnIndex: event.turnIndex,
 							reason: 'hard-stop',
 						});
@@ -433,7 +564,7 @@ export function registerAgentHandlers(
 						return; // early exit — circuit breaker tripped
 					}
 					const max =
-						category === 'transient'
+						effectiveCategory === 'transient'
 							? config.autoRetryTransientMax
 							: config.autoRetryPermanentMax;
 					// max === 0 disables the category entirely (revert to S28-only).
@@ -444,39 +575,93 @@ export function registerAgentHandlers(
 							if (runtime.rt.errorRetryCount > max) {
 								// Exhausted — surface the error, reset for the next burst.
 								runtime.dashboard.event('error_retry_exhausted', {
-									category,
+									category: effectiveCategory,
 									count: runtime.rt.errorRetryCount,
 									max,
 									turnIndex: event.turnIndex,
 								});
 								runtime.logger.info('error-retry-exhausted', {
 									sessionId: runtime.rt.sessionId,
-									category,
+									category: effectiveCategory,
 									count: runtime.rt.errorRetryCount,
 									max,
 								});
 								runtime.rt.errorRetryCount = 0;
 							} else {
-								// S38: fire the retry nudge. Each error turn fires its own
-								// nudge up to `max` — we intentionally do NOT debounce on the
-								// backoff window (errorRetryUntil) here, because that would
-								// suppress turns 2..max on a fast-erroring provider (the exact
-								// scenario this feature targets) and the user could see zero
-								// retries followed by error_retry_exhausted. The per-turn cap
-								// (errorRetryCount <= max) plus the session circuit breaker
-								// (consecutiveErrors > maxConsecutiveErrors) already bound the
-								// loop, so a tight turn_end storm cannot busy-loop unbounded.
-								// errorRetryUntil + errorRetryBackoffMs() are retained on the
-								// runtime for future/optional pacing but are not gating.
+								// R2: session-global cap — total S38 nudges per session across
+								// ALL bursts. Independent of the per-burst max and the circuit
+								// breaker. Hitting it is terminal for the session: log +
+								// dashboard event, stop nudging. `0` disables (reverts to
+								// per-burst + circuit-breaker only).
+								if (
+									config.errorRetrySessionMax > 0 &&
+									runtime.rt.errorRetrySessionCount >= config.errorRetrySessionMax
+								) {
+									runtime.dashboard.event('error_retry_session_exhausted', {
+										count: runtime.rt.errorRetrySessionCount,
+										max: config.errorRetrySessionMax,
+										category: effectiveCategory,
+										turnIndex: event.turnIndex,
+									});
+									runtime.logger.warn('error-retry-session-exhausted', {
+										sessionId: runtime.rt.sessionId,
+										count: runtime.rt.errorRetrySessionCount,
+										max: config.errorRetrySessionMax,
+										category: effectiveCategory,
+									});
+									runtime.rt.errorRetryCount = 0;
+									return; // terminal for the session — no nudge
+								}
+								// R1: in-flight nudge dedup — a nudge queued via
+								// deliverAs:'followUp' must not be re-sent until it has been
+								// consumed by an actual new agent turn (turn_start resets
+								// retryNudgePending). Without this, a fast-erroring provider +
+								// a per-turn nudge → N nudges queue up and pi dispatches N
+								// retry turns, each re-submitting the same failing prompt
+								// (the 2026-07-28 incident). errorRetryCount still advances
+								// (this IS an error turn), so the per-burst max + circuit
+								// breaker still bound the burst.
+								if (runtime.rt.retryNudgePending) {
+									runtime.dashboard.event('error_retry_dedup_skip', {
+										category: effectiveCategory,
+										count: runtime.rt.errorRetryCount,
+										max,
+										turnIndex: event.turnIndex,
+									});
+									return; // pending nudge not yet consumed — skip
+								}
+								// R1: gating backoff — errorRetryUntil is now GATING
+								// (previously documented as non-gating). A nudge cannot fire
+								// before the previous backoff elapses. This paces retries
+								// (5s/10s/20s/30s by default) so a fast-erroring provider
+								// doesn't slam N nudges in <1s.
+								const now = Date.now();
+								if (now < runtime.rt.errorRetryUntil) {
+									runtime.dashboard.event('error_retry_backoff_skip', {
+										category: effectiveCategory,
+										count: runtime.rt.errorRetryCount,
+										max,
+										turnIndex: event.turnIndex,
+									});
+									return; // backoff not elapsed — skip
+								}
+								// Fire the retry nudge. Set pending (R1 dedup) + backoff
+								// (R1 pacing) + session count (R2 cap) BEFORE the await so a
+								// re-entrant turn_end during the send can't double-fire.
+								runtime.rt.retryNudgePending = true;
+								runtime.rt.lastErrorRetryAt = now;
+								runtime.rt.errorRetryUntil =
+									now + errorRetryBackoffMs(runtime.rt.errorRetryCount, config.errorRetryBackoffMs);
+								runtime.rt.errorRetrySessionCount++;
 								runtime.dashboard.event('error_retry', {
-									category,
+									category: effectiveCategory,
 									count: runtime.rt.errorRetryCount,
 									max,
 									turnIndex: event.turnIndex,
 								});
 								runtime.logger.info('error-retry', {
 									sessionId: runtime.rt.sessionId,
-									category,
+									category: effectiveCategory,
 									count: runtime.rt.errorRetryCount,
 									max,
 								});

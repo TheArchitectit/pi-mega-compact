@@ -15,8 +15,10 @@ import {
   expandLeafDescendants,
   deduplicateMultilevelHits,
   multilevelRetrieval,
+  buildChildParentIndex,
   type MultilevelHit,
 } from "./multilevel.js";
+import type { RaptorTree, RaptorNode } from "./tree.js";
 import type { EngineMessage } from "../../types.js";
 
 function msg(text: string): EngineMessage {
@@ -274,5 +276,50 @@ test("multilevelRetrieval with leafExpansion=false skips leaf expansion", () => 
   for (const h of hits) {
     assert.ok(h.nodeId, "hit should have nodeId");
     assert.ok(h.score >= 0, "hit score should be non-negative");
+  }
+});
+
+// ── test: buildChildParentIndex matches linear-scan parent ────────────────────
+
+test("buildChildParentIndex (multilevel): index-derived parent matches linear-scan for each leaf", () => {
+  // Hand-built tree: 8 leaves under 2 level-1 nodes under 1 root.
+  const r1_0: RaptorNode = {
+    id: "r1_0", level: 1, parentId: null,
+    children: ["leaf_0", "leaf_1", "leaf_2", "leaf_3"],
+    summary: "cluster A", embedding: [1, 0, 0],
+    qualityMarker: "low", tokenEstimate: 10,
+  };
+  const r1_1: RaptorNode = {
+    id: "r1_1", level: 1, parentId: null,
+    children: ["leaf_4", "leaf_5", "leaf_6", "leaf_7"],
+    summary: "cluster B", embedding: [0, 1, 0],
+    qualityMarker: "low", tokenEstimate: 10,
+  };
+  const root: RaptorNode = {
+    id: "root", level: 2, parentId: null,
+    children: ["leaf_0", "leaf_1", "leaf_2", "leaf_3",
+               "leaf_4", "leaf_5", "leaf_6", "leaf_7"],
+    summary: "root", embedding: [0.5, 0.5, 0],
+    qualityMarker: "low", tokenEstimate: 20,
+  };
+  const nodes = new Map<string, RaptorNode>([
+    ["r1_0", r1_0], ["r1_1", r1_1], ["root", root],
+  ]);
+  const tree: RaptorTree = { nodes, rootId: "root", levels: 3, timedOut: false };
+
+  const index = buildChildParentIndex(tree);
+  const leafIds = ["leaf_0", "leaf_1", "leaf_2", "leaf_3",
+                   "leaf_4", "leaf_5", "leaf_6", "leaf_7"];
+
+  for (const lid of leafIds) {
+    const linearParent = [...tree.nodes.values()].find((n) =>
+      n.children.includes(lid),
+    );
+    const indexParent = index.get(lid);
+    assert.equal(
+      indexParent?.id ?? null,
+      linearParent?.id ?? null,
+      `leaf ${lid}: index parent (${indexParent?.id}) != linear parent (${linearParent?.id})`,
+    );
   }
 });

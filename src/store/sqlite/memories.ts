@@ -53,10 +53,10 @@ function evictMemoryLru(repo: string | null, stateDir: string): void {
   const maxRows = memoryMaxRows();
   // SQLite `= NULL` is never true, so the null-repo scope (memories are
   // stateDir-scoped when repo is null — the applyMemoryOps path) needs `IS NULL`.
-  const where = repo == null ? "repo IS NULL" : "repo = ?";
+  const where = repo == null ? "repo IS NULL" : "repo = @repo";
   const countRow = repo == null
     ? db.prepare(`SELECT COUNT(*) AS n FROM memories WHERE ${where}`).get()
-    : db.prepare(`SELECT COUNT(*) AS n FROM memories WHERE ${where}`).get(repo);
+    : db.prepare(`SELECT COUNT(*) AS n FROM memories WHERE ${where}`).get({ "@repo": repo });
   const count = (countRow as { n: number }).n;
   const over = count - maxRows;
   if (over <= 0) return;
@@ -67,10 +67,10 @@ function evictMemoryLru(repo: string | null, stateDir: string): void {
     `DELETE FROM memories WHERE ${where} AND id IN (
        SELECT id FROM memories WHERE ${where}
        ORDER BY COALESCE(last_referenced, last_recalled_at, created_at) ASC, id ASC
-       LIMIT ?
+       LIMIT @over
      )`;
-  if (repo == null) db.prepare(sql).run(over);
-  else db.prepare(sql).run(repo, repo, over);
+  if (repo == null) db.prepare(sql).run({ "@over": over });
+  else db.prepare(sql).run({ "@over": over, "@repo": repo });
 }
 
 export interface MemoryRecord {

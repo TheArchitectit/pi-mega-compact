@@ -41,6 +41,16 @@ export function jsonText(v: unknown): string {
   return JSON.stringify(v ?? []);
 }
 
+/** Safe JSON parse — returns `fallback` on null/undefined/corrupt input. */
+export function safeJson<T>(s: string | null | undefined, fallback: T): T {
+  if (!s) return fallback;
+  try {
+    return JSON.parse(s) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 // In-process cache so the same stateDir reuses one connection (and so a fresh
 // VectorStore over the same dir shares the open DB). Cross-process durability
 // comes from reopening the same file path — proven by the integration test.
@@ -54,7 +64,7 @@ export function openStore(stateDir: string = getStateDir()): DatabaseSync {
     // instead of closeStore) would surface as "database is not open" on the
     // next reuse. Detect and evict so callers never see a dead handle.
     try {
-      existing.prepare("SELECT 1");
+      existing.exec("SELECT 1");
       return existing;
     } catch {
       cache.delete(stateDir);
@@ -105,9 +115,9 @@ export function rowToCheckpoint(row: any): StoredCheckpoint {
     summary: row.summary ?? "",
     topicSummary: row.topic_summary ?? undefined,
     summaryHash: row.summary_hash ?? undefined,
-    keyDecisions: row.key_decisions ? JSON.parse(row.key_decisions) : [],
-    nextSteps: row.next_steps ? JSON.parse(row.next_steps) : [],
-    filesModified: row.files_modified ? JSON.parse(row.files_modified) : [],
+    keyDecisions: safeJson<string[]>(row.key_decisions, []),
+    nextSteps: safeJson<string[]>(row.next_steps, []),
+    filesModified: safeJson<string[]>(row.files_modified, []),
     tokenEstimate: row.token_estimate ?? 0,
     originalTokenEstimate: row.original_token_estimate ?? undefined,
     regionHash: row.region_hash ?? "",

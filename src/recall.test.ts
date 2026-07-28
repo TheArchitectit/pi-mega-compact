@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { VectorStore } from "./vectorStore.js";
 import { compactSession } from "./engine.js";
 import { recallAndInline, recallAndInlineAsync, formatRecallBlock } from "./recall.js";
-import { vectorList } from "./vectorStore.js";
+import { vectorList, vectorWasInjected } from "./vectorStore.js";
 import { markInjectedGlobal, wasInjectedGlobal, closeIndexStore } from "./store/sqlite.js";
 import {
   closeVectorIndex,
@@ -88,10 +88,12 @@ test("Fix C: recallMaxTokens caps the injected block", () => {
   compactSession({ sessionId: SESS, messages: [msg("user", "beta module config and env resolution"), msg("assistant", "ok", "Edit")], keepFrom: 2, timestamp: 2 }, s);
   compactSession({ sessionId: SESS, messages: [msg("user", "gamma module shutdown and cleanup hooks"), msg("assistant", "ok", "Edit")], keepFrom: 2, timestamp: 3 }, s);
 
-  // A ceiling of 100 tokens fits the first checkpoint (~82) but stops before the
-  // second (~163 cumulative) — proving the cap bites mid-stream.
+  // A ceiling of 50 tokens fits the first checkpoint (~33 body tokens) but
+  // stops before the second (~65 cumulative) — proving the cap bites mid-stream.
+  // (F3: the cap now counts body tokens only — one preamble at format time, not
+  // N — matching the async path. The old per-hit preamble counting needed ~100.)
   const r = recallAndInline(
-    { sessionId: SESS, query: "module wiring config shutdown", limit: 5, source: "command", recallMaxTokens: 100, skipInjected: false },
+    { sessionId: SESS, query: "module wiring config shutdown", limit: 5, source: "command", recallMaxTokens: 50, skipInjected: false },
     s as any,
   );
   assert.ok(r.toInject.length >= 1, "at least one injected under the cap");
@@ -241,6 +243,220 @@ test("S18: a fresh foreign checkpoint is injected AND recorded globally", async 
     closeIndexStore();
     delete process.env.MEGACOMPACT_VECTOR_INDEX_DIR;
     rmSync(indexDir, { recursive: true, force: true });
+    rmSync(foreignStateDir, { recursive: true, force: true });
+    rmSync(selfStateDir, { recursive: true, force: true });
+  }
+});
+
+// ---- F3: format-once — one preamble, [1..n] numbering, cap respected ----
+//
+// The fix (landed async, extended to sync here) accumulates the hit list and
+// calls formatRecallBlock ONCE at the end, so a multi-hit block carries exactly
+// one preamble and contiguous [1..n] labels instead of one preamble per hit.
+
+test("F3 (sync): multi-hit injection has exactly one preamble and [1..n] numbering", () => {
+  const s = store();
+  compactSession({ sessionId: SESS, messages: [msg("user", "alpha module wiring and bootstrap sequence"), msg("assistant", "ok", "Edit")], keepFrom: 2, timestamp: 1 }, s);
+  compactSession({ sessionId: SESS, messages: [msg("user", "beta module config and env resolution"), msg("assistant", "ok", "Edit")], keepFrom: 2, timestamp: 2 }, s);
+  compactSession({ sessionId: SESS, messages: [msg("user", "gamma module shutdown and cleanup hooks"), msg("assistant", "ok", "Edit")], keepFrom: 2, timestamp: 3 }, s);
+
+  const r = recallAndInline(
+    { sessionId: SESS, query: "module wiring config shutdown", limit: 5, source: "command", skipInjected: false },
+    s as any,
+  );
+  assert.ok(r.toInject.length >= 2, "at least two hits injected (got " + r.toInject.length + ")");
+  // Exactly one preamble (the old per-hit format produced one per hit).
+  const preamble = "The following compacted context was recalled";
+  assert.equal(r.block.split(preamble).length - 1, 1, "exactly one preamble for a multi-hit block");
+  // Contiguous [1..n] numbering.
+  for (let i = 1; i <= r.toInject.length; i++) {
+    assert.ok(r.block.includes(`[${i}]`), `block includes [${i}]`);
+  }
+  // No out-of-range label (e.g. [n+1]) leaks in.
+  assert.ok(!r.block.includes(`[${r.toInject.length + 1}]`), "no extra-numbered label");
+});
+
+test("F3 (sync): recallMaxTokens caps mid-stream with exactly one preamble", () => {
+  const s = store();
+  compactSession({ sessionId: SESS, messages: [msg("user", "alpha module wiring and bootstrap sequence"), msg("assistant", "ok", "Edit")], keepFrom: 2, timestamp: 1 }, s);
+  compactSession({ sessionId: SESS, messages: [msg("user", "beta module config and env resolution"), msg("assistant", "ok", "Edit")], keepFrom: 2, timestamp: 2 }, s);
+  compactSession({ sessionId: SESS, messages: [msg("user", "gamma module shutdown and cleanup hooks"), msg("assistant", "ok", "Edit")], keepFrom: 2, timestamp: 3 }, s);
+
+  // A tight ceiling that fits the first checkpoint (~33 body tokens) but stops
+  // before the second (~65 cumulative). F3: body-only counting (one preamble at
+  // format time, not per hit), matching the async path.
+  const r = recallAndInline(
+    { sessionId: SESS, query: "module wiring config shutdown", limit: 5, source: "command", skipInjected: false, recallMaxTokens: 50 },
+    s as any,
+  );
+  assert.ok(r.toInject.length < 3, "cap stopped before all three injected");
+  assert.ok(r.toInject.length >= 1, "at least one injected under the cap");
+  assert.equal(
+    r.block.split("The following compacted context was recalled").length - 1,
+    1,
+    "still exactly one preamble under the cap",
+  );
+});
+
+test("F3 (async): multi-hit cross-repo injection has exactly one preamble and [1..n] numbering", async () => {
+  if (process.env.MEGACOMPACT_PGLITE_DISABLED === "true") { return; } // skip when WASM index is off
+  const indexDir = mkdtempSync(join(tmpdir(), "mc-f3a-"));
+  const foreignStateDir = mkdtempSync(join(tmpdir(), "mc-f3a-foreign-"));
+  const selfStateDir = mkdtempSync(join(tmpdir(), "mc-f3a-self-"));
+  process.env.MEGACOMPACT_VECTOR_INDEX_DIR = mkdtempSync(join(tmpdir(), "mc-f3a-vidx-"));
+  try {
+    await closeVectorIndex();
+    // Seed multiple distinct foreign checkpoints so the cross-repo query yields
+    // more than one hit (needed to assert [1..n] numbering).
+    const foreign = new VectorStore({ stateDir: foreignStateDir, dedupSim: 0.9 });
+    const fsess = "sess_foreign_f3";
+    const summaries = [
+      "foreign repo authentication jwt token validation",
+      "foreign repo database connection pooling and retry",
+      "foreign repo logging telemetry and tracing spans",
+    ];
+    const cids: string[] = [];
+    for (let i = 0; i < summaries.length; i++) {
+      const res = compactSession(
+        { sessionId: fsess, messages: [msg("user", summaries[i]), msg("assistant", "ok", "Edit")], keepFrom: 2, timestamp: i + 1 },
+        foreign,
+      );
+      if (res.checkpointId) cids.push(res.checkpointId);
+    }
+    await rebuildFromSqlite(
+      () => [{ repoId: foreignStateDir, stateDir: foreignStateDir }],
+      (sd) => {
+        const st = new VectorStore({ stateDir: sd, dedupSim: 0.9 });
+        return vectorList(st, fsess).map((cp) => ({
+          sessionId: fsess, checkpointId: cp.checkpointId, embedding: cp.embedding,
+        }));
+      },
+    );
+    const pg = await initVectorIndex();
+    assert.ok(pg, "PGlite index should initialize");
+
+    const selfStore = new VectorStore({ stateDir: selfStateDir, dedupSim: 0.9 });
+    const r = await recallAndInlineAsync(
+      { sessionId: "sess_f3", query: "foreign repo", limit: 5, source: "command", crossRepo: true, skipInjected: false, globalIndexDir: indexDir },
+      selfStore,
+    );
+    assert.ok(r.toInject.length >= 2, "at least two cross-repo hits (got " + r.toInject.length + ")");
+    assert.equal(
+      r.block.split("The following compacted context was recalled").length - 1,
+      1,
+      "exactly one preamble for a multi-hit async block",
+    );
+    for (let i = 1; i <= r.toInject.length; i++) {
+      assert.ok(r.block.includes(`[${i}]`), `async block includes [${i}]`);
+    }
+    assert.ok(!r.block.includes(`[${r.toInject.length + 1}]`), "no extra-numbered label (async)");
+  } finally {
+    await closeVectorIndex();
+    closeIndexStore();
+    delete process.env.MEGACOMPACT_VECTOR_INDEX_DIR;
+    rmSync(indexDir, { recursive: true, force: true });
+    rmSync(foreignStateDir, { recursive: true, force: true });
+    rmSync(selfStateDir, { recursive: true, force: true });
+  }
+});
+
+// ---- F2: cross-repo injected-set bypass ----------------------------------
+//
+// When the same session resumes in a DIFFERENT repo, the per-repo session_state
+// has no injection marker for the foreign checkpoint (different stateDir), so
+// only the machine-wide injected-set (shared globalIndexDir) can block a
+// re-inject. The F2 fix ensures globalIndexDir is always resolved (via
+// getIndexDir in the extension), so wasInjectedGlobal is consulted; without
+// the fix, globalIndexDir was undefined and foreign checkpoints re-injected
+// every resume. This test passes globalIndexDir explicitly (simulating the
+// resolver default) and does NOT set MEGACOMPACT_INDEX_DIR.
+
+test("F2: cross-repo hit is not re-injected when resuming the same session in a different repo (shared index dir)", async () => {
+  if (process.env.MEGACOMPACT_PGLITE_DISABLED === "true") { return; } // skip when WASM index is off
+  const indexDir = mkdtempSync(join(tmpdir(), "mc-f2-"));
+  const foreignStateDir = mkdtempSync(join(tmpdir(), "mc-f2-foreign-"));
+  const selfStateDir1 = mkdtempSync(join(tmpdir(), "mc-f2-self1-"));
+  const selfStateDir2 = mkdtempSync(join(tmpdir(), "mc-f2-self2-"));
+  process.env.MEGACOMPACT_VECTOR_INDEX_DIR = mkdtempSync(join(tmpdir(), "mc-f2-vidx-"));
+  try {
+    await closeVectorIndex();
+    const seed = await seedForeignRepo(foreignStateDir);
+    await rebuildFromSqlite(
+      () => [{ repoId: foreignStateDir, stateDir: foreignStateDir }],
+      (sd) => {
+        const st = new VectorStore({ stateDir: sd, dedupSim: 0.9 });
+        return vectorList(st, seed.sessionId).map((cp) => ({
+          sessionId: seed.sessionId, checkpointId: cp.checkpointId, embedding: cp.embedding,
+        }));
+      },
+    );
+    const pg = await initVectorIndex();
+    assert.ok(pg, "PGlite index should initialize");
+
+    const sess = "sess_resume";
+    // Repo B: first recall — fresh foreign checkpoint is injected AND recorded
+    // in the shared machine-wide index.
+    const storeB = new VectorStore({ stateDir: selfStateDir1, dedupSim: 0.9 });
+    const r1 = await recallAndInlineAsync(
+      { sessionId: sess, query: "foreign repo authentication jwt", limit: 3, source: "command", crossRepo: true, globalIndexDir: indexDir },
+      storeB,
+    );
+    assert.equal(r1.toInject.length, 1, "first recall (repo B) injects the foreign checkpoint");
+    assert.equal(wasInjectedGlobal(seed.checkpointId, sess, indexDir), true, "recorded in the shared index");
+
+    // Repo C: SAME session resumed in a DIFFERENT repo. The per-session injected
+    // set in repo C's store is empty (different stateDir), so only the shared
+    // global injected-set can block re-injection.
+    const storeC = new VectorStore({ stateDir: selfStateDir2, dedupSim: 0.9 });
+    assert.equal(vectorWasInjected(storeC, sess, seed.checkpointId), false, "repo C per-session set is empty (different stateDir)");
+    const r2 = await recallAndInlineAsync(
+      { sessionId: sess, query: "foreign repo authentication jwt", limit: 3, source: "command", crossRepo: true, globalIndexDir: indexDir },
+      storeC,
+    );
+    assert.equal(r2.toInject.length, 0, "second recall (repo C) does NOT re-inject (machine-wide global dedup)");
+  } finally {
+    await closeVectorIndex();
+    closeIndexStore();
+    delete process.env.MEGACOMPACT_VECTOR_INDEX_DIR;
+    rmSync(indexDir, { recursive: true, force: true });
+    rmSync(foreignStateDir, { recursive: true, force: true });
+    rmSync(selfStateDir1, { recursive: true, force: true });
+    rmSync(selfStateDir2, { recursive: true, force: true });
+  }
+});
+
+test("F2: without globalIndexDir, cross-repo hits are skipped (not injected undeduped)", async () => {
+  if (process.env.MEGACOMPACT_PGLITE_DISABLED === "true") { return; } // skip when WASM index is off
+  const foreignStateDir = mkdtempSync(join(tmpdir(), "mc-f2b-foreign-"));
+  const selfStateDir = mkdtempSync(join(tmpdir(), "mc-f2b-self-"));
+  process.env.MEGACOMPACT_VECTOR_INDEX_DIR = mkdtempSync(join(tmpdir(), "mc-f2b-vidx-"));
+  try {
+    await closeVectorIndex();
+    const seed = await seedForeignRepo(foreignStateDir);
+    await rebuildFromSqlite(
+      () => [{ repoId: foreignStateDir, stateDir: foreignStateDir }],
+      (sd) => {
+        const st = new VectorStore({ stateDir: sd, dedupSim: 0.9 });
+        return vectorList(st, seed.sessionId).map((cp) => ({
+          sessionId: seed.sessionId, checkpointId: cp.checkpointId, embedding: cp.embedding,
+        }));
+      },
+    );
+    const pg = await initVectorIndex();
+    assert.ok(pg, "PGlite index should initialize");
+
+    // No globalIndexDir → the F2 guard skips foreign hits rather than injecting
+    // them undeduped. Same-repo hits (none here) would still pass.
+    const selfStore = new VectorStore({ stateDir: selfStateDir, dedupSim: 0.9 });
+    const r = await recallAndInlineAsync(
+      { sessionId: "sess_nodir", query: "foreign repo authentication jwt", limit: 3, source: "command", crossRepo: true },
+      selfStore,
+    );
+    assert.equal(r.toInject.length, 0, "foreign hit skipped when globalIndexDir is unset (no undeduped injection)");
+  } finally {
+    await closeVectorIndex();
+    closeIndexStore();
+    delete process.env.MEGACOMPACT_VECTOR_INDEX_DIR;
     rmSync(foreignStateDir, { recursive: true, force: true });
     rmSync(selfStateDir, { recursive: true, force: true });
   }

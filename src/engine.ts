@@ -77,8 +77,21 @@ export interface CompactResult {
   /** Token count of the original dropped region (before compaction). The honest
    *  "tokens saved" base = originalTokenEstimate − tokenEstimate (stored), or the
    *  full originalTokenEstimate when the region deduped onto an existing
-   *  checkpoint (nothing new stored). */
+   *  checkpoint (nothing new stored). Computed over the FULL compactable slice
+   *  (including superseded messages) so the dedup branch books the whole region;
+   *  this is the value persisted into the checkpoint record and read by the
+   *  dashboard / vector-read paths. */
   originalTokenEstimate: number;
+  /** F5: token count of the filtered KEEP set (post-supersede) — the honest base
+   *  for the stored-vs-original compaction delta. `originalTokenEstimate` minus
+   *  this is the supersede savings; this minus `tokenEstimate` is the pure
+   *  compaction savings. Not persisted (return-only); callers that want honest
+   *  per-layer reporting should prefer this over `originalTokenEstimate`. */
+  keepTokenEstimate: number;
+  /** F5: tokens dropped by the SUPERSEDE layer = originalTokenEstimate −
+   *  keepTokenEstimate. Reported separately so supersede savings are not booked
+   *  as compaction savings. Not persisted (return-only). */
+  supersedeTokenSavings: number;
   /** Index in `messages` where the compacted slice begins (for the caller to
    *  build a drop range). */
   compactedFrom: number;
@@ -104,7 +117,10 @@ export function setDefaultStore(store: VectorStore | undefined): void {
  * when the compactable slice is empty.
  */
 export function compactSession(input: CompactInput, store: VectorStore = getDefaultStore()): CompactResult {
-  const keepFrom = input.keepFrom ?? input.messages.length;
+  // F6: clamp keepFrom defensively. Upstream (the extension adapter) already
+  // clamps, but a bad keepFrom (negative or > length) would produce a misleading
+  // drop range or an empty compactable slice; belt-and-braces, clamp here too.
+  const keepFrom = Math.max(0, Math.min(input.keepFrom ?? input.messages.length, input.messages.length));
   const compactable = input.messages.slice(0, keepFrom);
   const compactedFrom = keepFrom;
 
@@ -117,6 +133,8 @@ export function compactSession(input: CompactInput, store: VectorStore = getDefa
       tokenEstimate: 0,
       filesModified: [],
       originalTokenEstimate: 0,
+      keepTokenEstimate: 0,
+      supersedeTokenSavings: 0,
       compactedFrom,
     };
   }
@@ -154,12 +172,21 @@ export function compactSession(input: CompactInput, store: VectorStore = getDefa
 
   // Honest "tokens saved" accounting:
   //  - originalTokenEstimate = the dropped region's token count (what context
-  //    held before compaction) = the compacted slice's tokens.
+  //    held before compaction) = the compacted slice's tokens. Computed over the
+  //    FULL compactable slice (incl. superseded) so the dedup branch books the
+  //    whole region; this is the value persisted into the checkpoint record.
+  //  - keepTokenEstimate (F5) = the filtered keep set's tokens (post-supersede).
+  //    The honest base for the stored-vs-original compaction delta: the pure
+  //    compaction savings = keepTokenEstimate − storedTokens, and the supersede
+  //    savings = originalTokenEstimate − keepTokenEstimate. Without this, the
+  //    supersede savings get booked as compaction savings.
   //  - storedTokens = the persisted summary's token count, computed from the
   //    actual summary string so it's honest for BOTH the extractive and legacy
   //    COLLAPSE paths (the legacy path's fallback estimateSessionTokens is the
   //    *original* size, not the stored size).
   const originalTokenEstimate = estimateSessionTokens(compactable);
+  const keepTokenEstimate = estimateSessionTokens(keep);
+  const supersedeTokenSavings = Math.max(0, originalTokenEstimate - keepTokenEstimate);
   const storedTokens = estimateBlockTokens(summary);
 
   // Region text = the compacted slice, used for dedup + embedding.
@@ -191,6 +218,8 @@ export function compactSession(input: CompactInput, store: VectorStore = getDefa
     tokenEstimate: storedTokens,
     filesModified,
     originalTokenEstimate,
+    keepTokenEstimate,
+    supersedeTokenSavings,
     compactedFrom,
   };
 }

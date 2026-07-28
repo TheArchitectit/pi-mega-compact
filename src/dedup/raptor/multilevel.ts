@@ -14,7 +14,7 @@
 import type { Embedder, Vector } from "../../embedder.js";
 import { cosineSimilarity } from "../../embedder.js";
 import { mmrRerank } from "../mmr.js";
-import type { RaptorTree } from "./tree.js";
+import type { RaptorTree, RaptorNode } from "./tree.js";
 import { leafDescendants } from "./retrieval.js";
 
 // ── S42A-1: Types ──────────────────────────────────────────────────────────
@@ -116,6 +116,17 @@ export function scoreTreeLevels(
 
 // ── S42A-3: Leaf expansion ─────────────────────────────────────────────────
 
+/** Build a reverse index: childId → parent RaptorNode. O(N). */
+export function buildChildParentIndex(tree: RaptorTree): Map<string, RaptorNode> {
+  const idx = new Map<string, RaptorNode>();
+  for (const node of tree.nodes.values()) {
+    for (const cid of node.children) {
+      if (!idx.has(cid)) idx.set(cid, node);
+    }
+  }
+  return idx;
+}
+
 /**
  * Given a set of cluster-level hits, expand each one to include its leaf
  * descendants. Deduplicates: if a leaf is already present as a direct hit,
@@ -131,6 +142,7 @@ export function expandLeafDescendants(
 ): MultilevelHit[] {
   const weights = levelWeights ?? DEFAULT_LEVEL_WEIGHTS;
   const existingIds = new Set(hits.map((h) => h.nodeId));
+  const childParentIdx = buildChildParentIndex(tree);
   const expanded: MultilevelHit[] = [];
 
   for (const hit of hits) {
@@ -149,20 +161,18 @@ export function expandLeafDescendants(
     const rawLeafIds = leafDescendants(node, tree);
 
     // Sort by cosine similarity to query, cap at maxPerCluster.
+    // Skip leaves with no parent (orphan) — they have no reliable embedding.
     const leafHits: MultilevelHit[] = rawLeafIds
       .map((lid) => {
-        // Leaf embedding = its nearest internal parent's embedding.
-        const parent = [...tree.nodes.values()].find((n) =>
-          n.children.includes(lid),
-        );
+        const parent = childParentIdx.get(lid);
         const sim = parent
           ? cosineSimilarity(queryVector, parent.embedding)
-          : 0;
+          : -Infinity; // orphan: excluded
         return { lid, sim, parent };
       })
+      .filter((l) => l.sim > -Infinity && !existingIds.has(l.lid))
       .sort((a, b) => b.sim - a.sim)
       .slice(0, maxPerCluster)
-      .filter((l) => !existingIds.has(l.lid))
       .map((l) => {
         existingIds.add(l.lid);
         const rawScore = l.sim;
@@ -174,7 +184,7 @@ export function expandLeafDescendants(
           isLeaf: true,
           leafIds: [l.lid],
           summary: "",
-          embedding: l.parent?.embedding ?? hit.embedding,
+          embedding: l.parent!.embedding, // parent guaranteed non-null here
         } as MultilevelHit;
       });
 

@@ -15,27 +15,16 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { join } from "node:path";
-import { type FSWatcher } from "node:fs";
+import type { FSWatcher } from "node:fs";
 import { VectorStore } from "../../src/vectorStore.js";
-import { toEngineMessages } from "../../src/adapt.js";
+import type { toEngineMessages } from "../../src/adapt.js";
 import { normalizeSessionId } from "../../src/store.js";
 import { Logger } from "../../src/log.js";
-import {
-	type ModelSnapshot,
-	type GameState,
-} from "../../src/store/sqlite.js";
-import {
-	type MegaConfig,
-	type PressureBand,
-} from "../mega-config.js";
+import type { ModelSnapshot, GameState } from "../../src/store/sqlite.js";
+import type { MegaConfig, PressureBand } from "../mega-config.js";
 import { Dashboard } from "../mega-dashboard.js";
-import {
-	type SessionRuntime,
-} from "./helpers.js";
-import {
-	type TickerEntry,
-	type WidgetData,
-} from "./widget.js";
+import type { SessionRuntime } from "./helpers.js";
+import type { TickerEntry, WidgetData } from "./widget.js";
 import {
 	ensureGameStateWatcherImpl,
 	getCachedGameStateImpl,
@@ -59,7 +48,6 @@ import {
 	effectiveThresholdImpl,
 	pressureBandImpl,
 } from "./pressure-getters.js";
-import { resetRuntimeImpl } from "./reset-runtime.js";
 import { appendEventImpl } from "./append-event.js";
 import { getStateDirImpl } from "./get-state-dir.js";
 import { renderWidgetImpl } from "./render-widget.js";
@@ -95,6 +83,15 @@ export class MegaRuntime {
 		errorRetryCount: 0,
 		errorRetryUntil: 0,
 		consecutiveErrors: 0,
+		// R1-R3 (retry redesign): in-flight dedup, session cap, poisoned-context state.
+		lastErrorRetryAt: 0,
+		retryNudgePending: false,
+		errorRetrySessionCount: 0,
+		lastErrorText: undefined,
+		errorTextRepeatCount: 0,
+		poisonedAdviseSent: false,
+		poisonedCompactSignatures: new Set(),
+		poisonedCount: 0,
 	};
 	// v0.8.6 cache-stability: the cached live-trim view for the current
 	// compaction epoch. Set after a fresh runCompact + computeLiveTrimCut, and
@@ -125,7 +122,12 @@ export class MegaRuntime {
 	 *  compaction start). Threaded into widgetData as `activeEffect`; the widget
 	 *  computes the per-frame phase from startedAt vs Date.now() (non-expired).
 	 *  Null when idle/expired. */
-	activeEffect: { type: "pulse" | "flash"; role: "accent" | "mega" | "red"; startedAt: number; durationMs: number } | null = null;
+	activeEffect: {
+		type: "pulse" | "flash";
+		role: "accent" | "mega" | "red";
+		startedAt: number;
+		durationMs: number;
+	} | null = null;
 	megaCacheFlarePct = 0;
 	levelUpFlare = false;
 	lastLevel = 0;
@@ -316,10 +318,54 @@ export class MegaRuntime {
 		setStatusImpl(this, ctx, text);
 	}
 
-	/** Per-session state reset (session_start / session_tree) — thin delegate to
-	 *  `resetRuntimeImpl` (reset-runtime.ts). */
+	/** Per-session state reset (session_start / session_tree) — inlined by the
+	 *  raptor-promotion merge (R1–R3 retry-redesign fields); reset-runtime.ts was
+	 *  retired by that branch. */
 	resetRuntime(sessionId: string | undefined): void {
-		resetRuntimeImpl(this, sessionId);
+		const sid = normalizeSessionId(sessionId);
+		if (this.rt.sessionId === sid && this.rt.persistedThisSession) return; // same session, keep checkpoint memory
+		this.rt = {
+			sessionId: sid,
+			persistedThisSession: false,
+			lastCheckpointId: undefined,
+			lastCompactedFrom: 0,
+			lastCompactedTokens: 0,
+			dedupSkips: 0,
+			dedupAttempts: 0,
+			tokensSaved: 0,
+			lastCompactAt: null,
+			lastNativeCompactAt: null,
+			compactCount: 0,
+			recallInjections: 0,
+			cacheHitTokens: 0,
+			lengthStopPending: false,
+			errorRetryCount: 0,
+			errorRetryUntil: 0,
+			consecutiveErrors: 0,
+			// R1-R3 (retry redesign): in-flight dedup, session cap, poisoned-context state.
+			lastErrorRetryAt: 0,
+			retryNudgePending: false,
+			errorRetrySessionCount: 0,
+			lastErrorText: undefined,
+			errorTextRepeatCount: 0,
+			poisonedAdviseSent: false,
+			poisonedCompactSignatures: new Set(),
+			poisonedCount: 0,
+		};
+		this.trimCache = null; // v0.8.6: never replay a stale trim into a new session
+		this.statusKey = undefined;
+		this.activeAgents = 0;
+		this.currentTurn = 0;
+		this.lastActivityAt = 0;
+		this.tierTrace = undefined;
+		this.ticker.length = 0;
+		this.pulsing = false;
+		this.savedGoal = 50_000;
+		this.lastWhy = undefined;
+		// S31 audit P2: symmetry with bindRepo — a reset can coincide with a context
+		// that re-binds the repo, so drop the memo too. Cheap; the next
+		// getCachedGameState() re-queries lazily.
+		this.cachedGameState = undefined;
 	}
 
 	captureModel(ctx: ExtensionContext): void {

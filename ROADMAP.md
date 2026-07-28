@@ -16,7 +16,7 @@
 ### S25-A — RAPTOR Promotion: Harden Live Hierarchical Recall
 
 **Source:** `docs/specs/s25-raptor-promote.md`
-**Status:** ⬜ NOT STARTED
+**Status:** 🟡 IN PROGRESS (6/10 done — gates + freshness + monitoring shipped; cache + acceptance tests remain)
 **Priority:** P1 (correctness + latency hardening)
 
 **Problem:** RAPTOR was promoted from shadow to live but the promotion is implicit and fragile:
@@ -30,16 +30,16 @@
 
 **Work Items (10 tasks):**
 
-- [ ] Add `built_at` column to `raptor_nodes` schema
-- [ ] Plumb `builtAt` through `runRaptor` → `saveRaptorTree` → `upsertRaptorNode`
-- [ ] Extend `rehydrateRaptorTree` to return `builtAt` + `timedOut` metadata
+- [x] Add `built_at` column to `raptor_nodes` schema (`src/store/sqlite/schema.ts:102` + `ensureColumn` migration)
+- [x] Plumb `builtAt` through `runRaptor` → `saveRaptorTree` → `upsertRaptorNode`
+- [x] Extend `rehydrateRaptorTree` to return `builtAt` + `timedOut` metadata
 - [ ] Add `raptorCache` to `VectorStore` class (per-session, invalidated on save)
-- [ ] Honor `RAPTOR_SHADOW_MODE=false` as hard SERVE gate in `raptorSearchHits`
-- [ ] Freshness guard: skip stale trees (`builtAt < maxCheckpointTimestamp`)
-- [ ] Skip `timedOut` extractive-fallback trees (level===99)
-- [ ] Record `raptor_serve` events for canary p95 monitoring
+- [x] Honor `RAPTOR_SHADOW_MODE=false` as hard SERVE gate in `raptorSearchHits`
+- [x] Freshness guard: skip stale trees (`builtAt < maxCheckpointTimestamp`)
+- [x] Skip `timedOut` extractive-fallback trees (level===99)
+- [x] Record `raptor_serve` events for canary p95 monitoring
 - [ ] Optional: `RAPTOR_INJECT_SUMMARIES` flag for high-level summary injection
-- [ ] Tests: shadow mode, stale fallback, coverage breadth, p95 latency
+- [ ] Tests: shadow mode, stale fallback, coverage breadth, p95 latency (`serve-gate.test.ts`)
 
 **Files:**
 

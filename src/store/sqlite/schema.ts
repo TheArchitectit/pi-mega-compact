@@ -48,6 +48,11 @@ export function initSchema(db: DatabaseSync): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_chunks_pk
       ON context_chunks(session_id, id);
     CREATE INDEX IF NOT EXISTS idx_chunks_session ON context_chunks(session_id);
+    -- S42D/QA perf: session-scoped timestamp ordering so the S25 RAPTOR
+    -- freshness guard's MAX(timestamp) (run on every RAPTOR search) is
+    -- index-satisfied rather than a full partition scan as checkpoints grow.
+    CREATE INDEX IF NOT EXISTS idx_chunks_session_ts
+      ON context_chunks(session_id, timestamp DESC);
     CREATE INDEX IF NOT EXISTS idx_chunks_region ON context_chunks(region_hash);
     CREATE INDEX IF NOT EXISTS idx_chunks_content ON context_chunks(content_hash);
     -- Partial UNIQUE (QA #1): null content_hash rows never violate the constraint;
@@ -77,7 +82,9 @@ export function initSchema(db: DatabaseSync): void {
     CREATE TABLE IF NOT EXISTS session_state (
       session_id               TEXT PRIMARY KEY,
       injected_checkpoint_ids TEXT,      -- JSON array
-      stored_region_hashes    TEXT       -- JSON array
+      stored_region_hashes    TEXT,      -- JSON array
+      conversation_id         TEXT,       -- S43: groups turns across resumes (/clear → new root)
+      last_turn_id            INTEGER     -- S43: most recent turn id (stable fork refs)
     );
 
     CREATE TABLE IF NOT EXISTS meta (
@@ -104,6 +111,28 @@ export function initSchema(db: DatabaseSync): void {
     );
     CREATE INDEX IF NOT EXISTS idx_raptor_session ON raptor_nodes(session_id);
     CREATE INDEX IF NOT EXISTS idx_raptor_parent ON raptor_nodes(parent_id);
+    -- S42D/QA perf: session-scoped built_at ordering so the per-search cache
+    -- invalidation MAX(built_at) is index-satisfied.
+    CREATE INDEX IF NOT EXISTS idx_raptor_session_built
+      ON raptor_nodes(session_id, built_at DESC);
+
+    -- S42D: structured RAPTOR build history. One row per tree build; the
+    -- freshness check (buildHistory.ts) uses completed_at + leaf_count to skip
+    -- unnecessary rebuilds when the tree is recent and the chunk count is stable.
+    CREATE TABLE IF NOT EXISTS raptor_build_history (
+      build_id        TEXT PRIMARY KEY,
+      session_id      TEXT NOT NULL,
+      state_dir       TEXT NOT NULL,
+      started_at      INTEGER NOT NULL,
+      completed_at    INTEGER NOT NULL,
+      node_count      INTEGER NOT NULL,
+      leaf_count      INTEGER NOT NULL,
+      depth           INTEGER NOT NULL,
+      config_json     TEXT NOT NULL,    -- serialized BuildOptions
+      coherence_score REAL,            -- avg intra-cluster cosine (post-build)
+      timed_out       INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_raptor_build_session ON raptor_build_history(session_id);
 
     -- Foundation for future features (resume sessions, daily log, lessons
     -- learned). Scaffolded now so all store data lives in SQLite from day one;
@@ -222,6 +251,59 @@ export function initSchema(db: DatabaseSync): void {
     );
     CREATE INDEX IF NOT EXISTS idx_epoch_session ON checkpoint_epochs(session_id, created_at DESC);
 
+    -- S43 (per-turn vector tracking): the relational spine for per-turn +
+    -- per-conversation memories. One row per turn_end; links turns to the
+    -- epoch that compacted them (epoch_id) and to the checkpoints/cluster
+    -- summaries that were RECALLED during that turn (turn_recall).
+    -- conversation_id groups turns across pi session resumes (/clear starts a
+    -- new conversation root; a fork carries parent_conversation_id).
+    CREATE TABLE IF NOT EXISTS turns (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT, -- global turn id
+      conversation_id TEXT NOT NULL,
+      session_id      TEXT NOT NULL,
+      turn_index      INTEGER NOT NULL,                   -- per-session turn (event.turnIndex)
+      role            TEXT,                                -- 'user' | 'assistant' | 'tool' (turn's last role)
+      started_at      INTEGER NOT NULL,
+      ended_at        INTEGER,                             -- set at turn_end
+      ctx_tokens      INTEGER,                             -- runtime.lastCtxTokens snapshot
+      ctx_percent     REAL,                                -- runtime.lastCtxPercent
+      pressure_band   TEXT,                                -- 'low'|'mid'|'high'|'critical'
+      model_id        TEXT,
+      epoch_id        TEXT,                                -- FK checkpoint_epochs (set when a compact closes this turn's epoch)
+      UNIQUE(session_id, turn_index)
+    );
+    CREATE INDEX IF NOT EXISTS idx_turns_conv ON turns(conversation_id, turn_index);
+    CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, turn_index);
+    CREATE INDEX IF NOT EXISTS idx_turns_epoch ON turns(epoch_id) WHERE epoch_id IS NOT NULL;
+
+    -- S43: recall provenance — which checkpoints/cluster summaries were
+    -- injected at which turn, their score, and the path that sourced them.
+    -- This is the per-turn vector data that makes memory quality measurable
+    -- per turn and enables recall-to-point (replay these checkpoint_ids into a
+    -- forked session). source: 'flat' | 'raptor' | 'cross-repo' | 'memory'.
+    CREATE TABLE IF NOT EXISTS turn_recall (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      turn_id       INTEGER NOT NULL,
+      checkpoint_id TEXT NOT NULL,
+      score         REAL NOT NULL,
+      source        TEXT NOT NULL,
+      raptor_level  INTEGER,                              -- set for RAPTOR cluster hits
+      UNIQUE(turn_id, checkpoint_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_turn_recall_turn ON turn_recall(turn_id);
+    CREATE INDEX IF NOT EXISTS idx_turn_recall_cp ON turn_recall(checkpoint_id);
+
+    -- S43: conversation branch/fork registry. A row per fork: the child
+    -- conversation inherits the parent's recall state at fork_turn_id as its
+    -- starting injected-set. The root conversation has no row here.
+    CREATE TABLE IF NOT EXISTS conversation_branches (
+      conversation_id        TEXT PRIMARY KEY,
+      parent_conversation_id TEXT NOT NULL,
+      fork_turn_id           INTEGER NOT NULL,             -- FK turns.id at the branch point
+      created_at             INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_conv_branch_parent ON conversation_branches(parent_conversation_id);
+
     -- S27 Task 6: dedup_mirror for space-efficient deduplicated storage.
     -- Each unique content_hash stores its bytes ONCE; raw_transcript rows
     -- reference this table via content_ref instead of storing duplicate content_bytes inline.
@@ -299,6 +381,13 @@ export function initSchema(db: DatabaseSync): void {
   // S25: RAPTOR freshness-guard timestamp. Additive; old DBs have NULL → 0 →
   // treated as stale → flat fallback (safe).
   ensureColumn(db, "raptor_nodes", "built_at", "INTEGER");
+  // S43: turn_index on raw_transcript so a message points directly at its
+  // conversation turn (otherwise it must be inferred from seq ordering). NULL
+  // for legacy rows — turns written before S43 have no turn link.
+  ensureColumn(db, "raw_transcript", "turn_index", "INTEGER");
+  // S43: conversation_id + last_turn_id on session_state (legacy DBs have NULL).
+  ensureColumn(db, "session_state", "conversation_id", "TEXT");
+  ensureColumn(db, "session_state", "last_turn_id", "INTEGER");
   // S35: idempotent seed of the 9 achievement rows. ON CONFLICT(id) DO
   // NOTHING so a re-open never clobbers an already-unlocked row's
   // unlocked_at. No user input reaches this SQL (PREVENT-002 safe).

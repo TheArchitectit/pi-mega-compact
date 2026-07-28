@@ -10,7 +10,8 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
 import { recallAndInline, recallAndInlineAsync, formatRecallBlock, type RecallInjectResult } from "../../src/recall.js";
 import { normalizeSessionId } from "../../src/store.js";
-import { incRecallInjected, incCacheHitTokens } from "../../src/store/sqlite.js";
+import { incRecallInjected, incCacheHitTokens, getIndexDir } from "../../src/store/sqlite.js";
+import { ensureConversationId, recordTurn, recordTurnRecall, type RecallSource } from "../../src/store/sqlite/turns.js";
 import {
   type MegaRuntime,
   C,
@@ -64,6 +65,30 @@ export function doRecall(
     runtime.rt.cacheHitTokens += sumTokens;
     incRecallInjected(result.toInject.length, runtime.currentStateDir);
     incCacheHitTokens(sumTokens, runtime.currentStateDir);
+    // S43: record recall provenance — which checkpoints/summaries served this
+    // turn, their score + source path. Linked to the turn row written at
+    // turn_end via the conversation+turnIndex. Best-effort + non-fatal.
+    try {
+      const convId = ensureConversationId(sid, runtime.currentStateDir);
+      const turnId = recordTurn({
+        conversationId: convId,
+        sessionId: sid,
+        turnIndex: runtime.currentTurn,
+        startedAt: Date.now(),
+      }, runtime.currentStateDir);
+      recordTurnRecall(
+        turnId,
+        result.toInject.map((h) => ({
+          checkpointId: h.checkpoint.checkpointId,
+          score: h.score,
+          source: (h.raptorLevel !== undefined ? "raptor" : h.repoId ? "cross-repo" : "flat") as RecallSource,
+          raptorLevel: h.raptorLevel,
+        })),
+        runtime.currentStateDir,
+      );
+    } catch {
+      /* non-fatal: recall provenance never breaks the recall path */
+    }
   }
   return result;
 }
@@ -108,7 +133,14 @@ export async function doRecallAsync(
         sessionId: sid, query, limit: config.autoInlineK, source, skipInjected: true,
         recallMaxTokens: config.recallMaxTokens, windowDedupe: config.windowDedupe,
         liveWindow, dedupSim: config.crossRepoCosine, crossRepo: true,
-        globalIndexDir: process.env.MEGACOMPACT_INDEX_DIR,
+        // F2: resolve the machine-wide index dir via the shared resolver so the
+        // cross-repo injected-set dedup works even when MEGACOMPACT_INDEX_DIR is
+        // unset. The env var still wins when set (getIndexDir checks it first);
+        // the default (~/.mega-compact-index) is the same DB mega-commands and the
+        // dashboard read, so injection counts stay consistent. Without this, a
+        // bare `process.env` read returns undefined → cross-repo hits re-inject in
+        // every new session (the global injected-set is never consulted).
+        globalIndexDir: getIndexDir(),
       },
       runtime.store,
     );

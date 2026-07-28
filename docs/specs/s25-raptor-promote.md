@@ -4,7 +4,7 @@
 **Parent plan:** feat/unified-pressure (unified pressure signal + memory hardening)
 **Depends on:** S13 RAPTOR shadow build (src/dedup/raptor/*), S14 dedup config single-source (src/config/dedup.ts), S24 unified pressure
 **Priority:** P1 (correctness + latency hardening of an already-shipping path)
-**Status:** Draft → implement-ready
+**Status:** 🟡 PARTIALLY IMPLEMENTED (2026-07-27, raptor-promotion branch, v0.8.23) — gates (a) shadow-mode SERVE gate + (b) freshness guard, `built_at` schema/plumbing, pipeline `builtAt` pass, timedOut skip, and `raptor_serve` events are all live (`src/vector-search.ts`, `src/dedup/raptor/index.ts`, `extensions/mega-pipeline/compact.ts`). Note: `raptorSearchHits` moved `vectorStore.ts` → `src/vector-search.ts` in the PR0 split. **Remaining:** per-session `raptorCache` (per-recall `rehydrateRaptorTree` rebuild still happens), `src/dedup/raptor/serve-gate.test.ts` acceptance suite, and the OPTIONAL Phase-2 `RAPTOR_INJECT_SUMMARIES` flag.
 **Target version:** v0.6.2
 
 ---
@@ -39,6 +39,7 @@ Goal: make the live RAPTOR path *observable, fresh, and bounded* — honoring th
 ## SCOPE
 
 ### IN
+
 - Honor `RAPTOR_SHADOW_MODE` env as a hard SERVE gate (not just logging) at the `search` merge point (vectorStore.ts:469).
 - Add a freshness guard: store a `built_at` epoch on the RAPTOR tree; in `raptorSearchHits`, skip RAPTOR (fall back to flat) when the tree is stale relative to `max(checkpoint.timestamp)` or when `timedOut` extractive root was used.
 - Cache the rehydrated `RaptorTree` per (sessionId) keyed on tree version/`built_at`, invalidated on `saveRaptorTree`, so `search` does not rebuild the Map every call.
@@ -47,6 +48,7 @@ Goal: make the live RAPTOR path *observable, fresh, and bounded* — honoring th
 - Record RAPTOR serve events to monitoring (events.log) via the existing `eventsPath` for canary p95.
 
 ### OUT
+
 - Changing the RAPTOR build algorithm (kmeans/summarizer) — out of scope; tree.ts unchanged except `built_at` plumbing.
 - MiniLM embedder — off, not shipped (CLAUDE.md §5).
 - Cross-repo RAPTOR (S17 PGlite path) — recallAndInlineAsync untouched.

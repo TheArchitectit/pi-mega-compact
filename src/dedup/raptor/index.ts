@@ -16,6 +16,7 @@ import { buildRaptorTree, type Leaf, type RaptorTree } from "./tree.js";
 import { stagedExpansion } from "./retrieval.js";
 import { Logger } from "../../log.js";
 import { saveRaptorTree, listRaptorNodes } from "../../store/sqlite.js";
+import { insertBuildHistory, computeCoherenceScore } from "./buildHistory.js";
 
 /** Shadow mode is on by default; set RAPTOR_SHADOW_MODE=false to serve live. */
 export function isShadowMode(): boolean {
@@ -49,6 +50,7 @@ export function runRaptor(
 ): RaptorTree | null {
   const embedder = opts.embedder ?? defaultEmbedder();
   const logger = opts.logger;
+  const startedAt = opts.builtAt ?? Date.now();
   try {
     const tree = buildRaptorTree(leaves, {
       embedder,
@@ -66,6 +68,42 @@ export function runRaptor(
       timedOut: tree.timedOut,
       shadow: isShadowMode(),
     });
+    // S42D: record structured build history (coherence score + leaf count) so
+    // the freshness check can skip the next rebuild when the tree is recent
+    // and the chunk count is stable. Best-effort: a history-write failure must
+    // never break the build.
+    try {
+      // Map leaf id → embedding so computeCoherenceScore can score real
+      // intra-cluster spread (without this, leaves collapse to parent centroids
+      // and the score inflates to ~1.0 for every tree).
+      const leafEmbs = new Map<string, number[]>();
+      for (const l of leaves) if (l.embedding.length > 0) leafEmbs.set(l.id, l.embedding);
+      const coherence = computeCoherenceScore(tree, leafEmbs);
+      insertBuildHistory(
+        {
+          sessionId: opts.sessionId,
+          stateDir: opts.stateDir,
+          startedAt,
+          completedAt: Date.now(),
+          nodeCount: tree.nodes.size,
+          leafCount: leaves.length,
+          depth: tree.levels,
+          configJson: JSON.stringify({
+            budgetMs: opts.budgetMs,
+            clustersPerLevel: opts.clustersPerLevel,
+            consistencyThreshold: opts.consistencyThreshold,
+          }),
+          coherenceScore: coherence,
+          timedOut: tree.timedOut,
+        },
+        opts.stateDir,
+      );
+    } catch (histErr) {
+      logger?.warn("raptor_build_history_failed", {
+        sessionId: opts.sessionId,
+        error: String(histErr instanceof Error ? histErr.message : histErr),
+      });
+    }
     if (isShadowMode()) {
       // Build + log only. Do NOT replace retrieval.
       logger?.info("raptor_shadow", { sessionId: opts.sessionId, served: false });

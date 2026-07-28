@@ -33,7 +33,7 @@ export function addTokensSaved(delta: number, stateDir: string = getStateDir()):
   const db = openStore(stateDir);
   db.prepare(
     `INSERT INTO meta(key, value) VALUES('tokens_saved', ?)
-     ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + ? AS TEXT)`,
+     ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS REAL) + ? AS TEXT)`,
   ).run(String(delta), delta);
 }
 

@@ -32,6 +32,17 @@ function isLeafId(id: string, tree: RaptorTree): boolean {
   return !tree.nodes.has(id);
 }
 
+/** Build a reverse index: childId → parent RaptorNode. O(N). */
+export function buildChildParentIndex(tree: RaptorTree): Map<string, RaptorNode> {
+  const idx = new Map<string, RaptorNode>();
+  for (const node of tree.nodes.values()) {
+    for (const cid of node.children) {
+      if (!idx.has(cid)) idx.set(cid, node);
+    }
+  }
+  return idx;
+}
+
 /** All leaf (raw) ids reachable beneath a node via BFS. */
 export function leafDescendants(node: RaptorNode, tree: RaptorTree): string[] {
   const out: string[] = [];
@@ -81,13 +92,14 @@ export function stagedExpansion(
     .slice(0, topM)
     .map((s) => s.node);
 
-  // 3. BFS to leaves from those anchors.
+  // 3. BFS to leaves from those anchors, using a reverse child→parent index.
+  const childParentIdx = buildChildParentIndex(tree);
   const leaves = new Map<string, RaptorNode>();
   for (const a of anchors) {
     for (const lid of leafDescendants(a, tree)) {
       // Represent each leaf by its nearest internal parent so we can score it.
       // (The leaf's own centroid is stored on the level-0 node that wraps it.)
-      const parent = [...tree.nodes.values()].find((n) => n.children.includes(lid));
+      const parent = childParentIdx.get(lid);
       if (parent) leaves.set(lid, parent);
     }
   }

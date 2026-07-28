@@ -50,6 +50,10 @@ export interface SnapshotBuildContext {
 	readonly consecutiveErrors: number;
 	readonly ERROR_RETRY_MAX_CONSECUTIVE: number;
 	readonly errorRetryHardStop: boolean;
+	// R7 (retry redesign): session-global cap + poisoned-context counters.
+	readonly sessionRetryCount: number;
+	readonly sessionRetryMax: number;
+	readonly poisonedCount: number;
 	readonly activeAgents: number;
 	readonly currentTurn: number;
 	readonly currentModel: { providerName: string | null; modelId: string; provider: string; inputRate: number; outputRate: number } | null | undefined;
@@ -168,6 +172,10 @@ export function buildDashboardSnapshot(ctx: SnapshotBuildContext): DashboardSnap
 			consecutiveErrors: ctx.consecutiveErrors,
 			maxConsecutiveErrors: ctx.ERROR_RETRY_MAX_CONSECUTIVE,
 			errorRetryHardStop: ctx.errorRetryHardStop,
+			// R7 (retry redesign): additive session-cap + poisoned-context counters.
+			sessionRetryCount: ctx.sessionRetryCount,
+			sessionMax: ctx.sessionRetryMax,
+			poisonedCount: ctx.poisonedCount,
 		},
 	};
 }
