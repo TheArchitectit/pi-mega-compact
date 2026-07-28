@@ -89,6 +89,21 @@ export interface MegaConfig {
    *  Default false. Set via env to force S28-only behavior (length-stop continues
    *  only). */
   errorRetryHardStop: boolean;
+  /** R1 (retry redesign): base unit (ms) for errorRetryBackoffMs(count) pacing.
+   *  The schedule is base, 2*base, 4*base, 6*base (cap) — so the default 5000
+   *  yields 5s/10s/20s/30s. errorRetryUntil is now GATING (previously it was
+   *  documented as non-gating); a nudge cannot fire before errorRetryUntil
+   *  elapses. */
+  errorRetryBackoffMs: number;
+  /** R2: session-global cap on total S38 nudges across ALL bursts. Hitting it
+   *  is terminal for the session — the extension stops nudging entirely,
+   *  independent of the per-burst max and the circuit breaker. Default 3.
+   *  `0` disables (reverts to per-burst + circuit-breaker only). */
+  errorRetrySessionMax: number;
+  /** R3: consecutive identical error-text count at which a 'transient'
+   *  classification is upgraded to 'poisoned-context' (the stateful repeat
+   *  signal). Default 3. Raise to make the upgrade less aggressive. */
+  poisonedContextRepeatThreshold: number;
   /** S29: override the auto-compact fire point for tiered configs, as a
    *  fraction of the context window (e.g. 0.85). null = inherit the tier's
    *  tierPct (default; preserves existing fire points). The context-handler
@@ -262,6 +277,9 @@ export function loadConfig(): MegaConfig {
     raceGuardStrict: envBool("MEGACOMPACT_RACE_GUARD_STRICT", true),
     maxConsecutiveErrors: envFlag("MEGACOMPACT_MAX_CONSECUTIVE_ERRORS", 10),
     errorRetryHardStop: envBool("MEGACOMPACT_ERROR_RETRY_HARD_STOP", false),
+    errorRetryBackoffMs: envFlag("MEGACOMPACT_ERROR_RETRY_BACKOFF_MS", 5000),
+    errorRetrySessionMax: envFlag("MEGACOMPACT_ERROR_RETRY_SESSION_MAX", 3),
+    poisonedContextRepeatThreshold: envFlag("MEGACOMPACT_POISONED_REPEAT_THRESHOLD", 3),
     autoPctTrigger,
     autoInlineK: envFlag("MEGACOMPACT_AUTO_INLINE_K", 3),
     dedupSim: Number(process.env.MEGACOMPACT_DEDUP_SIM ?? "0.9"),

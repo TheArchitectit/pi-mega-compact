@@ -76,6 +76,7 @@ function defaultNextId(level: number, index: number): string {
 /** An item being clustered at any level: a leaf, or a grouping of leaves. */
 interface ClusterItem {
   id: string;
+  parentId: string | null;
   embedding: Vector;
   leafIds: string[];
   /** Source messages for summarization (flattened). */
@@ -128,6 +129,7 @@ export function buildRaptorTree(leaves: Leaf[], opts: BuildOptions): RaptorTree 
   if (leaves.length < 10) {
     const item: ClusterItem = {
       id: "root",
+      parentId: null,
       embedding: meanVector(leaves.map((l) => l.embedding)),
       leafIds: leaves.map((l) => l.id),
       messages: leaves.flatMap((l) => l.messages),
@@ -151,6 +153,7 @@ export function buildRaptorTree(leaves: Leaf[], opts: BuildOptions): RaptorTree 
 
   let currentLevel: ClusterItem[] = leaves.map((l) => ({
     id: l.id,
+    parentId: null,
     embedding: l.embedding,
     leafIds: [l.id],
     messages: l.messages,
@@ -167,6 +170,7 @@ export function buildRaptorTree(leaves: Leaf[], opts: BuildOptions): RaptorTree 
     if (currentLevel.length <= clustersPerLevel) {
       const merged: ClusterItem = {
         id: "merge",
+        parentId: null,
         embedding: meanVector(currentLevel.map((c) => c.embedding)),
         leafIds: currentLevel.flatMap((c) => c.leafIds),
         messages: currentLevel.flatMap((c) => c.messages),
@@ -185,6 +189,15 @@ export function buildRaptorTree(leaves: Leaf[], opts: BuildOptions): RaptorTree 
         qualityMarker,
         tokenEstimate,
       });
+      // Populate parentId for the internal nodes being merged into this root.
+      // currentLevel items with ids in `nodes` are internal summary nodes (level
+      // >= 1); raw leaf ids are not in `nodes` and are correctly skipped.
+      for (const c of currentLevel) {
+        const child = nodes.get(c.id);
+        if (child && child.id !== rootId && child.parentId === null) {
+          child.parentId = rootId;
+        }
+      }
       return { nodes, rootId, levels: level + 2, timedOut: false };
     }
 
@@ -200,6 +213,7 @@ export function buildRaptorTree(leaves: Leaf[], opts: BuildOptions): RaptorTree 
       if (group.length === 0) continue;
       const merged: ClusterItem = {
         id: nextId(level + 1, g),
+        parentId: null,
         embedding: clustered.centroids[g],
         leafIds: group.flatMap((c) => c.leafIds),
         messages: group.flatMap((c) => c.messages),
@@ -223,9 +237,10 @@ export function buildRaptorTree(leaves: Leaf[], opts: BuildOptions): RaptorTree 
   }
 
   const root = currentLevel[0];
+  const rootId = root ? root.id : null;
   return {
     nodes,
-    rootId: root ? root.id : null,
+    rootId,
     levels: level + 1,
     timedOut: false,
   };
@@ -252,5 +267,5 @@ function extractiveFallbackRoot(
     qualityMarker: "low",
     tokenEstimate: summary.tokenEstimate,
   });
-  return { nodes, rootId, levels: 2, timedOut: true };
+  return { nodes, rootId, levels: 100, timedOut: true };
 }

@@ -158,6 +158,10 @@ export function snapshotImpl(self: RuntimeSnapshotContext, ctx?: ExtensionContex
 			consecutiveErrors: self.rt.consecutiveErrors,
 			ERROR_RETRY_MAX_CONSECUTIVE: self.config.maxConsecutiveErrors,
 			errorRetryHardStop: self.config.errorRetryHardStop,
+			// R7 (retry redesign): session-cap + poisoned-context counters.
+			sessionRetryCount: self.rt.errorRetrySessionCount,
+			sessionRetryMax: self.config.errorRetrySessionMax,
+			poisonedCount: self.rt.poisonedCount,
 			activeAgents: self.activeAgents,
 			currentTurn: self.currentTurn,
 			currentModel: self.currentModel,

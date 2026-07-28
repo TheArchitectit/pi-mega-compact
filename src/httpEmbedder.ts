@@ -28,6 +28,7 @@
 import type { Embedder, Vector } from "./embedder.js";
 import { l2Normalize } from "./embedder.js";
 import { spawnSync } from "node:child_process"; // guardrails-allow PREVENT-PI-004: localhost-only user-spawned embedding server (BYO backend, never remote)
+import { isIP } from "node:net";
 
 export interface HttpEmbedderOptions {
   url: string;
@@ -39,23 +40,112 @@ export interface HttpEmbedderOptions {
   dim?: number;
 }
 
-/** Read + validate the localhost embeddings config from the environment. */
+// Inline worker script: resolves a hostname via dns.lookup in a child process
+// (dns.lookup is callback-async; the child has its own event loop). Used to
+// verify that a hostname in the embedding URL resolves to loopback ONLY.
+const DNS_WORKER = String.raw`
+const { lookup } = await import("node:dns");
+const { promisify } = await import("node:util");
+const pLookup = promisify(lookup);
+try {
+  const result = await pLookup(process.env.MC_DNS_HOST, { all: true });
+  process.stdout.write(JSON.stringify({ addresses: result.map((a) => a.address) }));
+} catch (e) {
+  process.stdout.write(JSON.stringify({ error: String((e && e.message) || e) }));
+}
+`;
+
+/** True if the IP string is a loopback address (127.x.x.x for IPv4, ::1 for IPv6). */
+function isLoopbackIP(ip: string): boolean {
+  const type = isIP(ip);
+  if (type === 4) return ip.startsWith("127.");
+  if (type === 6) return ip === "::1";
+  return false;
+}
+
+/** Resolve a hostname via dns.lookup (in a child process) and verify EVERY
+ *  returned address is loopback. Rejects on any resolution failure, empty
+ *  result, or non-loopback answer. Fails closed: returns false on any error. */
+function hostnameResolvesToLoopback(hostname: string): boolean {
+  const res = spawnSync(process.execPath, ["-e", DNS_WORKER], { // guardrails-allow PREVENT-PI-004: DNS lookup to verify hostname resolves to loopback (validation only, never sends data to a remote endpoint)
+    encoding: "utf8",
+    env: { ...process.env, MC_DNS_HOST: hostname },
+    timeout: 5000,
+  });
+  if (res.error || typeof res.stdout !== "string" || res.stdout.length === 0) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(res.stdout);
+    if (parsed.error) return false;
+    if (!Array.isArray(parsed.addresses) || parsed.addresses.length === 0) return false;
+    return parsed.addresses.every((a: string) => isLoopbackIP(a));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Read + validate the localhost embeddings config from the environment.
+ *
+ * Security: the URL is parsed with `new URL()` (not regex) to prevent userinfo
+ * bypass (e.g. a URL like localhost:8080@evil.com/ masks evil.com as the real
+ * host). The hostname must be a loopback address:
+ *  - Literal IPv4: 127.x.x.x (the full 127.0.0.0/8 range)
+ *  - Literal IPv6: ::1
+ *  - Hostname: resolved via dns.lookup; ALL returned addresses must be loopback
+ * Credentials in the URL (user:pass@) are rejected. Non-loopback literal IPs are
+ * rejected. Any resolution failure or non-loopback DNS answer is rejected.
+ *
+ * Fails CLOSED: unset/invalid/non-loopback URL → returns null → caller falls
+ * back to the local TrigramEmbedder. Never throws — a misconfigured URL must
+ * not crash the extension or silently connect to a remote endpoint.
+ */
 export function embeddingConfigFromEnv(): HttpEmbedderOptions | null {
   const url = process.env.MEGACOMPACT_EMBEDDING_URL;
   if (!url) return null;
-  if (!/^https?:\/\/localhost[:/]/.test(url) && !/^https?:\/\/127\.0\.0\.1[:/]/.test(url)) {
-    // Only loopback is permitted — a remote host would violate PREVENT-PI-004.
-    throw new Error(
-      `MEGACOMPACT_EMBEDDING_URL must be a localhost/127.0.0.1 endpoint (got ${url}). ` +
-        `Remote embedding endpoints are not allowed (PREVENT-PI-004).`,
-    );
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    console.warn(`MEGACOMPACT_EMBEDDING_URL is not a valid URL: ${url} — falling back to default embedder (PREVENT-PI-004)`);
+    return null;
   }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    console.warn(`MEGACOMPACT_EMBEDDING_URL must use http or https scheme (got ${parsed.protocol}) — falling back to default embedder (PREVENT-PI-004)`);
+    return null;
+  }
+
+  // Reject credentials in the URL (user:pass@) — they can mask a non-loopback host.
+  if (parsed.username || parsed.password) {
+    console.warn(`MEGACOMPACT_EMBEDDING_URL must not contain credentials (user:pass@) — falling back to default embedder (PREVENT-PI-004)`);
+    return null;
+  }
+
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, ""); // strip IPv6 brackets
+
+  if (isIP(hostname)) {
+    // Literal IP — must be loopback.
+    if (!isLoopbackIP(hostname)) {
+      console.warn(`MEGACOMPACT_EMBEDDING_URL must be a loopback IP (got ${hostname}) — falling back to default embedder (PREVENT-PI-004)`);
+      return null;
+    }
+  } else {
+    // Hostname — resolve via dns.lookup and require ALL addresses loopback.
+    if (!hostnameResolvesToLoopback(hostname)) {
+      console.warn(`MEGACOMPACT_EMBEDDING_URL hostname "${hostname}" does not resolve to loopback — falling back to default embedder (PREVENT-PI-004)`);
+      return null;
+    }
+  }
+
   const headers: Record<string, string> = {};
   if (process.env.MEGACOMPACT_EMBEDDING_HEADERS) {
     try {
       Object.assign(headers, JSON.parse(process.env.MEGACOMPACT_EMBEDDING_HEADERS));
     } catch {
-      throw new Error("MEGACOMPACT_EMBEDDING_HEADERS must be valid JSON");
+      console.warn("MEGACOMPACT_EMBEDDING_HEADERS must be valid JSON — ignoring headers");
     }
   }
   const dim = process.env.MEGACOMPACT_EMBEDDING_DIM

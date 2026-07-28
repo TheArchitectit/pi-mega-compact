@@ -28,6 +28,14 @@ function envNum(name: string, def: number): number {
   return Number.isFinite(n) ? n : def;
 }
 
+/** S42B: parse a comma-separated numeric env var (e.g. "1.0,0.9,0.8"). */
+function envNumArray(name: string, def: number[]): number[] {
+  const v = process.env[name];
+  if (v === undefined) return def;
+  const parts = v.split(",").map((x) => Number(x.trim()));
+  return parts.length > 0 && parts.every((n) => Number.isFinite(n)) ? parts : def;
+}
+
 export interface DedupConfigShape {
   // Tier enable flags.
   L0_ENABLED: boolean;
@@ -54,6 +62,17 @@ export interface DedupConfigShape {
   RAPTOR_BUDGET_MS: number;
   RAPTOR_CLUSTERS_PER_LEVEL: number;
   RAPTOR_CONSISTENCY: number;
+  // S42B: multi-level retrieval (score all tree levels + leaf expansion).
+  RAPTOR_MULTILEVEL_ENABLED: boolean;
+  RAPTOR_LEVEL_WEIGHTS: number[]; // per-level weights, index 0 = leaves (uncalibrated)
+  RAPTOR_LEAF_EXPANSION: boolean;
+  RAPTOR_MAX_LEAF_EXPANSION: number; // uncalibrated
+  RAPTOR_FRESHNESS_HOURS: number; // S42D: skip rebuild when tree is fresh (uncalibrated)
+  /** S25 Phase-2: inject top-level RAPTOR summary nodes (root + level-1
+   *  clusters) into the recall block as a hierarchical overview header.
+   *  Default true — the high-level map helps the model see the session's
+   *  topical structure before detailed checkpoint hits. */
+  RAPTOR_INJECT_SUMMARIES: boolean;
   // Monitoring / alerting.
   FP_RATE_L0: number; // FP alert threshold for exact tier
   FP_RATE_L1L2: number; // FP alert threshold for fuzzy tiers
@@ -87,6 +106,12 @@ export function loadDedupConfig(): DedupConfigShape {
     RAPTOR_BUDGET_MS: envNum("MEGACOMPACT_RAPTOR_BUDGET_MS", 5000),
     RAPTOR_CLUSTERS_PER_LEVEL: envNum("MEGACOMPACT_RAPTOR_CLUSTERS", 5),
     RAPTOR_CONSISTENCY: envNum("MEGACOMPACT_RAPTOR_CONSISTENCY", 0.6),
+    RAPTOR_MULTILEVEL_ENABLED: envBool("MEGACOMPACT_RAPTOR_MULTILEVEL", true),
+    RAPTOR_LEVEL_WEIGHTS: envNumArray("MEGACOMPACT_RAPTOR_LEVEL_WEIGHTS", [1.0, 0.9, 0.8, 0.7, 0.5]),
+    RAPTOR_LEAF_EXPANSION: envBool("MEGACOMPACT_RAPTOR_LEAF_EXPANSION", true),
+    RAPTOR_MAX_LEAF_EXPANSION: envNum("MEGACOMPACT_RAPTOR_MAX_LEAF_EXP", 10),
+    RAPTOR_FRESHNESS_HOURS: envNum("MEGACOMPACT_RAPTOR_FRESHNESS_HOURS", 4),
+    RAPTOR_INJECT_SUMMARIES: envBool("MEGACOMPACT_RAPTOR_INJECT_SUMMARIES", true),
     FP_RATE_L0: envNum("MEGACOMPACT_FP_RATE_L0", 0.01),
     FP_RATE_L1L2: envNum("MEGACOMPACT_FP_RATE_L1L2", 0.05),
     ALERT_WINDOW_MS: envNum("MEGACOMPACT_ALERT_WINDOW_MS", 600_000),

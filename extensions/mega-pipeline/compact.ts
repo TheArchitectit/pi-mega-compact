@@ -24,6 +24,7 @@ import {
 } from "../mega-runtime.js";
 import { resolveRepoRoot, preserveRecentForPressure, type MegaConfig } from "../mega-config.js";
 import { runRaptor } from "../../src/dedup/raptor/index.js";
+import { isRaptorTreeFresh } from "../../src/dedup/raptor/buildHistory.js";
 import { loadDedupConfig } from "../../src/config/dedup.js";
 import { upsertEmbedding as indexUpsertEmbedding } from "../../src/store/vectorIndex.js";
 import { runMemoryReview } from "./memory-review.js";
@@ -221,22 +222,33 @@ function doCompact(
         embedding: cp.embedding,
       }));
       if (leaves.length >= 2) {
-        // S25: stamp the tree with the newest checkpoint epoch so the
-        // freshness guard in raptorSearchHits can reject stale trees after a
-        // later compaction adds newer checkpoints.
-        const builtAt = all.length > 0 ? Math.max(...all.map((c) => c.timestamp)) : Date.now();
-        runRaptor(
-          leaves,
-          {
-            stateDir: runtime.currentStateDir,
-            sessionId: sid,
-            budgetMs: dd.RAPTOR_BUDGET_MS,
-            clustersPerLevel: dd.RAPTOR_CLUSTERS_PER_LEVEL,
-            consistencyThreshold: dd.RAPTOR_CONSISTENCY,
-            logger: runtime.logger,
-            builtAt: Number.isFinite(builtAt) ? builtAt : Date.now(),
-          },
-        );
+        // S42D: skip the rebuild when the last build is fresh (within
+        // RAPTOR_FRESHNESS_HOURS) and the checkpoint count hasn't drifted by
+        // more than 20%. avoids re-clustering on every compaction when the
+        // tree is still representative. 0 disables (always rebuild).
+        if (
+          dd.RAPTOR_FRESHNESS_HOURS > 0 &&
+          isRaptorTreeFresh(sid, runtime.currentStateDir, dd.RAPTOR_FRESHNESS_HOURS, all.length)
+        ) {
+          runtime.logger?.info("raptor_skip_fresh", { sessionId: sid });
+        } else {
+          // S25: stamp the tree with the newest checkpoint epoch so the
+          // freshness guard in raptorSearchHits can reject stale trees after a
+          // later compaction adds newer checkpoints.
+          const builtAt = all.length > 0 ? Math.max(...all.map((c) => c.timestamp)) : Date.now();
+          runRaptor(
+            leaves,
+            {
+              stateDir: runtime.currentStateDir,
+              sessionId: sid,
+              budgetMs: dd.RAPTOR_BUDGET_MS,
+              clustersPerLevel: dd.RAPTOR_CLUSTERS_PER_LEVEL,
+              consistencyThreshold: dd.RAPTOR_CONSISTENCY,
+              logger: runtime.logger,
+              builtAt: Number.isFinite(builtAt) ? builtAt : Date.now(),
+            },
+          );
+        }
       }
     } catch {
       /* non-fatal: tree refresh never blocks a compaction */

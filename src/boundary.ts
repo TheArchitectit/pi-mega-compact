@@ -5,10 +5,19 @@
  *  1. ANCHOR FLOOR: never drop the most recent N user messages.
  *  2. TOOL-PAIR: never split an assistant(toolCall) from its following
  *     tool-result message — an orphaned `tool` role with no preceding
- *     assistant tool call causes a 400 on the OpenAI-compat path.
+ *     assistant tool call causes a 400 on the OpenAI-compat path. The pair
+ *     invariant outranks the anchor floor: on conflict we drop LESS (lower the
+ *     drop end), never cross a pair.
  *
  * The engine reasons over EngineMessage; the pi adapter maps role "tool" +
- * toolName to the tool-result shape.
+ * toolName to the tool-result shape. EngineMessage carries no tool-call id, so
+ * ownership is positional: a tool result's owner is its nearest preceding
+ * assistant tool-call (the last assistant message with a `toolName` before it).
+ * A preserved tool result is orphaned by a cut when its owner is dropped; the
+ * guard rejects any cut that drops an owner while preserving its result, for
+ * ARBITRARY interleavings (custom/non-tool messages between call and result,
+ * consecutive results sharing one call, a cut landing directly on a call whose
+ * results follow).
  */
 
 import type { EngineMessage } from "./types.js";
@@ -24,15 +33,52 @@ function hasToolUse(m: EngineMessage): boolean {
 }
 
 /**
- * Compute the safe drop range [dropStart, dropEnd) within `messages`.
- * `keepFrom` is the caller's desired first-preserved index. We then:
- *  1. Walk it back (lower dropEnd = keep more) so the first preserved message
- *     is never an orphaned tool result (tool-pair invariant).
- *  2. Raise it (lower dropEnd) to the anchor floor so the last N user messages
- *     are never dropped, when enough user messages exist.
+ * Is the drop boundary at `dropEnd` pair-safe? The preserved run is
+ * [dropEnd, messages.length). The cut is pair-safe iff NO preserved tool result
+ * is orphaned: for every tool result at index >= dropEnd, its nearest preceding
+ * assistant tool-call must EXIST and be PRESERVED (index >= dropEnd). A tool
+ * result with no preceding assistant tool-call is already orphaned in the
+ * input — we treat that as unsafe too, so the guard never endorses shipping an
+ * orphaned result to the provider.
  *
- * dropEnd is the first index KEPT. Returns [dropStart, dropEnd]; empty range
- * if nothing should be dropped.
+ * O(messages.length) single forward pass; early-exits on the first orphan. The
+ * owner of each result is the most recent `hasToolUse` message seen so far
+ * (tracked across the whole stream, including dropped messages, because a
+ * dropped assistant tool-call is exactly the owner we must reject).
+ */
+export function isPairSafe(messages: EngineMessage[], dropEnd: number): boolean {
+  if (dropEnd <= 0 || dropEnd >= messages.length) return true;
+  let lastToolCall = -1;
+  for (let i = 0; i < messages.length; i++) {
+    if (hasToolUse(messages[i])) lastToolCall = i;
+    if (i >= dropEnd && isToolResult(messages[i])) {
+      if (lastToolCall === -1) return false; // no preceding call → orphaned
+      if (lastToolCall < dropEnd) return false; // owner dropped → orphaned
+    }
+  }
+  return true;
+}
+
+/**
+ * Compute the safe drop range [dropStart, dropEnd) within `messages`.
+ *
+ * Contract:
+ *  - `keepFrom` is the caller's desired first-preserved index (drop [0, keepFrom)).
+ *  - `dropEnd` is the first index KEPT; we may LOWER it (keep more) to satisfy the
+ *    guards, never raise it above keepFrom.
+ *  - The anchor floor (PREVENT-PI-001) caps dropEnd at the index of the
+ *    Nth-from-last user message so the last N user messages are never dropped.
+ *  - The tool-pair invariant (PREVENT-PI-002) rejects any dropEnd that orphans a
+ *    preserved tool result; on conflict with the anchor floor the pair rule wins
+ *    (we drop less, never cross a pair).
+ *  - We return the LARGEST pair-safe dropEnd <= min(keepFrom, anchorStart) so the
+ *    caller drops as much as is safe. When no pair-safe positive cut exists at
+ *    or below keepFrom, we return [0, 0] (no-op) — the pair rule outranks
+ *    dropping. dropStart is always 0 today (we drop a prefix); reserved for
+ *    future two-sided trimming.
+ *
+ * Returns [0, 0] (empty range, drop nothing) when keepFrom is out of range or no
+ * pair-safe positive cut exists.
  */
 export function computeDropRange(
   messages: EngineMessage[],
@@ -44,48 +90,38 @@ export function computeDropRange(
   const userIndexes: number[] = [];
   messages.forEach((m, i) => { if (m.role === "user") userIndexes.push(i); });
   const anchorActive = anchorUserMessages > 0 && userIndexes.length >= anchorUserMessages;
-  const anchorStart = anchorActive ? userIndexes[userIndexes.length - anchorUserMessages] : 0;
-  const floor = anchorActive ? anchorStart : 0;
+  const anchorStart = anchorActive ? userIndexes[userIndexes.length - anchorUserMessages] : keepFrom;
+  // Upper bound on dropEnd: never keep less than the caller asked (dropEnd <= keepFrom)
+  // and never drop a must-keep user message (dropEnd <= anchorStart).
+  const upperBound = Math.min(keepFrom, anchorActive ? anchorStart : keepFrom);
 
-  // Walk back for the tool-pair invariant (keep more when needed).
-  let k = keepFrom;
-  while (k > floor) {
-    const firstPreserved = messages[k];
-    if (!firstPreserved || !isToolResult(firstPreserved)) break;
-    const preceding = messages[k - 1];
-    if (preceding && hasToolUse(preceding)) {
-      k -= 1; // pair intact across boundary — include the assistant turn
-      break;
-    }
-    k -= 1;
+  // Walk down from the upper bound to find the largest pair-safe cut. dropEnd=0
+  // (drop nothing) is always pair-safe; the loop finds the largest positive cut,
+  // and falls back to [0, 0] when none exists — the pair rule outranks dropping.
+  for (let dropEnd = upperBound; dropEnd > 0; dropEnd--) {
+    if (isPairSafe(messages, dropEnd)) return [0, dropEnd];
   }
-  if (k < floor) k = floor;
-
-  // Anchor floor: never drop a must-keep user message. Raise dropEnd so we keep
-  // from anchorStart onward when the walk didn't already.
-  if (anchorActive && k > anchorStart) k = anchorStart;
-
-  if (k <= 0) return [0, 0];
-  return [0, k];
+  return [0, 0];
 }
 
 /**
  * Validate that the intended split at `keepFrom` (drop [0, keepFrom), keep the
- * rest) does not start the preserved run on an orphaned tool result. Checks
- * messages[keepFrom] against messages[keepFrom-1] directly — independent of the
- * walk-back that computeDropRange may apply.
+ * rest) does not orphan any preserved tool result. Checks the FULL preserved
+ * run, not just the first message, so it holds for arbitrary interleavings
+ * (custom messages between call and result, consecutive shared-call results, a
+ * cut landing on a call whose results follow). Used on the every-LLM-call
+ * live-trim hot path (extensions/mega-trim.ts) and by dropCompactedRange
+ * (src/adapt.ts).
  */
 export function isBoundarySafe(messages: EngineMessage[], keepFrom: number): boolean {
-  if (keepFrom <= 0 || keepFrom >= messages.length) return true;
-  const firstPreserved = messages[keepFrom];
-  if (!isToolResult(firstPreserved)) return true;
-  const preceding = messages[keepFrom - 1];
-  return Boolean(preceding && hasToolUse(preceding));
+  return isPairSafe(messages, keepFrom);
 }
 
 /**
  * Drop everything before the safe keep-index, honoring both guards, returning
- * the filtered message list.
+ * the filtered message list. Returns the original array reference (unchanged)
+ * when the safe range is empty so callers can short-circuit on reference
+ * equality.
  */
 export function dropBefore(messages: EngineMessage[], keepFrom: number, anchorUserMessages: number): EngineMessage[] {
   const [dropStart, dropEnd] = computeDropRange(messages, keepFrom, anchorUserMessages);

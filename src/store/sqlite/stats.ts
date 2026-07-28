@@ -18,21 +18,23 @@ export function storeStats(sessionId: string, stateDir: string = getStateDir()):
   const row = db
     .prepare(
       `SELECT COUNT(*) AS c, COALESCE(SUM(token_estimate),0) AS tok,
-              MAX(id) AS lastId
-       FROM context_chunks WHERE session_id = ?`,
+              MAX(CAST(SUBSTR(id, 7) AS INTEGER)) AS lastNum
+       FROM context_chunks WHERE session_id = ? AND dedup_status != 'removed'`,
     )
-    .get(sid) as { c: number; tok: number; lastId: string | null };
+    .get(sid) as { c: number; tok: number; lastNum: number | null };
+  let lastCheckpointId: string | undefined;
   let lastSummary: string | undefined;
-  if (row.lastId) {
-    const s = db.prepare("SELECT summary FROM context_chunks WHERE id = ?").get(row.lastId) as
-      | { summary: string }
-      | undefined;
+  if (row.lastNum != null) {
+    lastCheckpointId = `chkpt_${String(row.lastNum).padStart(3, "0")}`;
+    const s = db
+      .prepare("SELECT summary FROM context_chunks WHERE session_id = ? AND id = ?")
+      .get(sid, lastCheckpointId) as { summary: string } | undefined;
     lastSummary = s?.summary;
   }
   return {
     checkpointCount: row.c,
     totalTokenEstimate: row.tok,
-    lastCheckpointId: row.lastId ?? undefined,
+    lastCheckpointId,
     lastSummary,
   };
 }

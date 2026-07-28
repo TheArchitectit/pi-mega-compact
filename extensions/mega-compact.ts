@@ -52,6 +52,21 @@ export default function (pi: ExtensionAPI) {
     console.warn('[mega-compact] MEGACOMPACT_MAX_CONSECUTIVE_ERRORS must be >= 1; using default 10');
     config.maxConsecutiveErrors = 10;
   }
+  // R2: session-global cap validation — 0 disables (valid), negative is invalid.
+  if (config.errorRetrySessionMax < 0) {
+    console.warn('[mega-compact] MEGACOMPACT_ERROR_RETRY_SESSION_MAX must be >= 0; using default 3');
+    config.errorRetrySessionMax = 3;
+  }
+  // R1: backoff base must be >= 0 (0 means no gating, useful for tests).
+  if (config.errorRetryBackoffMs < 0) {
+    console.warn('[mega-compact] MEGACOMPACT_ERROR_RETRY_BACKOFF_MS must be >= 0; using default 5000');
+    config.errorRetryBackoffMs = 5000;
+  }
+  // R3: repeat threshold must be >= 1.
+  if (config.poisonedContextRepeatThreshold < 1) {
+    console.warn('[mega-compact] MEGACOMPACT_POISONED_REPEAT_THRESHOLD must be >= 1; using default 3');
+    config.poisonedContextRepeatThreshold = 3;
+  }
   const runtime = new MegaRuntime(config);
   registerEventHandlers(pi, runtime, config);
   registerCommands(pi, runtime, config);

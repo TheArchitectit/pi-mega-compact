@@ -21,6 +21,9 @@ export interface DedupMirrorRowDB {
 /**
  * Upsert a row into dedup_mirror. If the hash already exists, increment ref_count.
  * Returns true if this was a NEW unique content (first insert), false if it was a duplicate.
+ *
+ * F3 fix: uses INSERT ... ON CONFLICT DO UPDATE (single atomic statement) instead of
+ * a check-then-act race-prone SELECT + UPDATE/INSERT sequence.
  */
 export function upsertDedupMirror(
   db: DatabaseSync,
@@ -29,29 +32,35 @@ export function upsertDedupMirror(
   seq: number,
 ): boolean {
   const now = Date.now();
-  const existing = db
-    .prepare(`SELECT content_hash FROM dedup_mirror WHERE content_hash = @hash`)
-    .get({ "@hash": contentHash }) as { content_hash: string } | undefined;
-  if (existing) {
-    db.prepare(`UPDATE dedup_mirror SET ref_count = ref_count + 1 WHERE content_hash = @hash`).run({
-      "@hash": contentHash,
-    });
-    return false;
-  }
-  db.prepare(
+  // Atomic upsert: on conflict, increment ref_count in-place (no check-then-act
+  // race). RETURNING ref_count distinguishes the two paths in one statement:
+  // inserted rows report ref_count=1, conflict-updated rows report ref_count>1.
+  const row = db.prepare(
     `INSERT INTO dedup_mirror (content_hash, content_bytes, ref_count, first_seen_seq, created_at)
-     VALUES (@hash, @bytes, 1, @seq, @now)`,
-  ).run({
+     VALUES (@hash, @bytes, 1, @seq, @now)
+     ON CONFLICT(content_hash) DO UPDATE SET
+       ref_count = ref_count + 1,
+       content_bytes = excluded.content_bytes
+     RETURNING ref_count`,
+  ).get({
     "@hash": contentHash,
     "@bytes": contentBytes,
     "@seq": seq,
     "@now": now,
-  });
-  return true;
+  }) as { ref_count: number } | undefined;
+  return (row?.ref_count ?? 1) === 1;
 }
 
 /**
  * Get dedup ratio for a session: total bytes vs unique bytes.
+ *
+ * F2 fix: both total and unique bytes are now scoped to the session, via a JOIN
+ * of raw_transcript.content_ref → dedup_mirror. The ratio is meaningful: how much
+ * smaller the session's storage footprint is compared to naive inline storage.
+ *
+ * NOTE: for sessions with NO dedup pipeline runs yet (all content_ref NULL),
+ * uniqueBytes falls back to the raw_transcript bytes (ratio=1), which is correct
+ * since nothing has been deduplicated yet.
  */
 export function getDedupRatio(
   db: DatabaseSync,
@@ -64,12 +73,20 @@ export function getDedupRatio(
        WHERE session_id = @session_id`,
     )
     .get({ "@session_id": sessionId }) as { total: number };
+  // F2 fix: session-scoped unique bytes via JOIN on content_ref.
+  // A row contributes its dedup_mirror bytes exactly once even when content_ref
+  // is NULL (fallback: use the raw_transcript bytes for that row, which is
+  // accurate when dedup hasn't run yet for the session).
   const uniqueRow = db
     .prepare(
-      `SELECT COALESCE(SUM(LENGTH(content_bytes)), 0) AS unique_bytes
-       FROM dedup_mirror`,
+      `SELECT COALESCE(SUM(LENGTH(
+        COALESCE(dm.content_bytes, rt.content_bytes)
+      )), 0) AS unique_bytes
+       FROM raw_transcript rt
+       LEFT JOIN dedup_mirror dm ON rt.content_ref = dm.content_hash
+       WHERE rt.session_id = @session_id`,
     )
-    .get() as { unique_bytes: number };
+    .get({ "@session_id": sessionId }) as { unique_bytes: number };
   const totalBytes = totalRow.total;
   const uniqueBytes = uniqueRow.unique_bytes;
   const ratio = uniqueBytes > 0 ? totalBytes / uniqueBytes : 1;

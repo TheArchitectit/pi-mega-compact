@@ -146,12 +146,21 @@ export interface DashboardSnapshot {
     liveTrimFires: number;
     liveTrimReplays: number;
   };
-  /** S38.8: error-retry state for dashboard "retries" tile. */
+  /** S38.8: error-retry state for dashboard "retries" tile.
+   *  R7 (retry redesign): sessionRetryCount / sessionMax / poisonedCount are
+   *  ADDITIVE fields — older dashboards that don't read them stay
+   *  backward-compatible. */
   retries?: {
     errorRetryCount: number;
     consecutiveErrors: number;
     maxConsecutiveErrors: number;
     errorRetryHardStop: boolean;
+    /** R2: total S38 nudges fired this session across ALL bursts. */
+    sessionRetryCount: number;
+    /** R2: session-global cap (errorRetrySessionMax). 0 = disabled. */
+    sessionMax: number;
+    /** R3/R7: number of poisoned-context events this session. */
+    poisonedCount: number;
   };
 }
 

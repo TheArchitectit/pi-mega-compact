@@ -6,7 +6,7 @@
 **Parent plan:** Memory RAG System (borrowed from radical-memory-mcp / R.A.D.1.C.A.1)
 **Depends on:** Sprint 13 (RAPTOR tree build), Sprint 14 (RAPTOR promoted to live recall), S41 (self-RAG quality gate), `src/dedup/raptor/`, `src/vectorStore.ts`, `src/recall.ts`
 **Priority:** P1
-**Status:** Draft → implement-ready
+**Status:** S42A ✅ SHIPPED (v0.8.23, commit `1b78948` — `multilevel.ts` engine + 9 tests) → S42B (config flags + `raptorSearchHits` wiring + `SearchHit.raptorSummary`) and S42D (build history + freshness auto-skip) implement-ready. S42C DELETED in re-plan.
 **Target version:** v0.9.x
 
 ---
@@ -35,29 +35,33 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 
 4. **Summaries are extractive by design** — the current build in `src/dedup/raptor/tree.ts:summarizeInto()` (line ~97–112) calls `summarizeCluster()` which uses extractive summarization (`src/dedup/raptor/summarizer.ts:39–42`). Extractive summaries are permanent: deterministic, fully local, no LLM dependency. This is the correct default for a memory system — the summaries contain real message text, not LLM paraphrases that may drift.
 
-6. **No build history** — there is no record of when trees were built, with what configuration, or how long they took. Freshness checks in `raptorSearchHits()` compare `tree.builtAt` against `maxCheckpointTimestamp` (`src/vectorStore.ts:486`), but there is no structured build log.
+5. **No build history** — there is no record of when trees were built, with what configuration, or how long they took. Freshness checks in `raptorSearchHits()` compare `tree.builtAt` against `maxCheckpointTimestamp` (`src/vectorStore.ts:486`), but there is no structured build log.
 
 ---
 
 ## SCOPE
 
-### IN SCOPE (new files):
+### IN SCOPE (new files)
+
 - `src/dedup/raptor/multilevel.ts` — multi-level retrieval engine (level-weighted scoring, leaf expansion, result dedup)
 - `src/dedup/raptor/multilevel.test.ts` — unit tests for multi-level retrieval
 - `src/dedup/raptor/buildHistory.ts` — build history tracking + freshness checks
 - `src/dedup/raptor/buildHistory.test.ts` — unit tests for build history
 - `src/store/sqlite.ts` — add `raptor_build_history` table
 
-### OUT OF SCOPE (DELETED: S42C Ollama enrichment):
+### OUT OF SCOPE (DELETED: S42C Ollama enrichment)
+
 - `src/dedup/raptor/enrichment.ts` — DELETED. Extractive summaries are permanent; no LLM/Ollama dependency.
 
-### IN SCOPE (modified files):
+### IN SCOPE (modified files)
+
 - `src/vectorStore.ts` — replace `raptorSearchHits()` (line ~465) to use multi-level retrieval instead of leaf-only `stagedExpansion()`
 - `src/dedup/raptor/index.ts` — update `runRaptor()` to record build history
 - `src/config/dedup.ts` — add RAPTOR multi-level config flags (no enrichment flag — S42C is deleted)
 - `src/dedup/raptor/retrieval.ts` — add `multilevelRetrieval()` alongside existing `stagedExpansion()`
 
-### OUT OF SCOPE:
+### OUT OF SCOPE
+
 - Changes to `src/recall.ts` — the recall path already calls `store.search()` which calls `raptorSearchHits()`. No recall.ts changes needed.
 - Changes to `src/engine.ts` — the compaction pipeline builds trees via `runRaptor()` (called from the extension). No engine.ts changes needed.
 - GMM soft clustering — k-means++ (`src/dedup/raptor/kmeans.ts`) is retained as the clustering algorithm. GMM is a future enhancement.
@@ -77,6 +81,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 **Tasks:**
 
 - [ ] **S42A-1: Define multi-level retrieval types** (`src/dedup/raptor/multilevel.ts`)
+
   ```ts
   export interface MultilevelRetrieveOptions {
     embedder: Embedder;
@@ -107,6 +112,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   ```
 
 - [ ] **S42A-2: Implement level-weighted scoring** (`src/dedup/raptor/multilevel.ts`)
+
   ```ts
   /**
    * Score all RAPTOR tree nodes by cosine similarity to the query, then apply
@@ -122,6 +128,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
     opts: Pick<MultilevelRetrieveOptions, 'embedder' | 'levelWeights'>,
   ): MultilevelHit[]
   ```
+
   Implementation:
   - `qv = embedder.embed(query)`
   - For each node in `tree.nodes.values()`:
@@ -132,6 +139,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   - Sort by `weightedScore` descending
 
 - [ ] **S42A-3: Implement leaf expansion** (`src/dedup/raptor/multilevel.ts`)
+
   ```ts
   /**
    * Given a set of cluster-level hits, expand each one to include its leaf
@@ -146,6 +154,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
     queryVector: Vector,
   ): MultilevelHit[]
   ```
+
   Implementation:
   - For each hit where `!hit.isLeaf`:
     - `leaves = leafDescendants(hitNode, tree)` (reuse `retrieval.ts:32–42`)
@@ -155,6 +164,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   - Return merged hits
 
 - [ ] **S42A-4: Implement result dedup** (`src/dedup/raptor/multilevel.ts`)
+
   ```ts
   /**
    * Deduplicate hits: if both a cluster node and its leaf child appear in
@@ -163,6 +173,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
    */
   export function deduplicateMultilevelHits(hits: MultilevelHit[]): MultilevelHit[]
   ```
+
   Implementation:
   - Build a `parentId → children[]` index from the tree
   - For each cluster hit, check if any of its leaf children are also in the result set
@@ -170,6 +181,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   - If no leaves are in the set, keep the cluster hit (it provides the abstract view)
 
 - [ ] **S42A-5: Implement top-level `multilevelRetrieval()`** (`src/dedup/raptor/multilevel.ts`)
+
   ```ts
   /**
    * Full multi-level retrieval pipeline: score → expand → dedup → MMR → top-K.
@@ -181,6 +193,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
     opts: MultilevelRetrieveOptions,
   ): MultilevelHit[]
   ```
+
   Pipeline:
   1. `scored = scoreTreeLevels(query, tree, opts)`
   2. Top-N candidates (N = `k * 3` for MMR diversity window)
@@ -209,6 +222,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 
 - [ ] **S42B-1: Add config flags** (`src/config/dedup.ts`)
   Add to `DedupConfigShape` interface (after `RAPTOR_CONSISTENCY` at line ~88):
+
   ```ts
   RAPTOR_MULTILEVEL_ENABLED: boolean;   // default true
   RAPTOR_LEVEL_WEIGHTS: number[];       // default [1.0, 0.9, 0.8, 0.7, 0.5] (uncalibrated)
@@ -216,7 +230,9 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   RAPTOR_MAX_LEAF_EXPANSION: number;    // default 10 (uncalibrated)
   RAPTOR_FRESHNESS_HOURS: number;       // default 4 (uncalibrated)
   ```
+
   Add to `loadDedupConfig()` return object:
+
   ```ts
   RAPTOR_MULTILEVEL_ENABLED: envBool("MEGACOMPACT_RAPTOR_MULTILEVEL", true),
   RAPTOR_LEVEL_WEIGHTS: envNumArray("MEGACOMPACT_RAPTOR_LEVEL_WEIGHTS", [1.0, 0.9, 0.8, 0.7, 0.5]),
@@ -224,11 +240,13 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   RAPTOR_MAX_LEAF_EXPANSION: envNum("MEGACOMPACT_RAPTOR_MAX_LEAF_EXP", 10),
   RAPTOR_FRESHNESS_HOURS: envNum("MEGACOMPACT_RAPTOR_FRESHNESS_HOURS", 4),
   ```
+
   Add helper `envNumArray(name, def)` for parsing comma-separated numeric env vars.
   NOTE: `RAPTOR_ENRICHMENT_ENABLED` and `RAPTOR_ENRICHMENT_BATCH_SIZE` are DELETED — S42C Ollama enrichment is not part of this sprint. Extractive summaries are permanent.
 
 - [ ] **S42B-2: Replace `raptorSearchHits()` to use multi-level retrieval** (`src/vectorStore.ts`)
   Modify `raptorSearchHits()` (currently at line ~465–510):
+
   ```ts
   private raptorSearchHits(sid: string, query: string, k: number): SearchHit[] {
     // ... existing shadow mode + freshness + timedOut guards (lines 470–486) ...
@@ -271,6 +289,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 
 - [ ] **S42B-3: Extend SearchHit to support RAPTOR cluster nodes** (`src/vectorStore.ts`)
   RAPTOR cluster nodes are not checkpoints — they exist only in `raptor_nodes`. To inject them into the recall block, we need a virtual checkpoint representation:
+
   ```ts
   // In SearchHit, add optional field:
   export interface SearchHit {
@@ -283,7 +302,9 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
     raptorLevel?: number;
   }
   ```
+
   Update `formatRecallBlock()` in `src/recall.ts` (line ~67–82) to check `h.raptorSummary`:
+
   ```ts
   const label = h.raptorLevel !== undefined
     ? `Recalled cluster summary [${i + 1}] (level ${h.raptorLevel}, relevance ${score}%)`
@@ -322,6 +343,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 **Tasks:**
 
 - [ ] **S42D-1: Create `raptor_build_history` table** (`src/store/sqlite.ts`)
+
   ```sql
   CREATE TABLE IF NOT EXISTS raptor_build_history (
     build_id TEXT PRIMARY KEY,
@@ -338,9 +360,11 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   );
   CREATE INDEX IF NOT EXISTS idx_raptor_build_session ON raptor_build_history(session_id);
   ```
+
   Add helpers: `insertBuildHistory()`, `getLatestBuild()`, `listBuildHistory()`.
 
 - [ ] **S42D-2: Implement coherence score computation** (`src/dedup/raptor/buildHistory.ts`)
+
   ```ts
   /**
    * Compute the average intra-cluster cosine similarity for a RAPTOR tree.
@@ -350,6 +374,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
    */
   export function computeCoherenceScore(tree: RaptorTree): number
   ```
+
   Implementation:
   - For each non-leaf node in `tree.nodes`:
     - Get child embeddings (leaf children use parent embedding, or look up from tree)
@@ -358,6 +383,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 
 - [ ] **S42D-3: Record build history in `runRaptor()`** (`src/dedup/raptor/index.ts`)
   Modify `runRaptor()` (line ~40–70) to:
+
   ```ts
   // After saveRaptorTree():
   const coherence = computeCoherenceScore(tree);
@@ -377,6 +403,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
   ```
 
 - [ ] **S42D-4: Implement freshness check** (`src/dedup/raptor/buildHistory.ts`)
+
   ```ts
   /**
    * Check if the RAPTOR tree is fresh enough to skip a rebuild.
@@ -392,6 +419,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
     currentCheckpointCount: number,
   ): boolean
   ```
+
   Implementation:
   1. `latest = getLatestBuild(sessionId, stateDir)` — return false if null
   2. `ageHours = (Date.now() - latest.completedAt) / 3_600_000`
@@ -401,6 +429,7 @@ Today's RAPTOR recall path is **flat** — it only serves leaf-level checkpoints
 
 - [ ] **S42D-5: Gate rebuilds on freshness** (`src/dedup/raptor/index.ts`)
   Modify the RAPTOR build call site (in the extension's compaction hook) to check freshness before building:
+
   ```ts
   if (cfg.RAPTOR_FRESHNESS_HOURS > 0) {
     const currentCount = listCheckpoints(sessionId, stateDir).length;

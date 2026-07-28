@@ -158,6 +158,65 @@ test("tree respects the budget: a tiny budget forces an extractive fallback root
   assert.ok(tree.nodes.has("r99_0"));
 });
 
+// --- extractiveFallbackRoot returns levels: 100 ------------------------------
+
+test("extractiveFallbackRoot returns levels: 100 (via zero budget)", () => {
+  const leaves = makeLeaves(50);
+  const tree = buildRaptorTree(leaves, {
+    embedder: new TrigramEmbedder(),
+    budgetMs: 0, // forces extractive fallback on first within() check
+    clustersPerLevel: 4,
+  });
+  assert.equal(tree.timedOut, true);
+  assert.equal(tree.levels, 100, "extractive fallback root must report levels: 100");
+  assert.ok(tree.rootId, "fallback root has a rootId");
+  const root = tree.nodes.get(tree.rootId!);
+  assert.ok(root, "fallback root node exists in nodes map");
+  assert.equal(root!.level, 99, "fallback root node level is 99");
+  assert.equal(root!.parentId, null, "fallback root parentId is null");
+});
+
+// --- parentId population on a multi-level tree --------------------------------
+
+test("buildRaptorTree populates parentId for non-root internal nodes, root keeps null", () => {
+  const embedder = new TrigramEmbedder();
+  // >= 10 leaves with clustersPerLevel small enough to produce 2 levels
+  // of internal nodes (level-1 cluster nodes + level-2 root via collapse).
+  const leaves = makeLeaves(20);
+  const tree = buildRaptorTree(leaves, { embedder, clustersPerLevel: 4 });
+
+  // Must have at least 2 levels of internal nodes.
+  assert.ok(tree.levels >= 2, `expected >= 2 levels, got ${tree.levels}`);
+  assert.ok(tree.rootId, "tree must have a root");
+
+  // The root keeps parentId null.
+  const root = tree.nodes.get(tree.rootId!);
+  assert.ok(root, "root node in map");
+  assert.equal(root!.parentId, null, "root parentId must be null");
+
+  // Every non-root internal node must have a non-null parentId pointing to
+  // another node in the tree (its parent).
+  let nonRootCount = 0;
+  for (const node of tree.nodes.values()) {
+    if (node.id === tree.rootId) continue;
+    nonRootCount++;
+    assert.ok(
+      node.parentId !== null,
+      `non-root node ${node.id} must have non-null parentId`,
+    );
+    assert.ok(
+      tree.nodes.has(node.parentId!),
+      `parentId ${node.parentId} of node ${node.id} must exist in tree`,
+    );
+    assert.notEqual(
+      node.parentId,
+      node.id,
+      `node ${node.id} must not be its own parent`,
+    );
+  }
+  assert.ok(nonRootCount > 0, "tree must have at least one non-root internal node");
+});
+
 // --- retrieval: staged expansion returns leaf ids ---------------------------
 
 test("stagedExpansion returns diversified leaf ids for a query", () => {

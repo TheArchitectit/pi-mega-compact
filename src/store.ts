@@ -41,7 +41,7 @@ export function normalizeSessionId(sessionId: string | undefined | null): string
   if (!sessionId) return `sess_${randomBytes(8).toString("hex")}`;
   if (sessionId.startsWith("sess_")) return sessionId;
   if (sessionId.length >= 32 && sessionId.includes("-")) {
-    return `sess_${sessionId.replace(/-/g, "").slice(0, 16)}`;
+    return `sess_${sessionId.replace(/-/g, "").toLowerCase().slice(0, 16)}`;
   }
   return `sess_${sessionId}`;
 }
@@ -113,7 +113,7 @@ export function writeGzJson(path: string, data: unknown): void {
 
 /** Append a checkpoint to the per-session checkpoint file (gzipped). */
 export function appendCheckpoint(cp: StoredCheckpoint, stateDir: string = getStateDir()): void {
-  const file = join(stateDir, `${cp.sessionId}.checkpoints.json.gz`);
+  const file = join(stateDir, `${normalizeSessionId(cp.sessionId)}.checkpoints.json.gz`);
   const existing = readGzJson<StoredCheckpoint[]>(file, []);
   existing.push(cp);
   writeGzJson(file, existing);
@@ -157,6 +157,13 @@ export interface SessionState {
   injectedCheckpointIds: string[];
   /** regionHashes already represented (for sentinel dedup). */
   storedRegionHashes: string[];
+  /** S43: conversation id grouping turns across pi session resumes. A resumed
+   *  session inherits its parent's; /clear (or any fresh root) generates a new
+   *  one. A fork copies the parent's turn-N injected-set and starts a new id. */
+  conversationId?: string;
+  /** S43: the global turn id of the most recent turn_end in this conversation.
+   *  Carried across resumes so fork-turn references stay stable. */
+  lastTurnId?: number;
 }
 
 /** Load mutable session state (created on demand). */

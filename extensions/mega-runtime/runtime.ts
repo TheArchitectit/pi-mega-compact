@@ -85,6 +85,15 @@ export class MegaRuntime {
 		errorRetryCount: 0,
 		errorRetryUntil: 0,
 		consecutiveErrors: 0,
+		// R1-R3 (retry redesign): in-flight dedup, session cap, poisoned-context state.
+		lastErrorRetryAt: 0,
+		retryNudgePending: false,
+		errorRetrySessionCount: 0,
+		lastErrorText: undefined,
+		errorTextRepeatCount: 0,
+		poisonedAdviseSent: false,
+		poisonedCompactSignatures: new Set(),
+		poisonedCount: 0,
 	};
 	// v0.8.6 cache-stability: the cached live-trim view for the current
 	// compaction epoch. Set after a fresh runCompact + computeLiveTrimCut, and
@@ -377,6 +386,15 @@ export class MegaRuntime {
 			errorRetryCount: 0,
 			errorRetryUntil: 0,
 			consecutiveErrors: 0,
+			// R1-R3 (retry redesign): in-flight dedup, session cap, poisoned-context state.
+			lastErrorRetryAt: 0,
+			retryNudgePending: false,
+			errorRetrySessionCount: 0,
+			lastErrorText: undefined,
+			errorTextRepeatCount: 0,
+			poisonedAdviseSent: false,
+			poisonedCompactSignatures: new Set(),
+			poisonedCount: 0,
 	};
 	this.trimCache = null; // v0.8.6: never replay a stale trim into a new session
 		this.statusKey = undefined;

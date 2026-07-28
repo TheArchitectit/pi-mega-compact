@@ -8,6 +8,16 @@
  * The controller owns a MUTABLE working copy of the dedup config; callers read
  * `controller.config` after each step. Tiers disabled via MARK_ONLY degrade
  * gracefully rather than fully off.
+ *
+ * Persistence design: disabled state is IN-MEMORY ONLY by design. The dedup
+ * config loads from MEGACOMPACT_* env vars (config/dedup.ts) with no durable
+ * save mechanism. `setEnabled` DOES mutate `this.config.L1_ENABLED` etc. so
+ * callers reading `controller.config` see the disabled state for the current
+ * session. On restart, env defaults re-apply and the canary sequences again
+ * from L0 — this is intentional: a tier disabled due to a cold cache or
+ * transient load gets a fresh evaluation each run rather than being locked
+ * out forever. To permanently disable a tier, set the corresponding
+ * MEGACOMPACT_*_ENABLED env var to false.
  */
 
 import type { DedupConfigShape, DedupTier } from "./config/dedup.js";

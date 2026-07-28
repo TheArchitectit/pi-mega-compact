@@ -119,6 +119,17 @@ async function s38TurnEnd(h: ReturnType<typeof harness>, stopReason: string | un
 	await h.fire("turn_end", { type: "turn_end", turnIndex: 1, message }, lowCtx);
 }
 
+/** R3 helper: like s38TurnEnd but attaches a `usage` object so the classifier's
+ *  0-token poisoned-context signal is exercised (usage PRESENT with 0 tokens).
+ *  Pass `tokens` > 0 to simulate a turn that reached the model. */
+async function s38TurnEndUsage(h: ReturnType<typeof harness>, stopReason: string | undefined, text: string | undefined, tokens: number) {
+	const lowCtx = h.ctx({ isIdle: () => true, hasPendingMessages: () => false, getContextUsage: () => ({ tokens: 100, contextWindow: 200000, percent: 0 }) });
+	const message: any = { role: "assistant", usage: { inputTokens: tokens, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 } };
+	if (stopReason !== undefined) message.stopReason = stopReason;
+	if (text) message.content = text;
+	await h.fire("turn_end", { type: "turn_end", turnIndex: 1, message }, lowCtx);
+}
+
 // ---- classifier unit tests (no extension harness needed) ----
 
 test("S38: classifyError returns 'transient' for error stopReason", () => {
@@ -301,13 +312,20 @@ test("S38: compaction-noop does NOT fire pi.sendUserMessage (NOT retryable)", as
 	assert.ok(eventTypes(h.stateDir).includes("compaction_noop_diagnostic"));
 });
 
-test("S38: retry fires up to max (5) for transient errors, then stops", async () => {
+test("S38: R1 burst of immediate transient errors fires 1 nudge (dedup), rest suppressed by retryNudgePending", async () => {
+	// R1 redesign: a burst of immediate error turn_ends (no turn_start between)
+	// produces ONE nudge — the rest are suppressed by retryNudgePending because
+	// the queued nudge (deliverAs:'followUp') has not been consumed by a new
+	// agent turn. errorRetryCount still advances for each error turn, so the
+	// per-burst max + circuit breaker still bound the burst.
 	const h = harness();
-	for (let i = 0; i < 5; i++) await s38TurnEnd(h, "error", "internal server error");
-	assert.equal(h.sendUserMessages.length, 5, "transient: 5 retry nudges (<= max 5)");
-	await s38TurnEnd(h, "error", "internal server error");
-	assert.equal(h.sendUserMessages.length, 5, "transient: exhausted -> no 6th nudge");
-	assert.ok(eventTypes(h.stateDir).includes("error_retry_exhausted"), "exhausted event logged");
+	for (let i = 0; i < 5; i++) await s38TurnEnd(h, "error", `internal server error ${i}`);
+	assert.equal(h.sendUserMessages.length, 1, "R1 dedup: 1 nudge in burst (rest suppressed)");
+	// The 6th turn reaches count=6 > max=5 → exhausted (count advances even for dedup'd turns).
+	await s38TurnEnd(h, "error", "internal server error 5");
+	assert.equal(h.sendUserMessages.length, 1, "exhausted: still 1 nudge (no 6th)");
+	assert.ok(eventTypes(h.stateDir).includes("error_retry_exhausted"), "exhausted event logged on max+1");
+	assert.ok(eventTypes(h.stateDir).includes("error_retry_dedup_skip"), "dedup_skip events logged for suppressed turns");
 });
 
 test("S38: retry fires 1x for permanent errors then stops", async () => {
@@ -320,18 +338,31 @@ test("S38: retry fires 1x for permanent errors then stops", async () => {
 });
 
 test("S38: successful turn (stop/toolUse) resets the retry counter", async () => {
-	const h = harness();
-	await s38TurnEnd(h, "error", "5xx server error");
-	assert.equal(h.sendUserMessages.length, 1, "first transient: 1 nudge");
-	await s38TurnEnd(h, "stop");
-	await s38TurnEnd(h, "error", "5xx server error");
-	assert.equal(h.sendUserMessages.length, 2, "success reset counter -> transient fires again from count=1");
+	// R1: backoff is now gating, so use a tiny backoff + small wait to let the
+	// second nudge fire after the success reset clears retryNudgePending (R4).
+	const prev = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	try {
+		const h = harness();
+		await s38TurnEnd(h, "error", "5xx server error 0");
+		assert.equal(h.sendUserMessages.length, 1, "first transient: 1 nudge");
+		await s38TurnEnd(h, "stop");
+		assert.equal(h.sendUserMessages.length, 1, "success: no nudge, resets pending (R4)");
+		await new Promise((r) => setTimeout(r, 5)); // let backoff elapse
+		await s38TurnEnd(h, "error", "5xx server error 1");
+		assert.equal(h.sendUserMessages.length, 2, "success reset -> transient fires again from count=1");
+	} finally {
+		if (prev === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = prev;
+	}
 });
 
 test("S38: error_retry_exhausted event logged when max exceeded", async () => {
+	// R3: "malformed bad request" is now poisoned-context (not permanent), so
+	// use an auth-derived permanent error to exercise the per-burst exhausted path.
 	const h = harness();
-	await s38TurnEnd(h, "error", "malformed bad request");
-	await s38TurnEnd(h, "error", "malformed bad request");
+	await s38TurnEnd(h, "error", "unauthorized: invalid api key");
+	await s38TurnEnd(h, "error", "unauthorized: invalid api key");
 	assert.ok(eventTypes(h.stateDir).includes("error_retry_exhausted"), "error_retry_exhausted logged");
 });
 
@@ -414,10 +445,224 @@ test("S38.5: strict (default) defers ctx.compact() via setTimeout re-check", asy
 	}
 });
 
+// ---- R3 classifier unit tests: poisoned-context signals ----
+
+test("R3 classifier: 0-token generic error (usage present, 0 tokens) → poisoned-context", () => {
+	// The 2026-07-28 incident: stopReason 'error' + usage 0 tokens. The turn
+	// never reached the model; retrying re-submits the same poisoned context.
+	assert.equal(classifyErrorFn({ stopReason: "error", usage: { inputTokens: 0, outputTokens: 0 } }), "poisoned-context");
+	// Bare stopReason 'error' with NO usage field stays transient (unknown tokens
+	// — conservative; preserves the pre-R3 mid-response/partial-content behavior).
+	assert.equal(classifyErrorFn({ stopReason: "error" }), "transient");
+});
+
+test("R3 classifier: ECONNRESET (0-token) → transient (network failures stay transient)", () => {
+	// R3: network failures must stay transient even with 0 tokens.
+	assert.equal(classifyErrorFn({ stopReason: "error", content: "ECONNRESET", usage: { inputTokens: 0, outputTokens: 0 } }), "transient");
+	assert.equal(classifyErrorFn({ stopReason: "error", content: "connection reset by peer", usage: { inputTokens: 0, outputTokens: 0 } }), "transient");
+	assert.equal(classifyErrorFn({ stopReason: "error", content: "timeout", usage: { inputTokens: 0, outputTokens: 0 } }), "transient");
+	assert.equal(classifyErrorFn({ stopReason: "error", content: "503 service unavailable", usage: { inputTokens: 0, outputTokens: 0 } }), "transient");
+});
+
+test("R3 classifier: 'request failed' generic (no transient marker) → poisoned-context", () => {
+	// The exact incident phrasing: "Request failed — please retry." with no
+	// specific transient cause → deterministic rejection.
+	assert.equal(classifyErrorFn({ stopReason: "error", content: "Request failed — please retry.", usage: { inputTokens: 0, outputTokens: 0 } }), "poisoned-context");
+	assert.equal(classifyErrorFn("request failed"), "poisoned-context");
+});
+
+test("R3 classifier: orphaned-tool-result 400 (non-overflow) → poisoned-context", () => {
+	// Provider request-validation 400 that is NOT context-overflow: orphaned
+	// tool result / malformed message structure. Previously 'permanent' (1
+	// retry), now 'poisoned-context' (retry re-submits the same malformed shape).
+	assert.equal(classifyErrorFn('{"type":"invalid_request_error","message":"orphaned tool result: tooluse ids mismatch"}'), "poisoned-context");
+	assert.equal(classifyErrorFn("invalid request: unexpected role ordering"), "poisoned-context");
+	assert.equal(classifyErrorFn("malformed message structure"), "poisoned-context");
+});
+
+test("R3 classifier: context-overflow phrasing still context-overflow (not poisoned)", () => {
+	// Regression guard: the context-overflow check runs BEFORE the poisoned
+	// signals, so a 400 "too long" stays context-overflow (forced re-compact),
+	// not poisoned (advise + compact).
+	assert.equal(
+		classifyErrorFn({ stopReason: "error", content: "Your conversation is too long for this model's context window even after compaction.", usage: { inputTokens: 0, outputTokens: 0 } }),
+		"context-overflow",
+	);
+	assert.equal(
+		classifyErrorFn('{"type":"invalid_request_error","message":"maximum context length is 200000 tokens. requires at least 201070 tokens."}'),
+		"context-overflow",
+	);
+});
+
+test("R3 classifier: auth/permission stays permanent (not poisoned)", () => {
+	// Auth errors are retryable-once (permanent), not poisoned — the user can
+	// fix the key and retry.
+	assert.equal(classifyErrorFn("unauthorized: invalid api key"), "permanent");
+	assert.equal(classifyErrorFn("permission denied"), "permanent");
+});
+
+// ---- R6 integration tests (retry redesign) ----
+
+test("R6(a): 10 consecutive identical 0-token transient failures produce at most errorRetrySessionMax nudges", async () => {
+	// Use TRANSIENT 0-token failures (network text so they're transient, not
+	// poisoned) + turn_start + tiny backoff between each so the nudge is
+	// consumed and the next turn can fire. sessionMax default = 3. Repeat
+	// threshold raised to disable the stateful poisoned upgrade so this
+	// exercises the SESSION CAP, not the repeat signal.
+	const prevBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	const prevRepeat = process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD;
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD = "999";
+	try {
+		const h = harness();
+		for (let i = 0; i < 10; i++) {
+			// 0-token transient: usage present with 0 tokens + "connection reset" (network marker).
+			await s38TurnEndUsage(h, "error", "connection reset", 0);
+			await h.fire("turn_start", { type: "turn_start", turnIndex: i + 2 }, h.ctx());
+			await new Promise((r) => setTimeout(r, 3));
+		}
+		assert.ok(h.sendUserMessages.length <= 3, `R6(a): at most sessionMax (3) nudges, got ${h.sendUserMessages.length}`);
+		assert.ok(eventTypes(h.stateDir).includes("error_retry_session_exhausted"), "session_exhausted event logged");
+	} finally {
+		if (prevBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = prevBackoff;
+		if (prevRepeat === undefined) delete process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD;
+		else process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD = prevRepeat;
+	}
+});
+
+test("R6(b): poisoned-context fires zero retry nudges and exactly one advise message", async () => {
+	// auto=false so the guarded compact attempt (R3c) is skipped — this test
+	// focuses on the advise + no-retry behavior. The compact path is the same
+	// race-guarded deferred mechanism already covered by the context-overflow tests.
+	const prevAuto = process.env.MEGACOMPACT_AUTO;
+	process.env.MEGACOMPACT_AUTO = "false";
+	try {
+		const h = harness();
+		// 0-token generic "request failed" (no transient marker) → poisoned.
+		await s38TurnEndUsage(h, "error", "Request failed — please retry.", 0);
+		assert.equal(h.sendUserMessages.length, 1, "poisoned: exactly one advise message");
+		assert.ok(
+			h.sendUserMessages[0].includes("/clear") || h.sendUserMessages[0].includes("/new"),
+			"advise mentions /clear or /new",
+		);
+		assert.ok(eventTypes(h.stateDir).includes("poisoned_context"), "poisoned_context event logged");
+		assert.ok(!eventTypes(h.stateDir).includes("error_retry"), "poisoned: zero retry nudges (no error_retry event)");
+		// Second poisoned turn: advise throttled to one per session.
+		await s38TurnEndUsage(h, "error", "Request failed — please retry.", 0);
+		assert.equal(h.sendUserMessages.length, 1, "poisoned: advise throttled (one per session)");
+		assert.ok(eventTypes(h.stateDir).filter((t) => t === "poisoned_context").length >= 2, "poisoned_context logged each turn");
+	} finally {
+		if (prevAuto === undefined) delete process.env.MEGACOMPACT_AUTO;
+		else process.env.MEGACOMPACT_AUTO = prevAuto;
+	}
+});
+
+test("R6(c): transient burst retries with backoff gating — second immediate nudge suppressed while one pending", async () => {
+	const prevBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	const prevSession = process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX;
+	const prevRepeat = process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD;
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX = "999"; // don't let session cap bind
+	process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD = "999"; // don't let repeat upgrade bind
+	try {
+		const h = harness();
+		// Turn 1: transient → nudge 1 fires (pending=true, backoff=1ms).
+		await s38TurnEnd(h, "error", "internal server error 0");
+		assert.equal(h.sendUserMessages.length, 1, "first transient: 1 nudge");
+		// Turn 2: immediate (no turn_start) → suppressed by retryNudgePending.
+		await s38TurnEnd(h, "error", "internal server error 1");
+		assert.equal(h.sendUserMessages.length, 1, "second immediate nudge suppressed (retryNudgePending)");
+		// turn_start consumes the pending nudge (resets pending + count).
+		await h.fire("turn_start", { type: "turn_start", turnIndex: 2 }, h.ctx());
+		await new Promise((r) => setTimeout(r, 5)); // let backoff elapse
+		// Turn 3: transient → nudge 2 fires (pending cleared, backoff elapsed).
+		await s38TurnEnd(h, "error", "internal server error 2");
+		assert.equal(h.sendUserMessages.length, 2, "after turn_start + backoff: nudge fires");
+	} finally {
+		if (prevBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = prevBackoff;
+		if (prevSession === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX;
+		else process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX = prevSession;
+		if (prevRepeat === undefined) delete process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD;
+		else process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD = prevRepeat;
+	}
+});
+
+test("R6(d): user abort (stopReason aborted) never nudges, even across repeated aborts", async () => {
+	const h = harness();
+	await s38TurnEnd(h, "aborted", "Operation aborted");
+	assert.equal(h.sendUserMessages.length, 0, "aborted: no nudge");
+	await s38TurnEnd(h, "aborted", "Aborted after 3 retry attempts");
+	assert.equal(h.sendUserMessages.length, 0, "aborted: still no nudge after repeated aborts");
+	assert.ok(eventTypes(h.stateDir).includes("error_retry_cancelled"), "cancelled event logged");
+});
+
+test("R6(e): success resets retry-nudge-pending state", async () => {
+	const prevBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	try {
+		const h = harness();
+		// Turn 1: transient → nudge fires, pending=true.
+		await s38TurnEnd(h, "error", "internal server error 0");
+		assert.equal(h.sendUserMessages.length, 1, "first transient: 1 nudge");
+		// Turn 2: immediate transient → suppressed by pending (no turn_start).
+		await s38TurnEnd(h, "error", "internal server error 1");
+		assert.equal(h.sendUserMessages.length, 1, "second immediate suppressed by pending");
+		// Turn 3: success (stop) → resets pending (R4), no nudge.
+		await s38TurnEnd(h, "stop");
+		assert.equal(h.sendUserMessages.length, 1, "success: no nudge, resets pending");
+		await new Promise((r) => setTimeout(r, 5)); // let backoff elapse
+		// Turn 4: transient → nudge fires again (pending was reset by success).
+		await s38TurnEnd(h, "error", "internal server error 2");
+		assert.equal(h.sendUserMessages.length, 2, "after success reset pending: transient nudge fires");
+	} finally {
+		if (prevBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = prevBackoff;
+	}
+});
+
+test("R3: repeated identical transient error text upgrades to poisoned-context at threshold", async () => {
+	// The stateful repeat signal: 3 consecutive identical transient errors
+	// (default threshold) upgrade to poisoned. Uses "5xx server error" (5xx
+	// marker → transient) so the classifier returns transient, then the repeat
+	// tracker upgrades it. auto=false to skip the compact attempt.
+	const prevAuto = process.env.MEGACOMPACT_AUTO;
+	const prevBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	process.env.MEGACOMPACT_AUTO = "false";
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	try {
+		const h = harness();
+		// Turns 1-2: transient (repeatCount 1, 2) → nudges fire.
+		await s38TurnEnd(h, "error", "5xx server error");
+		await h.fire("turn_start", { type: "turn_start", turnIndex: 2 }, h.ctx());
+		await new Promise((r) => setTimeout(r, 3));
+		await s38TurnEnd(h, "error", "5xx server error");
+		await h.fire("turn_start", { type: "turn_start", turnIndex: 3 }, h.ctx());
+		await new Promise((r) => setTimeout(r, 3));
+		// Turn 3: repeatCount=3 ≥ threshold → upgraded to poisoned. No nudge, advise fires.
+		await s38TurnEnd(h, "error", "5xx server error");
+		assert.ok(eventTypes(h.stateDir).includes("poisoned_context"), "repeat threshold reached: poisoned_context event logged");
+		assert.ok(h.sendUserMessages.some((m) => m.includes("/clear") || m.includes("/new")), "repeat threshold: advise message fired");
+	} finally {
+		if (prevAuto === undefined) delete process.env.MEGACOMPACT_AUTO;
+		else process.env.MEGACOMPACT_AUTO = prevAuto;
+		if (prevBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = prevBackoff;
+	}
+});
+
 test("cleanup", async () => {
 	// PGlite WASM close can hang; race with a timeout to prevent 40-min hangs.
 	try {
 		await Promise.race([closeVectorIndex(), new Promise((r) => setTimeout(r, 3000))]);
 	} catch { /* ignore */ }
 	rmSync(baseTmp, { recursive: true, force: true });
+	// Force-exit: each harness() creates a MegaRuntime with an fs.watch
+	// game-state watcher that is never disposed (no session_shutdown in tests).
+	// Those handles keep the event loop alive indefinitely after all tests
+	// complete, so `node --test` (without --test-force-exit) would hang. The
+	// streaming reporter has already printed every test result by this point;
+	// process.exit(0) just forces the exit the watchers are preventing.
+	process.exit(0);
 });

@@ -76,6 +76,7 @@ function ollamaSummarize(messages: EngineMessage[], ollama: { url: string; model
   `;
   const res = spawnSync(process.execPath, ["-e", WORKER], {
     encoding: "utf8",
+    timeout: 30_000,
     env: { ...process.env, R_URL: ollama.url, R_MODEL: ollama.model, R_PROMPT: prompt },
   });
   let parsed: { ok: boolean; text?: string; error?: string } = { ok: false, error: "no response" };

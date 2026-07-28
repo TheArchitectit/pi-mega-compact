@@ -29,12 +29,43 @@ import {
 	pressureRatio,
 	type MegaConfig,
 } from "../mega-config.js";
-import { createHash } from "node:crypto";
+import { computeContentDigest } from "../../src/dedup/digest.js";
+
+/**
+ * Recursively canonicalize a value for deterministic JSON serialization:
+ * - Objects: keys sorted alphabetically, values recursively canonicalized
+ * - Arrays: elements recursively canonicalized (array ORDER is preserved)
+ * - Primitives: returned as-is
+ *
+ * F5 fix: shallow-sorted JSON.stringify(content, Object.keys(content).sort())
+ * omitted nested keys not in the top-level keys array and only sorted one level.
+ * This recursively sorts every object at every depth so semantically-equal
+ * differently-ordered content hashes identically.
+ */
+function canonicalize(value: unknown): unknown {
+	if (value === null || value === undefined) return value;
+	if (typeof value !== "object") return value;
+	if (Array.isArray(value)) return value.map(canonicalize);
+	// Plain object: sort keys, recursively canonicalize values.
+	const sorted = Object.keys(value as Record<string, unknown>).sort();
+	const out: Record<string, unknown> = {};
+	for (const k of sorted) {
+		out[k] = canonicalize((value as Record<string, unknown>)[k]);
+	}
+	return out;
+}
 
 /**
  * Convert a pi AgentMessage to a RawTranscriptRow for the DB mirror.
- * content_bytes is canonical JSON (sorted keys) for deterministic hashing.
- * Returns null if the message has no usable content.
+ * content_bytes is canonical JSON (sorted keys, recursive) for deterministic
+ * storage; contentHash is the canonical digest (normalize + hash) that matches
+ * what dedupTranscript computes so the two pipelines use the same linkage key.
+ *
+ * F4 fix: the hash key MUST match on both sides of the append/dedup split.
+ * Using computeContentDigest here (normalize → hash) ensures content_ref set
+ * by dedupTranscript always resolves to an existing dedup_mirror row even for
+ * whitespace/case-variant content. F5 fix: recursive canonicalize replaces the
+ * broken shallow-sorted JSON.stringify replacer.
  */
 function toRawTranscriptRow(
 	msg: AgentMessage,
@@ -50,12 +81,17 @@ function toRawTranscriptRow(
 	};
 	const content = m.content;
 	if (content == null || content === "") return null;
-	// Canonical form: sort object keys for deterministic hashing.
+	// Canonical bytes: string content → normalize for consistent byte content;
+	// object content → recursive canonicalize then JSON (no replacer).
 	const contentBytes =
 		typeof content === "string"
-			? content
-			: JSON.stringify(content, Object.keys(content as object).sort());
-	const contentHash = createHash("sha256").update(contentBytes).digest("hex");
+			? content // F5: strings are primitives; their byte content is fixed
+			: JSON.stringify(canonicalize(content));
+	// F4 fix: use the same digest as dedupTranscript so contentHash is consistent
+	// on both sides of the append/dedup split. computeContentDigest normalizes
+	// (strip ANSI, NFC, case-fold, collapse whitespace) then hashes → the same
+	// key is stored in raw_transcript.content_hash AND used as the dedup link.
+	const { contentHash } = computeContentDigest(contentBytes);
 	return {
 		contentHash,
 		sessionId,

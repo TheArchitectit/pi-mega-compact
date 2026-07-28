@@ -37,7 +37,9 @@ export function preserveRecentForPressure(
 ): number {
   const p = pressure < 0 ? 0 : pressure > 1 ? 1 : pressure;
   const v = Math.round(preserveRecent - (preserveRecent - preserveRecentMin) * p);
-  return Math.max(preserveRecentMin, Math.min(preserveRecent, v));
+  // Floor of 1: even with preserveRecentMin=0 at full pressure, never compact
+  // ALL messages — the boundary guard (computeDropRange) needs ≥1 to anchor on.
+  return Math.max(1, preserveRecentMin, Math.min(preserveRecent, v));
 }
 
 /**

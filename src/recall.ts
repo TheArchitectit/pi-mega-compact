@@ -18,6 +18,8 @@ import { recall as searchRecall } from "./engine.js";
 import { vectorWasInjected, vectorMarkInjected, type SearchHit, type VectorStore, vectorSearchAsync } from "./vectorStore.js";
 import { estimateBlockTokens } from "./tokens.js";
 import { defaultEmbedder, cosineSimilarity } from "./embedder.js";
+import { rehydrateRaptorTree } from "./dedup/raptor/index.js";
+import { normalizeSessionId } from "./store.js";
 
 export type RecallSource = "resume" | "command" | "sentinel";
 
@@ -42,6 +44,11 @@ export interface RecallInjectOptions {
    *  recall, a foreign checkpoint already injected (in any session) is skipped
    *  and a fresh injection is recorded globally. */
   globalIndexDir?: string;
+  /** S25 Phase-2: also inject top-level RAPTOR summary nodes (root + level-1
+   *  clusters) as a hierarchical overview HEADER on the recall block. Defaults
+   *  to the `RAPTOR_INJECT_SUMMARIES` config flag. The overview helps the model
+   *  see the session's topical structure before the detailed checkpoint hits. */
+  raptorSummaries?: boolean;
 }
 
 export interface RecallInjectResult {
@@ -64,6 +71,15 @@ export function formatRecallBlock(hits: SearchHit[]): string {
     // that repo's stateDir, so the last path segment is the repo's display
     // name). Same-repo hits (no repoId) stay unlabeled.
     const repoName = h.repoId ? ` (from repo ${h.repoId.split("/").filter(Boolean).pop() ?? h.repoId})` : "";
+    // S42B: a RAPTOR cluster node hit (not a stored checkpoint) is labeled as a
+    // hierarchical summary and uses raptorSummary as its body. No Key files line
+    // (cluster nodes carry no file list).
+    if (h.raptorLevel !== undefined) {
+      return (
+        `### Recalled cluster summary [${i + 1}] (level ${h.raptorLevel}, relevance ${score}%)${repoName}\n` +
+        `${(h.raptorSummary ?? h.checkpoint.summary).trim()}\n`
+      );
+    }
     return (
       `### Recalled context [${i + 1}] (relevance ${score}%)${repoName}\n` +
       `${h.checkpoint.summary.trim()}\n` +
@@ -75,6 +91,33 @@ export function formatRecallBlock(hits: SearchHit[]): string {
   return (
     "The following compacted context was recalled from earlier in this session " +
     "and is relevant to the current request. Treat it as background you already know:\n\n" +
+    parts.join("\n")
+  );
+}
+
+/**
+ * S25 Phase-2: format the RAPTOR tree's top-level summary nodes (root + level-1
+ * clusters) as a hierarchical overview HEADER. Surfacing the high-level topical
+ * structure before the detailed checkpoint hits gives the model a map of what
+ * the session has covered. `nodes` are the RAPTOR summary nodes to surface,
+ * highest level first (root → level-1 clusters). Returns "" when empty.
+ */
+export function formatRaptorBlock(
+  nodes: { summary: string; level: number; score?: number }[],
+): string {
+  if (nodes.length === 0) return "";
+  const parts = nodes.map((n, i) => {
+    const score =
+      n.score !== undefined ? ` (relevance ${(n.score * 100).toFixed(0)}%)` : "";
+    const label =
+      n.level === 0
+        ? `Session overview [${i + 1}]${score}`
+        : `Cluster summary [${i + 1}] (level ${n.level})${score}`;
+    return `### ${label}\n${n.summary.trim()}\n`;
+  });
+  return (
+    "The following hierarchical overview summarizes the structure of this " +
+    "session so far. Use it as a map of what has been covered:\n\n" +
     parts.join("\n")
   );
 }
@@ -132,56 +175,110 @@ export function recallAndInline(
   const doWindowDedupe = opts.windowDedupe ?? false;
   const dedupSim = opts.dedupSim ?? 0.9;
 
-  const { hits } = searchRecall(
-    { sessionId: opts.sessionId, query: opts.query, limit, skipInjected: false },
+  // F4: thread skipInjected through to searchRecall instead of hardcoding false
+  // and re-implementing the filter here. newHits is already deduped when skip
+  // is true (default); equals hits when skip is false (openclaw command path).
+  const { newHits } = searchRecall(
+    { sessionId: opts.sessionId, query: opts.query, limit, skipInjected: skip },
     store,
   );
 
+  // F1: hoist one embedder instance for inline dedupe (matches the async path).
+  // defaultEmbedder() is deterministic but creating it per hit wastes allocations.
+  const embedder = defaultEmbedder();
   // Precompute live-window embeddings once for inline dedupe (Fix C). Trigram
   // embedder is local + cheap; never a network call (PREVENT-PI-004).
   let liveEmbeddings: number[][] = [];
   if (doWindowDedupe && opts.liveWindow && opts.liveWindow.length > 0) {
-    const embedder = defaultEmbedder();
     liveEmbeddings = opts.liveWindow.map((m) => embedder.embed(m));
   }
 
-  // Shared dedup + bounded/inline block assembly. We build the block
-  // incrementally so the token cap can stop mid-stream (Fix C).
+  // F3: build the hit list first; format ONCE at the end so the block carries
+  // exactly one preamble and [1..n] numbering, and the token cap counts body
+  // tokens (one preamble at format time, not N). We accumulate summaries and
+  // break mid-stream when the cap would be exceeded.
   const toInject: SearchHit[] = [];
-  const parts: string[] = [];
   let blockTokens = 0;
 
-  for (const h of hits) {
-    if (skip && vectorWasInjected(store, opts.sessionId, h.checkpoint.checkpointId)) continue;
-
+  for (const h of newHits) {
     // Inline dedupe: skip a hit already resident in the live window (Fix C).
     if (doWindowDedupe && liveEmbeddings.length > 0) {
-      const hitVec = defaultEmbedder().embed(h.checkpoint.summary);
+      const hitVec = embedder.embed(h.checkpoint.summary);
       if (liveEmbeddings.some((v) => cosineSimilarity(v, hitVec) >= dedupSim)) continue;
     }
 
-    const part = formatRecallBlock([h]);
-    const partTokens = estimateBlockTokens(part);
+    const partTokens = estimateBlockTokens(h.checkpoint.summary);
     // Token cap: never push a chunk that would overrun the ceiling.
     if (maxTokens > 0 && blockTokens + partTokens > maxTokens) break;
 
-    parts.push(part);
     toInject.push(h);
     blockTokens += partTokens;
     vectorMarkInjected(store, opts.sessionId, h.checkpoint.checkpointId);
   }
 
-  const block = parts.join("\n");
+  // F3: format once — one preamble, correct [1..n] numbering.
+  const recallBlock = toInject.length > 0 ? formatRecallBlock(toInject) : "";
   const report = toInject.map(
     (h) => `  • ${h.checkpoint.checkpointId} (${h.checkpoint.summary.slice(0, 60).replace(/\n/g, " ")}…)`,
   );
+
+  // S25 Phase-2 (RAPTOR_INJECT_SUMMARIES): prepend a hierarchical overview
+  // header built from the tree's top-level summary nodes (root + the
+  // highest-scoring level-1 cluster summaries). This gives the model a topical
+  // map of the session before the detailed checkpoint hits. Default ON via
+  // the store's config; `opts.raptorSummaries` (when explicitly set) overrides.
+  // Skipped when no tree exists, the tree is stale/timedOut, or shadow mode is on.
+  let overview = "";
+  const injectSummaries = opts.raptorSummaries ?? store.cfg.RAPTOR_INJECT_SUMMARIES;
+  if (injectSummaries && recallBlock) {
+    overview = raptorOverviewBlock(store, opts.sessionId, opts.query);
+  }
+  const block = overview && recallBlock
+    ? overview + "\n" + recallBlock
+    : overview || recallBlock;
 
   return {
     toInject,
     report,
     block,
-    empty: toInject.length === 0,
+    empty: block.length === 0,
   };
+}
+
+/**
+ * S25 Phase-2: build the hierarchical overview header for a session. Rehydrates
+ * the persisted RAPTOR tree, picks the root + top level-1 cluster nodes by
+ * cosine similarity to the query, and formats them via formatRaptorBlock.
+ * Returns "" when no tree, stale tree, timedOut tree, or shadow mode. Non-fatal
+ * (wrapped in try/catch) — the overview is a bonus; a failure must never block
+ * the detailed recall block.
+ */
+function raptorOverviewBlock(
+  store: VectorStore,
+  sessionId: string,
+  query: string,
+): string {
+  try {
+    const sid = normalizeSessionId(sessionId);
+    const tree = rehydrateRaptorTree(sid, store.stateDir);
+    if (!tree || !tree.rootId || tree.timedOut) return "";
+    const root = tree.nodes.get(tree.rootId);
+    if (!root) return "";
+    const qv = store.embedder.embed(query);
+    // Root (level 0) first, then the top level-1 clusters by cosine to the query.
+    const nodes: { summary: string; level: number; score: number }[] = [
+      { summary: root.summary, level: root.level, score: cosineSimilarity(qv, root.embedding) },
+    ];
+    const level1 = [...tree.nodes.values()]
+      .filter((n) => n.level === 1 && n.summary)
+      .map((n) => ({ summary: n.summary, level: n.level, score: cosineSimilarity(qv, n.embedding) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+    nodes.push(...level1);
+    return formatRaptorBlock(nodes);
+  } catch {
+    return ""; // non-fatal: overview is a bonus
+  }
 }
 
 // --- S21: memory recall ----------------------------------------------------
@@ -303,17 +400,37 @@ export async function recallAndInlineAsync(
     hits = [];
   }
 
+  // F1: hoist one embedder instance for inline dedupe. defaultEmbedder() is
+  // deterministic but creating it per call wastes allocations on large hit sets.
+  // (recallAndInline already hoisted this; applying the same fix here.)
+  const embedder = defaultEmbedder();
   let liveEmbeddings: number[][] = [];
   if (doWindowDedupe && opts.liveWindow && opts.liveWindow.length > 0) {
-    const embedder = defaultEmbedder();
     liveEmbeddings = opts.liveWindow.map((m) => embedder.embed(m));
   }
 
   const toInject: SearchHit[] = [];
-  const parts: string[] = [];
   let blockTokens = 0;
 
+  // F2: when cross-repo is on but no global index dir could be resolved, skip
+  // foreign hits rather than injecting them undeduped — otherwise a foreign
+  // checkpoint with no machine-wide injected-set to consult would re-inject in
+  // every new session. Same-repo hits (no repoId) are unaffected. Warn once so
+  // the silent degradation is observable. (The extension resolver normally
+  // supplies a default globalIndexDir, so this is belt-and-braces.)
+  const skipCrossRepoHits = !!opts.crossRepo && !opts.globalIndexDir;
+  if (skipCrossRepoHits) {
+    try {
+      console.warn(
+        "[mega-compact:recall] cross-repo recall enabled but globalIndexDir is unset — "
+          + "skipping cross-repo injection to avoid re-injecting undeduped foreign checkpoints",
+      );
+    } catch { /* ignore */ }
+  }
+
   for (const h of hits) {
+    // F2: skip foreign hits when we can't dedup them machine-wide.
+    if (skipCrossRepoHits && h.repoId) continue;
     if (skip && vectorWasInjected(store, opts.sessionId, h.checkpoint.checkpointId)) continue;
     // S18: machine-wide injected-set — a foreign checkpoint already injected
     // (in any session) is never re-injected. Only applies to cross-repo hits
@@ -326,14 +443,15 @@ export async function recallAndInlineAsync(
         /* non-fatal: degrade to per-session injected-set only */
       }
     }
+    // Inline dedupe: skip a hit already resident in the live window (F1: hoisted embedder).
     if (doWindowDedupe && liveEmbeddings.length > 0) {
-      const hitVec = defaultEmbedder().embed(h.checkpoint.summary);
+      const hitVec = embedder.embed(h.checkpoint.summary);
       if (liveEmbeddings.some((v) => cosineSimilarity(v, hitVec) >= dedupSim)) continue;
     }
-    const part = formatRecallBlock([h]);
-    const partTokens = estimateBlockTokens(part);
+    // F3: build the hit list first; format ONCE at the end so the block carries
+    // exactly one preamble and numbering [1..n] rather than one per hit.
+    const partTokens = estimateBlockTokens(h.checkpoint.summary);
     if (maxTokens > 0 && blockTokens + partTokens > maxTokens) break;
-    parts.push(part);
     toInject.push(h);
     blockTokens += partTokens;
     vectorMarkInjected(store, opts.sessionId, h.checkpoint.checkpointId);
@@ -349,7 +467,10 @@ export async function recallAndInlineAsync(
     }
   }
 
-  const block = parts.join("\n");
+  // F3: format once — one preamble, correct [1..n] numbering, token cap counted
+  // against one preamble (not N). Pass the full toInject array so formatRecallBlock
+  // has repoId + score for proper labeling.
+  const block = toInject.length > 0 ? formatRecallBlock(toInject) : "";
   const report = toInject.map(
     (h) => `  • ${h.checkpoint.checkpointId} (${h.checkpoint.summary.slice(0, 60).replace(/\n/g, " ")}…)`,
   );

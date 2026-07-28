@@ -36,7 +36,7 @@ const DB_TABLE_NAMES = [
   "checkpoint_epochs",
   "dedup_mirror",
   "memories",
-  "dedup_stats",
+  "meta",
   "daily_log",
 ] as const;
 
@@ -136,7 +136,7 @@ export function pruneOldRows(stateDir: string = getStateDir(), daysOld = 30): Ma
   // dedup_mirror: cascade-delete orphan rows whose ref_count has dropped to 0
   // after the raw_transcript deletes. Safe even if FK is off (raw_transcript has
   // no FK to dedup_mirror; ref_count is maintained by the dedup pipeline).
-  const delDedup = db.prepare(`DELETE FROM dedup_mirror WHERE ref_count <= 0`).run() as {
+  const delDedup = db.prepare(`DELETE FROM dedup_mirror WHERE content_hash NOT IN (SELECT DISTINCT content_ref FROM raw_transcript WHERE content_ref IS NOT NULL)`).run() as {
     changes?: number;
   } | undefined;
   const dedupDeleted = delDedup?.changes ?? 0;
