@@ -131,6 +131,42 @@ test("recallMemoriesAndInline: surfaces a memory saved in ANOTHER repo via cross
   }
 });
 
+// ---- S25 §3.3: content de-dup in the cross-repo memory path -----------------
+// recallMemoriesCrossRepo (memoryRecall.ts:114) must NOT surface a memory the
+// local repo ALREADY has — same-repo authoritative store wins over the index.
+test("recallMemoriesCrossRepo: dedupes content the local repo already has", async () => {
+  process.env.MEGACOMPACT_INDEX_DIR = join(baseTmp, "xrepo-index-dedup");
+  const repoA = join(baseTmp, "dedup-a");
+  const repoB = join(baseTmp, "dedup-b");
+  try {
+    const { applyMemoryOps } = await import("./memoryOps.js");
+    const shared = "we standardized on node:sqlite for the store backend";
+    await applyMemoryOps(
+      [{ op: "add", memory: { content: shared, category: "decision", sourceTurn: 0 } }],
+      repoA,
+    );
+    await applyMemoryOps(
+      [{ op: "add", memory: { content: shared, category: "decision", sourceTurn: 0 } }],
+      repoB,
+    );
+    // The PGlite index now has repoA's copy; repoB ALSO has it locally. The
+    // cross-repo path for repoB must drop repoA's duplicate.
+    const { recallMemoriesCrossRepo } = await import("./memoryRecall.js");
+    const hits = await recallMemoriesCrossRepo("what store backend do we use?", repoB, {
+      crossRepoCosine: 0.0, // floor at 0: would match everything if dedup fails
+      limit: 5,
+    });
+    assert.ok(
+      hits.every((h) => h.memory.content.trim().toLowerCase() !== shared.toLowerCase()),
+      "cross-repo hit with content the local repo already has is dropped",
+    );
+  } finally {
+    const { closeMemoryIndex } = await import("./store/memoryIndex.js");
+    await closeMemoryIndex();
+    delete process.env.MEGACOMPACT_INDEX_DIR;
+  }
+});
+
 test("recallMemoriesAndInline: cross-repo disabled when MEGACOMPACT_PGLITE_DISABLED", async () => {
   process.env.MEGACOMPACT_INDEX_DIR = join(baseTmp, "xrepo-index-off");
   process.env.MEGACOMPACT_PGLITE_DISABLED = "true";

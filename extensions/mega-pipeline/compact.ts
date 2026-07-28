@@ -14,6 +14,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { compactSession } from "../../src/engine.js";
 import type { EngineMessage } from "../../src/types.js";
 import { normalizeSessionId } from "../../src/store.js";
+import { repoKey } from "../../src/store/repoKey.js";
 import { estimateBlockTokens } from "../../src/tokens.js";
 import { touchSession, logDaily, incCompactCount, incCacheHitTokens } from "../../src/store/sqlite.js";
 import { consolidateMemories } from "../../src/memory.js";
@@ -265,7 +266,7 @@ function doCompact(
       const latest = all.find((cp) => cp.checkpointId === result.checkpointId);
       if (latest?.embedding) {
         void indexUpsertEmbedding(
-          runtime.currentStateDir,
+          repoKey(runtime.currentStateDir),
           sid,
           latest.checkpointId,
           latest.embedding,

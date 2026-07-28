@@ -332,13 +332,14 @@ export interface MemoryRecallInjectOptions {
 
 /** Format one memory hit for the recall block. Category + score for traceability. */
 export function formatMemoryRecallBlock(
-	hits: Array<{ content: string; category: string | null; score: number }>,
+	hits: Array<{ content: string; category: string | null; score: number; label?: string }>,
 ): string {
 	if (hits.length === 0) return "";
 	const parts = hits.map((h, i) => {
 		const pct = (h.score * 100).toFixed(0);
 		const cat = h.category ? `[${h.category}] ` : "";
-		return `### Recalled memory [${i + 1}] (relevance ${pct}%)\n${cat}${h.content.trim()}`;
+		const src = h.label ? ` ${h.label}` : "";
+		return `### Recalled memory [${i + 1}] (relevance ${pct}%${src})\n${cat}${h.content.trim()}`;
 	});
 	return (
 		"The following facts about this project were saved from earlier turns " +
@@ -389,8 +390,9 @@ export async function recallMemoriesAndInline(
 		category: string | null,
 		score: number,
 		label: string,
+		blockSuffix?: string,
 	) => {
-		const part = formatMemoryRecallBlock([{ content, category, score }]);
+		const part = formatMemoryRecallBlock([{ content, category, score, label: blockSuffix }]);
 		const partTokens = estimateBlockTokens(part);
 		if (maxTokens > 0 && blockTokens + partTokens > maxTokens) return false;
 		parts.push(part);
@@ -419,6 +421,7 @@ export async function recallMemoriesAndInline(
 				h.memory.category,
 				h.score,
 				`memory#${h.memory.id} (from ${repoLabel})`,
+				`from ${repoLabel}`,
 			)
 		)
 			break;
