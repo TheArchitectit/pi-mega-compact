@@ -1,5 +1,33 @@
 # Release Notes — pi-mega-compact
 
+## v0.8.26 (2026-07-28)
+
+**Documentation release — complete v0.8.25 release notes now ship with the package.** No code changes. v0.8.25's RAPTOR promotion landed without CHANGELOG/RELEASE_NOTES entries; this release closes that gap.
+
+## v0.8.25 (2026-07-28)
+
+**RAPTOR goes live: multi-level retrieval, tree promotion, per-turn tracking, and a hardened retry engine.** The `raptor-promotion` branch lands as one release — the memory hierarchy now serves, tracks every turn, and the S38 retry safety net no longer blinds retries on poisoned contexts.
+
+### What's new
+
+- **S25 — RAPTOR promotion (the headline).** Shadow mode is now a hard SERVE gate, not just logging. A `built_at` freshness guard skips stale trees automatically; per-session tree cache removes per-recall rebuild cost; hierarchical overview headers (root + top level-1 clusters) are prepended to recall blocks via `formatRaptorBlock`; `raptor_serve` events feed canary p95 monitoring. Config: `RAPTOR_SHADOW_MODE=false` disables serving entirely for rollback.
+- **S42B — multi-level retrieval wired into recall.** Level-weighted scoring across the RAPTOR tree (leaves + cluster summaries) with leaf expansion and MMR rerank. Cluster surfaces appear as labeled `Recalled cluster summary` hits. Flags default ON; turning `RAPTOR_MULTILEVEL_ENABLED=false` restores exact pre-S42 behavior.
+- **S42D — build history & freshness.** A new `raptor_build_history` table records every build with a coherence score and leaf count. The compact pipeline skips rebuilds when the tree is fresh (under 20% drift, within `RAPTOR_FRESHNESS_HOURS`).
+- **S48 — per-turn vector tracking + conversation branching.** New `turns`, `turn_recall`, and `conversation_branches` tables trace every turn and provenance of recall hits. A `forkConversation` primitive enables recall-fork (moving memory between session branches without token replay).
+- **R1–R4 retry engine redesign.** The S38 retry safety net got three independent caps: in-flight nudge dedup (R1), a session-global `errorRetrySessionMax=3` (R2), and a poisoned-context detector (R3) that recognizes 0-token-failure signatures and recommends `/clear` instead of blind retry. Retry telemetry now flows to the dashboard (R7).
+- **Boundary rewrite (PREVENT-PI-002).** A single forward-pass `isPairSafe` guarantees no toolCall/toolResult pair is ever split at a compaction boundary, for any interleaving. 9 regression tests added.
+- **Dedup-mirror atomicity.** Checkpoint mirrors now use `ON CONFLICT DO UPDATE ... RETURNING ref_count` — upserts are race-safe under concurrent turns.
+
+### Fixed
+
+- Overview inject path now honors shadow mode and tree staleness — RAPTOR headers can't leak into recall while the tree is still logging-only.
+- Orphaned multilevel leaf hits (checkpoints removed by SemDeDup before serving) no longer synthesize empty cluster blocks.
+- Local developer state (`.claw/`, `.pi-subagents/`, `.clawd-todos.json`) scrubbed from history and gitignored.
+- Added troubleshooting section for npm scripts and `node:sqlite` engine compatibility in README.
+
+**Migration:** none — fully backward-compatible. RAPTOR serving and multilevel default to ON; opt out with `RAPTOR_SHADOW_MODE=false` and `RAPTOR_MULTILEVEL_ENABLED=false` if undesired.
+Full gate green: `build` + `745 tests` + `lint` + `regression_check --all` + `guardrails-scan`.
+
 ## v0.8.24 (2026-07-27)
 
 **Fully decomposed runtime.** The mega-runtime monolith is gone: Phases 1, 2, and 2d split it into per-section modules under `extensions/mega-runtime/` with `runtime.ts` reduced to a delegates-only shell (~437 lines). Purely structural — no behavior change; smaller edit surfaces and safer future changes. Merged from the `raptor-promotion` branch.

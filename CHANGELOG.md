@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.8.26 (2026-07-28) — Documentation Release
+
+- **docs: complete release notes for v0.8.25.** The RAPTOR promotion release shipped without CHANGELOG or RELEASE_NOTES entries — v0.8.26 publishes the complete notes and README/INDEX_MAP updates so the published package itself carries accurate documentation. No code changes.
+- **chore**: biome reflow + package-lock sync (`7a15b05`, behavior-neutral). `2447e30` (the QA fixes) shipped inside the v0.8.25 tag itself.
+
+---
+
+## v0.8.25 (2026-07-28) — RAPTOR Promotion: Multi-Level Retrieval + Per-Turn Tracking + Retry Engine Redesign
+
+**The RAPTOR memory hierarchy goes live — serving multi-level recall by default, tracking every turn, and hardening against compact poisoning.**
+
+- **feat(raptor): S25 promotion — serving is real (`f65e477`).** Shadow mode now gates the SERVE path, not just build logging. `built_at` freshness guard skips stale trees; per-session `raptorCache` removes per-recall O(n·leaves) rehydrate; `RAPTOR_INJECT_SUMMARIES` prepends a hierarchical overview header (root + top level-1 clusters) to recall blocks; `raptor_serve` telemetry for canary p95 monitoring. Acceptance tests for gates, staleness, summary format, and p95.
+- **feat(raptor): S42B — multi-level retrieval wired to recall (`f65e477`).** `RAPTOR_MULTILEVEL_ENABLED` (default ON) activates level-weighted scoring across the RAPTOR tree with leaf expansion and MMR re-rank. Cluster hits surface synthetic `Recalled cluster summary` blocks. 4 acceptance tests.
+- **feat(raptor): S42D — build history + freshness tracking (`f65e477`).** New `raptor_build_history` table records coherence score + leaf count per build; `compact` pipeline skips rebuilds when a tree is within `RAPTOR_FRESHNESS_HOURS` and <20% drift. `isRaptorTreeFresh` fails closed on any ambiguity.
+- **feat(tracking): S48 — per-turn vector tracking + conversation branching (`f65e477`).** `turns`, `turn_recall`, `conversation_branches` tables; a `forkConversation` primitive for recall-fork between session branches.
+- **fix(boundary): single-pass `isPairSafe` rewrite (`f65e477`).** Handles arbitrary toolCall/toolResult interleavings. 9 regression tests. PREVENT-PI-002.
+- **perf(dedup): atomic mirror upserts (`f65e477`).** `ON CONFLICT DO UPDATE ... RETURNING` replaces read-then-write for checkpoint mirrors — race-safe under concurrent events.
+- **feat(s38): R1–R4 retry engine redesign (`f65e477`).** In-flight nudge dedup (R1), session-global cap `errorRetrySessionMax=3` (R2), poisoned-context detector recognizing 0-token-error / orphaned-toolResult / generic-response signatures with `/clear` advise and guarded compact per signature (R3), turn hygiene guarantees (R4). 13 new tests. Dashboard telemetry (R7).
+- **docs**: README troubleshooting, status updates for S40-S47 RAG specs, sprint bookkeeping (`0e7c84c`, `0d36c3c`).
+- **fix(raptor/merge): resolution cleanups (`2447e30`).** Shadow+staleness guard wired correctly into `raptorOverviewBlock`; orphaned leaf hits skip cleanly; committed agent-state files scrubbed.
+
+**Migration:** none. Full gate green: 745 tests, build, lint, regression, guardrails.
+
+---
+
 ## v0.8.24 (2026-07-27) — Mega-Runtime Decomposition (Phase 1 + 2 + 2d Maximal Split)
 
 - **refactor(mega-runtime): maximal decomposition of the runtime monolith (`1278fbc`, `2750101`, `73ef57d`).** The `extensions/mega-runtime/` barrel pattern is extended across the entire runtime: `runtime.ts` (~437 lines, delegates-only) plus focused per-section modules (`effects.ts`, `game-state.ts`, `perf.ts`, `pressure-getters.ts`, etc.). No behavior change — pure structural split following the project rule that no `.ts` file grows past ~500 lines. Merge: `0d9c14a`.
