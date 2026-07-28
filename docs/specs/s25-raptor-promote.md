@@ -4,7 +4,7 @@
 **Parent plan:** feat/unified-pressure (unified pressure signal + memory hardening)
 **Depends on:** S13 RAPTOR shadow build (src/dedup/raptor/*), S14 dedup config single-source (src/config/dedup.ts), S24 unified pressure
 **Priority:** P1 (correctness + latency hardening of an already-shipping path)
-**Status:** 🟡 PARTIALLY IMPLEMENTED (2026-07-27, raptor-promotion branch, v0.8.23) — gates (a) shadow-mode SERVE gate + (b) freshness guard, `built_at` schema/plumbing, pipeline `builtAt` pass, timedOut skip, and `raptor_serve` events are all live (`src/vector-search.ts`, `src/dedup/raptor/index.ts`, `extensions/mega-pipeline/compact.ts`). Note: `raptorSearchHits` moved `vectorStore.ts` → `src/vector-search.ts` in the PR0 split. **Remaining:** per-session `raptorCache` (per-recall `rehydrateRaptorTree` rebuild still happens), `src/dedup/raptor/serve-gate.test.ts` acceptance suite, and the OPTIONAL Phase-2 `RAPTOR_INJECT_SUMMARIES` flag.
+**Status:** ✅ SHIPPED (v0.8.25, 2026-07-28) — gates (a) shadow-mode SERVE gate + (b) freshness guard, `built_at` schema/plumbing, pipeline `builtAt` pass, timedOut skip, per-session `raptorCache`, `raptor_serve` events, `RAPTOR_INJECT_SUMMARIES` flag, and the 5-gate acceptance suite `src/dedup/raptor/serve-gate.test.ts` all live (`src/vector-search.ts`, `src/dedup/raptor/index.ts`, `extensions/mega-pipeline/compact.ts`). Note: `raptorSearchHits` moved `vectorStore.ts` → `src/vector-search.ts` in the PR0 split.
 **Target version:** v0.6.2
 
 ---

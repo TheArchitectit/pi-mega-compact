@@ -10,25 +10,25 @@
 ### S25 — RAPTOR Promotion: Harden Live Hierarchical Recall
 
 **Source:** `docs/specs/s25-raptor-promote.md`
-**Status:** 🟡 IN PROGRESS (gates + freshness + monitoring shipped; per-session tree cache + acceptance tests remain)
+**Status:** ✅ SHIPPED — v0.8.25 (2026-07-28). All 10 work items done (gates, freshness, cache, monitoring) + 5-gate acceptance suite (`src/dedup/raptor/serve-gate.test.ts`). Phase-2 flag `RAPTOR_INJECT_SUMMARIES` also shipped default-ON.
 
 **Problem:** RAPTOR was promoted from shadow to live between S13 and this branch, but the promotion is implicit and fragile:
 
 1. ~~Shadow gate `RAPTOR_SHADOW_MODE` is inert for serving (logging-only)~~ ✅ hard SERVE gate live
 2. ~~No freshness check — stale trees can serve~~ ✅ `builtAt < maxCheckpointTimestamp` guard live
-3. `parentId` is always null — future parent-walks break silently
-4. High-level summaries NOT injected — only leaf checkpoints
-5. Per-recall rebuild + linear scan — O(n·leaves) per recall with no cache ← **open**
-6. No coverage/latency acceptance tests ← **open**
+3. `parentId` is always null — future parent-walks break silently (tracked separately, non-blocking)
+4. ~~High-level summaries NOT injected~~ ✅ `RAPTOR_INJECT_SUMMARIES` (default ON) prepends overview header
+5. ~~Per-recall rebuild + linear scan — O(n·leaves) per recall with no cache~~ ✅ `raptorCache` per-session + indexed `maxRaptorNodeBuiltAt` invalidation (`src/vector-search.ts:76-87`)
+6. ~~No coverage/latency acceptance tests~~ ✅ `serve-gate.test.ts` (5 gates: shadow / stale / timedOut / breadth / p95<100ms)
 
 **Work Items:**
 
 - [x] Honor `RAPTOR_SHADOW_MODE=false` as hard SERVE gate (not just logging)
 - [x] Add `built_at` freshness guard — skip stale trees
-- [ ] Cache rehydrated `RaptorTree` per session
-- [ ] Optional: `raptorSummaryHits` flag for high-level summary injection (Phase 2)
+- [x] Cache rehydrated `RaptorTree` per session
+- [x] `RAPTOR_INJECT_SUMMARIES` flag for high-level summary injection (Phase 2, default ON)
 - [x] Monitoring: `raptor_serve` events for canary p95
-- [ ] Tests: shadow mode disables serve, stale tree fallback, coverage breadth, p95 latency
+- [x] Tests: shadow mode disables serve, stale tree fallback, coverage breadth, p95 latency
 
 ---
 
@@ -174,7 +174,7 @@
 
 | Priority | Item | Source | Status |
 | ---------- | ------ | -------- | -------- |
-| P1 | RAPTOR Promotion (gates + freshness + monitoring done; cache + tests remain) | s25-raptor-promote.md | 🟡 |
+| P1 | ~~RAPTOR Promotion~~ ✅ v0.8.25 | s25-raptor-promote.md | ✅ |
 | P1 | Cross-Repo E2E | s25-cross-repo.md, WORK_STATUS.md | ⬜ |
 | P1 | Memory DB Round-Trip | s25-memory-db-roundtrip.md | ⬜ |
 | P2 | Phase 2: Zstd + Content Dedup | PLAN.md | ⬜ |
@@ -189,10 +189,10 @@
 
 ## Notes
 
-- **RAPTOR Promotion** is P1 and partially shipped: shadow serve-gate, `built_at` freshness guard, `timedOut` skip, and `raptor_serve` monitoring events are live. Remaining: per-session rehydrated-tree cache (`raptorCache`) and the acceptance test suite (shadow / stale-fallback / coverage breadth / p95 latency).
+- **RAPTOR Promotion** fully shipped v0.8.25 — serve gate, freshness, session cache, monitor events, 5-gate acceptance suite, and the Phase-2 `RAPTOR_INJECT_SUMMARIES` flag all live.
 - **Cross-Repo E2E** is a missing test proof, not new functionality — the feature shipped in v0.5.0 but lacks automated two-repo verification.
 - **Phase 2-4** are the original PLAN.md compression/dedup pipeline enhancements — still valuable but less urgent than RAPTOR hardening.
 
 ---
 
-*Last updated: 2026-07-27 (v0.8.23 release)*
+*Last updated: 2026-07-28 (v0.8.26 doc-release; S25 marked shipped)*
