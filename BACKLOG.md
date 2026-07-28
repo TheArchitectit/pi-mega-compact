@@ -196,4 +196,4 @@
 
 ---
 
-*Last updated: 2026-07-28 (v0.8.26 doc-release; S25 marked shipped)*
+*Last updated: 2026-07-28 (end-of-day; S49 spec pinned, implementation pending)*
