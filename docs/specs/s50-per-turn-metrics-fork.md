@@ -4,7 +4,7 @@
 **Parent program:** `docs/specs/s49-program-per-turn-memory-platform.md`
 **Depends on:** S49 (shipped — isolated `turns.db` + `TurnStore` + adapter)
 **Priority:** P1
-**Status:** implement-ready (written just-in-time against S49's shipped shape)
+**Status:** shipped (S50A / S50B / S50C — dashboard tab is S52, out of scope here)
 **Target version:** v0.9.1
 **Reuse target:** `src/metrics/turns.ts` + `src/fork.ts` are host-agnostic (pi-agnostic, embeddable).
 
@@ -114,16 +114,16 @@ appends; existing rows (null) untouched; flag OFF (no dbMirror) = no-op.
 
 **Tasks:**
 
-- [ ] **S50A-1** `src/store/sqlite/raw-transcript.ts` — add `turnIndex?: number | null` to
+- [x] **S50A-1** `src/store/sqlite/raw-transcript.ts` — add `turnIndex?: number | null` to
   `RawTranscriptRow`; include `turn_index` in the INSERT column list + `@turn_index` bind
   (`row.turnIndex ?? null`). `rowToRawTranscript` maps it back. Column already exists via S43
   `ensureColumn`; no schema change needed.
-- [ ] **S50A-2** `extensions/mega-events/context-handler.ts` — `toRawTranscriptRow(msg, sessionId,
+- [x] **S50A-2** `extensions/mega-events/context-handler.ts` — `toRawTranscriptRow(msg, sessionId,
   epochId, currentTurn)` gains a `currentTurn` param; pass `runtime.currentTurn` at the call site
   (line ~166). `runtime.currentTurn` is maintained by `turn_start` (agent-handlers.ts:231).
-- [ ] **S50A-3** test — seed dbMirror append, assert `turn_index` matches the passed turn; assert
+- [x] **S50A-3** test — seed dbMirror append, assert `turn_index` matches the passed turn; assert
   null when not passed (back-compat). Reuse the S27 raw-transcript test harness pattern.
-- [ ] **GATE S50A** — full gate green. Commit `feat(turns): S50A raw_transcript.turn_index wiring`.
+- [x] **GATE S50A** — full gate green. Commit `feat(turns): S50A raw_transcript.turn_index wiring`.
 
 ### Sprint S50B: `turns.epoch_id` stamping + epoch linking
 
@@ -134,16 +134,16 @@ appends; existing rows (null) untouched; flag OFF (no dbMirror) = no-op.
 
 **Tasks:**
 
-- [ ] **S50B-1** `src/store/turns/turnStore.ts` — add `stampTurnsEpoch(sessionId, epochId): number`
+- [x] **S50B-1** `src/store/turns/turnStore.ts` — add `stampTurnsEpoch(sessionId, epochId): number`
   (UPDATE … WHERE session_id=? AND epoch_id IS NULL → returns changes). Add to the `TurnStore`
   interface (`types.ts`). Parameterized.
-- [ ] **S50B-2** `extensions/mega-events/context-handler.ts` — immediately after
+- [x] **S50B-2** `extensions/mega-events/context-handler.ts` — immediately after
   `writeCheckpointEpoch(db, epoch)` (line ~281), call `stampTurnsEpoch(runtime.rt.sessionId,
   epoch.epochId)` via the S49 store (gated on `config.turnsDbEnabled`; legacy path skipped —
   legacy main-db turn helpers are being retired). Best-effort try/catch.
-- [ ] **S50B-3** test — record turns (epoch_id null), stamp, assert set + idempotent (second stamp
+- [x] **S50B-3** test — record turns (epoch_id null), stamp, assert set + idempotent (second stamp
   no-op); assert returns the stamped count.
-- [ ] **GATE S50B** — full gate green. Commit `feat(turns): S50B turns.epoch_id stamping`.
+- [x] **GATE S50B** — full gate green. Commit `feat(turns): S50B turns.epoch_id stamping`.
 
 ### Sprint S50C: Metrics + fork primitive + commands
 
@@ -156,28 +156,29 @@ that turn's recall set and notifies the user.
 
 **Tasks:**
 
-- [ ] **S50C-1** `src/metrics/turns.ts` — pure read functions:
+- [x] **S50C-1** `src/metrics/turns.ts` — pure read functions:
   - `turnMetrics(store, mainDb, conversationId)` → per-turn rows: `{ turnIndex, ctxTokens,
-    ctxPercent, epochId, recallCount, cacheHits, dedupRatio, compressionRatio }`. recallCount from
-    `turn_recall` count per turn; cacheHits = recall rows whose checkpoint was already injected
-    (join session injected-set); dedupRatio from `raw_transcript` (distinct content_hash vs rows,
-    grouped by turn_index); compressionRatio from `checkpoint_epochs` (committed_seq→cut summary)
-    joined on `turns.epoch_id`.
+    ctxPercent, epochId, recallCount, rawMessageCount, dedupUniqueRatio, compressionRatio }`.
+    recallCount from `turn_recall` count per turn; dedupUniqueRatio from `raw_transcript`
+    (distinct content_hash / rows, grouped by turn_index); compressionRatio from
+    `checkpoint_epochs` (summary bytes / committed-range raw bytes) joined on `turns.epoch_id`.
+    Tolerates a main db without raw_transcript (reuse host) → dedup/compression 0.
   - `conversationMetrics(store, mainDb, conversationId)` → aggregate of the above per conversation.
   - All take `TurnStore` + a `DatabaseSync` main-db handle (host-agnostic). Parameterized.
-- [ ] **S50C-2** `src/fork.ts` — `forkFromConversation(store, parentConvId, turnIndex)`:
-  `store.getTurn(parentConvId, turnIndex)` → if null throw a typed `ForkError`; else
-  `store.forkConversation(parentConvId, turn.id)` → return `{ childConversationId, recalled,
-  forkTurn }`. Host-agnostic.
-- [ ] **S50C-3** `extensions/mega-turn-cmds.ts` — `/mega-fork <conv> <turn>`: parse args → call
-  `forkFromConversation` via the S49 adapter store → seed the new session's
-  `injected_checkpoint_ids` with `recalled` checkpoint ids → `ctx.ui.notify` the child conv id +
-  replay count. `/mega-turns` (no args): list the current session's conversation turns + recall
-  counts for the TUI. Both wrapped try/catch; flag OFF → notify "turns db disabled".
-- [ ] **S50C-4** tests — `turns.test.ts` (metrics correctness vs seeded data) + `fork.test.ts`
-  (resolves turn, returns replay set, typed error on unknown) + `mega-turn-cmds.test.ts` (handler
-  parsing + notify path via the extension harness).
-- [ ] **GATE S50C** — full gate green. Commit `feat(turns): S50C per-turn metrics + /mega-fork`.
+- [x] **S50C-2** `src/fork.ts` — `forkFromConversation(store, parentConvId, turnIndex)`:
+  `store.getTurn(parentConvId, turnIndex)` → if null throw a typed `ForkError` (TURN_NOT_FOUND);
+  else `store.forkConversation(parentConvId, turn.id)` → return `{ childConversationId, recalled,
+  forkTurn, checkpointIds }` (throws NO_RECALL when the turn has no injected checkpoints).
+  Host-agnostic.
+- [x] **S50C-3** `extensions/mega-metrics-cmds.ts` — `/mega-metrics [conv]` (per-turn +
+  conversation rollup) and `/mega-fork <turnIndex> [conv]` (creates child conv, returns replay
+  set + notifies). Both wrapped try/catch; `turnsDbEnabled` OFF → notify "requires isolated
+  turns.db". Registered in `mega-compact.ts`. (Named `mega-metrics-cmds.ts` — not
+  `mega-turn-cmds.ts` — and the live-window-injection of the fork recall set is the S52 dashboard
+  handshake; the primitive returns the replay set for the host to apply.)
+- [x] **S50C-4** tests — `metrics/turns.test.ts` (per-turn + aggregate + bare-main-db tolerance)
+  - `fork.test.ts` (resolves turn, returns replay set, typed errors on unknown / no-recall).
+- [x] **GATE S50C** — full gate green. Commit `feat(metrics): S50C per-turn metrics + /mega-fork`.
 
 ---
 
