@@ -1,5 +1,84 @@
 # Release Notes — pi-mega-compact
 
+## v0.10.0 (2026-07-29)
+
+**The platform release.** The `raptor-promotion` branch merges into `master`, bringing 14 releases worth of work (v0.8.22 → v0.9.1) into the mainline. This is the single largest merge in the project's history: the RAPTOR memory hierarchy, the error-retry safety net, the React dashboard, the per-turn tracking spine, the engineering practices codex, and the S49–S52 program spec all land at once.
+
+If you're upgrading from v0.8.21 or earlier, read the migration notes below carefully. If you're on v0.9.1 (raptor-promotion), this is identical code — just on master now.
+
+### What's new (since v0.8.21)
+
+**RAPTOR memory hierarchy (S42, v0.8.23–v0.8.25)**
+- Multi-level retrieval: level-weighted scoring across the RAPTOR tree (leaves + cluster summaries) with leaf expansion and MMR rerank. Flags `RAPTOR_MULTILEVEL_ENABLED` and `RAPTOR_LEAF_EXPANSION` default ON.
+- Serve gate: shadow mode is now a hard SERVE gate, not just logging. A `built_at` freshness guard skips stale trees; per-session tree cache removes per-recall rebuild cost.
+- Build history: a `raptor_build_history` table records every build with coherence score and leaf count. The compact pipeline skips rebuilds when the tree is fresh.
+- `parentId` plumbing: every internal RAPTOR node now links to its first-leaf ancestor.
+
+**Per-turn tracking (S48, v0.8.25)**
+- `turns`, `turn_recall`, and `conversation_branches` tables trace every turn and the provenance of recall hits.
+- A `forkConversation` primitive enables recall-fork (moving memory between session branches without token replay).
+
+**Error retry redesign (S38, v0.8.25)**
+- In-flight nudge dedup (R1): prevents spam storms when a fast-erroring provider fires dozens of retry nudges.
+- Session-global cap (R2): `errorRetrySessionMax=3` — the extension stops retrying after 3 nudges per session.
+- Poisoned-context detection (R3): recognizes 0-token-failure signatures and recommends `/clear` instead of blind retry.
+- Circuit breaker (R3): `consecutiveErrors` threshold stops the extension from retrying a clearly broken context.
+- Dashboard telemetry (R7): retry events flow to the dashboard.
+
+**Boundary rewrite (PREVENT-PI-002, v0.8.25)**
+- A single forward-pass `isPairSafe` guarantees no toolCall/toolResult pair is ever split at a compaction boundary, for any interleaving. 9 regression tests added.
+
+**Durable memory system (S25, v0.8.25)**
+- Auto-reviews conversation every 10 turns, writes decisions/facts/preferences to SQLite, injects them as RAG context on recall.
+- Hallucination guard: every add/replace op must be verbatim-grounded in a real message.
+- `MEMORY_MAX_ROWS` bloat cap.
+- Cross-repo recall: decisions saved in one repo surface when you start a session in another.
+
+**React dashboard (v0.8.15–v0.8.25)**
+- Full React SPA with lazy-loaded tabs: Overview, Sessions, Metrics, Events, Repos, Config, Cache, Achievements.
+- SSE event stream for live updates.
+- `/api/` endpoints for all data surfaces.
+- Dashboard bundle verified at publish time (the 0.8.5 regression check).
+
+**Engineering practices (v0.9.1)**
+- `docs/ENGINEERING_PRACTICES.md` (v1.0): file-size limits, delegate-shell splitting pattern, contract-first architecture, capability gating, append-only provenance, ledger protocol, feature flag protocol, structured logging, sprint gating.
+- Every new module starts with a `types.ts` contract; implementations satisfy it; a shared compliance suite proves both backends pass.
+
+**S49–S52 program spec (v0.9.1)**
+- The per-turn memory platform is specced as a 4-sprint program:
+  - **S49**: Turn-DB Foundation — contract-first `TurnStore` interface, `SqliteTurnStore` + `InMemoryTurnStore`, migration, retention, `StoreSnapshot` for backup/restore.
+  - **S50**: Per-turn metrics + `/mega-fork` command.
+  - **S51**: Auto-categorizing wiki (k-means + TF-IDF, no LLM/Ollama).
+  - **S52**: Dashboard management + rewind — capability-gated turns tab, rewind-intent queue.
+- `docs/specs/s49-rev1-architecture-upgrade.md` documents the v0→v1 revision (CRUD → contract-first, event-sourced, capability-gated kernel).
+
+### Fixes
+
+- **PGlite open guard** — a stalled PGlite init can no longer wedge a turn. Bounded by a timeout; degrades to the sync store.
+- **PGlite shutdown** — indexes are closed on session shutdown; a TUI widget off-switch prevents the WASM handle from pinning the event loop.
+- **Game-state watcher unref** — the watcher no longer pins the Node event loop after session end.
+- **`isChatty` false positives** — word-boundary match prevents substring false positives (e.g. "chat" matching inside "chattering").
+- **Session runtime initializer** — `lastErrorRetryAt`, `retryNudgePending`, `errorRetrySessionCount`, `lastErrorText`, `errorTextRepeatCount`, `poisonedAdviseSent`, `poisonedCompactSignatures`, `poisonedCount` fields added to the initializer (were missing since S38).
+- **Memory-op test isolation** — tests no longer write into the real machine-wide index.
+- **Dedup-mirror atomicity** — checkpoint mirrors use `ON CONFLICT DO UPDATE ... RETURNING ref_count`; upserts are race-safe under concurrent turns.
+
+### Test infrastructure
+
+- **759 tests** across 76 files (was 372 in v0.7.3).
+- **Solo adjudication** — files that fail in the parallel pool are re-run one-at-a-time; flakes reported separately from failures.
+- **Per-file hard cap** — 2 min per file (was 3 min); a file that hangs is SIGKILLed.
+- **Cross-repo E2E driver** — `scripts/cross-repo-e2e.mjs` exercises the full loop across two fake repos.
+- **Memory round-trip suite** — write → persist → recall → format, bloat cap, hallucination guard.
+- **S4x RAG verification** — pins default-enable claims against real code; gaps documented as absent-from-DedupConfig.
+
+### Migration
+
+- **From v0.8.21 or earlier:** the store schema auto-migrates on first open. Checkpoints are backward-compatible. New tables (turns, turn_recall, conversation_branches, raptor_build_history) are created if missing.
+- **From v0.9.1 (raptor-promotion):** this is identical code. No migration needed.
+- **Env vars:** all new flags default ON. Set `MEGACOMPACT_RAPTOR_MULTILEVEL=false` to disable multi-level retrieval; `MEGACOMPACT_RAPTOR_SHADOW_MODE=false` to disable serving; `MEGACOMPACT_CRITIQUE=0` to disable the critique gate (currently spec-only).
+
+---
+
 ## v0.9.0 (2026-07-29)
 
 **The trust release.** v0.8.25 shipped a lot of memory machinery; v0.9.0 is the work that makes it verifiable end-to-end. Six commits built on top of v0.8.26's docs release, keyed around proving what the pipeline actually does rather than assuming it.

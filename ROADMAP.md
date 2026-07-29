@@ -1,12 +1,10 @@
-# Roadmap — RAPTOR Promotion + Dedup Pipeline (raptor-promotion branch)
+# Roadmap — pi-mega-compact
 
-> Consolidated roadmap for P1/P2 deferred work. The original PLAN.md Phase 2-4
-> compression/dedup work shipped as sprints 9-11 (kept for reference only).
-> Current focus: S48 deferred wiring, then S25-B/C E2E proofs, then S49+ platform.
+> Consolidated roadmap for P1/P2 deferred work. Current version: v0.10.0 (master).
+> The `raptor-promotion` branch has been merged into master.
 
-**Branch:** `raptor-promotion`
-**Created:** 2026-07-20
-**Current version:** v0.9.0
+**Branch:** `master`
+**Current version:** v0.10.0
 
 ---
 
@@ -15,6 +13,8 @@
 | Sprint | Description | Version | Date |
 | --- | --- | --- | --- |
 | S25-A | RAPTOR Promotion (serve gate + freshness + cache + monitoring) | v0.8.25 | 2026-07-28 |
+| S25-B | Cross-Repo E2E (repoKey unification + headless two-repo driver) | v0.9.0 | 2026-07-29 |
+| S25-C | Durable-Memory Round-Trip (memory DB suite + test-runner hardening) | v0.9.0 | 2026-07-29 |
 | S42 | Multi-Level Retrieval (S42A engine + S42B integration + S42D build history) | v0.8.25 | 2026-07-28 |
 | S48 | Per-Turn Tracking core (turns/recall/fork tables + provenance writers) | v0.8.25 | 2026-07-28 |
 | S9 | Zstd + Content Dedup | v0.1.x | 2026-07-13 |
@@ -23,7 +23,7 @@
 
 ---
 
-## P1 — High Priority (Next Branch Candidates)
+## P1 — High Priority (Next Work)
 
 ### S48 — Per-Turn Tracking: Deferred Wiring
 
@@ -33,101 +33,56 @@
 
 **Deferred Work Items:**
 
-- [ ] Wire `raw_transcript.turn_index` population — column exists but `appendRawTranscript` doesn't set it. Thread `runtime.currentTurn` through the context-handler append path.
-- [ ] Wire `turns.epoch_id` on compact commit — FK exists but `turn_end` doesn't set it. When a compact closes an epoch, stamp the turns in the closed epoch's seq range with the `epoch_id`.
-- [ ] Dashboard / query surface — no UI yet for per-turn or per-conversation views. Data is SQL-queryable.
-- [ ] Live-window replay — `forkConversation` inherits recall state only. True rewind needs message-log snapshot (behind flag, default OFF).
-- [ ] `/mega-fork` command — `forkConversation` is a primitive, not a pi command.
-
-**Files:**
-
-- `src/store/sqlite/turns.ts` — `appendRawTranscript` wiring
-- `src/store/sqlite/epochs.ts` — epoch_id stamping on compact
-- `extensions/mega-events/agent-handlers.ts` — turn_end epoch wiring
-- `extensions/dashboard-server.ts` — per-turn/conversation dashboard tab
+- [ ] Wire `raw_transcript.turn_index` population — column exists but `appendRawTranscript` doesn't set it
+- [ ] Wire `turns.epoch_id` on compact commit — FK exists but `turn_end` doesn't set it
+- [ ] Dashboard / query surface — no UI yet for per-turn or per-conversation views
+- [ ] Live-window replay — `forkConversation` inherits recall state only; true rewind needs message-log snapshot
+- [ ] `/mega-fork` command — `forkConversation` is a primitive, not a pi command
 
 ---
 
-### S25-B — Cross-Repo E2E
+### S49 — Turn-DB Foundation (Contract-First)
 
-**Source:** `docs/specs/s25-cross-repo.md`
-**Status:** ⬜ NOT STARTED
-**Priority:** P1 (headline feature has no automated two-repo proof)
+**Source:** `docs/specs/s49-turn-db-foundation.md`
+**Status:** ⬜ SPEC ONLY (implement-ready, v1 contract-first revision)
+**Priority:** P1 (foundation for the S49–S52 program)
 
-**Work Items (9 tasks):**
+**Work Items (from spec, S49A/S49B/S49C gated):**
 
-- [ ] `src/store/repoKey.ts` — shared `repoKey()` + `stateDirForRepo()` helpers
-- [ ] `src/vectorStore.ts` — use `repoKey(stateDir)` for repoId
-- [ ] `src/memoryOps.ts` — use `repoKey()` instead of local resolver
-- [ ] `extensions/mega-conflict-cmds.ts` — assert `repo == repoKey(stateDir)`
-- [ ] `scripts/cross-repo-e2e.mjs` — headless two-repo driver (A/B/C phases)
-- [ ] Phase A: checkpoint recall on resume
-- [ ] Phase B: memory augmentation
-- [ ] Phase C: kill-switch + corrupt fallback tests
-- [ ] Unit-test hardening: vectorIndex corrupt-self-heal, recall.test.ts real HNSW
+- [ ] S49A: `TurnStore` contract (`types.ts`) + `SqliteTurnStore` + `InMemoryTurnStore` + shared compliance suite
+- [ ] S49B: Migration (main-db → turns.db) + config flags (`TURNS_DB_ENABLED`)
+- [ ] S49C: Retention + `StoreSnapshot` + adapter re-point + legacy quarantine
 
 ---
 
-### S25-C — Durable-Memory DB Round-Trip
+## P2 — Medium Priority (Platform + RAG Suite)
 
-**Source:** `docs/specs/s25-memory-db-roundtrip.md`
-**Status:** ⬜ NOT STARTED
-**Priority:** P1 (test/doc only by default)
+### S50 — Per-Turn Metrics + Fork
 
-**Work Items (7 tasks):**
-
-- [ ] `extensions/mega-memory-roundtrip.test.ts` — headless E2E driver
-- [ ] E1: `turn_end` auto-review writes a memory
-- [ ] E2: `session_start` → `before_agent_start` inlines memory block
-- [ ] `src/memoryRoundtrip.test.ts` — full src-level round-trip
-- [ ] Bloat assertion: review path stays ≤ `MEMORY_MAX_ROWS`
-- [ ] Hallucination guard + `consolidateMemories` unit tests
-- [ ] Cross-repo floor reconciliation (code vs docs)
-
----
-
-## P2 — Medium Priority (RAG Suite + Platform)
-
-> **RAG Suite specs** (`docs/specs/s43`-`s47`) are spec-only — no consumer code
-> or feature flags yet. S42 RAPTOR flags are ON by default and verified.
-
-### S49 — Per-Turn Memory Platform
-
-**Source:** `docs/specs/s49-program-per-turn-memory-platform.md`, `docs/specs/s49-turn-db-foundation.md`
-**Status:** ⬜ SPEC ONLY (docs committed, no implementation)
-**Priority:** P2
-
-**Work Items (from S49 program spec):**
-
-- [ ] Turn-DB foundation: dedicated DB, prune/vacuum/threshold controls
-- [ ] Per-turn recall quality metrics (recall-hit-rate, miss-rate per turn)
-- [ ] Dashboard tab for per-turn / per-conversation views
-- [ ] Retention policies (time-windowed, conversation-scoped)
-
-### S43 — HyDE Vague Queries
-
-**Source:** `docs/specs/s43-hyde-vague-queries.md`
+**Source:** `docs/specs/s50-per-turn-metrics-fork.md`
 **Status:** ⬜ SPEC ONLY
+**Depends on:** S49
 
-### S44 — Three-Tier Latency Routing
+### S51 — Auto-Categorizing Wiki (replaces S47)
 
-**Source:** `docs/specs/s44-three-tier-latency-routing.md`
+**Source:** `docs/specs/s51-auto-categorizing-wiki.md`
 **Status:** ⬜ SPEC ONLY
+**Depends on:** S49
 
-### S45 — CRAG Quality Metrics
+### S52 — Dashboard Management + Rewind
 
-**Source:** `docs/specs/s45-crag-quality-metrics.md`
+**Source:** `docs/specs/s52-dashboard-management-rewind.md`
 **Status:** ⬜ SPEC ONLY
+**Depends on:** S50, S51
 
-### S46 — Visual Memory Map
+### RAG Suite (spec-only, no consumer code)
 
-**Source:** `docs/specs/s46-visual-memory-map.md`
-**Status:** ⬜ SPEC ONLY
-
-### S47 — Auto-Categorizing Wiki
-
-**Source:** `docs/specs/s47-auto-categorizing-wiki.md`
-**Status:** ⬜ SPEC ONLY
+| Sprint | Description | Spec |
+| --- | --- | --- |
+| S43 | HyDE Vague Queries (re-planned as local query reformulation) | `docs/specs/s43-hyde-vague-queries.md` |
+| S44 | Three-Tier Latency Routing | `docs/specs/s44-three-tier-latency-routing.md` |
+| S45 | CRAG Quality Metrics | `docs/specs/s45-crag-quality-metrics.md` |
+| S46 | Visual Memory Map | `docs/specs/s46-visual-memory-map.md` |
 
 ---
 
@@ -144,40 +99,16 @@
 
 ## Execution Order
 
-**Current Sprint:**
+**Next (P1):**
 
-1. ~~S25-A RAPTOR Promotion~~ ✅ v0.8.25
-2. ~~S42 Multi-Level Retrieval~~ ✅ v0.8.25
-3. ~~S48 Core (turns/recall/fork)~~ ✅ v0.8.25
-4. **S48 Deferred Wiring** — 🔧 IN PROGRESS
-5. S25-B Cross-Repo E2E — next P1
-6. S25-C Memory Round-Trip — next P1
+1. S49 Turn-DB Foundation (contract-first, S49A→S49B→S49C)
+2. S48 Deferred Wiring (turn_index, epoch_id, dashboard surface)
 
-**Future:**
+**Then (P2):**
 
-1. S49 Per-Turn Memory Platform
-2. S43-S47 RAG Suite (spec-only, prioritize by need)
-
----
-
-## Acceptance Gates
-
-### P1 Acceptance
-
-- [x] S25-A: RAPTOR serve gate + freshness + cache + p95 < 100ms
-- [x] S42: Multi-level retrieval + build history + coherence scores
-- [x] S48 Core: turns/recall/fork tables + provenance writers
-- [ ] S48 Wiring: `turn_index` populated + `epoch_id` stamped
-- [ ] Cross-Repo: Two-repo E2E passes all phases
-- [ ] Memory: Full round-trip proven; bloat bounded; hallucination guard verified
-- [ ] All existing tests green; no regressions
-- [ ] `npm run build && npm test && npm run lint && python3 scripts/regression_check.py --all` clean
-
-### P2 Acceptance
-
-- [x] S9: Zstd + content dedup (backward-compatible)
-- [x] S10: Tier 0 exact match (Bloom pre-check)
-- [x] S11: Tier 1 MinHash+LSH near-duplicate
+1. S50 Per-Turn Metrics + Fork
+2. S51 Auto-Categorizing Wiki
+3. S52 Dashboard Management + Rewind
 
 ---
 
@@ -188,26 +119,17 @@ All items are **additive + non-breaking**:
 - RAPTOR: `MEGACOMPACT_RAPTOR_ENABLED=false` → flat MMR fallback
 - Multi-level: `MEGACOMPACT_RAPTOR_MULTILEVEL=false` → leaf-only retrieval
 - Cross-Repo: `MEGACOMPACT_PGLITE_DISABLED=true` → same-repo-only fallback
-- Memory: Test-only, no runtime changes by default
+- Turns DB: `MEGACOMPACT_TURNS_DB=0` → legacy main-db path (S49 flag)
 
 ---
 
 ## References
 
-- `docs/specs/s25-raptor-promote.md`
-- `docs/specs/s25-cross-repo.md`
-- `docs/specs/s25-memory-db-roundtrip.md`
-- `docs/specs/s42-raptor-multilevel-retrieval.md`
-- `docs/specs/s48-per-turn-vector-tracking.md`
-- `docs/specs/s49-program-per-turn-memory-platform.md`
-- `docs/specs/s49-turn-db-foundation.md`
-- `docs/specs/s43-hyde-vague-queries.md` — S47
+- `docs/specs/s49-program-per-turn-memory-platform.md` — the 4-sprint program
+- `docs/specs/s49-rev1-architecture-upgrade.md` — v0→v1 revision record
+- `docs/ENGINEERING_PRACTICES.md` — codified structural conventions
 - `BACKLOG.md`
 
 ---
 
-*Last updated: 2026-07-28 (S48 deferred items documented; S42/S48 shipped status synced; S49-S52 specs added; QA audit results recorded; ROADMAP restructured)*
-
-> **Numbering note:** the newer RAG specs (`docs/specs/s40`-`s47`) reuse sprint
-> numbers already assigned to earlier shipped work. Treat the `docs/specs/s4x-*.md`
-> files as a separate *RAG suite* series.
+*Last updated: 2026-07-29 (raptor-promotion merged to master; v0.10.0; S25-B/C marked shipped; S49 upgraded to P1)*
