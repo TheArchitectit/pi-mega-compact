@@ -11,12 +11,13 @@ import { sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
 import { recallAndInline, recallAndInlineAsync, formatRecallBlock, type RecallInjectResult } from "../../src/recall.js";
 import { normalizeSessionId } from "../../src/store.js";
 import { incRecallInjected, incCacheHitTokens, getIndexDir } from "../../src/store/sqlite.js";
-import { ensureConversationId, recordTurn, recordTurnRecall, type RecallSource } from "../../src/store/sqlite/turns.js";
+import type { RecallSource } from "../../src/store/turns/index.js";
+import { ensureConversationIdFor, recordTurnWrite, recordRecallWrite } from "../mega-turn-store.js";
 import {
   type MegaRuntime,
   C,
 } from "../mega-runtime.js";
-import { type MegaConfig } from "../mega-config.js";
+import type { MegaConfig } from "../mega-config.js";
 
 /**
  * Unified recall (Layer 5). The ONE path that injects. Returns the recall
@@ -69,14 +70,15 @@ export function doRecall(
     // turn, their score + source path. Linked to the turn row written at
     // turn_end via the conversation+turnIndex. Best-effort + non-fatal.
     try {
-      const convId = ensureConversationId(sid, runtime.currentStateDir);
-      const turnId = recordTurn({
+      const convId = ensureConversationIdFor(config, sid, runtime.currentStateDir);
+      const turnId = recordTurnWrite(config, {
         conversationId: convId,
         sessionId: sid,
         turnIndex: runtime.currentTurn,
         startedAt: Date.now(),
       }, runtime.currentStateDir);
-      recordTurnRecall(
+      recordRecallWrite(
+        config,
         turnId,
         result.toInject.map((h) => ({
           checkpointId: h.checkpoint.checkpointId,

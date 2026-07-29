@@ -5,7 +5,7 @@
  * and turn_start/end (turn index, memory auto-review, length-stop detection).
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { type MegaRuntime } from "../mega-runtime.js";
+import type { MegaRuntime } from "../mega-runtime.js";
 import {
 	piCompactWouldNoop,
 	runMemoryReview,
@@ -14,9 +14,9 @@ import {
 	memoryReviewCadence,
 	type MegaConfig,
 } from "../mega-config.js";
-import { recordScore, recordTurn } from "../../src/store/sqlite.js";
+import { recordScore } from "../../src/store/sqlite.js";
 import { evaluateAndUnlockAchievements } from "../../src/store/sqlite/game-achievements.js";
-import { ensureConversationId } from "../../src/store/sqlite/turns.js";
+import { ensureConversationIdFor, recordTurnWrite } from "../mega-turn-store.js";
 import { isMegaCache } from "../../src/game/scoring.js";
 import { resolveRepoRoot } from "../mega-config.js";
 import { classifyError, errorRetryBackoffMs, extractErrorSignature } from "./error-classifier.js";
@@ -252,8 +252,8 @@ export function registerAgentHandlers(
 		// the turn layer is queryable + forkable. Best-effort + non-fatal: a write
 		// failure never breaks the agent loop.
 		try {
-			const convId = ensureConversationId(runtime.rt.sessionId, runtime.currentStateDir);
-			recordTurn({
+			const convId = ensureConversationIdFor(config, runtime.rt.sessionId, runtime.currentStateDir);
+			recordTurnWrite(config, {
 				conversationId: convId,
 				sessionId: runtime.rt.sessionId,
 				turnIndex: event.turnIndex,

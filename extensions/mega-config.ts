@@ -127,6 +127,9 @@ export interface MegaConfig {
    *  change until flipped on. legacyDurableTrim takes precedence (the legacy
    *  v0.4.28 ctx.compact() path does not emit the S27 mirror hook). */
   dbMirror: boolean;
+  /** S49: isolated per-turn store (turns.db). Default ON. OFF = legacy main-db
+   *  turn path (S48 behavior — byte-identical). Mirrors TurnsConfig.TURNS_DB_ENABLED. */
+  turnsDbEnabled: boolean;
   /** Cross-repo recall enabled (S17). Resume + /mega-recall --cross-repo can
    *  pull checkpoints from OTHER repos via the PGlite HNSW index. Default true. */
   crossRepoEnabled: boolean;
@@ -286,6 +289,9 @@ export function loadConfig(): MegaConfig {
     raptorEnabled: envBool("MEGACOMPACT_RAPTOR_ENABLED", true),
     legacyDurableTrim: envBool("MEGACOMPACT_LEGACY_DURABLE_TRIM", false),
     dbMirror: envBool("MEGACOMPACT_DB_MIRROR", false),
+    // S49: isolated per-turn store (turns.db). Default ON. OFF = legacy main-db
+    // turn path (S48 behavior). Mirrors src/config/turns.ts TURNS_DB_ENABLED.
+    turnsDbEnabled: envBool("MEGACOMPACT_TURNS_DB", true),
     crossRepoEnabled: envBool("MEGACOMPACT_CROSSREPO_ENABLED", true),
     crossRepoCosine: Number(process.env.MEGACOMPACT_CROSSREPO_COSINE ?? "0.90"),
     memoryAutoReview: envBool("MEGACOMPACT_MEMORY_AUTO_REVIEW", true),
