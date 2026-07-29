@@ -305,8 +305,14 @@ export class MegaRuntime {
 	}
 
 	/** Width-aware above-editor widget factory registration — thin delegate to
-	 *  `renderWidgetImpl` (render-widget.ts). */
+	 *  `renderWidgetImpl` (render-widget.ts).
+	 *
+	 *  Gated on `config.tuiWidget` (MEGACOMPACT_TUI_WIDGET=0 to disable). This
+	 *  is the single chokepoint every caller funnels through, so returning here
+	 *  means setWidget is never called and the panel is never registered — as
+	 *  opposed to registering an empty one, which would still occupy a row. */
 	renderWidget(ctx: ExtensionContext): void {
+		if (!this.config.tuiWidget) return;
 		renderWidgetImpl(this, ctx);
 	}
 
