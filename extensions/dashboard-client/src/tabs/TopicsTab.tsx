@@ -28,7 +28,8 @@ export default function TopicsTab(): React.ReactElement {
 
 	const drill = useApi<TopicMemoriesResponse>(
 		useCallback(
-			() => (drillTopicId ? fetchTopicMemories(drillTopicId) : Promise.reject()),
+			() =>
+				drillTopicId ? fetchTopicMemories(drillTopicId) : Promise.reject(),
 			[drillTopicId],
 		),
 		{ pollInterval: 0 },

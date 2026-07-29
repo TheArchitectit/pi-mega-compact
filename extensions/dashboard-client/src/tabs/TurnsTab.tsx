@@ -54,9 +54,12 @@ export default function TurnsTab(): React.ReactElement {
 		data: turns,
 		loading,
 		error,
-	} = useApi<TurnsResponse>(useCallback(() => fetchTurns(), []), {
-		pollInterval: 10_000,
-	});
+	} = useApi<TurnsResponse>(
+		useCallback(() => fetchTurns(), []),
+		{
+			pollInterval: 10_000,
+		},
+	);
 	const { data: intents } = useApi<RewindIntentsResponse>(
 		useCallback(() => fetchTurnIntents(), []),
 		{ pollInterval: 5_000 },
@@ -67,22 +70,25 @@ export default function TurnsTab(): React.ReactElement {
 	const [busy, setBusy] = useState<string | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
 
-	const expand = useCallback(async (conversationId: string) => {
-		if (expanded === conversationId) {
-			setExpanded(null);
+	const expand = useCallback(
+		async (conversationId: string) => {
+			if (expanded === conversationId) {
+				setExpanded(null);
+				setDetail(null);
+				return;
+			}
+			setExpanded(conversationId);
+			setDetailLoading(true);
 			setDetail(null);
-			return;
-		}
-		setExpanded(conversationId);
-		setDetailLoading(true);
-		setDetail(null);
-		try {
-			const d = await fetchConversationTurns(conversationId);
-			setDetail(d);
-		} finally {
-			setDetailLoading(false);
-		}
-	}, [expanded]);
+			try {
+				const d = await fetchConversationTurns(conversationId);
+				setDetail(d);
+			} finally {
+				setDetailLoading(false);
+			}
+		},
+		[expanded],
+	);
 
 	const onFork = useCallback(
 		async (conversationId: string, turnIndex: number) => {
@@ -102,18 +108,21 @@ export default function TurnsTab(): React.ReactElement {
 		[],
 	);
 
-	const onRewind = useCallback(async (conversationId: string, turnIndex: number) => {
-		setBusy(`rewind:${conversationId}:${turnIndex}`);
-		setNotice(null);
-		try {
-			await postTurnIntent(conversationId, turnIndex);
-			setNotice(`Rewind intent queued for turn ${turnIndex}`);
-		} catch (e) {
-			setNotice(`Rewind failed: ${(e as Error).message}`);
-		} finally {
-			setBusy(null);
-		}
-	}, []);
+	const onRewind = useCallback(
+		async (conversationId: string, turnIndex: number) => {
+			setBusy(`rewind:${conversationId}:${turnIndex}`);
+			setNotice(null);
+			try {
+				await postTurnIntent(conversationId, turnIndex);
+				setNotice(`Rewind intent queued for turn ${turnIndex}`);
+			} catch (e) {
+				setNotice(`Rewind failed: ${(e as Error).message}`);
+			} finally {
+				setBusy(null);
+			}
+		},
+		[],
+	);
 
 	if (error && !turns) {
 		return <div className="tab-stub">Error loading turns: {error.message}</div>;
@@ -146,8 +155,8 @@ export default function TurnsTab(): React.ReactElement {
 					<ul>
 						{intents.intents.map((i) => (
 							<li key={i.id}>
-								{fmtTs(i.createdAt)} — rewind <code>{i.conversationId}</code>{" "}
-								to turn {i.targetTurnIndex}
+								{fmtTs(i.createdAt)} — rewind <code>{i.conversationId}</code> to
+								turn {i.targetTurnIndex}
 							</li>
 						))}
 					</ul>
@@ -184,21 +193,21 @@ export default function TurnsTab(): React.ReactElement {
 
 			{expanded && (
 				<section className="turns-detail">
-				<h4>
-					Turns in <code>{expanded}</code>
-				</h4>
-				{detailLoading ? (
-					<div className="tab-stub">Loading turns…</div>
-				) : detail ? (
-					<TurnDetail
-						detail={detail}
-						busy={busy}
-						onFork={onFork}
-						onRewind={onRewind}
-					/>
-				) : (
-					<div className="tab-stub">No detail.</div>
-				)}
+					<h4>
+						Turns in <code>{expanded}</code>
+					</h4>
+					{detailLoading ? (
+						<div className="tab-stub">Loading turns…</div>
+					) : detail ? (
+						<TurnDetail
+							detail={detail}
+							busy={busy}
+							onFork={onFork}
+							onRewind={onRewind}
+						/>
+					) : (
+						<div className="tab-stub">No detail.</div>
+					)}
 				</section>
 			)}
 		</div>
@@ -271,7 +280,10 @@ function TurnDetail({
 						<td>
 							{t.ctxTokens ?? "—"}
 							{t.ctxPercent != null && (
-								<span className="muted"> · {(t.ctxPercent * 100).toFixed(0)}%</span>
+								<span className="muted">
+									{" "}
+									· {(t.ctxPercent * 100).toFixed(0)}%
+								</span>
 							)}
 						</td>
 						<td>
@@ -279,9 +291,7 @@ function TurnDetail({
 								{t.pressureBand ?? "—"}
 							</span>
 						</td>
-						<td>
-							{t.epochId ? <code>{t.epochId.slice(0, 8)}</code> : "—"}
-						</td>
+						<td>{t.epochId ? <code>{t.epochId.slice(0, 8)}</code> : "—"}</td>
 						<td className="recall-cell">
 							{t.recall.length === 0 ? (
 								<span className="muted">—</span>

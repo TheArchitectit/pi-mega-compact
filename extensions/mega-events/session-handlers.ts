@@ -12,10 +12,7 @@ import {
 	recentUserQuery,
 	WIDGET_KEY,
 } from "../mega-runtime.js";
-import {
-	doRecall,
-	doRecallAsync,
-} from "../mega-pipeline.js";
+import { doRecall, doRecallAsync } from "../mega-pipeline.js";
 import { recallMemoriesAndInline } from "../../src/recall.js";
 import { vectorStats } from "../../src/vectorStore.js";
 import { openTurnStore } from "../../src/store/turns/connection.js";
@@ -98,7 +95,8 @@ export function registerSessionHandlers(
 		// one-line summary for diagnostics.
 		try {
 			const m = autoMaintain(runtime.currentStateDir);
-			if (m && !m.endsWith("nothing to do")) runtime.logger.info("db-auto-maintain", { result: m });
+			if (m && !m.endsWith("nothing to do"))
+				runtime.logger.info("db-auto-maintain", { result: m });
 		} catch (e) {
 			runtime.logger.warn("db-auto-maintain-fail", { error: String(e) });
 		}

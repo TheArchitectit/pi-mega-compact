@@ -41,7 +41,11 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 /** Read a capped JSON body; returns { ok, value } or { error }. */
 function readJsonBody(
 	req: IncomingMessage,
-	cb: (result: { ok: true; value: Record<string, unknown> } | { ok: false; error: string }) => void,
+	cb: (
+		result:
+			| { ok: true; value: Record<string, unknown> }
+			| { ok: false; error: string },
+	) => void,
 ): void {
 	let body = "";
 	let tooBig = false;
@@ -122,7 +126,10 @@ export function handleTurns(
 					activeConversationId = c.conversationId;
 				}
 			}
-			sendJson(res, 200, { conversations, activeConversationId } satisfies TurnsResponse);
+			sendJson(res, 200, {
+				conversations,
+				activeConversationId,
+			} satisfies TurnsResponse);
 			return true;
 		} catch (e) {
 			sendJson(res, 500, { error: String(e) });
@@ -152,16 +159,19 @@ export function handleTurns(
 				pressureBand: e.pressureBand ?? null,
 				model: e.model ?? null,
 				epochId: e.epochId ?? null,
-				recall: reader
-					.listRecallByIndex(convId, e.turnIndex)
-					.map((r): RecallHit => ({
+				recall: reader.listRecallByIndex(convId, e.turnIndex).map(
+					(r): RecallHit => ({
 						checkpointId: r.checkpointId,
 						score: r.score,
 						source: r.source,
 						raptorLevel: r.raptorLevel ?? null,
-					})),
+					}),
+				),
 			}));
-			sendJson(res, 200, { conversationId: convId, turns } satisfies ConversationTurnsResponse);
+			sendJson(res, 200, {
+				conversationId: convId,
+				turns,
+			} satisfies ConversationTurnsResponse);
 			return true;
 		} catch (e) {
 			sendJson(res, 500, { error: String(e) });
@@ -194,15 +204,22 @@ export function handleTurns(
 		readJsonBody(req, (result) => {
 			if (!result.ok) return sendJson(res, 400, { error: result.error });
 			const v = result.value;
-			const conversationId = typeof v.conversationId === "string" ? v.conversationId : "";
-			const targetTurnIndex = typeof v.targetTurnIndex === "number" ? v.targetTurnIndex : -1;
+			const conversationId =
+				typeof v.conversationId === "string" ? v.conversationId : "";
+			const targetTurnIndex =
+				typeof v.targetTurnIndex === "number" ? v.targetTurnIndex : -1;
 			if (!conversationId || targetTurnIndex < 0) {
-				return sendJson(res, 400, { error: "missing_conversationId_or_targetTurnIndex" });
+				return sendJson(res, 400, {
+					error: "missing_conversationId_or_targetTurnIndex",
+				});
 			}
 			try {
 				const tdb = openTurnStore(ctx.stateDir);
 				const q = openIntentQueue(tdb);
-				const intent = q.postIntent({ conversationId, targetTurnIndex } satisfies PostIntentRequest);
+				const intent = q.postIntent({
+					conversationId,
+					targetTurnIndex,
+				} satisfies PostIntentRequest);
 				sendJson(res, 201, intent);
 			} catch (e) {
 				sendJson(res, 500, { error: String(e) });
@@ -216,10 +233,13 @@ export function handleTurns(
 		readJsonBody(req, (result) => {
 			if (!result.ok) return sendJson(res, 400, { error: result.error });
 			const v = result.value;
-			const conversationId = typeof v.conversationId === "string" ? v.conversationId : "";
+			const conversationId =
+				typeof v.conversationId === "string" ? v.conversationId : "";
 			const turnIndex = typeof v.turnIndex === "number" ? v.turnIndex : -1;
 			if (!conversationId || turnIndex < 0) {
-				return sendJson(res, 400, { error: "missing_conversationId_or_turnIndex" });
+				return sendJson(res, 400, {
+					error: "missing_conversationId_or_turnIndex",
+				});
 			}
 			try {
 				const store = createTurnStore({ stateDir: ctx.stateDir });
@@ -241,9 +261,12 @@ export function handleTurns(
 		readJsonBody(req, (result) => {
 			if (!result.ok) return sendJson(res, 400, { error: result.error });
 			const v = result.value;
-			const maxTurnAgeMs = typeof v.maxTurnAgeMs === "number" ? v.maxTurnAgeMs : 0;
+			const maxTurnAgeMs =
+				typeof v.maxTurnAgeMs === "number" ? v.maxTurnAgeMs : 0;
 			const keepMinPerConversation =
-				typeof v.keepMinPerConversation === "number" ? v.keepMinPerConversation : 50;
+				typeof v.keepMinPerConversation === "number"
+					? v.keepMinPerConversation
+					: 50;
 			if (maxTurnAgeMs <= 0) {
 				return sendJson(res, 400, { error: "invalid_maxTurnAgeMs" });
 			}

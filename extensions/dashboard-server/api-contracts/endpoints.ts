@@ -511,35 +511,40 @@ export const ENDPOINTS = {
 	conversationTurns: {
 		method: "GET",
 		path: "/api/turns/conversation/:convId",
-		description: "Per-turn metrics + injected-checkpoint recall provenance for one conversation.",
+		description:
+			"Per-turn metrics + injected-checkpoint recall provenance for one conversation.",
 	} as const satisfies EndpointDef<"GET", undefined, ConversationTurnsResponse>,
 
 	/** GET /api/turns/intents — pending rewind intents (S52A). */
 	turnIntents: {
 		method: "GET",
 		path: "/api/turns/intents",
-		description: "Pending rewind intents queued by the dashboard for the host to consume.",
+		description:
+			"Pending rewind intents queued by the dashboard for the host to consume.",
 	} as const satisfies EndpointDef<"GET", undefined, RewindIntentsResponse>,
 
 	/** POST /api/turns/intent — post a rewind intent. */
 	postTurnIntent: {
 		method: "POST",
 		path: "/api/turns/intent",
-		description: "Queue a rewind-to-turn-N intent for the host to apply at before_agent_start.",
+		description:
+			"Queue a rewind-to-turn-N intent for the host to apply at before_agent_start.",
 	} as const satisfies EndpointDef<"POST", PostIntentRequest, unknown>,
 
 	/** POST /api/fork — fork a conversation at a turn. */
 	fork: {
 		method: "POST",
 		path: "/api/fork",
-		description: "Branch a child conversation off a parent turn + return the recall set to rehydrate.",
+		description:
+			"Branch a child conversation off a parent turn + return the recall set to rehydrate.",
 	} as const satisfies EndpointDef<"POST", ForkRequest, ForkResponse>,
 
 	/** POST /api/turns/prune — admin prune (capability-gated). */
 	pruneTurns: {
 		method: "POST",
 		path: "/api/turns/prune",
-		description: "Prune old turns (admin capability — dashboard uses asAdmin()).",
+		description:
+			"Prune old turns (admin capability — dashboard uses asAdmin()).",
 	} as const satisfies EndpointDef<"POST", PruneRequest, PruneTurnsResponse>,
 
 	/** GET /api/topics/:topicId/memories — wiki topic drill-down (S52). */

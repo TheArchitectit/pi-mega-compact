@@ -218,7 +218,10 @@ export function postFork(
 	conversationId: string,
 	turnIndex: number,
 ): Promise<ForkResponse> {
-	return postJson<ForkResponse>(ENDPOINTS.fork.path, { conversationId, turnIndex });
+	return postJson<ForkResponse>(ENDPOINTS.fork.path, {
+		conversationId,
+		turnIndex,
+	});
 }
 
 export function postPruneTurns(
@@ -235,6 +238,9 @@ export function fetchTopicMemories(
 	topicId: string,
 ): Promise<TopicMemoriesResponse> {
 	return getJson<TopicMemoriesResponse>(
-		ENDPOINTS.topicMemories.path.replace(":topicId", encodeURIComponent(topicId)),
+		ENDPOINTS.topicMemories.path.replace(
+			":topicId",
+			encodeURIComponent(topicId),
+		),
 	);
 }
