@@ -10,28 +10,28 @@
 
 /** A row in `turns`. */
 export interface TurnRow {
-  id: number;
-  conversationId: string;
-  sessionId: string;
-  turnIndex: number;
-  role: string | null;
-  startedAt: number;
-  endedAt: number | null;
-  ctxTokens: number | null;
-  ctxPercent: number | null;
-  pressureBand: string | null;
-  modelId: string | null;
-  epochId: string | null;
+	id: number;
+	conversationId: string;
+	sessionId: string;
+	turnIndex: number;
+	role: string | null;
+	startedAt: number;
+	endedAt: number | null;
+	ctxTokens: number | null;
+	ctxPercent: number | null;
+	pressureBand: string | null;
+	modelId: string | null;
+	epochId: string | null;
 }
 
 /** A row in `turn_recall`. */
 export interface TurnRecallRow {
-  id: number;
-  turnId: number;
-  checkpointId: string;
-  score: number;
-  source: string;
-  raptorLevel: number | null;
+	id: number;
+	turnId: number;
+	checkpointId: string;
+	score: number;
+	source: string;
+	raptorLevel: number | null;
 }
 
 /** Where a recalled hit came from (recorded on turn_recall.source). */
@@ -39,10 +39,10 @@ export type RecallSource = "flat" | "raptor" | "cross-repo" | "memory";
 
 /** A row in `conversation_branches` (fork lineage). */
 export interface ConversationBranch {
-  conversationId: string;
-  parentConversationId: string;
-  forkTurnId: number;
-  createdAt: number;
+	conversationId: string;
+	parentConversationId: string;
+	forkTurnId: number;
+	createdAt: number;
 }
 
 /**
@@ -51,50 +51,50 @@ export interface ConversationBranch {
  * Schema lands in S49; the writer + consumer land in S52.
  */
 export interface PendingFork {
-  id: number;
-  targetConversationId: string;
-  targetTurnId: number;
-  requestedAt: number;
-  consumedAt: number | null;
+	id: number;
+	targetConversationId: string;
+	targetTurnId: number;
+	requestedAt: number;
+	consumedAt: number | null;
 }
 
 /** Input to recordTurn (conversationId/sessionId/turnIndex required). */
 export interface RecordTurnInput {
-  conversationId: string;
-  sessionId: string;
-  turnIndex: number;
-  role?: string;
-  startedAt?: number;
-  endedAt?: number;
-  ctxTokens?: number;
-  ctxPercent?: number;
-  pressureBand?: string;
-  modelId?: string;
-  epochId?: string;
+	conversationId: string;
+	sessionId: string;
+	turnIndex: number;
+	role?: string;
+	startedAt?: number;
+	endedAt?: number;
+	ctxTokens?: number;
+	ctxPercent?: number;
+	pressureBand?: string;
+	modelId?: string;
+	epochId?: string;
 }
 
 /** One recalled hit to persist against a turn. */
 export interface RecordTurnRecallHit {
-  checkpointId: string;
-  score: number;
-  source: RecallSource;
-  raptorLevel?: number;
+	checkpointId: string;
+	score: number;
+	source: RecallSource;
+	raptorLevel?: number;
 }
 
 /** Result of forkConversation: the new child conversation + the recall set to replay. */
 export interface ForkResult {
-  conversationId: string;
-  recalled: TurnRecallRow[];
+	conversationId: string;
+	recalled: TurnRecallRow[];
 }
 
 /** Options for pruneTurns. */
 export interface PruneOptions {
-  /** Delete turns older than now - olderThanMs. */
-  olderThanMs: number;
-  /** Always keep at least this many most-recent turns per conversation. */
-  keepMinPerConversation: number;
-  /** now override (tests). Defaults to Date.now(). */
-  now?: number;
+	/** Delete turns older than now - olderThanMs. */
+	olderThanMs: number;
+	/** Always keep at least this many most-recent turns per conversation. */
+	keepMinPerConversation: number;
+	/** now override (tests). Defaults to Date.now(). */
+	now?: number;
 }
 
 /**
@@ -103,16 +103,22 @@ export interface PruneOptions {
  * host wraps calls in try/catch to keep the agent loop non-fatal.
  */
 export interface TurnStore {
-  recordTurn(input: RecordTurnInput): number;
-  recordTurnRecall(turnId: number, hits: RecordTurnRecallHit[]): void;
-  getTurn(conversationId: string, turnIndex: number): TurnRow | null;
-  getTurnById(turnId: number): TurnRow | null;
-  listTurnRecall(turnId: number): TurnRecallRow[];
-  listConversationTurns(conversationId: string): TurnRow[];
-  ensureConversationId(sessionId: string): string;
-  forkConversation(parentConversationId: string, forkTurnId: number): ForkResult;
-  clearTurns(sessionId: string): void;
-  pruneTurns(opts: PruneOptions): { deletedTurns: number; deletedRecall: number };
-  vacuum(): void;
-  close(): void;
+	recordTurn(input: RecordTurnInput): number;
+	recordTurnRecall(turnId: number, hits: RecordTurnRecallHit[]): void;
+	getTurn(conversationId: string, turnIndex: number): TurnRow | null;
+	getTurnById(turnId: number): TurnRow | null;
+	listTurnRecall(turnId: number): TurnRecallRow[];
+	listConversationTurns(conversationId: string): TurnRow[];
+	ensureConversationId(sessionId: string): string;
+	forkConversation(
+		parentConversationId: string,
+		forkTurnId: number,
+	): ForkResult;
+	clearTurns(sessionId: string): void;
+	pruneTurns(opts: PruneOptions): {
+		deletedTurns: number;
+		deletedRecall: number;
+	};
+	vacuum(): void;
+	close(): void;
 }

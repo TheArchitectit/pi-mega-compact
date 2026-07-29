@@ -17,11 +17,11 @@ import { execSync } from "node:child_process"; // guardrails-allow PREVENT-PI-00
  * session trimmed. Explicit MEGACOMPACT_THRESHOLD_TOKENS always wins.
  */
 export const COMPACT_TIERS = {
-  low: 50_000,
-  medium: 100_000,
-  high: 200_000,
-  ultra: 1_000_000,
-  mega: 10_000_000,
+	low: 50_000,
+	medium: 100_000,
+	high: 200_000,
+	ultra: 1_000_000,
+	mega: 10_000_000,
 } as const;
 export type CompactTier = keyof typeof COMPACT_TIERS;
 
@@ -33,11 +33,11 @@ export type CompactTier = keyof typeof COMPACT_TIERS;
  * is NOT scaled by this map — it stays an absolute token count.
  */
 export const TIER_PCT: Record<CompactTier, number> = {
-  low: 0.5,
-  medium: 0.6,
-  high: 0.7,
-  ultra: 0.7,
-  mega: 0.75,
+	low: 0.5,
+	medium: 0.6,
+	high: 0.7,
+	ultra: 0.7,
+	mega: 0.75,
 };
 
 /**
@@ -48,121 +48,121 @@ export const TIER_PCT: Record<CompactTier, number> = {
  * band (see MegaRuntime.pressureBand), which climbs low→mega as context fills.
  */
 export interface MegaConfig {
-  tier: CompactTier | "custom";
-  /**
-   * Compaction threshold as a fraction of the model context window (e.g. 0.70
-   * for "high"). null for `custom` (explicit MEGACOMPACT_THRESHOLD_TOKENS, which
-   * stays an ABSOLUTE token count, never percent-scaled).
-   */
-  tierPct: number | null;
-  thresholdTokens: number;
-  stateDir: string;
-  fastGatePct: number;
-  anchorUserMessages: number;
-  preserveRecent: number;
-  /** High-pressure floor for preserveRecent — when context is near the limit
-   *  we compact deeper, but never below this (keeps recent turns for coherence). */
-  preserveRecentMin: number;
-  auto: boolean;
-  autoInline: boolean;
-  autoInlineK: number;
-  /** S28: auto-continue the agent after a max-output-token length stop by
-   *  reusing the existing S16 resume-nudge. Default true. Off = silent (the
-   *  prior behavior). PREVENT-PI-003: restart via user-role sendUserMessage. */
-  autoContinueLengthStop: boolean;
-  /** S38: max retries for transient errors (5xx/429/network/max-output-token
-   *  text that is NOT a length stopReason — S28 owns those). Default 5.
-   *  `0` disables all transient retries (reverts to S28-only). */
-  autoRetryTransientMax: number;
-  /** S38: max retries for permanent errors (auth/config/malformed). Default 1.
-   *  `0` disables permanent-error retries. */
-  autoRetryPermanentMax: number;
-  /** S38.5: strict race-guard — 30s cooldown + deferred ctx.compact() re-check
-   *  (closes the first-race-in-burst window). Default true. `false` reverts to
-   *  the v0.7.4 synchronous 10s-cooldown behavior. */
-  raceGuardStrict: boolean;
-  /** S38.6: max consecutive errors before circuit-breaker trips (stops retrying).
-   *  Default 10. When `errorRetryCount` exceeds this across multiple turns,
-   *  the extension stops retrying until a successful turn resets it. */
-  maxConsecutiveErrors: number;
-  /** S38.7: hard-stop switch — when true, ALL error retries are disabled.
-   *  Default false. Set via env to force S28-only behavior (length-stop continues
-   *  only). */
-  errorRetryHardStop: boolean;
-  /** R1 (retry redesign): base unit (ms) for errorRetryBackoffMs(count) pacing.
-   *  The schedule is base, 2*base, 4*base, 6*base (cap) — so the default 5000
-   *  yields 5s/10s/20s/30s. errorRetryUntil is now GATING (previously it was
-   *  documented as non-gating); a nudge cannot fire before errorRetryUntil
-   *  elapses. */
-  errorRetryBackoffMs: number;
-  /** R2: session-global cap on total S38 nudges across ALL bursts. Hitting it
-   *  is terminal for the session — the extension stops nudging entirely,
-   *  independent of the per-burst max and the circuit breaker. Default 3.
-   *  `0` disables (reverts to per-burst + circuit-breaker only). */
-  errorRetrySessionMax: number;
-  /** R3: consecutive identical error-text count at which a 'transient'
-   *  classification is upgraded to 'poisoned-context' (the stateful repeat
-   *  signal). Default 3. Raise to make the upgrade less aggressive. */
-  poisonedContextRepeatThreshold: number;
-  /** S29: override the auto-compact fire point for tiered configs, as a
-   *  fraction of the context window (e.g. 0.85). null = inherit the tier's
-   *  tierPct (default; preserves existing fire points). The context-handler
-   *  gate fires on context % (reliable), not token count (under-reported),
-   *  so it catches the overshoot that causes max-output-token truncation.
-   *  `custom` (tierPct null) ignores this — it keeps the absolute token gate. */
-  autoPctTrigger: number | null;
-  dedupSim: number;
-  /** RAPTOR hierarchical recall enabled (Fix D). Drives both live recall and
-   *  the durable-trim summary source (root summary). */
-  raptorEnabled: boolean;
-  /** Legacy v0.4.28 behavior: auto-trigger calls ctx.compact() (which STOPS
-   *  the agent). Default false — the S16 redesign uses the live context-event
-   *  trim + pi native auto-compaction instead (compact and continue). Kept for
-   *  one release as rollback. */
-  legacyDurableTrim: boolean;
-  /** S27: durable raw-transcript DB mirror (MEGACOMPACT_DB_MIRROR). When on,
-   *  raw message bytes + checkpoint-epoch bookkeeping are appended to the
-   *  SQLite store so a compacted window can be rehydrated locally instead of
-   *  from the pi runtime transcript. Default OFF — additive, no behavior
-   *  change until flipped on. legacyDurableTrim takes precedence (the legacy
-   *  v0.4.28 ctx.compact() path does not emit the S27 mirror hook). */
-  dbMirror: boolean;
-  /** S49: isolated per-turn store (turns.db). Default ON. OFF = legacy main-db
-   *  turn path (S48 behavior — byte-identical). Mirrors TurnsConfig.TURNS_DB_ENABLED. */
-  turnsDbEnabled: boolean;
-  /** Cross-repo recall enabled (S17). Resume + /mega-recall --cross-repo can
-   *  pull checkpoints from OTHER repos via the PGlite HNSW index. Default true. */
-  crossRepoEnabled: boolean;
-  /** Stricter cosine floor for cross-repo hits (S17). Default 0.90 (trigram) /
-   *  tighter than same-repo so only genuinely-relevant cross-repo context is
-   *  injected. */
-  crossRepoCosine: number;
-  /** Memory-RAG auto-review enabled (S20). Every memoryReviewInterval turns the
-   *  conversation is auto-reviewed into durable add/replace/remove memories. */
-  memoryAutoReview: boolean;
-  /** Turn cadence for the auto-review scan (S20). Default 10. */
-  memoryReviewInterval: number;
-  /** Token ceiling for the re-injected recall block (Fix C). Recall stops
-   *  adding checkpoints once the block would exceed this — bounds read-path
-   *  token cost so it can never net-inflate the window. */
-  recallMaxTokens: number;
-  /** Inline-dedupe recalled checkpoints against the live window (Fix C): drop
-   *  a hit whose summary is ≥ dedupSim similar to a live message — "dedupe on
-   *  inline/read" so we never re-inject context already resident. */
-  windowDedupe: boolean;
-  debug: boolean;
+	tier: CompactTier | "custom";
+	/**
+	 * Compaction threshold as a fraction of the model context window (e.g. 0.70
+	 * for "high"). null for `custom` (explicit MEGACOMPACT_THRESHOLD_TOKENS, which
+	 * stays an ABSOLUTE token count, never percent-scaled).
+	 */
+	tierPct: number | null;
+	thresholdTokens: number;
+	stateDir: string;
+	fastGatePct: number;
+	anchorUserMessages: number;
+	preserveRecent: number;
+	/** High-pressure floor for preserveRecent — when context is near the limit
+	 *  we compact deeper, but never below this (keeps recent turns for coherence). */
+	preserveRecentMin: number;
+	auto: boolean;
+	autoInline: boolean;
+	autoInlineK: number;
+	/** S28: auto-continue the agent after a max-output-token length stop by
+	 *  reusing the existing S16 resume-nudge. Default true. Off = silent (the
+	 *  prior behavior). PREVENT-PI-003: restart via user-role sendUserMessage. */
+	autoContinueLengthStop: boolean;
+	/** S38: max retries for transient errors (5xx/429/network/max-output-token
+	 *  text that is NOT a length stopReason — S28 owns those). Default 5.
+	 *  `0` disables all transient retries (reverts to S28-only). */
+	autoRetryTransientMax: number;
+	/** S38: max retries for permanent errors (auth/config/malformed). Default 1.
+	 *  `0` disables permanent-error retries. */
+	autoRetryPermanentMax: number;
+	/** S38.5: strict race-guard — 30s cooldown + deferred ctx.compact() re-check
+	 *  (closes the first-race-in-burst window). Default true. `false` reverts to
+	 *  the v0.7.4 synchronous 10s-cooldown behavior. */
+	raceGuardStrict: boolean;
+	/** S38.6: max consecutive errors before circuit-breaker trips (stops retrying).
+	 *  Default 10. When `errorRetryCount` exceeds this across multiple turns,
+	 *  the extension stops retrying until a successful turn resets it. */
+	maxConsecutiveErrors: number;
+	/** S38.7: hard-stop switch — when true, ALL error retries are disabled.
+	 *  Default false. Set via env to force S28-only behavior (length-stop continues
+	 *  only). */
+	errorRetryHardStop: boolean;
+	/** R1 (retry redesign): base unit (ms) for errorRetryBackoffMs(count) pacing.
+	 *  The schedule is base, 2*base, 4*base, 6*base (cap) — so the default 5000
+	 *  yields 5s/10s/20s/30s. errorRetryUntil is now GATING (previously it was
+	 *  documented as non-gating); a nudge cannot fire before errorRetryUntil
+	 *  elapses. */
+	errorRetryBackoffMs: number;
+	/** R2: session-global cap on total S38 nudges across ALL bursts. Hitting it
+	 *  is terminal for the session — the extension stops nudging entirely,
+	 *  independent of the per-burst max and the circuit breaker. Default 3.
+	 *  `0` disables (reverts to per-burst + circuit-breaker only). */
+	errorRetrySessionMax: number;
+	/** R3: consecutive identical error-text count at which a 'transient'
+	 *  classification is upgraded to 'poisoned-context' (the stateful repeat
+	 *  signal). Default 3. Raise to make the upgrade less aggressive. */
+	poisonedContextRepeatThreshold: number;
+	/** S29: override the auto-compact fire point for tiered configs, as a
+	 *  fraction of the context window (e.g. 0.85). null = inherit the tier's
+	 *  tierPct (default; preserves existing fire points). The context-handler
+	 *  gate fires on context % (reliable), not token count (under-reported),
+	 *  so it catches the overshoot that causes max-output-token truncation.
+	 *  `custom` (tierPct null) ignores this — it keeps the absolute token gate. */
+	autoPctTrigger: number | null;
+	dedupSim: number;
+	/** RAPTOR hierarchical recall enabled (Fix D). Drives both live recall and
+	 *  the durable-trim summary source (root summary). */
+	raptorEnabled: boolean;
+	/** Legacy v0.4.28 behavior: auto-trigger calls ctx.compact() (which STOPS
+	 *  the agent). Default false — the S16 redesign uses the live context-event
+	 *  trim + pi native auto-compaction instead (compact and continue). Kept for
+	 *  one release as rollback. */
+	legacyDurableTrim: boolean;
+	/** S27: durable raw-transcript DB mirror (MEGACOMPACT_DB_MIRROR). When on,
+	 *  raw message bytes + checkpoint-epoch bookkeeping are appended to the
+	 *  SQLite store so a compacted window can be rehydrated locally instead of
+	 *  from the pi runtime transcript. Default OFF — additive, no behavior
+	 *  change until flipped on. legacyDurableTrim takes precedence (the legacy
+	 *  v0.4.28 ctx.compact() path does not emit the S27 mirror hook). */
+	dbMirror: boolean;
+	/** S49: isolated per-turn store (turns.db). Default ON. OFF = legacy main-db
+	 *  turn path (S48 behavior — byte-identical). Mirrors TurnsConfig.TURNS_DB_ENABLED. */
+	turnsDbEnabled: boolean;
+	/** Cross-repo recall enabled (S17). Resume + /mega-recall --cross-repo can
+	 *  pull checkpoints from OTHER repos via the PGlite HNSW index. Default true. */
+	crossRepoEnabled: boolean;
+	/** Stricter cosine floor for cross-repo hits (S17). Default 0.90 (trigram) /
+	 *  tighter than same-repo so only genuinely-relevant cross-repo context is
+	 *  injected. */
+	crossRepoCosine: number;
+	/** Memory-RAG auto-review enabled (S20). Every memoryReviewInterval turns the
+	 *  conversation is auto-reviewed into durable add/replace/remove memories. */
+	memoryAutoReview: boolean;
+	/** Turn cadence for the auto-review scan (S20). Default 10. */
+	memoryReviewInterval: number;
+	/** Token ceiling for the re-injected recall block (Fix C). Recall stops
+	 *  adding checkpoints once the block would exceed this — bounds read-path
+	 *  token cost so it can never net-inflate the window. */
+	recallMaxTokens: number;
+	/** Inline-dedupe recalled checkpoints against the live window (Fix C): drop
+	 *  a hit whose summary is ≥ dedupSim similar to a live message — "dedupe on
+	 *  inline/read" so we never re-inject context already resident. */
+	windowDedupe: boolean;
+	debug: boolean;
 }
 
 function envFlag(name: string, fallback: number): number {
-  const v = process.env[name];
-  if (v == null || v === "") return fallback;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
+	const v = process.env[name];
+	if (v == null || v === "") return fallback;
+	const n = Number(v);
+	return Number.isFinite(n) ? n : fallback;
 }
 function envBool(name: string, fallback: boolean): boolean {
-  const v = process.env[name];
-  if (v == null || v === "") return fallback;
-  return v === "true" || v === "1";
+	const v = process.env[name];
+	if (v == null || v === "") return fallback;
+	return v === "true" || v === "1";
 }
 
 /**
@@ -175,21 +175,22 @@ function envBool(name: string, fallback: boolean): boolean {
  * keeps `tierPct: null` and an ABSOLUTE `thresholdTokens` (never percent-scaled).
  */
 function resolveThreshold(): {
-  tier: CompactTier | "custom";
-  tierPct: number | null;
-  thresholdTokens: number;
+	tier: CompactTier | "custom";
+	tierPct: number | null;
+	thresholdTokens: number;
 } {
-  const explicit = process.env.MEGACOMPACT_THRESHOLD_TOKENS;
-  if (explicit != null && explicit !== "") {
-    const n = Number(explicit);
-    if (Number.isFinite(n)) return { tier: "custom", tierPct: null, thresholdTokens: n };
-  }
-  const raw = (process.env.MEGACOMPACT_TIER ?? "low").toLowerCase();
-  const tier = (raw in COMPACT_TIERS ? raw : "low") as CompactTier;
-  const tierPct = TIER_PCT[tier];
-  // Boot fallback: sane gate before the first context event provides a window.
-  const thresholdTokens = Math.round(tierPct * 200_000);
-  return { tier, tierPct, thresholdTokens };
+	const explicit = process.env.MEGACOMPACT_THRESHOLD_TOKENS;
+	if (explicit != null && explicit !== "") {
+		const n = Number(explicit);
+		if (Number.isFinite(n))
+			return { tier: "custom", tierPct: null, thresholdTokens: n };
+	}
+	const raw = (process.env.MEGACOMPACT_TIER ?? "low").toLowerCase();
+	const tier = (raw in COMPACT_TIERS ? raw : "low") as CompactTier;
+	const tierPct = TIER_PCT[tier];
+	// Boot fallback: sane gate before the first context event provides a window.
+	const thresholdTokens = Math.round(tierPct * 200_000);
+	return { tier, tierPct, thresholdTokens };
 }
 
 /**
@@ -205,17 +206,17 @@ function resolveThreshold(): {
  * unit-testable without the pi runtime.
  */
 export function effectiveThresholdTokens(opts: {
-  tierPct: number | null;
-  fallbackThreshold: number;
-  window: number;
-  explicitThreshold?: number;
+	tierPct: number | null;
+	fallbackThreshold: number;
+	window: number;
+	explicitThreshold?: number;
 }): number {
-  if (opts.tierPct == null) {
-    // custom: absolute threshold, never percent-scaled
-    return opts.explicitThreshold ?? opts.fallbackThreshold;
-  }
-  if (opts.window > 0) return Math.round(opts.tierPct * opts.window);
-  return opts.fallbackThreshold;
+	if (opts.tierPct == null) {
+		// custom: absolute threshold, never percent-scaled
+		return opts.explicitThreshold ?? opts.fallbackThreshold;
+	}
+	if (opts.window > 0) return Math.round(opts.tierPct * opts.window);
+	return opts.fallbackThreshold;
 }
 
 /**
@@ -225,12 +226,12 @@ export function effectiveThresholdTokens(opts: {
  * `custom` (tierPct null) falls back to the legacy 70% default.
  */
 function resolveFastGatePct(tierPct: number | null): number {
-  const raw = process.env.MEGACOMPACT_FAST_GATE_PCT;
-  if (raw != null && raw !== "") {
-    const n = Number(raw);
-    if (Number.isFinite(n)) return n;
-  }
-  return tierPct != null ? Math.round(tierPct * 100) : 70;
+	const raw = process.env.MEGACOMPACT_FAST_GATE_PCT;
+	if (raw != null && raw !== "") {
+		const n = Number(raw);
+		if (Number.isFinite(n)) return n;
+	}
+	return tierPct != null ? Math.round(tierPct * 100) : 70;
 }
 
 /**
@@ -241,65 +242,71 @@ function resolveFastGatePct(tierPct: number | null): number {
  * "how full" signal that drives the tier label, trim depth, and memory cadence.)
  */
 export {
-  pressureFromPct,
-  preserveRecentForPressure,
-  pressureRatio,
-  pressureBand,
-  memoryReviewCadence,
-  type PressureBand,
+	pressureFromPct,
+	preserveRecentForPressure,
+	pressureRatio,
+	pressureBand,
+	memoryReviewCadence,
+	type PressureBand,
 } from "../src/config.js";
 
 /** Build the resolved config from env + defaults. */
 export function loadConfig(): MegaConfig {
-  const { tier, tierPct, thresholdTokens } = resolveThreshold();
-  // S29: optional percent-based fire-point override for tiered configs.
-  // null = inherit tierPct (default; preserves existing fire points). Clamped
-  // to [0.1, 1] so a bogus env can't disable or invert the gate. Ignored by
-  // the `custom` tier (tierPct null) which keeps the absolute token gate.
-  const aptRaw = process.env.MEGACOMPACT_AUTO_PCT_TRIGGER;
-  const autoPctTrigger =
-    aptRaw && aptRaw !== "" && Number.isFinite(Number(aptRaw))
-      ? Math.min(1, Math.max(0.1, Number(aptRaw)))
-      : null;
-  return {
-    tier,
-    tierPct,
-    // Global default; the live store/dashboard are rebound per-repo at runtime
-    // via MegaRuntime.bindRepo() so each git repo gets its own isolated state dir.
-    stateDir: process.env.MEGACOMPACT_STATE_DIR ?? STATE_DIR_DEFAULT,
-    fastGatePct: resolveFastGatePct(tierPct),
-    thresholdTokens,
-    anchorUserMessages: envFlag("MEGACOMPACT_ANCHOR_USER_MESSAGES", 3),
-    preserveRecent: envFlag("MEGACOMPACT_PRESERVE_RECENT", 4),
-    preserveRecentMin: envFlag("MEGACOMPACT_PRESERVE_RECENT_MIN", 2),
-    auto: envBool("MEGACOMPACT_AUTO", true),
-    autoInline: envBool("MEGACOMPACT_AUTO_INLINE", true),
-    autoContinueLengthStop: envBool("MEGACOMPACT_AUTO_CONTINUE_LENGTH_STOP", true),
-    autoRetryTransientMax: envFlag("MEGACOMPACT_AUTO_RETRY_TRANSIENT_MAX", 5),
-    autoRetryPermanentMax: envFlag("MEGACOMPACT_AUTO_RETRY_PERMANENT_MAX", 1),
-    raceGuardStrict: envBool("MEGACOMPACT_RACE_GUARD_STRICT", true),
-    maxConsecutiveErrors: envFlag("MEGACOMPACT_MAX_CONSECUTIVE_ERRORS", 10),
-    errorRetryHardStop: envBool("MEGACOMPACT_ERROR_RETRY_HARD_STOP", false),
-    errorRetryBackoffMs: envFlag("MEGACOMPACT_ERROR_RETRY_BACKOFF_MS", 5000),
-    errorRetrySessionMax: envFlag("MEGACOMPACT_ERROR_RETRY_SESSION_MAX", 3),
-    poisonedContextRepeatThreshold: envFlag("MEGACOMPACT_POISONED_REPEAT_THRESHOLD", 3),
-    autoPctTrigger,
-    autoInlineK: envFlag("MEGACOMPACT_AUTO_INLINE_K", 3),
-    dedupSim: Number(process.env.MEGACOMPACT_DEDUP_SIM ?? "0.9"),
-    raptorEnabled: envBool("MEGACOMPACT_RAPTOR_ENABLED", true),
-    legacyDurableTrim: envBool("MEGACOMPACT_LEGACY_DURABLE_TRIM", false),
-    dbMirror: envBool("MEGACOMPACT_DB_MIRROR", false),
-    // S49: isolated per-turn store (turns.db). Default ON. OFF = legacy main-db
-    // turn path (S48 behavior). Mirrors src/config/turns.ts TURNS_DB_ENABLED.
-    turnsDbEnabled: envBool("MEGACOMPACT_TURNS_DB", true),
-    crossRepoEnabled: envBool("MEGACOMPACT_CROSSREPO_ENABLED", true),
-    crossRepoCosine: Number(process.env.MEGACOMPACT_CROSSREPO_COSINE ?? "0.90"),
-    memoryAutoReview: envBool("MEGACOMPACT_MEMORY_AUTO_REVIEW", true),
-    memoryReviewInterval: envFlag("MEGACOMPACT_MEMORY_REVIEW_INTERVAL", 10),
-    recallMaxTokens: envFlag("MEGACOMPACT_RECALL_MAX_TOKENS", 1500),
-    windowDedupe: envBool("MEGACOMPACT_WINDOW_DEDUPE", true),
-    debug: envBool("MEGACOMPACT_DEBUG", false),
-  };
+	const { tier, tierPct, thresholdTokens } = resolveThreshold();
+	// S29: optional percent-based fire-point override for tiered configs.
+	// null = inherit tierPct (default; preserves existing fire points). Clamped
+	// to [0.1, 1] so a bogus env can't disable or invert the gate. Ignored by
+	// the `custom` tier (tierPct null) which keeps the absolute token gate.
+	const aptRaw = process.env.MEGACOMPACT_AUTO_PCT_TRIGGER;
+	const autoPctTrigger =
+		aptRaw && aptRaw !== "" && Number.isFinite(Number(aptRaw))
+			? Math.min(1, Math.max(0.1, Number(aptRaw)))
+			: null;
+	return {
+		tier,
+		tierPct,
+		// Global default; the live store/dashboard are rebound per-repo at runtime
+		// via MegaRuntime.bindRepo() so each git repo gets its own isolated state dir.
+		stateDir: process.env.MEGACOMPACT_STATE_DIR ?? STATE_DIR_DEFAULT,
+		fastGatePct: resolveFastGatePct(tierPct),
+		thresholdTokens,
+		anchorUserMessages: envFlag("MEGACOMPACT_ANCHOR_USER_MESSAGES", 3),
+		preserveRecent: envFlag("MEGACOMPACT_PRESERVE_RECENT", 4),
+		preserveRecentMin: envFlag("MEGACOMPACT_PRESERVE_RECENT_MIN", 2),
+		auto: envBool("MEGACOMPACT_AUTO", true),
+		autoInline: envBool("MEGACOMPACT_AUTO_INLINE", true),
+		autoContinueLengthStop: envBool(
+			"MEGACOMPACT_AUTO_CONTINUE_LENGTH_STOP",
+			true,
+		),
+		autoRetryTransientMax: envFlag("MEGACOMPACT_AUTO_RETRY_TRANSIENT_MAX", 5),
+		autoRetryPermanentMax: envFlag("MEGACOMPACT_AUTO_RETRY_PERMANENT_MAX", 1),
+		raceGuardStrict: envBool("MEGACOMPACT_RACE_GUARD_STRICT", true),
+		maxConsecutiveErrors: envFlag("MEGACOMPACT_MAX_CONSECUTIVE_ERRORS", 10),
+		errorRetryHardStop: envBool("MEGACOMPACT_ERROR_RETRY_HARD_STOP", false),
+		errorRetryBackoffMs: envFlag("MEGACOMPACT_ERROR_RETRY_BACKOFF_MS", 5000),
+		errorRetrySessionMax: envFlag("MEGACOMPACT_ERROR_RETRY_SESSION_MAX", 3),
+		poisonedContextRepeatThreshold: envFlag(
+			"MEGACOMPACT_POISONED_REPEAT_THRESHOLD",
+			3,
+		),
+		autoPctTrigger,
+		autoInlineK: envFlag("MEGACOMPACT_AUTO_INLINE_K", 3),
+		dedupSim: Number(process.env.MEGACOMPACT_DEDUP_SIM ?? "0.9"),
+		raptorEnabled: envBool("MEGACOMPACT_RAPTOR_ENABLED", true),
+		legacyDurableTrim: envBool("MEGACOMPACT_LEGACY_DURABLE_TRIM", false),
+		dbMirror: envBool("MEGACOMPACT_DB_MIRROR", false),
+		// S49: isolated per-turn store (turns.db). Default ON. OFF = legacy main-db
+		// turn path (S48 behavior). Mirrors src/config/turns.ts TURNS_DB_ENABLED.
+		turnsDbEnabled: envBool("MEGACOMPACT_TURNS_DB", true),
+		crossRepoEnabled: envBool("MEGACOMPACT_CROSSREPO_ENABLED", true),
+		crossRepoCosine: Number(process.env.MEGACOMPACT_CROSSREPO_COSINE ?? "0.90"),
+		memoryAutoReview: envBool("MEGACOMPACT_MEMORY_AUTO_REVIEW", true),
+		memoryReviewInterval: envFlag("MEGACOMPACT_MEMORY_REVIEW_INTERVAL", 10),
+		recallMaxTokens: envFlag("MEGACOMPACT_RECALL_MAX_TOKENS", 1500),
+		windowDedupe: envBool("MEGACOMPACT_WINDOW_DEDUPE", true),
+		debug: envBool("MEGACOMPACT_DEBUG", false),
+	};
 }
 
 /**
@@ -314,16 +321,16 @@ export function loadConfig(): MegaConfig {
  * non-git directory (caller falls back to a global state dir).
  */
 export function resolveRepoRoot(cwd: string): string | undefined {
-  try {
-    const out = execSync("git rev-parse --show-toplevel", {
-      cwd,
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    return out || undefined;
-  } catch {
-    return undefined;
-  }
+	try {
+		const out = execSync("git rev-parse --show-toplevel", {
+			cwd,
+			encoding: "utf-8",
+			stdio: ["ignore", "pipe", "ignore"],
+		}).trim();
+		return out || undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -332,7 +339,7 @@ export function resolveRepoRoot(cwd: string): string | undefined {
  * cwds (the explicit MEGACOMPACT_STATE_DIR override, if set).
  */
 export function repoStateDir(cwd: string, fallback: string): string {
-  const root = resolveRepoRoot(cwd);
-  if (!root) return fallback;
-  return join(root, ".pi", "mega-compact");
+	const root = resolveRepoRoot(cwd);
+	if (!root) return fallback;
+	return join(root, ".pi", "mega-compact");
 }

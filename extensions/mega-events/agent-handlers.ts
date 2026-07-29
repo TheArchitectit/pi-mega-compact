@@ -6,20 +6,21 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { MegaRuntime } from "../mega-runtime.js";
-import {
-	piCompactWouldNoop,
-	runMemoryReview,
-} from "../mega-pipeline.js";
-import {
-	memoryReviewCadence,
-	type MegaConfig,
-} from "../mega-config.js";
+import { piCompactWouldNoop, runMemoryReview } from "../mega-pipeline.js";
+import { memoryReviewCadence, type MegaConfig } from "../mega-config.js";
 import { recordScore } from "../../src/store/sqlite.js";
 import { evaluateAndUnlockAchievements } from "../../src/store/sqlite/game-achievements.js";
-import { ensureConversationIdFor, recordTurnWrite } from "../mega-turn-store.js";
+import {
+	ensureConversationIdFor,
+	recordTurnWrite,
+} from "../mega-turn-store.js";
 import { isMegaCache } from "../../src/game/scoring.js";
 import { resolveRepoRoot } from "../mega-config.js";
-import { classifyError, errorRetryBackoffMs, extractErrorSignature } from "./error-classifier.js";
+import {
+	classifyError,
+	errorRetryBackoffMs,
+	extractErrorSignature,
+} from "./error-classifier.js";
 import { safeSendUserMessage } from "./send-safe.js";
 import { vectorStats } from "../../src/vectorStore.js";
 
@@ -64,7 +65,10 @@ export function registerAgentHandlers(
 		// compaction AND there is queued work AND we haven't nudged recently, nudge
 		// once so the agent continues (the live trim should make this rare). Guarded
 		// to never busy-loop: one nudge per 30s, only when truly idle + queued.
-		if ((config.auto || config.autoContinueLengthStop) && runtime.activeAgents === 0) {
+		if (
+			(config.auto || config.autoContinueLengthStop) &&
+			runtime.activeAgents === 0
+		) {
 			try {
 				const idle = ctx.isIdle?.() ?? true;
 				const queued = ctx.hasPendingMessages?.() ?? false;
@@ -80,7 +84,7 @@ export function registerAgentHandlers(
 				const liveTokens =
 					typeof liveUsage?.tokens === "number"
 						? liveUsage.tokens
-						: runtime.lastCtxTokens ?? 0;
+						: (runtime.lastCtxTokens ?? 0);
 				// Keep the cache fresh for snapshot()/diag regardless of which source we use.
 				if (typeof liveUsage?.tokens === "number") {
 					runtime.lastCtxTokens = liveUsage.tokens;
@@ -134,7 +138,12 @@ export function registerAgentHandlers(
 				// most. Instead we DECOUPLE the nudge from `queued`: after a durable
 				// trim we ALWAYS nudge so the agent reliably restarts. Debounced 30s.
 				let didDurableTrim = false;
-				if (config.auto && idle && overThreshold && now >= runtime.debounceUntil) {
+				if (
+					config.auto &&
+					idle &&
+					overThreshold &&
+					now >= runtime.debounceUntil
+				) {
 					// COMPACT-DEDUP FIX: skip the manual durable-trim trigger when pi's
 					// NATIVE auto-compaction just fired (or is in-flight). pi emits
 					// agent_end BEFORE its own _checkCompaction (per its docstring:
@@ -177,9 +186,12 @@ export function registerAgentHandlers(
 							setTimeout(() => {
 								try {
 									if (runtime.rt.sessionId !== liveSid) return; // session reset
-									const since2 =
-										now - (runtime.rt.lastNativeCompactAt ?? 0);
-									if (runtime.rt.lastNativeCompactAt !== stamp && since2 < cooldownMs) return;
+									const since2 = now - (runtime.rt.lastNativeCompactAt ?? 0);
+									if (
+										runtime.rt.lastNativeCompactAt !== stamp &&
+										since2 < cooldownMs
+									)
+										return;
 									if (piCompactWouldNoop(ctx)) return;
 									ctx.compact({
 										customInstructions: undefined,
@@ -197,7 +209,8 @@ export function registerAgentHandlers(
 				// Restart the agent after a mid-run durable trim (which stopped it), or
 				// when it settled idle with queued work. Decoupled from `queued` for the
 				// durable-trim case — see FIX note above. Debounced 30s; never blocks.
-				const lengthStop = config.autoContinueLengthStop && runtime.rt.lengthStopPending;
+				const lengthStop =
+					config.autoContinueLengthStop && runtime.rt.lengthStopPending;
 				if (
 					idle &&
 					now >= runtime.resumeNudgeUntil &&
@@ -206,18 +219,21 @@ export function registerAgentHandlers(
 					runtime.resumeNudgeUntil = now + 30_000;
 					if (runtime.rt.lengthStopPending) {
 						runtime.rt.lengthStopPending = false; // one-shot: never re-fire for same stop
-						runtime.dashboard.event("length_stop_continue", { turnIndex: runtime.currentTurn });
+						runtime.dashboard.event("length_stop_continue", {
+							turnIndex: runtime.currentTurn,
+						});
 						runtime.logger.info("length_stop_continue", {
-						sessionId: runtime.rt.sessionId,
-						didDurableTrim,
-						queued,
+							sessionId: runtime.rt.sessionId,
+							didDurableTrim,
+							queued,
 						});
 					}
 					// S28: when a length-stop (max-output-token truncation) fired WITHOUT a durable trim, do NOT claim a compaction happened
 					// (nothing was compacted on the low-pressure length path). Branch the message so the nudge matches reality.
-					const nudgeMsg = lengthStop && !didDurableTrim
-						? "[mega-compact] the last response hit the output-token cap; continue from where it stopped."
-						: "[mega-compact] continue from the compacted context above.";
+					const nudgeMsg =
+						lengthStop && !didDurableTrim
+							? "[mega-compact] the last response hit the output-token cap; continue from where it stopped."
+							: "[mega-compact] continue from the compacted context above.";
 					await safeSendUserMessage(pi, nudgeMsg);
 				}
 			} catch {
@@ -252,18 +268,26 @@ export function registerAgentHandlers(
 		// the turn layer is queryable + forkable. Best-effort + non-fatal: a write
 		// failure never breaks the agent loop.
 		try {
-			const convId = ensureConversationIdFor(config, runtime.rt.sessionId, runtime.currentStateDir);
-			recordTurnWrite(config, {
-				conversationId: convId,
-				sessionId: runtime.rt.sessionId,
-				turnIndex: event.turnIndex,
-				endedAt: Date.now(),
-				startedAt: undefined,
-				ctxTokens: runtime.lastCtxTokens ?? undefined,
-				ctxPercent: runtime.lastCtxPercent ?? undefined,
-				pressureBand: runtime.pressureBand ?? undefined,
-				modelId: runtime.currentModel?.modelId ?? undefined,
-			}, runtime.currentStateDir);
+			const convId = ensureConversationIdFor(
+				config,
+				runtime.rt.sessionId,
+				runtime.currentStateDir,
+			);
+			recordTurnWrite(
+				config,
+				{
+					conversationId: convId,
+					sessionId: runtime.rt.sessionId,
+					turnIndex: event.turnIndex,
+					endedAt: Date.now(),
+					startedAt: undefined,
+					ctxTokens: runtime.lastCtxTokens ?? undefined,
+					ctxPercent: runtime.lastCtxPercent ?? undefined,
+					pressureBand: runtime.pressureBand ?? undefined,
+					modelId: runtime.currentModel?.modelId ?? undefined,
+				},
+				runtime.currentStateDir,
+			);
 		} catch {
 			/* non-fatal: per-turn tracking never breaks the agent loop */
 		}
@@ -305,7 +329,9 @@ export function registerAgentHandlers(
 				}
 				// S35: evaluate achievements after scoring; arm a one-time flare for
 				// the newly-unlocked ones (consumed by snapshot() → widget toast).
-				const newTitles = evaluateAndUnlockAchievements(runtime.currentStateDir);
+				const newTitles = evaluateAndUnlockAchievements(
+					runtime.currentStateDir,
+				);
 				if (newTitles.length) runtime.armAchievementFlare(newTitles);
 			}
 		} catch {
@@ -356,8 +382,9 @@ export function registerAgentHandlers(
 		// gating backoff, session-global cap, poisoned-context detection.
 		try {
 			// (1) S28 owns length — skip the classifier entirely for it.
-			const sr = (event.message as { stopReason?: string } | undefined)?.stopReason;
-			if (sr === 'length') {
+			const sr = (event.message as { stopReason?: string } | undefined)
+				?.stopReason;
+			if (sr === "length") {
 				// S28 handles; nothing for S38 to do here.
 			} else {
 				const category = classifyError(event.message);
@@ -371,7 +398,7 @@ export function registerAgentHandlers(
 				// (a 'permanent' auth error repeating is still permanent).
 				let effectiveCategory = category;
 				const errSig = extractErrorSignature(event.message);
-				if (category === 'transient' || category === 'poisoned-context') {
+				if (category === "transient" || category === "poisoned-context") {
 					if (errSig) {
 						if (runtime.rt.lastErrorText === errSig) {
 							runtime.rt.errorTextRepeatCount++;
@@ -380,10 +407,11 @@ export function registerAgentHandlers(
 							runtime.rt.errorTextRepeatCount = 1;
 						}
 						if (
-							runtime.rt.errorTextRepeatCount >= config.poisonedContextRepeatThreshold &&
-							category === 'transient'
+							runtime.rt.errorTextRepeatCount >=
+								config.poisonedContextRepeatThreshold &&
+							category === "transient"
 						) {
-							effectiveCategory = 'poisoned-context';
+							effectiveCategory = "poisoned-context";
 						}
 					}
 				} else {
@@ -398,7 +426,7 @@ export function registerAgentHandlers(
 					runtime.rt.consecutiveErrors = 0; // S38.6: circuit-breaker reset on success
 					// R4: a successful assistant turn consumes any queued nudge.
 					runtime.rt.retryNudgePending = false;
-				} else if (effectiveCategory === 'compaction-noop') {
+				} else if (effectiveCategory === "compaction-noop") {
 					// (4) pi race / manual compact catch — NOT retryable. The compaction
 					// already succeeded via pi's native path; retrying would race again
 					// (FAIL-2026071701). Log a diagnostic, reset the counter, and surface
@@ -406,15 +434,15 @@ export function registerAgentHandlers(
 					runtime.rt.errorRetryCount = 0;
 					runtime.rt.consecutiveErrors = 0; // S38.6: circuit-breaker reset
 					runtime.rt.retryNudgePending = false; // R4: terminal for this burst
-					runtime.dashboard.event('compaction_noop_diagnostic', {
+					runtime.dashboard.event("compaction_noop_diagnostic", {
 						turnIndex: event.turnIndex,
 						sessionId: runtime.rt.sessionId,
 					});
-					runtime.logger.info('compaction-noop-diagnostic', {
+					runtime.logger.info("compaction-noop-diagnostic", {
 						sessionId: runtime.rt.sessionId,
 						turnIndex: event.turnIndex,
 					});
-				} else if (effectiveCategory === 'cancelled') {
+				} else if (effectiveCategory === "cancelled") {
 					// (4c) User ESC / Ctrl-C — stopReason === 'aborted'. NOT retryable:
 					// nudging would restart a task the user explicitly stopped.
 					// Reset both counters (a cancel is not an error for circuit-breaker
@@ -422,15 +450,15 @@ export function registerAgentHandlers(
 					runtime.rt.errorRetryCount = 0;
 					runtime.rt.consecutiveErrors = 0;
 					runtime.rt.retryNudgePending = false; // R4: terminal for this burst
-					runtime.dashboard.event('error_retry_cancelled', {
+					runtime.dashboard.event("error_retry_cancelled", {
 						turnIndex: event.turnIndex,
 						sessionId: runtime.rt.sessionId,
 					});
-					runtime.logger.info('error-retry-cancelled', {
+					runtime.logger.info("error-retry-cancelled", {
 						sessionId: runtime.rt.sessionId,
 						turnIndex: event.turnIndex,
 					});
-				} else if (effectiveCategory === 'context-overflow') {
+				} else if (effectiveCategory === "context-overflow") {
 					// (4b) context-window overflow 400 ("too long... even after compaction").
 					// NOT a blind retry: re-submitting the same oversized prompt would just
 					// re-400 and busy-loop. Reset the counters (this turn is terminal, not
@@ -444,11 +472,11 @@ export function registerAgentHandlers(
 					runtime.rt.errorRetryCount = 0;
 					runtime.rt.consecutiveErrors = 0;
 					runtime.rt.retryNudgePending = false; // R4: terminal for this burst
-					runtime.dashboard.event('context_overflow', {
+					runtime.dashboard.event("context_overflow", {
 						turnIndex: event.turnIndex,
 						sessionId: runtime.rt.sessionId,
 					});
-					runtime.logger.warn('context-overflow', {
+					runtime.logger.warn("context-overflow", {
 						sessionId: runtime.rt.sessionId,
 						turnIndex: event.turnIndex,
 					});
@@ -463,8 +491,13 @@ export function registerAgentHandlers(
 							setTimeout(() => {
 								try {
 									if (runtime.rt.sessionId !== liveSid2) return; // session reset
-									const since3 = Date.now() - (runtime.rt.lastNativeCompactAt ?? 0);
-									if (runtime.rt.lastNativeCompactAt !== stamp2 && since3 < cooldownMs2) return;
+									const since3 =
+										Date.now() - (runtime.rt.lastNativeCompactAt ?? 0);
+									if (
+										runtime.rt.lastNativeCompactAt !== stamp2 &&
+										since3 < cooldownMs2
+									)
+										return;
 									if (piCompactWouldNoop(ctx)) return;
 									ctx.compact({ customInstructions: undefined }); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; deferred + re-validated. Forced re-compact after a context-overflow 400.
 								} catch {
@@ -473,7 +506,7 @@ export function registerAgentHandlers(
 							}, 500);
 						}
 					}
-				} else if (effectiveCategory === 'poisoned-context') {
+				} else if (effectiveCategory === "poisoned-context") {
 					// R3: poisoned context — a DETERMINISTIC request-rejection that
 					// retrying cannot fix (0-token 'error', generic "request failed",
 					// 400 non-overflow, or repeated identical error text). NO blind
@@ -487,15 +520,15 @@ export function registerAgentHandlers(
 					runtime.rt.errorRetryCount = 0; // poisoned is terminal for this burst
 					runtime.rt.consecutiveErrors++; // still counts toward the circuit breaker
 					runtime.rt.poisonedCount++; // R7: dashboard counter
-					const sig = errSig || 'unknown';
+					const sig = errSig || "unknown";
 					// (a) dashboard + log
-					runtime.dashboard.event('poisoned_context', {
+					runtime.dashboard.event("poisoned_context", {
 						signature: sig,
 						repeatCount: runtime.rt.errorTextRepeatCount,
 						turnIndex: event.turnIndex,
 						sessionId: runtime.rt.sessionId,
 					});
-					runtime.logger.warn('poisoned-context', {
+					runtime.logger.warn("poisoned-context", {
 						sessionId: runtime.rt.sessionId,
 						turnIndex: event.turnIndex,
 						signature: sig,
@@ -507,7 +540,7 @@ export function registerAgentHandlers(
 						// PREVENT-PI-003: user-role sendUserMessage only.
 						await safeSendUserMessage(
 							pi,
-							'[mega-compact] this session\'s context may be poisoned (the provider is rejecting every request). Run /clear or /new to start a fresh context.',
+							"[mega-compact] this session's context may be poisoned (the provider is rejecting every request). Run /clear or /new to start a fresh context.",
 						);
 					}
 					// (c) one guarded compact per error signature (attempt to remove
@@ -526,8 +559,13 @@ export function registerAgentHandlers(
 							setTimeout(() => {
 								try {
 									if (runtime.rt.sessionId !== liveSidP) return; // session reset
-									const sinceP = Date.now() - (runtime.rt.lastNativeCompactAt ?? 0);
-									if (runtime.rt.lastNativeCompactAt !== stampP && sinceP < cooldownMsP) return;
+									const sinceP =
+										Date.now() - (runtime.rt.lastNativeCompactAt ?? 0);
+									if (
+										runtime.rt.lastNativeCompactAt !== stampP &&
+										sinceP < cooldownMsP
+									)
+										return;
 									if (piCompactWouldNoop(ctx)) return;
 									ctx.compact({ customInstructions: undefined }); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; deferred + re-validated. One guarded compact after a poisoned-context detection.
 								} catch {
@@ -541,22 +579,22 @@ export function registerAgentHandlers(
 					// S38.7: hard-stop switch — bypass ALL retry logic when set.
 					if (config.errorRetryHardStop) {
 						runtime.rt.errorRetryCount = 0;
-						runtime.dashboard.event('error_retry_disabled', {
+						runtime.dashboard.event("error_retry_disabled", {
 							category: effectiveCategory,
 							turnIndex: event.turnIndex,
-							reason: 'hard-stop',
+							reason: "hard-stop",
 						});
 						return; // early exit — no retry
 					}
 					// S38.6: circuit-breaker — stop retrying after too many consecutive errors.
 					runtime.rt.consecutiveErrors++;
 					if (runtime.rt.consecutiveErrors > config.maxConsecutiveErrors) {
-						runtime.dashboard.event('error_retry_circuit_open', {
+						runtime.dashboard.event("error_retry_circuit_open", {
 							consecutive: runtime.rt.consecutiveErrors,
 							max: config.maxConsecutiveErrors,
 							turnIndex: event.turnIndex,
 						});
-						runtime.logger.warn('error-retry-circuit-open', {
+						runtime.logger.warn("error-retry-circuit-open", {
 							sessionId: runtime.rt.sessionId,
 							consecutive: runtime.rt.consecutiveErrors,
 							max: config.maxConsecutiveErrors,
@@ -564,114 +602,118 @@ export function registerAgentHandlers(
 						return; // early exit — circuit breaker tripped
 					}
 					const max =
-						effectiveCategory === 'transient'
+						effectiveCategory === "transient"
 							? config.autoRetryTransientMax
 							: config.autoRetryPermanentMax;
 					// max === 0 disables the category entirely (revert to S28-only).
 					if (max <= 0) {
 						runtime.rt.errorRetryCount = 0;
+					} else {
+						runtime.rt.errorRetryCount++;
+						if (runtime.rt.errorRetryCount > max) {
+							// Exhausted — surface the error, reset for the next burst.
+							runtime.dashboard.event("error_retry_exhausted", {
+								category: effectiveCategory,
+								count: runtime.rt.errorRetryCount,
+								max,
+								turnIndex: event.turnIndex,
+							});
+							runtime.logger.info("error-retry-exhausted", {
+								sessionId: runtime.rt.sessionId,
+								category: effectiveCategory,
+								count: runtime.rt.errorRetryCount,
+								max,
+							});
+							runtime.rt.errorRetryCount = 0;
 						} else {
-							runtime.rt.errorRetryCount++;
-							if (runtime.rt.errorRetryCount > max) {
-								// Exhausted — surface the error, reset for the next burst.
-								runtime.dashboard.event('error_retry_exhausted', {
+							// R2: session-global cap — total S38 nudges per session across
+							// ALL bursts. Independent of the per-burst max and the circuit
+							// breaker. Hitting it is terminal for the session: log +
+							// dashboard event, stop nudging. `0` disables (reverts to
+							// per-burst + circuit-breaker only).
+							if (
+								config.errorRetrySessionMax > 0 &&
+								runtime.rt.errorRetrySessionCount >= config.errorRetrySessionMax
+							) {
+								runtime.dashboard.event("error_retry_session_exhausted", {
+									count: runtime.rt.errorRetrySessionCount,
+									max: config.errorRetrySessionMax,
 									category: effectiveCategory,
-									count: runtime.rt.errorRetryCount,
-									max,
 									turnIndex: event.turnIndex,
 								});
-								runtime.logger.info('error-retry-exhausted', {
+								runtime.logger.warn("error-retry-session-exhausted", {
 									sessionId: runtime.rt.sessionId,
+									count: runtime.rt.errorRetrySessionCount,
+									max: config.errorRetrySessionMax,
 									category: effectiveCategory,
-									count: runtime.rt.errorRetryCount,
-									max,
 								});
 								runtime.rt.errorRetryCount = 0;
-							} else {
-								// R2: session-global cap — total S38 nudges per session across
-								// ALL bursts. Independent of the per-burst max and the circuit
-								// breaker. Hitting it is terminal for the session: log +
-								// dashboard event, stop nudging. `0` disables (reverts to
-								// per-burst + circuit-breaker only).
-								if (
-									config.errorRetrySessionMax > 0 &&
-									runtime.rt.errorRetrySessionCount >= config.errorRetrySessionMax
-								) {
-									runtime.dashboard.event('error_retry_session_exhausted', {
-										count: runtime.rt.errorRetrySessionCount,
-										max: config.errorRetrySessionMax,
-										category: effectiveCategory,
-										turnIndex: event.turnIndex,
-									});
-									runtime.logger.warn('error-retry-session-exhausted', {
-										sessionId: runtime.rt.sessionId,
-										count: runtime.rt.errorRetrySessionCount,
-										max: config.errorRetrySessionMax,
-										category: effectiveCategory,
-									});
-									runtime.rt.errorRetryCount = 0;
-									return; // terminal for the session — no nudge
-								}
-								// R1: in-flight nudge dedup — a nudge queued via
-								// deliverAs:'followUp' must not be re-sent until it has been
-								// consumed by an actual new agent turn (turn_start resets
-								// retryNudgePending). Without this, a fast-erroring provider +
-								// a per-turn nudge → N nudges queue up and pi dispatches N
-								// retry turns, each re-submitting the same failing prompt
-								// (the 2026-07-28 incident). errorRetryCount still advances
-								// (this IS an error turn), so the per-burst max + circuit
-								// breaker still bound the burst.
-								if (runtime.rt.retryNudgePending) {
-									runtime.dashboard.event('error_retry_dedup_skip', {
-										category: effectiveCategory,
-										count: runtime.rt.errorRetryCount,
-										max,
-										turnIndex: event.turnIndex,
-									});
-									return; // pending nudge not yet consumed — skip
-								}
-								// R1: gating backoff — errorRetryUntil is now GATING
-								// (previously documented as non-gating). A nudge cannot fire
-								// before the previous backoff elapses. This paces retries
-								// (5s/10s/20s/30s by default) so a fast-erroring provider
-								// doesn't slam N nudges in <1s.
-								const now = Date.now();
-								if (now < runtime.rt.errorRetryUntil) {
-									runtime.dashboard.event('error_retry_backoff_skip', {
-										category: effectiveCategory,
-										count: runtime.rt.errorRetryCount,
-										max,
-										turnIndex: event.turnIndex,
-									});
-									return; // backoff not elapsed — skip
-								}
-								// Fire the retry nudge. Set pending (R1 dedup) + backoff
-								// (R1 pacing) + session count (R2 cap) BEFORE the await so a
-								// re-entrant turn_end during the send can't double-fire.
-								runtime.rt.retryNudgePending = true;
-								runtime.rt.lastErrorRetryAt = now;
-								runtime.rt.errorRetryUntil =
-									now + errorRetryBackoffMs(runtime.rt.errorRetryCount, config.errorRetryBackoffMs);
-								runtime.rt.errorRetrySessionCount++;
-								runtime.dashboard.event('error_retry', {
+								return; // terminal for the session — no nudge
+							}
+							// R1: in-flight nudge dedup — a nudge queued via
+							// deliverAs:'followUp' must not be re-sent until it has been
+							// consumed by an actual new agent turn (turn_start resets
+							// retryNudgePending). Without this, a fast-erroring provider +
+							// a per-turn nudge → N nudges queue up and pi dispatches N
+							// retry turns, each re-submitting the same failing prompt
+							// (the 2026-07-28 incident). errorRetryCount still advances
+							// (this IS an error turn), so the per-burst max + circuit
+							// breaker still bound the burst.
+							if (runtime.rt.retryNudgePending) {
+								runtime.dashboard.event("error_retry_dedup_skip", {
 									category: effectiveCategory,
 									count: runtime.rt.errorRetryCount,
 									max,
 									turnIndex: event.turnIndex,
 								});
-								runtime.logger.info('error-retry', {
-									sessionId: runtime.rt.sessionId,
+								return; // pending nudge not yet consumed — skip
+							}
+							// R1: gating backoff — errorRetryUntil is now GATING
+							// (previously documented as non-gating). A nudge cannot fire
+							// before the previous backoff elapses. This paces retries
+							// (5s/10s/20s/30s by default) so a fast-erroring provider
+							// doesn't slam N nudges in <1s.
+							const now = Date.now();
+							if (now < runtime.rt.errorRetryUntil) {
+								runtime.dashboard.event("error_retry_backoff_skip", {
 									category: effectiveCategory,
 									count: runtime.rt.errorRetryCount,
 									max,
+									turnIndex: event.turnIndex,
 								});
-								// PREVENT-PI-003: user-role sendUserMessage only (queued + catch-guarded).
-								await safeSendUserMessage(
-									pi,
-									'[mega-compact] the last turn ended with an error; please retry.',
-								);
+								return; // backoff not elapsed — skip
 							}
+							// Fire the retry nudge. Set pending (R1 dedup) + backoff
+							// (R1 pacing) + session count (R2 cap) BEFORE the await so a
+							// re-entrant turn_end during the send can't double-fire.
+							runtime.rt.retryNudgePending = true;
+							runtime.rt.lastErrorRetryAt = now;
+							runtime.rt.errorRetryUntil =
+								now +
+								errorRetryBackoffMs(
+									runtime.rt.errorRetryCount,
+									config.errorRetryBackoffMs,
+								);
+							runtime.rt.errorRetrySessionCount++;
+							runtime.dashboard.event("error_retry", {
+								category: effectiveCategory,
+								count: runtime.rt.errorRetryCount,
+								max,
+								turnIndex: event.turnIndex,
+							});
+							runtime.logger.info("error-retry", {
+								sessionId: runtime.rt.sessionId,
+								category: effectiveCategory,
+								count: runtime.rt.errorRetryCount,
+								max,
+							});
+							// PREVENT-PI-003: user-role sendUserMessage only (queued + catch-guarded).
+							await safeSendUserMessage(
+								pi,
+								"[mega-compact] the last turn ended with an error; please retry.",
+							);
 						}
+					}
 				}
 			}
 		} catch {
