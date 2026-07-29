@@ -5,7 +5,7 @@
 **Extends:** `docs/specs/s47-auto-categorizing-wiki.md` (implement-ready content spec — **the algorithms, acceptance criteria, and honest-boundary rules live there; this doc is the re-target delta**)
 **Depends on:** S49 (shipped — `src/store/turns/`, incl. reserved `topics`/`memory_topics` shells), S50 (shipped — `src/metrics/turns.ts`)
 **Priority:** P1
-**Status:** implement-ready (written just-in-time against S49/S50's shipped shape)
+**Status:** SHIPPED — v0.9.x (topics + memory_topics tables + TopicStore + k-means+TF-IDF clustering + /api/topics + TopicsTab). See `src/topics/store.ts` + `extensions/mega-topics-cmds.ts` + `extensions/dashboard-server/routes-topics.ts`.
 **Target version:** v0.9.2
 **Reuse target:** `src/topics/` + `src/wiki.ts` are host-agnostic (pi-agnostic, embeddable; program §3).
 

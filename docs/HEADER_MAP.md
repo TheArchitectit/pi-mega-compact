@@ -821,3 +821,70 @@
 | Acceptance Criteria | 184 | 0 |
 | Rollback | 198 | 0 |
 | Risks | 207 | 0 |
+
+## docs/specs/s51-auto-categorizing-wiki.md
+
+| Section | Line | Offset |
+| --------- | ------ | -------- |
+| Status / Depends on | 7 | 0 |
+| Goal | 13 | 0 |
+| Scope | 25 | 0 |
+| Execution — S51A: clustering + TopicStore | 50 | 0 |
+| Execution — S51B: wiki pages + /mega-topics | 80 | 0 |
+| Acceptance | 110 | 0 |
+| Rollback | 125 | 0 |
+
+## docs/specs/s52-dashboard-management-rewind.md
+
+| Section | Line | Offset |
+| --------- | ------ | -------- |
+| Goal | 13 | 0 |
+| Contract (RewindIntent) | 25 | 0 |
+| Scope | 55 | 0 |
+| Execution — S52A: Rewind Intent Queue | 85 | 0 |
+| Execution — S52B: Dashboard Turns Tab | 95 | 0 |
+| Execution — S52C: Wiki Polish + Fork Button | 105 | 0 |
+| Acceptance | 115 | 0 |
+| Rollback | 125 | 0 |
+
+## docs/specs/find-pressure-basis-oscillation.md
+
+| Section | Line | Offset |
+| --------- | ------ | -------- |
+| Status | 7 | 0 |
+| Observation | 15 | 0 |
+| Conclusion | 25 | 0 |
+| Evidence | 35 | 0 |
+| Recommendation (SHIPPED) | 80 | 0 |
+
+## src/intent.ts
+
+| Section | Line | Offset |
+| --------- | ------ | -------- |
+| RewindIntent interface | 20 | 0 |
+| IntentWriter / IntentReader | 40 | 0 |
+| openIntentQueue | 55 | 0 |
+| postIntent | 60 | 0 |
+| pendingIntents / allIntents | 75 | 0 |
+| consumeIntent / abandonIntent | 95 | 0 |
+
+## extensions/dashboard-server/routes-turns.ts
+
+| Section | Line | Offset |
+| --------- | ------ | -------- |
+| handleTurns dispatch | 40 | 0 |
+| GET /api/turns | 55 | 0 |
+| GET /api/turns/conversation/:convId | 100 | 0 |
+| GET /api/turns/intents | 130 | 0 |
+| POST /api/turns/intent | 145 | 0 |
+| POST /api/fork | 165 | 0 |
+| POST /api/turns/prune | 190 | 0 |
+| POST /api/turns/vacuum | 215 | 0 |
+
+## extensions/dashboard-client/src/tabs/TurnsTab.tsx
+
+| Section | Line | Offset |
+| --------- | ------ | -------- |
+| Component + state | 30 | 0 |
+| Conversation list | 90 | 0 |
+| TurnDetail (per-turn viz + recall) | 150 | 0 |

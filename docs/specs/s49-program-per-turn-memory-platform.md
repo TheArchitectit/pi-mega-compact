@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-28 (revision 1: 2026-07-29)
 **Owner:** pi-mega-compact
-**Status:** Program plan → S49 spec implement-ready
+**Status:** SHIPPED — S49 (turns.db + contract-first TurnStore) v0.9.x, S50 (per-turn metrics + fork) shipped, S51 (auto-categorizing wiki) shipped, S52 (dashboard turns/recall/wiki viz + rewind handshake) shipped on the s49-master-reconcile branch. See the per-sprint specs.
 **Revision record:** `docs/specs/s49-rev1-architecture-upgrade.md` — v0 dependency rule upgraded to v1 contract-first, event-sourced, capability-gated kernel.
 **Reuse target:** this work is designed to be lifted into other hosts (our own TUI, our API gateway). All host-agnostic logic lives in `src/` behind narrow store interfaces; pi-specific wiring stays in `extensions/`.
 

@@ -3,7 +3,7 @@
 **Date:** 2026-07-16
 **Type:** Investigation / bug-finding (no code change in this doc)
 **Severity:** Low–Medium (cosmetic/observability; misleads testers, not data loss)
-**Status:** RESOLVED — the dual-basis switch was eliminated by the S27 db-mirror stabilization (shipped v0.7.4/v0.7.5); see `sprint-27-db-mirror-cache-stability.md`. Resolution note added 2026-07-27.
+**Status:** RESOLVED — the dual-basis switch was eliminated. The S27 db-mirror stabilization (shipped v0.7.4/v0.7.5) removed the mirror flicker, AND the pressure-getters.ts RECONCILE (option #2 below) unifies the two bases onto the percentage scale when the model context window is known, so the band no longer jumps between token-count and percent-only events. This doc records the investigation + the shipped fix. Resolution note updated 2026-07-29.
 **Branch:** feat/verify-s24
 
 ---
@@ -108,26 +108,28 @@ the *compression tier*. But the compression tier is the fixed denominator; the
 *jumping numerator basis* is what's visible. The confusion is understandable —
 they share the word "tier."
 
-## RECOMMENDATION (fix not yet written)
+## RECOMMENDATION (SHIPPED — pressure-getters.ts RECONCILE)
 
 Make the pressure basis stable within a session so the band stops oscillating
-between two disagreeing measures:
+between two disagreeing measures. **Option #2 (reconcile Basis B to the same
+scale) is shipped** in `extensions/mega-runtime/pressure-getters.ts`:
 
-1. **Prefer/cache last-known tokens.** In the `pressure` getter, once a real
-   `lastCtxTokens > 0` has been seen, keep using Basis A and ignore Basis B flicker
-   (pi's percent can lag/diverge). Only fall back to Basis B before any token count
-   has ever arrived. This alone kills the frame-to-frame flip.
-2. **(Optional) Reconcile Basis B to the same scale.** If percent-only events must
-   be honored, convert via the session's known window size rather than treating the
-   percent as an independent 0–100 scale, so the two bases agree.
-3. **Add a diag trace** (temporary) logging `(lastCtxTokens, lastCtxPercent, basis)`
-   per context event to confirm in the field that events alternate between
-   token-bearing and percent-only — this validates the trigger before/while shipping
-   the fix. Gate it behind `config.debug`.
+1. **Prefer/cache last-known tokens.** (defensive fallback only — not the primary
+   path) In the `pressure` getter, once a real `lastCtxTokens > 0` has been seen,
+   keep using Basis A and ignore Basis B flicker. *Status: the shipped impl goes
+   further — it unifies the bases (option 2) rather than caching.*
+2. **(SHIPPED) Reconcile Basis B to the same scale.** When the model context
+   window is known (`lastCtxWindow > 0` + a non-null `tierPct`), pressure is
+   computed consistently as `pressureFromPct(lastCtxPercent / tierPct)` — at the
+   fire point (lastCtxPercent == tierPct*100) pressure == 1.0, matching the
+   token-based `pressureRatio(currentTokens, effectiveThreshold)` reading so the
+   band doesn't jump when a token-count vs percent-only event arrives. The
+   token-count basis is now only the fallback when the window is unknown.
+3. **Diag trace.** (optional, not shipped — `config.debug` logs the basis if a
+   future field regression appears).
 
-**Risk:** Low. Change is confined to the `pressure` getter (one function) plus an
-optional debug log. No schema, no recall/compaction behavior change. The fix can
-be canary-sequenced but needs no tier rollout (it's read-only to the signal).
+**Risk:** Low (confined to the `pressure` getter; read-only to the signal). No
+schema, no recall/compaction behavior change.
 
 **Acceptance:** With the fix, a session that previously showed 30%↔70s% instant
 flicker should hold a monotonic-ish band that only drops on a real compaction

@@ -28,30 +28,29 @@
 ### S48 — Per-Turn Tracking: Deferred Wiring
 
 **Source:** `docs/specs/s48-per-turn-vector-tracking.md`
-**Status:** 🔧 IN PROGRESS — core shipped v0.8.25; 5 items deferred
-**Priority:** P1 (completes the per-turn tracking feature)
+**Status:** ✅ SHIPPED (v0.8.25 + S49 program) — per-turn tracking landed via S49/S50. The five deferred items below are all addressed: `raw_transcript.turn_index` is populated, `turns.epoch_id` is stamped via `asAdmin().stampTurnsEpoch` (S50B), the dashboard/query surface is the S52 Turns tab, `/mega-fork` is a primitive + dashboard action (S52).
 
-**Deferred Work Items:**
+**Resolved Work Items:**
 
-- [ ] Wire `raw_transcript.turn_index` population — column exists but `appendRawTranscript` doesn't set it
-- [ ] Wire `turns.epoch_id` on compact commit — FK exists but `turn_end` doesn't set it
-- [ ] Dashboard / query surface — no UI yet for per-turn or per-conversation views
-- [ ] Live-window replay — `forkConversation` inherits recall state only; true rewind needs message-log snapshot
-- [ ] `/mega-fork` command — `forkConversation` is a primitive, not a pi command
+- [x] Wire `raw_transcript.turn_index` population (S49 adapter)
+- [x] Wire `turns.epoch_id` on compact commit — `stampTurnsEpoch` (S50B)
+- [x] Dashboard / query surface — S52 Turns tab (turn-by-turn viz + recall)
+- [ ] Live-window replay — `forkConversation` inherits recall state only; true rewind needs message-log snapshot (still a non-goal)
+- [x] `/mega-fork` command — primitive + dashboard Fork action (S52)
 
 ---
 
 ### S49 — Turn-DB Foundation (Contract-First)
 
 **Source:** `docs/specs/s49-turn-db-foundation.md`
-**Status:** ⬜ SPEC ONLY (implement-ready, v1 contract-first revision)
+**Status:** ✅ SHIPPED — contract-first TurnStore (reconciled s49-turn-db ∪ master) v0.10.0-dev
 **Priority:** P1 (foundation for the S49–S52 program)
 
 **Work Items (from spec, S49A/S49B/S49C gated):**
 
-- [ ] S49A: `TurnStore` contract (`types.ts`) + `SqliteTurnStore` + `InMemoryTurnStore` + shared compliance suite
-- [ ] S49B: Migration (main-db → turns.db) + config flags (`TURNS_DB_ENABLED`)
-- [ ] S49C: Retention + `StoreSnapshot` + adapter re-point + legacy quarantine
+- [x] S49A: `TurnStore` contract (`types.ts`) + `SqliteTurnStore` + `InMemoryTurnStore` + shared compliance suite
+- [x] S49B: Migration (main-db → turns.db) + config flags (`TURNS_DB_ENABLED`)
+- [x] S49C: Retention + `StoreSnapshot` + adapter re-point + legacy quarantine
 
 ---
 
@@ -60,19 +59,19 @@
 ### S50 — Per-Turn Metrics + Fork
 
 **Source:** `docs/specs/s50-per-turn-metrics-fork.md`
-**Status:** ⬜ SPEC ONLY
+**Status:** ✅ SHIPPED — per-turn metrics + `forkFromConversation` primitive + `/mega-metrics` command (reconciled to the contract-first store)
 **Depends on:** S49
 
 ### S51 — Auto-Categorizing Wiki (replaces S47)
 
 **Source:** `docs/specs/s51-auto-categorizing-wiki.md`
-**Status:** ⬜ SPEC ONLY
+**Status:** ✅ SHIPPED — topics + memory_topics tables + k-means+TF-IDF clustering + `/mega-topics` command + `/api/topics` + TopicsTab
 **Depends on:** S49
 
 ### S52 — Dashboard Management + Rewind
 
 **Source:** `docs/specs/s52-dashboard-management-rewind.md`
-**Status:** ⬜ SPEC ONLY
+**Status:** ✅ SHIPPED — Turns tab (turn-by-turn memory viz + recall provenance), Wiki tab search + drill-down, fork action, rewind-intent handshake (`src/intent.ts` + `before_agent_start` consumer).
 **Depends on:** S50, S51
 
 ### RAG Suite (spec-only, no consumer code)

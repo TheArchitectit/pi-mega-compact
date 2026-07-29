@@ -4,7 +4,7 @@
 **Parent program:** `docs/specs/s49-program-per-turn-memory-platform.md`
 **Depends on:** S49 (store + capability gating), S50 (metrics + fork), S51 (wiki)
 **Priority:** P2
-**Status:** SPEC ONLY (implement after S50/S51 land)
+**Status:** SHIPPED — v0.10.0-dev (s49-master-reconcile branch). Turns tab (turn-by-turn memory viz + recall provenance), Wiki tab search + drill-down, fork action, rewind-intent handshake (src/intent.ts + before_agent_start consumer), routes-turns.ts + routes-topics drill-down, TurnsTab.tsx + TopicsTab.tsx polish. See the IMPLEMENTATION section below.
 **Reuse target:** `src/intent.ts` (rewind-intent queue) is host-agnostic
 
 ---
