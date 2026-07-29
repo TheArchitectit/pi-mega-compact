@@ -1,6 +1,6 @@
 # Release Notes — pi-mega-compact
 
-## v0.10.0 (2026-07-29) — S49–S52 program: SHIPPED
+## v0.10.1 (2026-07-29) — S49–S52 program: SHIPPED
 
 **The per-turn memory platform release.** The `s49-master-reconcile` branch reconciles master's contract-first `TurnStore` with the `s49-turn-db` program and implements the full S49–S52 program: per-turn memory tracking, recall provenance, an auto-categorizing wiki, and a dashboard with turn-by-turn memory visualization, recall display, and rewind.
 
