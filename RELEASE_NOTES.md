@@ -1,5 +1,139 @@
 # Release Notes — pi-mega-compact
 
+## v0.9.0 (2025-07-27)
+
+**Per-turn memory platform + auto-categorizing wiki + multi-level RAPTOR retrieval.**
+This is the biggest release since v0.1.0 — a new isolated turns database, per-turn metrics with fork primitives, k-means/TF-IDF topic clustering with an auto-wiki, multi-level RAPTOR retrieval, and a major runtime decomposition. 745 tests passing.
+
+---
+
+### Per-turn memory platform (S49, S50)
+
+The monolithic `context_chunks` store now shares session ownership with a new
+**isolated `turns.db`** — a per-session SQLite database that survives main-DB
+compaction cycles and enables true per-turn provenance.
+
+- **S49A — `turns.db` store**: new `TurnStore` interface with isolated
+  `turns.db` per session. All raw transcript entries now carry a `turn_index`
+  stamped at ingest time. Main DB no longer owns turn-level data.
+
+- **S49B — main-db→turns migration**: automatic migration from the monolithic
+  main DB to the isolated turns store. Config flags `MEGACOMPACT_TURNS_DB`
+  (default `true`) and `MEGACOMPACT_TURNS_KEEP_MIN` (default `0`) control the
+  migration and how many turns remain in the main DB after migration.
+
+- **S49C — retention + legacy quarantine**: configurable retention via
+  `MEGACOMPACT_TURNS_RETENTION_DAYS` (default `0` = infinite). Legacy sessions
+  without turn data are quarantined rather than silently dropped. The adapter
+  layer re-points all turn-level queries to `turns.db` transparently.
+
+- **S50A — `turn_index` wiring**: every `raw_transcript` row now carries a
+  `turn_index` column stamped at `compact-commit` time, enabling per-turn
+  provenance queries.
+
+- **S50B — `epoch_id` stamping**: compaction epochs are now stamped on each
+  turn at commit, so you can reconstruct exactly which compaction produced a
+  given turn's state.
+
+- **S50C — per-turn memory-quality metrics**: new `mega-metrics` CLI command
+  and dashboard `/api/sessions` + `/api/sessions/timeseries` endpoints.
+  Metrics include: chunks per compaction, dedup hit rates per tier, latency
+  breakdowns, and per-epoch quality scores. New `mega-fork` command creates a
+  session fork primitive (branch a session's memory from a given epoch).
+
+### Auto-categorizing wiki (S51)
+
+Automatic topic clustering and extractive wiki generation — every compaction
+now builds a live topic model that feeds a dashboard wiki tab.
+
+- **S51A — k-means clustering + TF-IDF labels**: chunks are clustered via
+  k-means++ on their embedding vectors; each cluster gets TF-IDF top-term
+  labels. Config: `MEGACOMPACT_WIKI_LABEL_TOP_TERMS` (default `5`).
+
+- **S51B — persistent topic model**: clusters and labels are persisted in
+  `turns.db` and rebuilt incrementally at each compaction. Config:
+  `MEGACOMPACT_WIKI_REBUILD_EVERY` (default `1`, i.e. every compaction).
+
+- **S51C — extractive wiki + dashboard Topics tab**: each cluster produces a
+  one-paragraph extractive summary. New `mega-topic` / `mega-topics` /
+  `mega-topics-rebuild` CLI commands. Dashboard gains a **Topics tab** at
+  `/api/topics` showing live cluster labels, chunk counts, and summaries.
+  Config: `MEGACOMPACT_AUTO_WIKI` (default `true`).
+
+### Multi-level RAPTOR retrieval (S42B/S42D)
+
+The RAPTOR tree now supports multi-level retrieval: queries match not just leaf
+chunks but also intermediate and root summaries, improving recall on
+broad/thematic questions.
+
+- **S42B — multi-level retrieval engine**: walks the RAPTOR tree from leaves
+  to root, scoring each level independently. A configurable promotion rule
+  (S25-compatible) lifts high-scoring parents above their children.
+
+- **S42D — per-turn tracking**: RAPTOR retrieval results are stamped with
+  `turn_index` so you can trace which turn produced which retrieval hits.
+
+- Full QA sweep: all RAPTOR paths (leaf, multi-level, promotion) verified
+  against the 745-test suite.
+
+### Runtime decomposition
+
+The monolithic `widget.ts` (1 200+ lines) has been split into focused modules:
+
+- **Phase 1** — extract modules from monolith: handler modules, config
+  extraction, error-pattern isolation.
+- **Phase 2** — split `widget.ts` proper + extract runtime helpers and
+  snapshot logic into dedicated files.
+
+### New environment variables
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MEGACOMPACT_TURNS_DB` | `true` | Enable isolated turns.db store |
+| `MEGACOMPACT_TURNS_KEEP_MIN` | `0` | Min turns retained in main DB |
+| `MEGACOMPACT_TURNS_RETENTION_DAYS` | `0` | Turn retention (0 = infinite) |
+| `MEGACOMPACT_AUTO_WIKI` | `true` | Enable auto-categorizing wiki |
+| `MEGACOMPACT_WIKI_LABEL_TOP_TERMS` | `5` | TF-IDF terms per cluster label |
+| `MEGACOMPACT_WIKI_REBUILD_EVERY` | `1` | Rebuild topic model every N compactions |
+
+### New CLI commands
+
+| Command | Description |
+| --- | --- |
+| `mega-metrics` | Per-turn memory-quality metrics |
+| `mega-fork` | Fork a session's memory from a given epoch |
+| `mega-topic` | Show details for a single topic cluster |
+| `mega-topics` | List all topic clusters for a session |
+| `mega-topics-rebuild` | Force-rebuild the topic model |
+
+### New dashboard endpoints
+
+| Endpoint | Description |
+| --- | --- |
+| `/api/sessions` | List sessions with metadata |
+| `/api/sessions/timeseries` | Per-session quality metrics over time |
+| `/api/topics` | Topic clusters with labels and summaries |
+
+### What's New (by sprint)
+
+- **Sprint 49** — Per-turn memory platform: isolated `turns.db` store,
+  main-db→turns migration, retention + legacy quarantine.
+- **Sprint 50** — Per-turn metrics: `turn_index` wiring, `epoch_id` stamping,
+  memory-quality metrics, fork primitive.
+- **Sprint 51** — Auto-categorizing wiki: k-means clustering, TF-IDF labels,
+  extractive summaries, dashboard Topics tab.
+
+### Migration notes
+
+- **Automatic**: existing sessions are migrated to `turns.db` on first load
+  after upgrade (no user action required).
+- **Zero-downtime**: the main DB remains the authoritative store during
+  migration; `turns.db` is built incrementally.
+- **Rollback**: set `MEGACOMPACT_TURNS_DB=false` to disable the turns store;
+  all data remains accessible from the main DB.
+
+---
+
 ## v0.8.21 (2026-07-27)
 
 **ESC abort now cleanly skips retry nudges + real-time session gauges + stacked memory charts.** Three features (S39 session-timeseries charts, S40 per-repo context gauges, S38 ESC-cancel fix) and a critical P1 bug fix: pressing ESC mid-task previously fired up to 5 blind retry nudges that re-ran the exact task you just cancelled. That's fixed — the new `'cancelled'` error category short-circuits the retry safety net on any user-initiated abort.
@@ -20,6 +154,7 @@
 ### Tests
 
 S38 file: **37 tests** (up from 33). New:
+
 - `classifyError` returns `'cancelled'` for `stopReason: "aborted"` — 3 variants (plain, "Operation aborted", "Aborted after N retry attempts")
 - Defense: `stopReason: "error"` + `errorMessage` containing "aborted" still returns `'transient'` (not `'cancelled'`)
 - Integration: ESC abort fires NO nudge + logs `error_retry_cancelled`
@@ -80,7 +215,7 @@ None — bug fixes only. Update with `pi update --extensions`.
 ### Configuration
 
 | Env var | Default | Effect |
-|---|---|---|
+| --- | --- | --- |
 | `MEGACOMPACT_AUTO_RETRY_TRANSIENT_MAX` | `5` | Max transient retries; `0` disables transient retries |
 | `MEGACOMPACT_AUTO_RETRY_PERMANENT_MAX` | `1` | Max permanent retries; `0` disables |
 | `MEGACOMPACT_MAX_CONSECUTIVE_ERRORS` | `10` | Circuit-breaker threshold |
