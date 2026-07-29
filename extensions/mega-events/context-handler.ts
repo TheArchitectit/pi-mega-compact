@@ -23,6 +23,7 @@ import { autoCompactCheck } from "../../src/compact.js";
 import { estimateSessionTokens } from "../../src/tokens.js";
 import type { MegaRuntime } from "../mega-runtime.js";
 import { runCompact, piCompactWouldNoop } from "../mega-pipeline.js";
+import { stampTurnsEpochFor } from "../mega-turn-store.js";
 import { computeLiveTrimCut, liveTrimSummaryMessage } from "../mega-trim.js";
 import {
 	pressureFromPct,
@@ -283,6 +284,14 @@ export function registerContextHandler(
 					createdAt: Date.now(),
 				};
 				writeCheckpointEpoch(db, epoch);
+				// S50B: link this session's turns to the epoch that just compacted
+				// them (compression-by-conversation-epoch metrics). Isolated-store
+				// only; best-effort + non-fatal.
+				try {
+					stampTurnsEpochFor(config, runtime.rt.sessionId, epoch.epochId, runtime.currentStateDir);
+				} catch {
+					/* non-fatal: epoch stamping never breaks compaction */
+				}
 				// S27 Task 6: Fire-and-forget dedup pipeline.
 				// Deduplicates raw_transcript rows for the compacted range.
 				try {

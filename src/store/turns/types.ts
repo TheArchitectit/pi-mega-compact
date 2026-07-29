@@ -114,6 +114,9 @@ export interface TurnStore {
 		parentConversationId: string,
 		forkTurnId: number,
 	): ForkResult;
+	/** S50B: stamp `epoch_id` on this session's turns that have none yet (links a
+	 *  turn to the epoch that compacted it). Returns the number of turns stamped. */
+	stampTurnsEpoch(sessionId: string, epochId: string): number;
 	clearTurns(sessionId: string): void;
 	pruneTurns(opts: PruneOptions): {
 		deletedTurns: number;

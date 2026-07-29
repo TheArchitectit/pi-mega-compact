@@ -187,6 +187,14 @@ export function createTurnStore(stateDir: string = getStateDir()): TurnStore {
 		return { conversationId: childId, recalled: listTurnRecall(forkTurnId) };
 	}
 
+	function stampTurnsEpoch(sessionId: string, epochId: string): number {
+		const sid = normalizeSessionId(sessionId);
+		const res = db
+			.prepare("UPDATE turns SET epoch_id = ? WHERE session_id = ? AND epoch_id IS NULL")
+			.run(epochId, sid);
+		return Number(res.changes ?? 0);
+	}
+
 	function clearTurns(sessionId: string): void {
 		const sid = normalizeSessionId(sessionId);
 		withTx(db, () => {
@@ -263,6 +271,7 @@ export function createTurnStore(stateDir: string = getStateDir()): TurnStore {
 		listConversationTurns,
 		ensureConversationId,
 		forkConversation,
+		stampTurnsEpoch,
 		clearTurns,
 		pruneTurns,
 		vacuum,

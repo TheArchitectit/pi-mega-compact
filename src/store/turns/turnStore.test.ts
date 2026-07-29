@@ -136,6 +136,27 @@ test("forkConversation lineage + replay set", () => {
 	store.close();
 });
 
+test("S50B: stampTurnsEpoch sets epoch on unstamped turns, idempotent", () => {
+	const dir = stateDir();
+	const store = createTurnStore(dir);
+	const conv = store.ensureConversationId("sess_epoch");
+	store.recordTurn({ conversationId: conv, sessionId: "sess_epoch", turnIndex: 0 });
+	store.recordTurn({ conversationId: conv, sessionId: "sess_epoch", turnIndex: 1 });
+	// Pre-stamp turn 1 with an older epoch — stampTurnsEpoch must NOT overwrite it.
+	store.stampTurnsEpoch("sess_epoch", "epoch_old"); // stamps both 0 and 1
+	assert.equal(store.getTurn(conv, 0)?.epochId, "epoch_old");
+	assert.equal(store.getTurn(conv, 1)?.epochId, "epoch_old");
+	// A new turn arrives unstamped; a new compact stamps only it.
+	store.recordTurn({ conversationId: conv, sessionId: "sess_epoch", turnIndex: 2 });
+	const stamped = store.stampTurnsEpoch("sess_epoch", "epoch_new");
+	assert.equal(stamped, 1); // only turn 2 was null
+	assert.equal(store.getTurn(conv, 2)?.epochId, "epoch_new");
+	assert.equal(store.getTurn(conv, 0)?.epochId, "epoch_old"); // preserved
+	// Idempotent: no null-epoch turns left.
+	assert.equal(store.stampTurnsEpoch("sess_epoch", "epoch_x"), 0);
+	store.close();
+});
+
 test("clearTurns cascades recall rows", () => {
 	const dir = stateDir();
 	const store = createTurnStore(dir);

@@ -70,3 +70,17 @@ export function recordRecallWrite(
 		legacyRecordTurnRecall(turnId, hits, stateDir);
 	}
 }
+
+/** S50B: stamp `epoch_id` on a session's unstamped turns (compact-commit).
+ *  Isolated-store only — the legacy main-db turn path is being retired, so it
+ *  is a no-op when turnsDbEnabled is false. Returns the number stamped. */
+export function stampTurnsEpochFor(
+	config: MegaConfig,
+	sessionId: string,
+	epochId: string,
+	stateDir: string,
+): number {
+	return config.turnsDbEnabled
+		? storeFor(stateDir).stampTurnsEpoch(sessionId, epochId)
+		: 0;
+}
