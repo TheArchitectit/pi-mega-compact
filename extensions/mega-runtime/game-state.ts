@@ -14,6 +14,8 @@ import { disposePerf, type PerfContext } from "./perf.js";
 
 export interface GameWatcherLike {
 	close(): void;
+	/** fs.FSWatcher has it; test doubles need not. */
+	unref?(): unknown;
 }
 
 export interface GameStateContext {
@@ -142,6 +144,13 @@ export function ensureGameStateWatcherImpl(self: GameStateContext, view: GameSta
 				}
 			},
 		);
+		// The watcher is a cache-eviction convenience, never a reason to stay
+		// alive: an active+referenced fs_event handle holds node's event loop
+		// open, so a runtime that was never dispose()d (every extension test, and
+		// any `pi -p` run that skips session_shutdown) hangs the process after all
+		// work is done. unref'd like the perf interval — while pi runs there are
+		// always other referenced handles, so the watcher still fires normally.
+		self.gameStateWatcher.unref?.();
 		self.gameStateWatchDir = self.currentStateDir;
 	} catch {
 		/* non-fatal: missing dir / platform issue — next snapshot re-queries */
