@@ -19,7 +19,9 @@ export default function TopicsTab(): React.ReactElement {
 	);
 
 	if (error && !data) {
-		return <div className="tab-stub">Error loading topics: {error.message}</div>;
+		return (
+			<div className="tab-stub">Error loading topics: {error.message}</div>
+		);
 	}
 	if (loading && !data) {
 		return <div className="tab-stub">Loading topics…</div>;
@@ -32,7 +34,10 @@ export default function TopicsTab(): React.ReactElement {
 		return (
 			<div className="tab-stub">
 				<h3>Wiki Topics</h3>
-				<p>No topics yet. Topics are auto-generated after every 10th compaction from real memory embeddings (k-means + TF-IDF).</p>
+				<p>
+					No topics yet. Topics are auto-generated after every 10th compaction
+					from real memory embeddings (k-means + TF-IDF).
+				</p>
 				<p>Check back after a few more compaction cycles.</p>
 			</div>
 		);
@@ -43,7 +48,8 @@ export default function TopicsTab(): React.ReactElement {
 			<h3>Wiki Topics</h3>
 			<p className="subtitle">
 				{data.totalTopics} topic{data.totalTopics !== 1 ? "s" : ""} ·{" "}
-				{data.totalAssigned} assigned memori{data.totalAssigned !== 1 ? "es" : "y"}
+				{data.totalAssigned} assigned memori
+				{data.totalAssigned !== 1 ? "es" : "y"}
 				{data.lastRebuildAt != null && (
 					<> · last rebuild {new Date(data.lastRebuildAt).toLocaleString()}</>
 				)}
@@ -62,7 +68,10 @@ export default function TopicsTab(): React.ReactElement {
 							<td className="topic-label">{t.label}</td>
 							<td className="topic-count">{t.memoryCount}</td>
 							<td className="topic-terms">
-								{t.termScore.slice(0, 8).map((s) => s.term).join(", ")}
+								{t.termScore
+									.slice(0, 8)
+									.map((s) => s.term)
+									.join(", ")}
 							</td>
 						</tr>
 					))}

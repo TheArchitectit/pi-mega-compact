@@ -151,7 +151,9 @@ export function fetchSessions(): Promise<SessionsResponse> {
 	return getJson<SessionsResponse>(ENDPOINTS.sessions.path);
 }
 
-export function fetchSessionTimeseries(minutes: number): Promise<SessionTimeseriesResponse> {
+export function fetchSessionTimeseries(
+	minutes: number,
+): Promise<SessionTimeseriesResponse> {
 	return getJson<SessionTimeseriesResponse>(
 		`${ENDPOINTS.sessionTimeseries.path}${query({ minutes })}`,
 	);

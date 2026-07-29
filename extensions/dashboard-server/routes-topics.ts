@@ -42,9 +42,9 @@ export function handleTopics(
 		}));
 
 		const totalAssigned = (
-			tdb
-				.prepare("SELECT COUNT(*) AS c FROM memory_topics")
-				.get() as { c: number }
+			tdb.prepare("SELECT COUNT(*) AS c FROM memory_topics").get() as {
+				c: number;
+			}
 		).c;
 
 		const lastRebuildAt = (
@@ -71,11 +71,15 @@ export function handleTopics(
 	return true;
 }
 
-function safeParse(json: string | null): Array<{ term: string; score: number }> {
+function safeParse(
+	json: string | null,
+): Array<{ term: string; score: number }> {
 	if (!json) return [];
 	try {
 		const v = JSON.parse(json) as unknown;
-		return Array.isArray(v) ? (v as Array<{ term: string; score: number }>) : [];
+		return Array.isArray(v)
+			? (v as Array<{ term: string; score: number }>)
+			: [];
 	} catch {
 		return [];
 	}

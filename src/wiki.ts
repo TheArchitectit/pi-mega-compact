@@ -9,8 +9,8 @@
  * `src/dedup/raptor` patterns).
  */
 
-import type { Topic, TopicAssignment } from "./topics/types.js";
-import { tokenize } from "./topics/labels.js";
+import type { Topic, TopicAssignment, EmbeddedChunk } from "./topics/types.js";
+import { tfidfScores } from "./topics/labels.js";
 
 /** A wiki page for a single topic. */
 export interface WikiPage {
@@ -56,23 +56,9 @@ function splitSentences(text: string): string[] {
 		.filter((s) => s.length > 10);
 }
 
-/**
- * Score a sentence for TF-IDF ranking. Returns a heuristic (sum of TF × IDF).
- * Higher = more representative of the corpus.
- */
-function sentenceScore(sent: string, corpusText: string): number {
-	const sentTerms = new Set(tokenize(sent));
-	const corpusTerms = tokenize(corpusText);
-	const termCounts = new Map<string, number>();
-	for (const t of corpusTerms) termCounts.set(t, (termCounts.get(t) ?? 0) + 1);
-	const nTerms = corpusTerms.length;
-	let score = 0;
-	for (const term of sentTerms) {
-		const tf = (termCounts.get(term) ?? 0) / nTerms;
-		const idf = Math.log(1 + nTerms / (termCounts.get(term) ?? 1));
-		score += tf * idf;
-	}
-	return score;
+/** Wrap a text string as a pseudo EmbeddedChunk for tfidfScores reuse. */
+function pseudoChunk(text: string): EmbeddedChunk {
+	return { chunkId: "", sessionId: "", vec: [], text };
 }
 
 interface MemoryContent {
@@ -104,11 +90,15 @@ export function extractiveSummary(
 	// Extractively summarize: rank sentences by TF-IDF, pick top 3.
 	const sentences = splitSentences(corpusText);
 	if (sentences.length === 0) return "";
-	const scored = sentences.map((s, i) => ({
-		text: s,
-		score: sentenceScore(s, corpusText),
-		idx: i,
-	}));
+
+	// Reuse tfidfScores from labels.ts: each sentence is a pseudo-chunk scored
+	// against the full corpus. Sum the top-N term scores for each sentence.
+	const corpusChunks = [pseudoChunk(corpusText)];
+	const scored = sentences.map((s, i) => {
+		const sentScores = tfidfScores([pseudoChunk(s)], corpusChunks);
+		const totalScore = sentScores.reduce((sum, ts) => sum + ts.score, 0);
+		return { text: s, score: totalScore, idx: i };
+	});
 	scored.sort((a, b) => b.score - a.score || a.idx - b.idx);
 	const top = Math.min(3, sentences.length);
 	const chosen = scored.slice(0, top).sort((a, b) => a.idx - b.idx);

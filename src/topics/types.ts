@@ -24,8 +24,9 @@ export interface Topic {
 export interface TopicAssignment {
 	/** `context_chunks.id` (per-session). */
 	memoryId: string;
-	/** Owning session — `context_chunks` PK is (session_id, id). */
-	sessionId: string;
+	/** Owning session — `context_chunks` PK is (session_id, id).
+	 *  Empty string when reconstructed from `memory_topics` (no session_id column there). */
+	sessionId?: string;
 	topicId: string;
 	/** Normalized cosine membership in [0,1] (closer to centroid → higher). */
 	confidence: number;

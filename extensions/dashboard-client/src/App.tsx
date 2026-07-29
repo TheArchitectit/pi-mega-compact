@@ -94,8 +94,8 @@ export default function App(): React.ReactElement {
 						{activeTab === "cache" && <CacheTab />}
 						{activeTab === "game" && <GameTab />}
 						{activeTab === "achievements" && <AchievementsTab />}
-					{activeTab === "sessions" && <SessionsTab />}
-					{activeTab === "topics" && <TopicsTab />}
+						{activeTab === "sessions" && <SessionsTab />}
+						{activeTab === "topics" && <TopicsTab />}
 					</React.Suspense>
 				</main>
 			</div>

@@ -24,11 +24,19 @@ export interface TopicStore {
 	/** All topics, sorted by memory_count DESC. */
 	getTopics(): StoredTopic[];
 	/** Member memory ids for a topic (paginated). */
-	getMemoriesForTopic(topicId: string, limit?: number, offset?: number): TopicAssignment[];
+	getMemoriesForTopic(
+		topicId: string,
+		limit?: number,
+		offset?: number,
+	): TopicAssignment[];
 	/** The assignment for one memory, or null. */
 	getTopicForMemory(memoryId: string): TopicAssignment | null;
 	/** Rollup stats for the wiki index header. */
-	getTopicStats(): { totalTopics: number; totalAssigned: number; lastRebuildAt: number | null };
+	getTopicStats(): {
+		totalTopics: number;
+		totalAssigned: number;
+		lastRebuildAt: number | null;
+	};
 }
 
 interface TopicRow {
@@ -48,11 +56,15 @@ interface AssignmentRow {
 	method: string | null;
 }
 
-function parseTermScores(json: string | null): Array<{ term: string; score: number }> {
+function parseTermScores(
+	json: string | null,
+): Array<{ term: string; score: number }> {
 	if (!json) return [];
 	try {
 		const v = JSON.parse(json) as unknown;
-		return Array.isArray(v) ? (v as Array<{ term: string; score: number }>) : [];
+		return Array.isArray(v)
+			? (v as Array<{ term: string; score: number }>)
+			: [];
 	} catch {
 		return [];
 	}
@@ -74,7 +86,8 @@ function rowToAssignment(r: AssignmentRow): TopicAssignment {
 		memoryId: r.memory_id,
 		// memory_topics has no session_id column; the chunk id is globally unique
 		// enough for the wiki view (context_chunks PK is (session_id, id)).
-		sessionId: "",
+		// sessionId omitted — memory_topics has no session_id column;
+		// the TopicAssignment type marks it optional for this reason.
 		topicId: r.topic_id,
 		confidence: r.confidence ?? 0,
 		assignedAt: r.assigned_at ?? 0,
@@ -124,7 +137,11 @@ export function createTopicStore(stateDir?: string): TopicStore {
 			return rows.map(rowToTopic);
 		},
 
-		getMemoriesForTopic(topicId: string, limit = 50, offset = 0): TopicAssignment[] {
+		getMemoriesForTopic(
+			topicId: string,
+			limit = 50,
+			offset = 0,
+		): TopicAssignment[] {
 			const rows = db
 				.prepare(
 					`SELECT memory_id, topic_id, confidence, assigned_at, method
@@ -145,13 +162,25 @@ export function createTopicStore(stateDir?: string): TopicStore {
 			return r ? rowToAssignment(r) : null;
 		},
 
-		getTopicStats(): { totalTopics: number; totalAssigned: number; lastRebuildAt: number | null } {
-			const t = db.prepare("SELECT COUNT(*) AS c FROM topics").get() as { c: number };
-			const a = db.prepare("SELECT COUNT(*) AS c FROM memory_topics").get() as { c: number };
+		getTopicStats(): {
+			totalTopics: number;
+			totalAssigned: number;
+			lastRebuildAt: number | null;
+		} {
+			const t = db.prepare("SELECT COUNT(*) AS c FROM topics").get() as {
+				c: number;
+			};
+			const a = db.prepare("SELECT COUNT(*) AS c FROM memory_topics").get() as {
+				c: number;
+			};
 			const r = db
 				.prepare("SELECT MAX(cluster_model_built_at) AS m FROM topics")
 				.get() as { m: number | null };
-			return { totalTopics: t.c, totalAssigned: a.c, lastRebuildAt: r.m ?? null };
+			return {
+				totalTopics: t.c,
+				totalAssigned: a.c,
+				lastRebuildAt: r.m ?? null,
+			};
 		},
 	};
 }
@@ -161,9 +190,9 @@ const WIKI_COUNTER_KEY = "wiki_compact_counter";
 
 /** Read the rebuild counter (0 when unset). */
 export function getWikiCompactCounter(db: DatabaseSync): number {
-	const r = db.prepare("SELECT value FROM turns_meta WHERE key = ?").get(WIKI_COUNTER_KEY) as
-		| { value: string }
-		| undefined;
+	const r = db
+		.prepare("SELECT value FROM turns_meta WHERE key = ?")
+		.get(WIKI_COUNTER_KEY) as { value: string } | undefined;
 	const n = r ? Number(r.value) : 0;
 	return Number.isFinite(n) ? n : 0;
 }
@@ -171,9 +200,8 @@ export function getWikiCompactCounter(db: DatabaseSync): number {
 /** Increment + persist the rebuild counter; returns the new value. */
 export function bumpWikiCompactCounter(db: DatabaseSync): number {
 	const next = getWikiCompactCounter(db) + 1;
-	db.prepare("INSERT OR REPLACE INTO turns_meta (key, value) VALUES (?, ?)").run(
-		WIKI_COUNTER_KEY,
-		String(next),
-	);
+	db.prepare(
+		"INSERT OR REPLACE INTO turns_meta (key, value) VALUES (?, ?)",
+	).run(WIKI_COUNTER_KEY, String(next));
 	return next;
 }
