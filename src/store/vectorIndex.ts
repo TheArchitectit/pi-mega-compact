@@ -40,6 +40,8 @@ export interface VectorIndexHit {
   score: number;
 }
 
+import { withOpenTimeout } from "./pgOpenGuard.js";
+
 let db: PGliteInstance | undefined;
 let initPromise: Promise<PGliteInstance | undefined> | undefined;
 let disabled = false;
@@ -131,12 +133,19 @@ async function openPgLite(
     if (!mod) return undefined;
     const dir = indexDir();
     mkdirSync(dir, { recursive: true });
-    const pg = await new mod.PGlite({
-      dataDir: dir,
-      extensions: { vector: mod.vector },
-    });
-    await pg.exec("CREATE EXTENSION IF NOT EXISTS vector;");
-    await pg.exec(`
+    // Bounded open: PGlite is single-writer over a shared dataDir, so a second
+    // pi process on the same dir can block here forever. Without the ceiling the
+    // never-settling promise gets cached in initPromise and every later caller
+    // awaits it — which is how a stalled index wedged a whole pi turn.
+    let openTimedOut = false;
+    const pg = await withOpenTimeout(
+      (async () => {
+        const inst = await new mod.PGlite({
+          dataDir: dir,
+          extensions: { vector: mod.vector },
+        });
+        await inst.exec("CREATE EXTENSION IF NOT EXISTS vector;");
+        await inst.exec(`
       CREATE TABLE IF NOT EXISTS vector_index (
         repo_id       TEXT NOT NULL,
         session_id    TEXT NOT NULL,
@@ -145,10 +154,27 @@ async function openPgLite(
         PRIMARY KEY (repo_id, session_id, checkpoint_id)
       );
     `);
-    // HNSW index over cosine distance for fast NN. Created idempotently.
-    await pg.exec(
-      "CREATE INDEX IF NOT EXISTS vector_index_hnsw ON vector_index USING hnsw (embedding vector_cosine_ops);",
+        // HNSW index over cosine distance for fast NN. Created idempotently.
+        await inst.exec(
+          "CREATE INDEX IF NOT EXISTS vector_index_hnsw ON vector_index USING hnsw (embedding vector_cosine_ops);",
+        );
+        return inst;
+      })(),
+      (reason) => {
+        openTimedOut = true;
+        logWarn(`init ${reason}`);
+      },
     );
+    if (!pg) {
+      if (openTimedOut) {
+        // Don't leave the dead open cached, and don't retry on the next call —
+        // a contended dataDir would just burn another full timeout per caller.
+        // Same terminal state as any other init failure: fall back to the scan.
+        initPromise = undefined;
+        disabled = true;
+      }
+      return undefined;
+    }
     db = pg;
     return pg;
   } catch (err) {
