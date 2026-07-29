@@ -131,6 +131,11 @@
 | pi extension entry, slash commands | [extensions/mega-compact.ts](../extensions/mega-compact.ts) | extensions/ |
 | **S27: raw_transcript (byte-stable message mirror), append-only log, seq ordering** | [src/store/sqlite.ts](../src/store/sqlite.ts) | src/store/ |
 | **S27: dedup_mirror (space-efficient dedup storage), ref_count, content_hash** | [src/mirror/dedup.ts](../src/mirror/dedup.ts) | src/mirror/ |
+| **S49A: TurnStore contract (types.ts) — TurnReader/TurnWriter/TurnAdmin, capability-gated, append-only** | [src/store/turns/types.ts](../src/store/turns/types.ts) | src/store/turns/ |
+| **S49A: SqliteTurnStore (turns.db, own WAL, session_conversations, fork seed recall, position-stable checkpoint)** | [src/store/turns/sqlite-store.ts](../src/store/turns/sqlite-store.ts) | src/store/turns/ |
+| **S49A: InMemoryTurnStore (Map-backed, same contract)** | [src/store/turns/memory-store.ts](../src/store/turns/memory-store.ts) | src/store/turns/ |
+| **S49A: turns.db connection manager (own cache, schema init, WAL mode)** | [src/store/turns/connection.ts](../src/store/turns/connection.ts) | src/store/turns/ |
+| **S49A: barrel + createTurnStore factory** | [src/store/turns/index.ts](../src/store/turns/index.ts) | src/store/turns/ |
 | **S27: epoch.ts (deterministic epoch-id derivation, FNV-1a nonce, checkpoint_epochs)** | [src/mirror/epoch.ts](../src/mirror/epoch.ts) | src/mirror/ |
 | **S27: DB-mirror sprint plan (tasks 5–9: context hook, dedup pipeline, recall demotion, tests, DB maintenance)** | [specs/sprint-27-db-mirror-implementation.md](specs/sprint-27-db-mirror-implementation.md) | docs/specs/ |
 

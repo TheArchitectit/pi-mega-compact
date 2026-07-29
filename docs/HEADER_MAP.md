@@ -537,6 +537,19 @@
 | ACCEPTANCE | 237 | 226 |
 | ROLLBACK | 258 | 247 |
 
+## S49 Turn-DB Foundation (contract-first isolated store)
+
+| File | Purpose |
+| ------ | --------- |
+| `src/store/turns/types.ts` | **Contract module** — `TurnStore`/`TurnReader`/`TurnWriter`/`TurnAdmin` interfaces + domain types (`TurnEntry`, `TurnRecallEntry`, `ConversationFork`, `StoreSnapshot`, etc.) + `TurnStoreOptions` + `createTurnStore` signature. |
+| `src/store/turns/connection.ts` | Private SQLite connection manager for `turns.db` — own WAL, own cache, `PRAGMA foreign_keys`, schema init. |
+| `src/store/turns/sqlite-store.ts` | `SqliteTurnStore` — reference implementation. Position-based stable IDs in checkpoint/restore, fork recall seeding, `session_conversations` table for idempotent `ensureConversationId`. |
+| `src/store/turns/memory-store.ts` | `InMemoryTurnStore` — test/embedding backend, backed by `Map`s. Same contract, same stable-ID strategy. |
+| `src/store/turns/index.ts` | Barrel — re-exports `createTurnStore` factory + all types + both constructors. |
+| `src/store/turns/contract-compliance.test.ts` | Shared 24-test compliance suite — parameterized by backend factory. Verifies: append round-trips, query AND-composition, stats aggregation, fork seed recall, ensureConversationId idempotency, prune cascade, checkpoint/restore lossless, capability gating. |
+| `src/store/turns/sqlite-store.test.ts` | Compliance suite (in-memory) + 6 file-backed tests: separate DB, WAL mode, connection caching, dbSizeBytes, persistence, custom dbPath. |
+| `src/store/turns/memory-store.test.ts` | Compliance suite against `InMemoryTurnStore`. |
+
 ## v0.8.8 Perf dashboard (new feature)
 
 | File | Purpose |
