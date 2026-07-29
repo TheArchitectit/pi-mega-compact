@@ -130,6 +130,9 @@ export interface MegaConfig {
 	/** S49: isolated per-turn store (turns.db). Default ON. OFF = legacy main-db
 	 *  turn path (S48 behavior — byte-identical). Mirrors TurnsConfig.TURNS_DB_ENABLED. */
 	turnsDbEnabled: boolean;
+	/** S51: auto-categorizing wiki (k-means + TF-IDF over real embeddings). Default ON.
+	 *  Mirrors TurnsConfig.AUTO_WIKI_ENABLED. Rebuild fires every Nth compaction. */
+	autoWikiEnabled: boolean;
 	/** Cross-repo recall enabled (S17). Resume + /mega-recall --cross-repo can
 	 *  pull checkpoints from OTHER repos via the PGlite HNSW index. Default true. */
 	crossRepoEnabled: boolean;
@@ -299,6 +302,7 @@ export function loadConfig(): MegaConfig {
 		// S49: isolated per-turn store (turns.db). Default ON. OFF = legacy main-db
 		// turn path (S48 behavior). Mirrors src/config/turns.ts TURNS_DB_ENABLED.
 		turnsDbEnabled: envBool("MEGACOMPACT_TURNS_DB", true),
+		autoWikiEnabled: envBool("MEGACOMPACT_AUTO_WIKI", true),
 		crossRepoEnabled: envBool("MEGACOMPACT_CROSSREPO_ENABLED", true),
 		crossRepoCosine: Number(process.env.MEGACOMPACT_CROSSREPO_COSINE ?? "0.90"),
 		memoryAutoReview: envBool("MEGACOMPACT_MEMORY_AUTO_REVIEW", true),
