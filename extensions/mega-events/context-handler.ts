@@ -71,6 +71,7 @@ function toRawTranscriptRow(
 	msg: AgentMessage,
 	sessionId: string,
 	epochId: string,
+	currentTurn?: number,
 ): RawTranscriptRow | null {
 	// Narrow to Message union (has content + timestamp).
 	const m = msg as {
@@ -101,6 +102,9 @@ function toRawTranscriptRow(
 		toolName: m.toolName ?? null,
 		messageTimestamp: m.timestamp ?? null,
 		checkpointEpoch: epochId,
+		// S50: label the row with the turn that produced it (per-turn dedup /
+		// compression-by-turn metrics). Null when the writer omits it (back-compat).
+		turnIndex: currentTurn ?? null,
 	};
 }
 
@@ -162,7 +166,7 @@ export function registerContextHandler(
 				const db = openStore(runtime.currentStateDir);
 				const epochId = epochIdFor(runtime.rt.sessionId);
 				for (const msg of messages) {
-					const raw = toRawTranscriptRow(msg, runtime.rt.sessionId, epochId);
+					const raw = toRawTranscriptRow(msg, runtime.rt.sessionId, epochId, runtime.currentTurn);
 					if (raw) appendRawTranscript(db, raw);
 				}
 			} catch (e) {
