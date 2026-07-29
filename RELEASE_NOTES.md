@@ -1,24 +1,78 @@
 # Release Notes — pi-mega-compact
 
-## v0.10.0 (2026-07-29)
+## v0.10.0 (2026-07-29) — S49–S52 program: SHIPPED
 
-**The platform release.** The `raptor-promotion` branch merges into `master`, bringing 14 releases worth of work (v0.8.22 → v0.9.1) into the mainline. This is the single largest merge in the project's history: the RAPTOR memory hierarchy, the error-retry safety net, the React dashboard, the per-turn tracking spine, the engineering practices codex, and the S49–S52 program spec all land at once.
+**The per-turn memory platform release.** The `s49-master-reconcile` branch reconciles master's contract-first `TurnStore` with the `s49-turn-db` program and implements the full S49–S52 program: per-turn memory tracking, recall provenance, an auto-categorizing wiki, and a dashboard with turn-by-turn memory visualization, recall display, and rewind.
 
-If you're upgrading from v0.8.21 or earlier, read the migration notes below carefully. If you're on v0.9.1 (raptor-promotion), this is identical code — just on master now.
+### What's new
+
+**S49 — Turn-DB Foundation (contract-first, reconciled)**
+
+- The `TurnStore` is now contract-first: `TurnReader` / `TurnWriter` / `TurnAdmin` capability interfaces + `StoreSnapshot` for backup/migration + `ConversationStats`. Two backends (`SqliteTurnStore`, `InMemoryTurnStore`) pass a shared compliance suite.
+- Per-turn provenance lives in an **isolated `turns.db`** (own connection cache + own WAL) so turn writes can never touch the authoritative memory DB. A one-time main-db → turns.db migration (transformed: `model_id`→`model`, strict `role`/`source`/`pressure_band` enums, `conversation_branches`→`conversation_forks`) is idempotent + non-fatal.
+- The `pending_fork` (S52 rewind) + `topics` / `memory_topics` (S51 wiki) shells are pre-created in the schema, so later sprints add no migration.
+- Host-agnostic: `src/store/turns/` imports no pi types — the same spine backs the dashboard, the TUI, or an API gateway.
+
+**S50 — Per-turn metrics + fork**
+
+- `turnMetrics` / `conversationMetrics` roll up per-turn recall count, dedup unique ratio, and per-epoch compression ratio — the numbers the dashboard Turns tab renders.
+- `forkFromConversation` branches a child conversation at turn N and returns the parent's injected-checkpoint set to rehydrate (recall-to-point).
+- `stampTurnsEpoch` (admin capability) links each turn to the compact epoch that superseded it.
+
+**S51 — Auto-categorizing wiki**
+
+- Every 10 compactions, the store clusters real memory embeddings (k-means) and labels each cluster with TF-IDF discriminative terms — no LLM, no Ollama, fully local.
+- `/mega-topics` rebuilds on demand; the `topics` / `memory_topics` tables persist the model in `turns.db`.
+
+**S52 — Dashboard turns/recall/wiki viz + rewind**
+
+- **Turns tab**: turn-by-turn memory tracking visualization. Conversation list (turn count, recall total, epochs, avg ctx%, last turn) → per-turn rows showing context tokens/percent + pressure band, the compact epoch, and the **injected-checkpoint recall set** at each turn (checkpoint id, score, source, raptor level) — i.e. the memory recalled at each turn, visualized.
+- **Wiki tab polish**: search topics by label or discriminative term; click through to a topic's member memories (confidence, assignedAt).
+- **Fork action** in the dashboard (POST `/api/fork`) + a **rewind** action that queues an intent the host consumes at `before_agent_start`.
+- **Rewind-intent handshake** (`src/intent.ts`): a host-agnostic queue over the pre-created `pending_fork` table. The store never calls back into the host (ledger protocol) — the host polls + consumes.
+- New routes: `GET /api/turns`, `GET /api/turns/conversation/:id`, `GET/POST /api/turns/intents`, `POST /api/fork`, `POST /api/turns/prune`, `POST /api/turns/vacuum`, `GET /api/topics/:id/memories`.
+- Capability gating verified: display via `asReader()`, prune/vacuum via `asAdmin()`, fork via `asWriter()`.
+
+### Fixes (this branch)
+
+- **Pressure-basis oscillation RESOLVED** — `pressure-getters.ts` now unifies the two pressure bases onto the percentage scale when the model context window is known, so the band no longer jumps between token-count and percent-only events. (Documented in `docs/specs/find-pressure-basis-oscillation.md`.)
+- **PGlite shutdown** — indexes are closed on session shutdown; the WASM handle no longer pins the event loop (`pi -p` no longer hangs).
+- Stale spec/roadmap/backlog status markers refreshed to reflect the shipped state.
+
+### Test infrastructure
+
+- **852 tests** across 87 files (was 759 in master's v0.10.0 draft). Added: `intent.test.ts` (5), reconciled `contract-compliance` + `sqlite-store` + `memory-store` suites, rewritten `fork` / `metrics/turns` / `mega-turn-store` / `migrations` tests against the contract API.
+
+### Migration
+
+- **Turn on per-turn tracking**: set `MEGACOMPACT_TURNS_DB=1`. On first open with the flag ON, legacy main-db turn tables are migrated into `turns.db` (idempotent + non-fatal; legacy tables are dropped after a successful copy). Flag OFF = legacy main-db path (being retired).
+- The dashboard Turns tab populates as soon as the session runs through a compaction with the flag ON.
+- No breaking config changes; the new `tuiWidget` flag defaults ON.
+
+---
+
+## v0.10.0-rc (2026-07-29, master platform merge)
+
+**The platform-merge release.** The `raptor-promotion` branch merges into `master`, bringing 14 releases worth of work (v0.8.22 → v0.9.1) into the mainline. This is the single largest merge in the project's history: the RAPTOR memory hierarchy, the error-retry safety net, the React dashboard, the per-turn tracking spine, the engineering practices codex, and the S49–S52 program spec all land at once.
+
+If you're upgrading from v0.8.21 or earlier, read the migration notes below carefully.
 
 ### What's new (since v0.8.21)
 
 **RAPTOR memory hierarchy (S42, v0.8.23–v0.8.25)**
+
 - Multi-level retrieval: level-weighted scoring across the RAPTOR tree (leaves + cluster summaries) with leaf expansion and MMR rerank. Flags `RAPTOR_MULTILEVEL_ENABLED` and `RAPTOR_LEAF_EXPANSION` default ON.
 - Serve gate: shadow mode is now a hard SERVE gate, not just logging. A `built_at` freshness guard skips stale trees; per-session tree cache removes per-recall rebuild cost.
 - Build history: a `raptor_build_history` table records every build with coherence score and leaf count. The compact pipeline skips rebuilds when the tree is fresh.
 - `parentId` plumbing: every internal RAPTOR node now links to its first-leaf ancestor.
 
 **Per-turn tracking (S48, v0.8.25)**
+
 - `turns`, `turn_recall`, and `conversation_branches` tables trace every turn and the provenance of recall hits.
 - A `forkConversation` primitive enables recall-fork (moving memory between session branches without token replay).
 
 **Error retry redesign (S38, v0.8.25)**
+
 - In-flight nudge dedup (R1): prevents spam storms when a fast-erroring provider fires dozens of retry nudges.
 - Session-global cap (R2): `errorRetrySessionMax=3` — the extension stops retrying after 3 nudges per session.
 - Poisoned-context detection (R3): recognizes 0-token-failure signatures and recommends `/clear` instead of blind retry.
@@ -26,25 +80,30 @@ If you're upgrading from v0.8.21 or earlier, read the migration notes below care
 - Dashboard telemetry (R7): retry events flow to the dashboard.
 
 **Boundary rewrite (PREVENT-PI-002, v0.8.25)**
+
 - A single forward-pass `isPairSafe` guarantees no toolCall/toolResult pair is ever split at a compaction boundary, for any interleaving. 9 regression tests added.
 
 **Durable memory system (S25, v0.8.25)**
+
 - Auto-reviews conversation every 10 turns, writes decisions/facts/preferences to SQLite, injects them as RAG context on recall.
 - Hallucination guard: every add/replace op must be verbatim-grounded in a real message.
 - `MEMORY_MAX_ROWS` bloat cap.
 - Cross-repo recall: decisions saved in one repo surface when you start a session in another.
 
 **React dashboard (v0.8.15–v0.8.25)**
+
 - Full React SPA with lazy-loaded tabs: Overview, Sessions, Metrics, Events, Repos, Config, Cache, Achievements.
 - SSE event stream for live updates.
 - `/api/` endpoints for all data surfaces.
 - Dashboard bundle verified at publish time (the 0.8.5 regression check).
 
 **Engineering practices (v0.9.1)**
+
 - `docs/ENGINEERING_PRACTICES.md` (v1.0): file-size limits, delegate-shell splitting pattern, contract-first architecture, capability gating, append-only provenance, ledger protocol, feature flag protocol, structured logging, sprint gating.
 - Every new module starts with a `types.ts` contract; implementations satisfy it; a shared compliance suite proves both backends pass.
 
 **S49–S52 program spec (v0.9.1)**
+
 - The per-turn memory platform is specced as a 4-sprint program:
   - **S49**: Turn-DB Foundation — contract-first `TurnStore` interface, `SqliteTurnStore` + `InMemoryTurnStore`, migration, retention, `StoreSnapshot` for backup/restore.
   - **S50**: Per-turn metrics + `/mega-fork` command.
