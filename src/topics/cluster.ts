@@ -13,10 +13,14 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import { cosineSimilarity, type Vector } from "../embedder.js";
-import { kmeanspp, cosineDistance, meanVector } from "../dedup/raptor/kmeans.js";
+import { cosineSimilarity } from "../embedder.js";
 import { decodeEmbedding } from "../store/sqlite/utils.js";
-import { tfidfScores, labelFromScores, membershipConfidence } from "./labels.js";
+import {
+	tfidfScores,
+	labelFromScores,
+	membershipConfidence,
+} from "./labels.js";
+import { selectK, type Candidate } from "./kselection.js";
 import type {
 	ClusterModel,
 	EmbeddedChunk,
@@ -76,113 +80,6 @@ export function loadEmbeddings(mainDb: DatabaseSync): EmbeddedChunk[] {
 	return out;
 }
 
-/** Within-cluster sum of squares (cosine distance) for one clustering. */
-function wcss(points: Vector[], assignments: number[], centroids: Vector[]): number {
-	let s = 0;
-	for (let i = 0; i < points.length; i++) {
-		const d = cosineDistance(points[i], centroids[assignments[i]]);
-		s += d * d;
-	}
-	return s;
-}
-
-/** Mean silhouette score across all points (−1..1); null when undefined (k<=1 or k>=n). */
-function silhouette(points: Vector[], assignments: number[], k: number): number | null {
-	const n = points.length;
-	if (k <= 1 || k >= n) return null;
-	// Precompute cluster sizes once.
-	const sizes = new Map<number, number>();
-	for (const a of assignments) sizes.set(a, (sizes.get(a) ?? 0) + 1);
-	let sum = 0;
-	let counted = 0;
-	for (let i = 0; i < n; i++) {
-		const a = assignments[i];
-		const ownSize = sizes.get(a) ?? 0;
-		if (ownSize <= 1) continue; // singleton cluster → contribution 0 (skip)
-		let aSum = 0;
-		const bSum = new Map<number, number>();
-		for (let j = 0; j < n; j++) {
-			if (i === j) continue;
-			const d = cosineDistance(points[i], points[j]);
-			if (assignments[j] === a) {
-				aSum += d;
-			} else {
-				bSum.set(assignments[j], (bSum.get(assignments[j]) ?? 0) + d);
-			}
-		}
-		const aMean = aSum / (ownSize - 1); // exclude self
-		let b = Infinity;
-		for (const [cluster, total] of bSum) {
-			const cnt = sizes.get(cluster) ?? 0;
-			if (cnt > 0) b = Math.min(b, total / cnt);
-		}
-		if (!Number.isFinite(b)) continue;
-		const denom = Math.max(aMean, b);
-		if (denom > 0) {
-			sum += (b - aMean) / denom;
-			counted++;
-		}
-	}
-	return counted > 0 ? sum / counted : null;
-}
-
-/** Elbow: index of max curvature on the WCSS-vs-k curve. */
-function elbowIndex(ks: number[], wcssVals: number[]): number {
-	if (ks.length <= 2) return 0;
-	// Normalize and find the point farthest from the line joining the endpoints.
-	const x0 = ks[0];
-	const y0 = wcssVals[0];
-	const x1 = ks[ks.length - 1];
-	const y1 = wcssVals[wcssVals.length - 1];
-	const dx = x1 - x0;
-	const dy = y1 - y0;
-	const len = Math.hypot(dx, dy) || 1;
-	let best = 0;
-	let bestDist = -1;
-	for (let i = 0; i < ks.length; i++) {
-		const dist = Math.abs(dy * ks[i] - dx * wcssVals[i] + x1 * y0 - y1 * x0) / len;
-		if (dist > bestDist) {
-			bestDist = dist;
-			best = i;
-		}
-	}
-	return best;
-}
-
-interface Candidate {
-	k: number;
-	assignments: number[];
-	centroids: Vector[];
-	wcss: number;
-	silhouette: number | null;
-}
-
-/** Run k-means with restarts for one k; keep the lowest-WCSS result. */
-function bestForK(points: Vector[], k: number, cfg: WikiClusterConfig): Candidate {
-	let best: Candidate | null = null;
-	for (let r = 0; r < cfg.restarts; r++) {
-		const res = kmeanspp(points, k, { seed: cfg.seed + r });
-		if (res.k === 0) continue;
-		const w = wcss(points, res.assignments, res.centroids);
-		if (!best || w < best.wcss) {
-			best = {
-				k: res.k,
-				assignments: res.assignments,
-				centroids: res.centroids,
-				wcss: w,
-				silhouette: null,
-			};
-		}
-	}
-	// Degenerate: kmeans collapsed everything to < k clusters.
-	if (!best) {
-		const mean = meanVector(points);
-		best = { k: 1, assignments: points.map(() => 0), centroids: [mean], wcss: 0, silhouette: null };
-	}
-	best.silhouette = silhouette(points, best.assignments, best.k);
-	return best;
-}
-
 /**
  * Build a topic model from the real stored chunks. Picks k by silhouette when
  * computable, else elbow; degenerate/small corpus → single `general` cluster.
@@ -208,24 +105,7 @@ export function buildTopicModel(
 	for (let k = minK; k <= hi; k++) ks.push(k);
 	if (ks.length === 0) ks.push(minK);
 
-	const candidates = ks.map((k) => bestForK(points, k, cfg));
-
-	// Prefer silhouette when any candidate produced a computable score.
-	const withSil = candidates.filter((c) => c.silhouette !== null);
-	let chosen: Candidate;
-	let criterion: "elbow" | "silhouette";
-	if (withSil.length > 0) {
-		chosen = withSil.reduce((a, b) => ((b.silhouette ?? -1) > (a.silhouette ?? -1) ? b : a));
-		criterion = "silhouette";
-	} else {
-		const idx = elbowIndex(
-			candidates.map((c) => c.k),
-			candidates.map((c) => c.wcss),
-		);
-		chosen = candidates[idx];
-		criterion = "elbow";
-	}
-
+	const { candidate: chosen, criterion } = selectK(points, ks, cfg);
 	const meanSil = chosen.silhouette;
 	return assembleModel(chunks, chosen, criterion, meanSil, builtAt, cfg);
 }

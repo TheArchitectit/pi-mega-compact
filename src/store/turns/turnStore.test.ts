@@ -15,6 +15,7 @@ import {
 	existsSync,
 	readdirSync,
 	readFileSync,
+	statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -140,14 +141,26 @@ test("S50B: stampTurnsEpoch sets epoch on unstamped turns, idempotent", () => {
 	const dir = stateDir();
 	const store = createTurnStore(dir);
 	const conv = store.ensureConversationId("sess_epoch");
-	store.recordTurn({ conversationId: conv, sessionId: "sess_epoch", turnIndex: 0 });
-	store.recordTurn({ conversationId: conv, sessionId: "sess_epoch", turnIndex: 1 });
+	store.recordTurn({
+		conversationId: conv,
+		sessionId: "sess_epoch",
+		turnIndex: 0,
+	});
+	store.recordTurn({
+		conversationId: conv,
+		sessionId: "sess_epoch",
+		turnIndex: 1,
+	});
 	// Pre-stamp turn 1 with an older epoch — stampTurnsEpoch must NOT overwrite it.
 	store.stampTurnsEpoch("sess_epoch", "epoch_old"); // stamps both 0 and 1
 	assert.equal(store.getTurn(conv, 0)?.epochId, "epoch_old");
 	assert.equal(store.getTurn(conv, 1)?.epochId, "epoch_old");
 	// A new turn arrives unstamped; a new compact stamps only it.
-	store.recordTurn({ conversationId: conv, sessionId: "sess_epoch", turnIndex: 2 });
+	store.recordTurn({
+		conversationId: conv,
+		sessionId: "sess_epoch",
+		turnIndex: 2,
+	});
 	const stamped = store.stampTurnsEpoch("sess_epoch", "epoch_new");
 	assert.equal(stamped, 1); // only turn 2 was null
 	assert.equal(store.getTurn(conv, 2)?.epochId, "epoch_new");
@@ -206,6 +219,57 @@ test("pruneTurns keeps min-per-conversation + preserves fork points", () => {
 	const remaining = store.listConversationTurns(conv).map((t) => t.turnIndex);
 	assert.deepEqual(remaining.sort(), [0, 4]); // fork point (0) + most-recent (4) preserved
 	store.close();
+});
+
+test("VACUUM reclaims file space after prune (S49C-2)", () => {
+	const dir = stateDir();
+	const store = createTurnStore(dir);
+	const now = 1_000_000;
+	const old = now - 90 * 24 * 3600 * 1000; // 90 days ago
+	const conv = store.ensureConversationId("sess_vacuum");
+	// Seed enough rows that turn_recall bloats the file, then delete most of them.
+	for (let i = 0; i < 40; i++) {
+		const id = store.recordTurn({
+			conversationId: conv,
+			sessionId: "sess_vacuum",
+			turnIndex: i,
+			endedAt: old,
+		});
+		// 20 recall rows each → turn_recall grows the file substantially.
+		store.recordTurnRecall(
+			id,
+			Array.from({ length: 20 }, (_, r) => ({
+				checkpointId: `cp_${i}_${r}`,
+				score: 0.1 * r,
+				source: "flat",
+			})),
+		);
+	}
+	store.close();
+	const path = turnDbPath(dir);
+	const sizeBeforePrune = statSync(path).size;
+	assert.ok(sizeBeforePrune > 0, "turns.db should have content");
+
+	// Reopen, prune all but the most-recent turn, then VACUUM.
+	const store2 = createTurnStore(dir);
+	const pruned = store2.pruneTurns({
+		olderThanMs: 30 * 24 * 3600 * 1000,
+		keepMinPerConversation: 1,
+		now,
+	});
+	assert.ok(pruned.deletedTurns >= 39, "prune should delete most turns");
+	assert.ok(pruned.deletedRecall > 0, "prune should cascade recall rows");
+	const sizeAfterPrune = statSync(path).size;
+	// SQLite keeps freed pages in its freelist until VACUUM rewrites the file;
+	// the size may not shrink yet, so VACUUM is the reclaim step under test.
+	store2.vacuum();
+	store2.close();
+	const sizeAfterVacuum = statSync(path).size;
+	assert.ok(
+		sizeAfterVacuum < sizeBeforePrune,
+		`VACUUM must shrink the file (${sizeAfterVacuum} >= ${sizeBeforePrune})`,
+	);
+	assert.ok(sizeAfterVacuum <= sizeAfterPrune, "VACUUM must not grow the file");
 });
 
 test("ISOLATION: turn writes go to turns.db, not the memory sqlite.db", () => {

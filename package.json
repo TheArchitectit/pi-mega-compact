@@ -41,6 +41,8 @@
     "compactionProvider": "mega-compact"
   },
   "scripts": {
+    "clean": "rm -rf dist",
+    "prebuild": "npm run clean",
     "build": "tsc -p tsconfig.json",
     "build:dashboard": "cd extensions/dashboard-client && npx vite build",
     "lint": "tsc --noEmit && node scripts/guardrails-scan.mjs && node scripts/semantic-scan.mjs",
