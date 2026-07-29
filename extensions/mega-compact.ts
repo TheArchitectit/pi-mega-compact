@@ -27,6 +27,8 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { closeVectorIndex } from "../src/store/vectorIndex.js";
+import { closeMemoryIndex } from "../src/store/memoryIndex.js";
 import { loadConfig } from "./mega-config.js";
 import { MegaRuntime } from "./mega-runtime.js";
 import { registerEventHandlers } from "./mega-events.js";
@@ -82,5 +84,18 @@ export default function (pi: ExtensionAPI) {
   // dispose() is idempotent, and the next snapshot() re-opens the watcher
   // lazily via bindRepo() → ensureGameStateWatcher(), so there is no permanent
   // leak and no per-session fd accumulation.
-  pi.on("session_shutdown", () => runtime.dispose());
+  // The PGlite indexes (vectorIndex / memoryIndex) are lazily opened module
+  // singletons. closeVectorIndex()/closeMemoryIndex() existed but had no
+  // non-test callers, so a session left both open: PGlite is WASM Postgres and
+  // its handles keep node's event loop alive, so `pi -p` produced its answer
+  // and then hung until killed rather than exiting. dispose() only released the
+  // fs.watch handle and the perf interval, neither of which was the culprit
+  // (the interval is unref'd).
+  //
+  // Both closes are idempotent and safe when the index was never opened, and
+  // the next initVectorIndex()/initMemoryIndex() re-opens lazily.
+  pi.on("session_shutdown", async () => {
+    runtime.dispose();
+    await Promise.all([closeVectorIndex(), closeMemoryIndex()]);
+  });
 }

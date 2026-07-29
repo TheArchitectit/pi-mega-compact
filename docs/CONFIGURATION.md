@@ -26,6 +26,7 @@ All defaults are in `src/config/dedup.ts`. Set env vars before starting pi.
 | `MEGACOMPACT_CROSSREPO_ENABLED` | `true` | Cross-repo recall on resume + `/mega-recall --cross-repo`. |
 | `MEGACOMPACT_CROSSREPO_COSINE` | `0.90` | Stricter cosine floor for cross-repo hits (vs 0.85 same-repo). |
 | `MEGACOMPACT_PGLITE_DISABLED` | _(unset)_ | Kill-switch for PGlite/HNSW cross-repo index. Set `1` to disable (falls back to sync scan). |
+| `MEGACOMPACT_TUI_WIDGET` | `true` | Render the above-editor panel. Set `0` to suppress it. The panel is a persistent, animated, full-width region that repaints on its own cadence, which fights terminals where the user drives scrollback themselves (pi inside a Neovim `:terminal`, for instance). Compaction, the dashboard, and game mode are unaffected — only the in-TUI panel is suppressed. |
 
 ## Dedup Pipeline
 
