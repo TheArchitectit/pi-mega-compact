@@ -35,6 +35,7 @@ import { registerDashboardCommands } from "./mega-dashboard-cmds.js";
 import { registerConflictCommands } from "./mega-conflict-cmds.js";
 import { registerDbCommands } from "./mega-db-cmds.js";
 import { registerGameCommands } from "./mega-game-cmds.js";
+import { registerMetricsCommands } from "./mega-metrics-cmds.js";
 
 export default function (pi: ExtensionAPI) {
   const config = loadConfig();
@@ -73,6 +74,7 @@ export default function (pi: ExtensionAPI) {
   registerDashboardCommands(pi, runtime);
   registerConflictCommands(pi, runtime);
   registerDbCommands(pi, runtime);
+  registerMetricsCommands(pi, runtime, config);
   registerGameCommands(pi, runtime);
   // v0.8.5 (audit P3): release the fs.watch game-state watcher handle on
   // session teardown so it doesn't linger across reloads. pi exposes no

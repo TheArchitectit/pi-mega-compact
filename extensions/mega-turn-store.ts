@@ -20,6 +20,8 @@ import {
 	ensureConversationId as legacyEnsureConversationId,
 } from "../src/store/sqlite/turns.js";
 import type { MegaConfig } from "./mega-config.js";
+import type { DatabaseSync } from "node:sqlite";
+import { openStore } from "../src/store/sqlite/utils.js";
 
 // Per-stateDir cache of turn stores so the extension doesn't reopen the file
 // on every turn. Keyed by stateDir; the underlying connection is also cached
@@ -83,4 +85,20 @@ export function stampTurnsEpochFor(
 	return config.turnsDbEnabled
 		? storeFor(stateDir).stampTurnsEpoch(sessionId, epochId)
 		: 0;
+}
+
+/** S50C: resolve the active turn store for metrics/fork commands.
+ *  Returns null when turnsDbEnabled is OFF (legacy main-db turn path — the
+ *  per-turn metrics/fork commands are isolated-store only). */
+export function turnStoreFor(
+	config: MegaConfig,
+	stateDir: string,
+): TurnStore | null {
+	return config.turnsDbEnabled ? storeFor(stateDir) : null;
+}
+
+/** S50C: open (cached) the main db handle for metrics read-queries
+ *  (raw_transcript + checkpoint_epochs). Callers must NOT close it. */
+export function mainDbFor(stateDir: string): DatabaseSync {
+	return openStore(stateDir);
 }
