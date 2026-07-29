@@ -17,3 +17,4 @@ export {
 } from "./routes-game.js";
 export { handleEvents, handleSessions } from "./routes-sessions.js";
 export { handleTopics } from "./routes-topics.js";
+export { handleTurns } from "./routes-turns.js";

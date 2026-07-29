@@ -14,6 +14,17 @@ import type { SnapshotResponse } from "./snapshot.js";
 import type { IndexesIndexRow, IndexesSummaryResponse } from "./multi-repo.js";
 import type { GameStateResponse } from "./game.js";
 import type { SseEvent } from "./index.js";
+import type {
+	TurnsResponse,
+	ConversationTurnsResponse,
+	RewindIntentsResponse,
+	ForkRequest,
+	ForkResponse,
+	PostIntentRequest,
+	PruneRequest,
+	PruneTurnsResponse,
+	TopicMemoriesResponse,
+} from "./turns.js";
 
 import type {
 	GameScoreRow,
@@ -487,4 +498,54 @@ export const ENDPOINTS = {
 		description:
 			"Auto-categorized wiki topics from k-means + TF-IDF over real embeddings.",
 	} as const satisfies EndpointDef<"GET", undefined, TopicsResponse>,
+
+	/** GET /api/turns — Turn-by-turn memory tracking + recall (S52). */
+	turns: {
+		method: "GET",
+		path: "/api/turns",
+		description:
+			"Per-conversation turn list with recall + epoch provenance (turn-by-turn memory tracking).",
+	} as const satisfies EndpointDef<"GET", undefined, TurnsResponse>,
+
+	/** GET /api/turns/conversation/:convId — per-turn detail + recall hits. */
+	conversationTurns: {
+		method: "GET",
+		path: "/api/turns/conversation/:convId",
+		description: "Per-turn metrics + injected-checkpoint recall provenance for one conversation.",
+	} as const satisfies EndpointDef<"GET", undefined, ConversationTurnsResponse>,
+
+	/** GET /api/turns/intents — pending rewind intents (S52A). */
+	turnIntents: {
+		method: "GET",
+		path: "/api/turns/intents",
+		description: "Pending rewind intents queued by the dashboard for the host to consume.",
+	} as const satisfies EndpointDef<"GET", undefined, RewindIntentsResponse>,
+
+	/** POST /api/turns/intent — post a rewind intent. */
+	postTurnIntent: {
+		method: "POST",
+		path: "/api/turns/intent",
+		description: "Queue a rewind-to-turn-N intent for the host to apply at before_agent_start.",
+	} as const satisfies EndpointDef<"POST", PostIntentRequest, unknown>,
+
+	/** POST /api/fork — fork a conversation at a turn. */
+	fork: {
+		method: "POST",
+		path: "/api/fork",
+		description: "Branch a child conversation off a parent turn + return the recall set to rehydrate.",
+	} as const satisfies EndpointDef<"POST", ForkRequest, ForkResponse>,
+
+	/** POST /api/turns/prune — admin prune (capability-gated). */
+	pruneTurns: {
+		method: "POST",
+		path: "/api/turns/prune",
+		description: "Prune old turns (admin capability — dashboard uses asAdmin()).",
+	} as const satisfies EndpointDef<"POST", PruneRequest, PruneTurnsResponse>,
+
+	/** GET /api/topics/:topicId/memories — wiki topic drill-down (S52). */
+	topicMemories: {
+		method: "GET",
+		path: "/api/topics/:topicId/memories",
+		description: "Member memories assigned to a wiki topic (drill-down).",
+	} as const satisfies EndpointDef<"GET", undefined, TopicMemoriesResponse>,
 } as const;

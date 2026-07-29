@@ -170,3 +170,19 @@ export type SseEvent =
 	| SseGameModeChanged
 	| SseGameRender
 	| SseSessionSample;
+
+// S52 — turn-by-turn memory tracking + recall + rewind
+export type {
+	TurnRow,
+	RecallHit,
+	ConversationSummary,
+	TurnsResponse,
+	ConversationTurnsResponse,
+	RewindIntentsResponse,
+	ForkRequest,
+	ForkResponse,
+	PostIntentRequest,
+	PruneRequest,
+	PruneTurnsResponse,
+	TopicMemoriesResponse,
+} from "./turns.js";

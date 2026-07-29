@@ -18,6 +18,7 @@ import "./styles/game-achievements.css";
 import "./styles/sessions.css";
 import "./styles/repostack.css";
 import "./styles/session-gauges.css";
+import "./styles/turns.css";
 
 const rootEl = document.getElementById("root");
 if (!rootEl) {

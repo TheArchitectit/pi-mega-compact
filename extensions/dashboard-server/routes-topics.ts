@@ -9,14 +9,47 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
 import { openTurnStore } from "../../src/store/turns/connection.js";
+import { createTopicStore } from "../../src/topics/store.js";
 import type { TopicsResponse, TopicRow } from "./api-contracts/game-types.js";
+import type { TopicMemoriesResponse } from "./api-contracts/turns.js";
 
 export function handleTopics(
 	req: IncomingMessage,
 	res: ServerResponse,
 	ctx: RouteContext,
 ): boolean {
-	if (req.url !== "/api/topics") return false;
+	const url = req.url ?? "";
+	// ── GET /api/topics/:topicId/memories — wiki topic drill-down (S52) ──
+	const drillMatch =
+		req.method === "GET"
+			? url.match(/^\/api\/topics\/([^/?]+)\/memories$/)
+			: null;
+	if (drillMatch) {
+		try {
+			const topicId = decodeURIComponent(drillMatch[1]);
+			const store = createTopicStore(ctx.stateDir);
+			const topics = store.getTopics();
+			const topic = topics.find((t) => t.id === topicId);
+			const assignments = store.getMemoriesForTopic(topicId, 200);
+			const body: TopicMemoriesResponse = {
+				topicId,
+				label: topic?.label ?? topicId,
+				assignments: assignments.map((a) => ({
+					memoryId: a.memoryId,
+					confidence: a.confidence ?? null,
+					assignedAt: a.assignedAt ?? null,
+				})),
+			};
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify(body));
+		} catch (e) {
+			res.writeHead(500, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: String(e) }));
+		}
+		return true;
+	}
+
+	if (url !== "/api/topics") return false;
 
 	try {
 		const tdb = openTurnStore(ctx.stateDir);

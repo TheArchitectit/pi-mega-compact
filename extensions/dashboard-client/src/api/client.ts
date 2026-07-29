@@ -29,6 +29,12 @@ import type {
 	SessionsResponse,
 	SessionTimeseriesResponse,
 	TopicsResponse,
+	TurnsResponse,
+	ConversationTurnsResponse,
+	RewindIntentsResponse,
+	ForkResponse,
+	PruneTurnsResponse,
+	TopicMemoriesResponse,
 } from "@contracts";
 
 /** Error thrown when a dashboard API response is not 2xx. */
@@ -59,6 +65,23 @@ async function putJson<T>(path: string, body: unknown): Promise<T> {
 	// guardrails-allow PREVENT-PI-004: relative-path fetch to same-origin dashboard server (loopback-only).
 	const res = await fetch(path, {
 		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(body),
+	});
+	if (!res.ok) {
+		throw new ApiError(
+			res.status,
+			await res.text().catch(() => res.statusText),
+		);
+	}
+	return res.json() as Promise<T>;
+}
+
+/** Internal: typed POST that throws ApiError on non-2xx. */
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+	// guardrails-allow PREVENT-PI-004: relative-path fetch to same-origin dashboard server (loopback-only, static bundle served by the same Node HTTP server).
+	const res = await fetch(path, {
+		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(body),
 	});
@@ -161,4 +184,57 @@ export function fetchSessionTimeseries(
 
 export function fetchTopics(): Promise<TopicsResponse> {
 	return getJson<TopicsResponse>(ENDPOINTS.topics.path);
+}
+
+// ── S52: turn-by-turn memory tracking + recall + rewind ───────────────
+
+export function fetchTurns(): Promise<TurnsResponse> {
+	return getJson<TurnsResponse>(ENDPOINTS.turns.path);
+}
+
+export function fetchConversationTurns(
+	conversationId: string,
+): Promise<ConversationTurnsResponse> {
+	return getJson<ConversationTurnsResponse>(
+		`${ENDPOINTS.conversationTurns.path.replace(":convId", encodeURIComponent(conversationId))}`,
+	);
+}
+
+export function fetchTurnIntents(): Promise<RewindIntentsResponse> {
+	return getJson<RewindIntentsResponse>(ENDPOINTS.turnIntents.path);
+}
+
+export function postTurnIntent(
+	conversationId: string,
+	targetTurnIndex: number,
+): Promise<unknown> {
+	return postJson<unknown>(ENDPOINTS.postTurnIntent.path, {
+		conversationId,
+		targetTurnIndex,
+	});
+}
+
+export function postFork(
+	conversationId: string,
+	turnIndex: number,
+): Promise<ForkResponse> {
+	return postJson<ForkResponse>(ENDPOINTS.fork.path, { conversationId, turnIndex });
+}
+
+export function postPruneTurns(
+	maxTurnAgeMs: number,
+	keepMinPerConversation = 50,
+): Promise<PruneTurnsResponse> {
+	return postJson<PruneTurnsResponse>(ENDPOINTS.pruneTurns.path, {
+		maxTurnAgeMs,
+		keepMinPerConversation,
+	});
+}
+
+export function fetchTopicMemories(
+	topicId: string,
+): Promise<TopicMemoriesResponse> {
+	return getJson<TopicMemoriesResponse>(
+		ENDPOINTS.topicMemories.path.replace(":topicId", encodeURIComponent(topicId)),
+	);
 }

@@ -101,18 +101,20 @@ test("legacy rows moved, legacy tables dropped, conversation pointer migrated", 
 	>;
 	assert.equal(recall.length, 1);
 	assert.equal(recall[0].checkpoint_id, "cp_leg");
-		const branches = db
-				.prepare("SELECT * FROM conversation_forks")
-				.all() as Array<Record<string, unknown>>;
-		assert.equal(branches.length, 1);
-		assert.equal(branches[0].parent_conversation_id, "conv_leg");
-		assert.equal(branches[0].child_conversation_id, "conv_child");
-		assert.equal(branches[0].fork_turn_index, 1);
-		// Conversation pointer migrated to session_conversations (session_id → conversation_id).
-		const ptr = db
-				.prepare("SELECT conversation_id FROM session_conversations WHERE session_id='sess_leg'")
-				.get() as { conversation_id: string } | undefined;
-		assert.equal(ptr?.conversation_id, "conv_leg");
+	const branches = db
+		.prepare("SELECT * FROM conversation_forks")
+		.all() as Array<Record<string, unknown>>;
+	assert.equal(branches.length, 1);
+	assert.equal(branches[0].parent_conversation_id, "conv_leg");
+	assert.equal(branches[0].child_conversation_id, "conv_child");
+	assert.equal(branches[0].fork_turn_index, 1);
+	// Conversation pointer migrated to session_conversations (session_id → conversation_id).
+	const ptr = db
+		.prepare(
+			"SELECT conversation_id FROM session_conversations WHERE session_id='sess_leg'",
+		)
+		.get() as { conversation_id: string } | undefined;
+	assert.equal(ptr?.conversation_id, "conv_leg");
 
 	closeTurnStore(dir);
 

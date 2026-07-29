@@ -162,7 +162,7 @@ void _c_achievements;
 // (Sprint 39 added /api/sessions + /api/sessions/timeseries.)
 
 const ENDPOINT_KEYS = Object.keys(ENDPOINTS) as (keyof typeof ENDPOINTS)[];
-const EXPECTED_ENDPOINT_COUNT = 16;
+const EXPECTED_ENDPOINT_COUNT = 23;
 
 /** All `/api/*` paths served by server.ts (extracted from the route handlers). */
 const SERVER_TS_PATHS: string[] = [

@@ -9,7 +9,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { createTurnStore, closeAllTurnDbs, type TurnStore } from "../store/turns/index.js";
+import {
+	createTurnStore,
+	closeAllTurnDbs,
+	type TurnStore,
+} from "../store/turns/index.js";
 import { openStore } from "../store/sqlite/utils.js";
 import { appendRawTranscript } from "../store/sqlite/raw-transcript.js";
 import { writeCheckpointEpoch } from "../store/sqlite/raw-transcript.js";
@@ -44,8 +48,18 @@ function seed(dir: string): { store: TurnStore; conv: string } {
 		ctxTokens: 800,
 		ctxPercent: 0.4,
 	});
-	store.appendRecall({ turnId: t0, checkpointId: "cp_1", score: 0.9, source: "checkpoint" });
-	store.appendRecall({ turnId: t0, checkpointId: "cp_2", score: 0.8, source: "checkpoint" });
+	store.appendRecall({
+		turnId: t0,
+		checkpointId: "cp_1",
+		score: 0.9,
+		source: "checkpoint",
+	});
+	store.appendRecall({
+		turnId: t0,
+		checkpointId: "cp_2",
+		score: 0.8,
+		source: "checkpoint",
+	});
 	store.appendTurn({
 		conversationId: conv,
 		sessionId: "sess_m",
@@ -68,14 +82,26 @@ function seed(dir: string): { store: TurnStore; conv: string } {
 	];
 	for (const m of msgs) {
 		appendRawTranscript(main, {
-			contentHash: m.hash, sessionId: "sess_m", seq: 0, role: "user",
-			contentBytes: m.bytes, toolName: null, messageTimestamp: null,
-			checkpointEpoch: "ep_1", turnIndex: m.turn,
+			contentHash: m.hash,
+			sessionId: "sess_m",
+			seq: 0,
+			role: "user",
+			contentBytes: m.bytes,
+			toolName: null,
+			messageTimestamp: null,
+			checkpointEpoch: "ep_1",
+			turnIndex: m.turn,
 		});
 	}
 	writeCheckpointEpoch(main, {
-		epochId: "ep_1", sessionId: "sess_m", startedSeq: 0, committedSeq: 3,
-		summaryMessageText: "sum", cutIndex: 3, checkpointId: "cp_x", createdAt: Date.now(),
+		epochId: "ep_1",
+		sessionId: "sess_m",
+		startedSeq: 0,
+		committedSeq: 3,
+		summaryMessageText: "sum",
+		cutIndex: 3,
+		checkpointId: "cp_x",
+		createdAt: Date.now(),
 	});
 	return { store, conv };
 }
@@ -121,7 +147,12 @@ test("metrics tolerate a main db without raw_transcript (reuse host)", () => {
 		role: "assistant",
 		endedAt: Date.now(),
 	});
-	store.appendRecall({ turnId: t, checkpointId: "cp", score: 0.5, source: "checkpoint" });
+	store.appendRecall({
+		turnId: t,
+		checkpointId: "cp",
+		score: 0.5,
+		source: "checkpoint",
+	});
 	// Bare in-memory db with NO raw_transcript / checkpoint_epochs tables.
 	const bare = new DatabaseSync(":memory:");
 	const rows = turnMetrics(store, bare, conv);
