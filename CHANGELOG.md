@@ -1,5 +1,55 @@
 # Changelog
 
+## v0.8.26 (2026-07-28) — Documentation Release
+
+- **docs: complete release notes for v0.8.25.** The RAPTOR promotion release shipped without CHANGELOG or RELEASE_NOTES entries — v0.8.26 publishes the complete notes and README/INDEX_MAP updates so the published package itself carries accurate documentation. No code changes.
+- **chore**: biome reflow + package-lock sync (`7a15b05`, behavior-neutral). `2447e30` (the QA fixes) shipped inside the v0.8.25 tag itself.
+
+---
+
+## v0.8.25 (2026-07-28) — RAPTOR Promotion: Multi-Level Retrieval + Per-Turn Tracking + Retry Engine Redesign
+
+**The RAPTOR memory hierarchy goes live — serving multi-level recall by default, tracking every turn, and hardening against compact poisoning.**
+
+- **feat(raptor): S25 promotion — serving is real (`f65e477`).** Shadow mode now gates the SERVE path, not just build logging. `built_at` freshness guard skips stale trees; per-session `raptorCache` removes per-recall O(n·leaves) rehydrate; `RAPTOR_INJECT_SUMMARIES` prepends a hierarchical overview header (root + top level-1 clusters) to recall blocks; `raptor_serve` telemetry for canary p95 monitoring. Acceptance tests for gates, staleness, summary format, and p95.
+- **feat(raptor): S42B — multi-level retrieval wired to recall (`f65e477`).** `RAPTOR_MULTILEVEL_ENABLED` (default ON) activates level-weighted scoring across the RAPTOR tree with leaf expansion and MMR re-rank. Cluster hits surface synthetic `Recalled cluster summary` blocks. 4 acceptance tests.
+- **feat(raptor): S42D — build history + freshness tracking (`f65e477`).** New `raptor_build_history` table records coherence score + leaf count per build; `compact` pipeline skips rebuilds when a tree is within `RAPTOR_FRESHNESS_HOURS` and <20% drift. `isRaptorTreeFresh` fails closed on any ambiguity.
+- **feat(tracking): S48 — per-turn vector tracking + conversation branching (`f65e477`).** `turns`, `turn_recall`, `conversation_branches` tables; a `forkConversation` primitive for recall-fork between session branches.
+- **fix(boundary): single-pass `isPairSafe` rewrite (`f65e477`).** Handles arbitrary toolCall/toolResult interleavings. 9 regression tests. PREVENT-PI-002.
+- **perf(dedup): atomic mirror upserts (`f65e477`).** `ON CONFLICT DO UPDATE ... RETURNING` replaces read-then-write for checkpoint mirrors — race-safe under concurrent events.
+- **feat(s38): R1–R4 retry engine redesign (`f65e477`).** In-flight nudge dedup (R1), session-global cap `errorRetrySessionMax=3` (R2), poisoned-context detector recognizing 0-token-error / orphaned-toolResult / generic-response signatures with `/clear` advise and guarded compact per signature (R3), turn hygiene guarantees (R4). 13 new tests. Dashboard telemetry (R7).
+- **docs**: README troubleshooting, status updates for S40-S47 RAG specs, sprint bookkeeping (`0e7c84c`, `0d36c3c`).
+- **fix(raptor/merge): resolution cleanups (`2447e30`).** Shadow+staleness guard wired correctly into `raptorOverviewBlock`; orphaned leaf hits skip cleanly; committed agent-state files scrubbed.
+
+**Migration:** none. Full gate green: 745 tests, build, lint, regression, guardrails.
+
+---
+
+## v0.8.24 (2026-07-27) — Mega-Runtime Decomposition (Phase 1 + 2 + 2d Maximal Split)
+
+- **refactor(mega-runtime): maximal decomposition of the runtime monolith (`1278fbc`, `2750101`, `73ef57d`).** The `extensions/mega-runtime/` barrel pattern is extended across the entire runtime: `runtime.ts` (~437 lines, delegates-only) plus focused per-section modules (`effects.ts`, `game-state.ts`, `perf.ts`, `pressure-getters.ts`, etc.). No behavior change — pure structural split following the project rule that no `.ts` file grows past ~500 lines. Merge: `0d9c14a`.
+- **chore(release): v0.8.24 (`10e1af3`) + package-lock sync (`83660b7`).**
+
+No migration required — fully backward-compatible. Full gate green.
+
+## v0.8.23 (2026-07-27) — S42A Multi-Level RAPTOR Retrieval Engine
+
+- **feat(raptor): S42A multi-level retrieval engine (`1b78948`).** `src/dedup/raptor/multilevel.ts` implements level-weighted RAPTOR scoring with leaf expansion, build-history freshness metadata, and `raptorSearchHits()` entry; feature flags (`RAPTOR_MULTILEVEL_ENABLED`, `RAPTOR_LEAF_EXPANSION`) default ON per the S42 re-plan; extractive cluster summaries are permanent (S42C Ollama enrichment deleted — keeps PREVENT-PI-004 compliance without an exception). 9 new tests. **Note:** the engine is not yet wired into `VectorStore` — that is the pending S42B sub-sprint; zero runtime behavior change until wired. Merge: `872ee04`.
+- **chore(release): v0.8.23 (`53a7edd`).**
+
+No migration required — fully backward-compatible. Full gate green.
+
+## v0.8.22 (2026-07-27) — BSD 3-Clause License + S40–S47 RAG Specs + S40A Importance Engine
+
+- **license: switch to BSD 3-Clause (`e894c4a`, `2ad8a02`).**
+- **feat(importance): S40A core scoring engine (`f24311f`).** New `src/importance.ts` scores chunks/checkpoints for retention priority. **Note:** not yet wired into `compactSession()` — that is the pending S40B sub-sprint.
+- **fix(s38.5): compact-dedup race guard on `session_before_compact` (`8569ffb`, `222038e`).** Segments compacted by an earlier handler pass are no longer re-processed by the dedup mirror in the same compaction event. Postmortem: `docs/specs/postmortem-already-compacted-race.md`.
+- **docs(specs): S26–S33 RAG specs renumbered to S40–S47 (`0bd55c0`) + rewritten to remove mock-data language with all feature flags default ON (`08fe915`).** ⚠ This renumbering collides with earlier shipped sprint numbers (S40 dashboard overhaul, S41 tiered threshold, S42 auto-continue, S43 auto-trigger, S44–S47 game mode) — see the numbering note in `ROADMAP.md`/`BACKLOG.md`.
+- **refactor(PR0): barrel splits for `src/vectorStore.ts` + global index (`f6d4383`) and `extensions/dashboard-server` `html.ts`/`server.ts` (`b141fb0`).** Structural only.
+- **chore(release): v0.8.22 (`e04bc55`).**
+
+No migration required — fully backward-compatible. Full gate green.
+
 ## v0.8.21 (2026-07-27) — ESC Cancel Fix + S39 Session Charts + S40 Context Gauges
 
 - **fix(error-retry): ESC/Ctrl-C abort skips all retry nudges — new `'cancelled'` category (`5742881`).** When a user pressed ESC mid-task, pi's `app.interrupt` keybinding called `agent.abort()`, producing a `turn_end` with `stopReason: "aborted"`. The S38 error-retry classifier matched `s.includes('aborted')` at line 112 and returned `'transient'` — identical to a provider 5xx or network timeout. The safety net then fired up to 5 blind retry nudges (`"[mega-compact] the last turn ended with an error; please retry."`), re-running the task the user explicitly cancelled. **Fix:** introduces a `'cancelled'` error category (like `'compaction-noop'` and `'context-overflow'`) with an early `if (sr === 'aborted') return 'cancelled'` guard that fires right after the `'length'` short-circuit — before any text-based matching. The old `s.includes('aborted') → 'transient'` path is removed (replaced with a comment). The `turn_end` handler's `'cancelled'` branch resets both `errorRetryCount` and `consecutiveErrors` to 0 (a cancel is not a failure for circuit-breaker purposes) and emits `error_retry_cancelled` to the dashboard event stream. **No new env vars** — the category is a pure short-circuit of the existing retry logic. Tests: 4 new (classifier abort→cancelled, defense "error" with "aborted" in message → transient, integration no-nudge, integration counter-reset). `extensions/mega-events/error-classifier.ts` (+7), `extensions/mega-events/agent-handlers.ts` (+14), `extensions/mega-compact-s38.test.ts` (+36).
@@ -53,7 +103,6 @@ No migration required — additive; all features behind env flags with safe defa
 - **chore:** version bump 0.7.9 → 0.8.0 (unreleased).
 
 No migration. Tests: 540+ (was 514). npm-only distribution.
-
 
 ## v0.7.9 (2026-07-19) — TUI width-overflow crash fix + guardrails compliance + audit fixes + refactor splits
 
@@ -189,6 +238,7 @@ The S16–S23 slice: pi now compacts **and continues** (no more stop-after-
 compact), cross-repo recall is wired into resume + `/mega-recall --cross-repo`
 over a machine-wide PGlite HNSW index, and the `memories` table is auto-
 reviewed + RAG-injected. Plus a multi-repo dashboard (Summary + All-repos
+
 - drift) and Slice-3 docs. Single `node:sqlite` source of truth + optional
 PGlite index; zero network (PREVENT-PI-004). See the design spec and the
 per-sprint sections below for full detail.

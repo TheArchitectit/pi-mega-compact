@@ -17,6 +17,7 @@ import {
 	type DedupTier,
 } from "./config/dedup.js";
 import { logDecision } from "./monitoring.js";
+import { repoKey } from "./store/repoKey.js";
 import type { StoredCheckpoint } from "./store.js";
 import { getStateDir, normalizeSessionId, compressSmart } from "./store.js";
 import { computeContentDigest } from "./dedup/digest.js";
@@ -149,7 +150,9 @@ export class VectorStore {
 	) {
 		this.embedder = opts.embedder ?? defaultEmbedder();
 		this.stateDir = opts.stateDir ?? getStateDir();
-		this.repoId = opts.repoId ?? this.stateDir;
+		// S25: single repo-scope key shared with the memory index (git-root
+		// scoped; falls back to stateDir outside git).
+		this.repoId = opts.repoId ?? repoKey(this.stateDir);
 		// Sprint 14: all tier flags/thresholds flow from the single config source
 		// (DedupConfig). The legacy opts.dedupSim / opts.l2Enabled remain accepted
 		// for backward-compat callers but flags are authoritative via `cfg`.

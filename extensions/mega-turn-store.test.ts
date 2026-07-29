@@ -45,7 +45,7 @@ test("flag ON → writes land in turns.db (not main sqlite.db)", () => {
 	const conv = ensureConversationIdFor(c, "sess_on", dir);
 	const turnId = recordTurnWrite(
 		c,
-		{ conversationId: conv, sessionId: "sess_on", turnIndex: 0 },
+		{ conversationId: conv, sessionId: "sess_on", turnIndex: 0, role: "assistant", endedAt: Date.now() },
 		dir,
 	);
 	recordRecallWrite(
@@ -68,7 +68,7 @@ test("flag OFF → writes land in main sqlite.db (legacy S48 path)", () => {
 	const conv = ensureConversationIdFor(c, "sess_off", dir);
 	const turnId = recordTurnWrite(
 		c,
-		{ conversationId: conv, sessionId: "sess_off", turnIndex: 0 },
+		{ conversationId: conv, sessionId: "sess_off", turnIndex: 0, role: "assistant", endedAt: Date.now() },
 		dir,
 	);
 	recordRecallWrite(

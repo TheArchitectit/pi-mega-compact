@@ -10,9 +10,12 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { watch } from "node:fs";
 import { getGameState, type GameState } from "../../src/store/sqlite.js";
 import { getTheme } from "../../src/config/themes.js";
+import { disposePerf, type PerfContext } from "./perf.js";
 
 export interface GameWatcherLike {
 	close(): void;
+	/** fs.FSWatcher has it; test doubles need not. */
+	unref?(): unknown;
 }
 
 export interface GameStateContext {
@@ -60,6 +63,29 @@ export function refreshWidgetGameStateImpl(
 export function bumpGameStateImpl(self: GameStateContext): void {
 	self.cachedGameState = undefined;
 	self.gameStateBump++;
+}
+
+// ------------------------------------------------------------- disposeRuntime
+
+/**
+ * The slice of `MegaRuntime` dispose() touches: the S32 fs.watch game-state
+ * watcher (GameStateContext) plus the v0.8.8 perf cpu/mem sampling interval
+ * (PerfContext). `MegaRuntime` satisfies this structurally.
+ */
+export interface DisposeRuntimeContext extends GameStateContext, PerfContext {}
+
+/** S32: release the fs.watch game-state watcher AND stop the v0.8.8 perf
+ *  sampling interval. Called when the runtime is torn down (no existing
+ *  dispose path — the process exit reclaims the fd, but explicit close is
+ *  correct for any in-process reload / test reuse). Extracted from
+ *  MegaRuntime.dispose(); the class keeps a thin delegate. */
+export function disposeRuntimeImpl(self: DisposeRuntimeContext): void {
+	if (self.gameStateWatcher) {
+		try { self.gameStateWatcher.close(); } catch { /* non-fatal */ }
+		self.gameStateWatcher = undefined;
+		self.gameStateWatchDir = undefined;
+	}
+	disposePerf(self);
 }
 
 export function ensureGameStateWatcherImpl(self: GameStateContext, view: GameStateViewApi): void {
@@ -118,6 +144,13 @@ export function ensureGameStateWatcherImpl(self: GameStateContext, view: GameSta
 				}
 			},
 		);
+		// The watcher is a cache-eviction convenience, never a reason to stay
+		// alive: an active+referenced fs_event handle holds node's event loop
+		// open, so a runtime that was never dispose()d (every extension test, and
+		// any `pi -p` run that skips session_shutdown) hangs the process after all
+		// work is done. unref'd like the perf interval — while pi runs there are
+		// always other referenced handles, so the watcher still fires normally.
+		self.gameStateWatcher.unref?.();
 		self.gameStateWatchDir = self.currentStateDir;
 	} catch {
 		/* non-fatal: missing dir / platform issue — next snapshot re-queries */

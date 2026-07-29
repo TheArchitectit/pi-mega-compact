@@ -1,127 +1,181 @@
 /**
- * types.ts — S49 turn-store types + the host-agnostic TurnStore interface.
+ * types.ts — S49 contract module (the source of truth).
  *
- * Ported unchanged from src/store/sqlite/turns.ts (S48) and extended with the
- * reuse-facing TurnStore interface. This module is pi-agnostic: it imports no
- * ExtensionAPI / MegaRuntime / @earendil-works types so any host (own TUI, API
- * gateway) can embed src/store/turns/ directly. See
- * docs/specs/s49-turn-db-foundation.md (REUSE CONTRACT).
+ * Every implementation must satisfy these interfaces. Hosts import only this
+ * file + the factory from index.ts. SQL schemas are private to implementations.
+ *
+ * Design principles (from docs/specs/s49-rev1-architecture-upgrade.md):
+ *   1. Contract-first — the interface IS the spec.
+ *   2. Append-only — TurnWriter.append* are the only write methods; no UPDATE.
+ *   3. Capability-gated — asReader/asWriter/asAdmin return subset views.
+ *   4. Ledger protocol — host PUSHES facts, PULLS views. Store never initiates.
+ *   5. StoreSnapshot — checkpoint/restore for backup, migration, test seeding.
+ *
+ * PREVENT-PI-004: zero network. PREVENT-002: no SQL here (private to impls).
  */
 
-/** A row in `turns`. */
-export interface TurnRow {
-	id: number;
-	conversationId: string;
-	sessionId: string;
+// ─── Domain types ───────────────────────────────────────────────────
+
+/** Unique turn identifier (string to stay backend-agnostic). */
+export type TurnId = string;
+
+/** Unique conversation identifier. */
+export type ConversationId = string;
+
+/** Unique session identifier. */
+export type SessionId = string;
+
+/** A single turn record — an immutable, append-only fact. */
+export interface TurnEntry {
+	conversationId: ConversationId;
+	sessionId: SessionId;
 	turnIndex: number;
-	role: string | null;
-	startedAt: number;
-	endedAt: number | null;
-	ctxTokens: number | null;
-	ctxPercent: number | null;
-	pressureBand: string | null;
-	modelId: string | null;
-	epochId: string | null;
-}
-
-/** A row in `turn_recall`. */
-export interface TurnRecallRow {
-	id: number;
-	turnId: number;
-	checkpointId: string;
-	score: number;
-	source: string;
-	raptorLevel: number | null;
-}
-
-/** Where a recalled hit came from (recorded on turn_recall.source). */
-export type RecallSource = "flat" | "raptor" | "cross-repo" | "memory";
-
-/** A row in `conversation_branches` (fork lineage). */
-export interface ConversationBranch {
-	conversationId: string;
-	parentConversationId: string;
-	forkTurnId: number;
-	createdAt: number;
-}
-
-/**
- * A row in `pending_fork` — a rewind-and-fork intent written by an external
- * surface (the dashboard) and consumed by the host at a safe lifecycle point.
- * Schema lands in S49; the writer + consumer land in S52.
- */
-export interface PendingFork {
-	id: number;
-	targetConversationId: string;
-	targetTurnId: number;
-	requestedAt: number;
-	consumedAt: number | null;
-}
-
-/** Input to recordTurn (conversationId/sessionId/turnIndex required). */
-export interface RecordTurnInput {
-	conversationId: string;
-	sessionId: string;
-	turnIndex: number;
-	role?: string;
-	startedAt?: number;
-	endedAt?: number;
-	ctxTokens?: number;
-	ctxPercent?: number;
-	pressureBand?: string;
-	modelId?: string;
+	role: "user" | "assistant" | "system" | "tool";
+	endedAt: number; // epoch ms
+	ctxTokens?: number; // context window tokens at end of turn
+	ctxPercent?: number; // context window utilization 0-1
+	pressureBand?: "green" | "yellow" | "red";
+	model?: string; // model used for this turn
+	/** S50B: the compact epoch that superseded this turn (stamped post-hoc). */
 	epochId?: string;
 }
 
-/** One recalled hit to persist against a turn. */
-export interface RecordTurnRecallHit {
+/** A recall hit recorded during a turn — an immutable, append-only fact. */
+export interface TurnRecallEntry {
+	turnId: TurnId;
 	checkpointId: string;
 	score: number;
-	source: RecallSource;
+	source: "checkpoint" | "cluster_summary" | "memory";
 	raptorLevel?: number;
 }
 
-/** Result of forkConversation: the new child conversation + the recall set to replay. */
-export interface ForkResult {
-	conversationId: string;
-	recalled: TurnRecallRow[];
+/** A conversation fork — an immutable, append-only fact. */
+export interface ConversationFork {
+	parentConversationId: ConversationId;
+	childConversationId: ConversationId;
+	forkTurnIndex: number; // turn in the parent where the fork happened
+	createdAt: number;
 }
 
-/** Options for pruneTurns. */
-export interface PruneOptions {
-	/** Delete turns older than now - olderThanMs. */
-	olderThanMs: number;
-	/** Always keep at least this many most-recent turns per conversation. */
-	keepMinPerConversation: number;
-	/** now override (tests). Defaults to Date.now(). */
-	now?: number;
+/** Filters for querying turns. All fields optional (AND-combined). */
+export interface TurnFilter {
+	conversationId?: ConversationId;
+	sessionId?: SessionId;
+	sinceMs?: number; // epoch ms lower bound
+	untilMs?: number; // epoch ms upper bound
+	pressureBand?: string;
+	limit?: number;
+	offset?: number;
+}
+
+/** What a prune operation removed. */
+export interface PruneReport {
+	turnsRemoved: number;
+	recallRemoved: number;
+	branchesPreserved: number;
+	freedBytes: number; // approximate, from file-size delta
+}
+
+/** Retention policy — what the admin capability allows. */
+export interface RetentionPolicy {
+	maxTurnAgeMs: number; // delete turns older than this
+	keepMinPerConversation: number; // always keep at least N turns per conversation
+	vacuumAfterPrune: boolean; // run VACUUM after pruning
+}
+
+/** A complete snapshot for backup/migration/test-seeding. */
+export interface StoreSnapshot {
+	version: 1;
+	exportedAt: number; // epoch ms
+	turns: TurnEntry[];
+	recall: TurnRecallEntry[];
+	forks: ConversationFork[];
+}
+
+/** Aggregate stats for a conversation (materialized view, derived on read). */
+export interface ConversationStats {
+	turnCount: number;
+	firstTurnAt: number;
+	lastTurnAt: number;
+	avgCtxPercent: number;
+	pressureBands: Record<string, number>;
+}
+
+// ─── Capability interfaces ──────────────────────────────────────────
+
+/** Read-only view — dashboards, TUI, analytics. Cannot write. */
+export interface TurnReader {
+	query(filter: TurnFilter): TurnEntry[];
+	getTurn(turnId: TurnId): TurnEntry | undefined;
+	/** Resolve a turn by its (conversationId, turnIndex) coordinate (fork + recall replay). */
+	getTurnByIndex(
+		conversationId: ConversationId,
+		turnIndex: number,
+	): TurnEntry | undefined;
+	listRecall(turnId: TurnId): TurnRecallEntry[];
+	/** Recall hits recorded for the turn at (conversationId, turnIndex) — the
+	 *  replay set a fork rehydrates. Avoids needing the opaque TurnId. */
+	listRecallByIndex(
+		conversationId: ConversationId,
+		turnIndex: number,
+	): TurnRecallEntry[];
+	listForks(conversationId: ConversationId): ConversationFork[];
+	countTurns(conversationId: ConversationId): number;
+	conversationStats(conversationId: ConversationId): ConversationStats;
+}
+
+/** Append-only writer — compaction engine, event handlers. Cannot prune. */
+export interface TurnWriter {
+	appendTurn(entry: TurnEntry): TurnId;
+	appendRecall(entry: TurnRecallEntry): void;
+	ensureConversationId(sessionId: SessionId): ConversationId;
+	forkConversation(
+		parentId: ConversationId,
+		forkTurnIndex: number,
+	): ConversationId;
+}
+
+/** Admin operations — prune command, DR, migration. */
+export interface TurnAdmin {
+	prune(policy: RetentionPolicy): PruneReport;
+	vacuum(): void;
+	checkpoint(): StoreSnapshot;
+	restore(from: StoreSnapshot): void;
+	clear(): void; // test-only; wipes all data
+	/** S50B: stamp `epoch_id` on this session's turns that have none yet (links
+	 *  a turn to the compact epoch that superseded it). Backfill UPDATE, so it
+	 *  lives on the admin capability (the writer is append-only). Returns the
+	 *  number of turns stamped. */
+	stampTurnsEpoch(sessionId: SessionId, epochId: string): number;
+}
+
+/** The composed store — hosts get a capability-gated view. */
+export interface TurnStore extends TurnReader, TurnWriter, TurnAdmin {
+	/** Return a read-only view (for dashboards, TUI, analytics). */
+	asReader(): TurnReader;
+	/** Return an append-only view (for event handlers, compaction). */
+	asWriter(): TurnWriter;
+	/** Return an admin view (for prune, DR, migration). */
+	asAdmin(): TurnAdmin;
+	/** Close the underlying connection. For tests + graceful shutdown. */
+	close(): void;
+}
+
+// ─── Factory ───────────────────────────────────────────────────────
+
+/** Options for creating a TurnStore. */
+export interface TurnStoreOptions {
+	stateDir: string;
+	/** Override DB path (for tests / DR). Default: join(stateDir, "turns.db") */
+	dbPath?: string;
+	/** In-memory mode (for tests). Default: false. */
+	inMemory?: boolean;
 }
 
 /**
- * The host-agnostic turn store. Every method is synchronous (node:sqlite) and
- * best-effort-safe at the call site — the store throws on real errors; the
- * host wraps calls in try/catch to keep the agent loop non-fatal.
+ * Factory: create a TurnStore from a state directory.
+ *
+ * By default returns a SqliteTurnStore backed by turns.db.
+ * When options.inMemory is true, returns an InMemoryTurnStore.
  */
-export interface TurnStore {
-	recordTurn(input: RecordTurnInput): number;
-	recordTurnRecall(turnId: number, hits: RecordTurnRecallHit[]): void;
-	getTurn(conversationId: string, turnIndex: number): TurnRow | null;
-	getTurnById(turnId: number): TurnRow | null;
-	listTurnRecall(turnId: number): TurnRecallRow[];
-	listConversationTurns(conversationId: string): TurnRow[];
-	ensureConversationId(sessionId: string): string;
-	forkConversation(
-		parentConversationId: string,
-		forkTurnId: number,
-	): ForkResult;
-	/** S50B: stamp `epoch_id` on this session's turns that have none yet (links a
-	 *  turn to the epoch that compacted it). Returns the number of turns stamped. */
-	stampTurnsEpoch(sessionId: string, epochId: string): number;
-	clearTurns(sessionId: string): void;
-	pruneTurns(opts: PruneOptions): {
-		deletedTurns: number;
-		deletedRecall: number;
-	};
-	vacuum(): void;
-	close(): void;
-}
+export type TurnStoreFactory = (options: TurnStoreOptions) => TurnStore;

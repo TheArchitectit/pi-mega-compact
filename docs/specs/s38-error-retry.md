@@ -1,6 +1,6 @@
 # Sprint 38 — Output-Error Auto-Retry (Layered on S28)
 
-**Status**: PLANNED
+**Status**: DONE — shipped v0.8.15; ESC-cancel follow-up v0.8.21 (`mega-compact-s38.test.ts`)
 **Branch**: `output-error-work`
 **Prereq**: S28 (v0.7.8) — this layer sits on top of S28, not replacing it.
 
@@ -14,6 +14,7 @@ Users still see the following error in production despite S28 being shipped:
 > The response may be incomplete.
 
 Possible root causes:
+
 1. Installed pi-mega-compact version < 0.7.8 (S28 missing)
 2. `MEGACOMPACT_AUTO_CONTINUE_LENGTH_STOP=false` (S28 disabled)
 3. Pi emits a `stopReason` other than `'length'` for this model/provider combo
@@ -85,6 +86,7 @@ turn_end event
 ## Sub-Sprints
 
 ### S38.1 — Config + Runtime State
+
 **Files**: `extensions/mega-config.ts`, `extensions/mega-runtime/helpers.ts`
 
 - Add to `MegaConfig` interface:
@@ -97,6 +99,7 @@ turn_end event
 - Initialize `errorRetryCount: 0` and `errorRetryUntil: 0` in runtime init
 
 ### S38.2 — Error Classifier + Turn-End Watcher
+
 **Files**: `extensions/mega-events/agent-handlers.ts`
 
 - Add `classifyError(message): 'transient' | 'permanent' | 'compaction-noop' | null` helper (inline or extracted)
@@ -114,6 +117,7 @@ turn_end event
 - In `turn_start` handler: reset `errorRetryCount` (alongside existing `lengthStopPending` reset)
 
 ### S38.3 — Tests
+
 **Files**: `extensions/mega-compact.test.ts`
 
 - Test: classifyError returns 'transient' for error/aborted stopReasons
@@ -132,6 +136,7 @@ turn_end event
 - Test: error_retry_exhausted event logged when max exceeded
 
 ### S38.4 — Integration + Ship
+
 **Files**: `CHANGELOG.md`
 
 - Add changelog entry for S38 (error-retry safety net + compaction-noop category + S38.5 race-guard strengthening)
@@ -139,6 +144,7 @@ turn_end event
 - Commit + push
 
 ### S38.5 — Strengthen Race Guard (compaction-noop prevention)
+
 **Files**: `extensions/mega-events/agent-handlers.ts`, `extensions/mega-events/context-handler.ts`
 **Prereq**: v0.7.4 race fix (postmortem FAIL-2026071701, commit `848c817`)
 
@@ -153,6 +159,7 @@ throwing "Already compacted". The compaction-noop classifier (S38.2) contains
 the fallout; S38.5 prevents the throw at the source.
 
 **Changes**:
+
 1. **Cooldown 10s -> 30s** in both call sites:
    - `agent-handlers.ts` (~line 124): `if (sinceCompact < 10_000)` -> `30_000`
    - `context-handler.ts` (~line 257): `if (sinceCompact < 10_000 || ...)` -> `30_000`
@@ -177,6 +184,7 @@ the fallout; S38.5 prevents the throw at the source.
 as defense-in-depth. The deferred re-check is additive.
 
 **Tests** (`extensions/mega-compact.test.ts`):
+
 - Test: cooldown skip fires at `sinceCompact < 30_000` (not 10_000)
 - Test: deferred `ctx.compact()` re-checks `piCompactWouldNoop` + idle; skips
   when pi has since appended a compaction entry (first-race-in-burst)

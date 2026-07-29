@@ -1,26 +1,30 @@
 /**
  * fork.ts — S50C host-agnostic conversation-fork primitive.
  *
- * Pi-agnostic: consumes only the S49 `TurnStore` interface. A "fork" branches a
+ * Pi-agnostic: consumes only the S49 `TurnStore` contract. A "fork" branches a
  * new child conversation off a parent's turn N and inherits that turn's
  * injected-checkpoint set as its starting recall state (recall-to-point — NOT a
  * live-window replay, which stays an S48 non-goal). The host (pi command,
  * dashboard intent, own TUI, API gateway) supplies the store + identifiers and
  * applies the returned recall set to its own session state.
  *
- * PREVENT-PI-001/002: fork writes to conversation_branches only; it never
- * mutates memory, drop ranges, or the parent's turns. No network (PREVENT-PI-004).
+ * PREVENT-PI-001/002: fork writes to conversation_forks only; it never mutates
+ * memory, drop ranges, or the parent's turns. No network (PREVENT-PI-004).
  */
-import type { TurnStore, TurnRow, TurnRecallRow } from "./store/turns/types.js";
+import type {
+	TurnStore,
+	TurnEntry,
+	TurnRecallEntry,
+} from "./store/turns/types.js";
 
 /** Result of a fork: the new child conversation + the recall set to rehydrate. */
 export interface ForkOutcome {
 	/** Newly-created child conversation id. */
 	childConversationId: string;
-	/** The parent turn the fork branched from. */
-	forkTurn: TurnRow;
+	/** The parent turn the fork branched from (contract TurnEntry). */
+	forkTurn: TurnEntry;
 	/** The parent's injected checkpoints at the fork turn (the replay set). */
-	recalled: TurnRecallRow[];
+	recalled: TurnRecallEntry[];
 	/** Distinct checkpoint ids to seed into the child's injected-set. */
 	checkpointIds: string[];
 }
@@ -36,9 +40,10 @@ export class ForkError extends Error {
 }
 
 /**
- * Fork `parentConversationId` at `turnIndex`. Resolves the turn row (by
- * conversation + index), creates the child conversation via
- * `store.forkConversation`, and returns the recall set to rehydrate.
+ * Fork `parentConversationId` at `turnIndex`. Resolves the turn entry (by
+ * conversation + index via `getTurnByIndex`), creates the child conversation via
+ * `store.forkConversation` (returns the child ConversationId), and returns the
+ * parent turn's recorded recall set (`listRecallByIndex`) to rehydrate.
  *
  * @throws ForkError TURN_NOT_FOUND when the (conversation, turnIndex) row is absent.
  * @throws ForkError NO_RECALL when the fork turn has no injected checkpoints to replay.
@@ -48,17 +53,18 @@ export function forkFromConversation(
 	parentConversationId: string,
 	turnIndex: number,
 ): ForkOutcome {
-	const turn = store.getTurn(parentConversationId, turnIndex);
+	const turn = store.getTurnByIndex(parentConversationId, turnIndex);
 	if (!turn) {
 		throw new ForkError(
 			"TURN_NOT_FOUND",
 			`no turn ${turnIndex} in conversation ${parentConversationId}`,
 		);
 	}
-	const { conversationId: childConversationId, recalled } = store.forkConversation(
+	const childConversationId = store.forkConversation(
 		parentConversationId,
-		turn.id,
+		turnIndex,
 	);
+	const recalled = store.listRecallByIndex(parentConversationId, turnIndex);
 	const checkpointIds = [...new Set(recalled.map((r) => r.checkpointId))];
 	if (checkpointIds.length === 0) {
 		// The child conversation was still created (lineage is recorded), but a fork

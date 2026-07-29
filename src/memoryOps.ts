@@ -13,23 +13,8 @@ import {
   type MemoryRecord,
 } from "./store/sqlite.js";
 import { defaultEmbedder } from "./embedder.js";
+import { repoKey } from "./store/repoKey.js";
 import { upsertMemoryEmbedding } from "./store/memoryIndex.js";
-import { execSync } from "node:child_process"; // guardrails-allow PREVENT-PI-004: read-only `git rev-parse` to scope the memory index per-repo
-
-/** Resolve the current repo's git root (mirrors extensions/mega-config.ts but
- *  kept local so src/ stays pi-agnostic — no extension-layer import). */
-function resolveRepoRootLocal(cwd: string): string | undefined {
-  try {
-    const out = execSync("git rev-parse --show-toplevel", {
-      cwd,
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    return out || undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 /** Find a memory row whose content exactly matches (case-insensitive). */
 function findByContent(memories: MemoryRecord[], content: string): MemoryRecord | undefined {
@@ -41,11 +26,11 @@ function findByContent(memories: MemoryRecord[], content: string): MemoryRecord 
  * Fire-and-forget mirror of a memory write into the cross-repo PGlite index
  * (S24 optional memory-RAG mirror). Best-effort + non-fatal: never blocks the
  * SQLite write and degrades to the same-repo scan if the index is disabled or
- * fails. `repoId` is the resolved git root so the memory is findable from other
- * repos; falls back to the state dir when outside git.
+ * fails. `repoId` is the unified S25 repoKey (git root) so the memory is
+ * findable from other repos; falls back to the state dir outside git.
  */
 function indexMemoryWrite(stateDir: string, memoryId: number, content: string): void {
-  const repoId = resolveRepoRootLocal(stateDir) ?? stateDir;
+  const repoId = repoKey(stateDir);
   try {
     const vec = defaultEmbedder().embed(content);
     void upsertMemoryEmbedding(repoId, memoryId, content, vec);

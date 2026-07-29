@@ -1,7 +1,7 @@
 /**
  * turns.test.ts — S50C per-turn + per-conversation metrics tests. No network.
- * Seeds a turns.db (S49 store) and a main db (raw_transcript + checkpoint_epochs)
- * and asserts the rollups match seeded truth.
+ * Seeds a turns.db (S49 contract store) and a main db (raw_transcript +
+ * checkpoint_epochs) and asserts the rollups match seeded truth.
  */
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { createTurnStore, type TurnStore } from "../store/turns/index.js";
+import { createTurnStore, closeAllTurnDbs, type TurnStore } from "../store/turns/index.js";
 import { openStore } from "../store/sqlite/utils.js";
 import { appendRawTranscript } from "../store/sqlite/raw-transcript.js";
 import { writeCheckpointEpoch } from "../store/sqlite/raw-transcript.js";
@@ -23,6 +23,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	closeAllTurnDbs();
 	rmSync(tmpDir, { recursive: true, force: true });
 });
 
@@ -32,17 +33,28 @@ function stateDir(): string {
 
 /** Seed one conversation: 2 turns, recall on turn 0, raw messages, one epoch. */
 function seed(dir: string): { store: TurnStore; conv: string } {
-	const store = createTurnStore(dir);
+	const store = createTurnStore({ stateDir: dir });
 	const conv = store.ensureConversationId("sess_m");
-	const t0 = store.recordTurn({
-		conversationId: conv, sessionId: "sess_m", turnIndex: 0, ctxTokens: 800, ctxPercent: 0.4,
+	const t0 = store.appendTurn({
+		conversationId: conv,
+		sessionId: "sess_m",
+		turnIndex: 0,
+		role: "assistant",
+		endedAt: Date.now(),
+		ctxTokens: 800,
+		ctxPercent: 0.4,
 	});
-	store.recordTurnRecall(t0, [
-		{ checkpointId: "cp_1", score: 0.9, source: "flat" },
-		{ checkpointId: "cp_2", score: 0.8, source: "flat" },
-	]);
-	store.recordTurn({ conversationId: conv, sessionId: "sess_m", turnIndex: 1, ctxTokens: 1200 });
-	store.stampTurnsEpoch("sess_m", "ep_1");
+	store.appendRecall({ turnId: t0, checkpointId: "cp_1", score: 0.9, source: "checkpoint" });
+	store.appendRecall({ turnId: t0, checkpointId: "cp_2", score: 0.8, source: "checkpoint" });
+	store.appendTurn({
+		conversationId: conv,
+		sessionId: "sess_m",
+		turnIndex: 1,
+		role: "assistant",
+		endedAt: Date.now(),
+		ctxTokens: 1200,
+	});
+	store.asAdmin().stampTurnsEpoch("sess_m", "ep_1");
 
 	const main = openStore(dir);
 	// 5 raw messages in the committed range; ep_1's summary is much smaller
@@ -100,10 +112,16 @@ test("conversationMetrics aggregates per-turn metrics", () => {
 
 test("metrics tolerate a main db without raw_transcript (reuse host)", () => {
 	const dir = stateDir();
-	const store = createTurnStore(dir);
+	const store = createTurnStore({ stateDir: dir });
 	const conv = store.ensureConversationId("sess_n");
-	const t = store.recordTurn({ conversationId: conv, sessionId: "sess_n", turnIndex: 0 });
-	store.recordTurnRecall(t, [{ checkpointId: "cp", score: 0.5, source: "flat" }]);
+	const t = store.appendTurn({
+		conversationId: conv,
+		sessionId: "sess_n",
+		turnIndex: 0,
+		role: "assistant",
+		endedAt: Date.now(),
+	});
+	store.appendRecall({ turnId: t, checkpointId: "cp", score: 0.5, source: "checkpoint" });
 	// Bare in-memory db with NO raw_transcript / checkpoint_epochs tables.
 	const bare = new DatabaseSync(":memory:");
 	const rows = turnMetrics(store, bare, conv);

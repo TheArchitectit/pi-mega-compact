@@ -1,138 +1,160 @@
 # Release Notes — pi-mega-compact
 
-## v0.9.0 (2025-07-27)
+## v0.10.0 (2026-07-29)
 
-**Per-turn memory platform + auto-categorizing wiki + multi-level RAPTOR retrieval.**
-This is the biggest release since v0.1.0 — a new isolated turns database, per-turn metrics with fork primitives, k-means/TF-IDF topic clustering with an auto-wiki, multi-level RAPTOR retrieval, and a major runtime decomposition. 745 tests passing.
+**The platform release.** The `raptor-promotion` branch merges into `master`, bringing 14 releases worth of work (v0.8.22 → v0.9.1) into the mainline. This is the single largest merge in the project's history: the RAPTOR memory hierarchy, the error-retry safety net, the React dashboard, the per-turn tracking spine, the engineering practices codex, and the S49–S52 program spec all land at once.
+
+If you're upgrading from v0.8.21 or earlier, read the migration notes below carefully. If you're on v0.9.1 (raptor-promotion), this is identical code — just on master now.
+
+### What's new (since v0.8.21)
+
+**RAPTOR memory hierarchy (S42, v0.8.23–v0.8.25)**
+- Multi-level retrieval: level-weighted scoring across the RAPTOR tree (leaves + cluster summaries) with leaf expansion and MMR rerank. Flags `RAPTOR_MULTILEVEL_ENABLED` and `RAPTOR_LEAF_EXPANSION` default ON.
+- Serve gate: shadow mode is now a hard SERVE gate, not just logging. A `built_at` freshness guard skips stale trees; per-session tree cache removes per-recall rebuild cost.
+- Build history: a `raptor_build_history` table records every build with coherence score and leaf count. The compact pipeline skips rebuilds when the tree is fresh.
+- `parentId` plumbing: every internal RAPTOR node now links to its first-leaf ancestor.
+
+**Per-turn tracking (S48, v0.8.25)**
+- `turns`, `turn_recall`, and `conversation_branches` tables trace every turn and the provenance of recall hits.
+- A `forkConversation` primitive enables recall-fork (moving memory between session branches without token replay).
+
+**Error retry redesign (S38, v0.8.25)**
+- In-flight nudge dedup (R1): prevents spam storms when a fast-erroring provider fires dozens of retry nudges.
+- Session-global cap (R2): `errorRetrySessionMax=3` — the extension stops retrying after 3 nudges per session.
+- Poisoned-context detection (R3): recognizes 0-token-failure signatures and recommends `/clear` instead of blind retry.
+- Circuit breaker (R3): `consecutiveErrors` threshold stops the extension from retrying a clearly broken context.
+- Dashboard telemetry (R7): retry events flow to the dashboard.
+
+**Boundary rewrite (PREVENT-PI-002, v0.8.25)**
+- A single forward-pass `isPairSafe` guarantees no toolCall/toolResult pair is ever split at a compaction boundary, for any interleaving. 9 regression tests added.
+
+**Durable memory system (S25, v0.8.25)**
+- Auto-reviews conversation every 10 turns, writes decisions/facts/preferences to SQLite, injects them as RAG context on recall.
+- Hallucination guard: every add/replace op must be verbatim-grounded in a real message.
+- `MEMORY_MAX_ROWS` bloat cap.
+- Cross-repo recall: decisions saved in one repo surface when you start a session in another.
+
+**React dashboard (v0.8.15–v0.8.25)**
+- Full React SPA with lazy-loaded tabs: Overview, Sessions, Metrics, Events, Repos, Config, Cache, Achievements.
+- SSE event stream for live updates.
+- `/api/` endpoints for all data surfaces.
+- Dashboard bundle verified at publish time (the 0.8.5 regression check).
+
+**Engineering practices (v0.9.1)**
+- `docs/ENGINEERING_PRACTICES.md` (v1.0): file-size limits, delegate-shell splitting pattern, contract-first architecture, capability gating, append-only provenance, ledger protocol, feature flag protocol, structured logging, sprint gating.
+- Every new module starts with a `types.ts` contract; implementations satisfy it; a shared compliance suite proves both backends pass.
+
+**S49–S52 program spec (v0.9.1)**
+- The per-turn memory platform is specced as a 4-sprint program:
+  - **S49**: Turn-DB Foundation — contract-first `TurnStore` interface, `SqliteTurnStore` + `InMemoryTurnStore`, migration, retention, `StoreSnapshot` for backup/restore.
+  - **S50**: Per-turn metrics + `/mega-fork` command.
+  - **S51**: Auto-categorizing wiki (k-means + TF-IDF, no LLM/Ollama).
+  - **S52**: Dashboard management + rewind — capability-gated turns tab, rewind-intent queue.
+- `docs/specs/s49-rev1-architecture-upgrade.md` documents the v0→v1 revision (CRUD → contract-first, event-sourced, capability-gated kernel).
+
+### Fixes
+
+- **PGlite open guard** — a stalled PGlite init can no longer wedge a turn. Bounded by a timeout; degrades to the sync store.
+- **PGlite shutdown** — indexes are closed on session shutdown; a TUI widget off-switch prevents the WASM handle from pinning the event loop.
+- **Game-state watcher unref** — the watcher no longer pins the Node event loop after session end.
+- **`isChatty` false positives** — word-boundary match prevents substring false positives (e.g. "chat" matching inside "chattering").
+- **Session runtime initializer** — `lastErrorRetryAt`, `retryNudgePending`, `errorRetrySessionCount`, `lastErrorText`, `errorTextRepeatCount`, `poisonedAdviseSent`, `poisonedCompactSignatures`, `poisonedCount` fields added to the initializer (were missing since S38).
+- **Memory-op test isolation** — tests no longer write into the real machine-wide index.
+- **Dedup-mirror atomicity** — checkpoint mirrors use `ON CONFLICT DO UPDATE ... RETURNING ref_count`; upserts are race-safe under concurrent turns.
+
+### Test infrastructure
+
+- **759 tests** across 76 files (was 372 in v0.7.3).
+- **Solo adjudication** — files that fail in the parallel pool are re-run one-at-a-time; flakes reported separately from failures.
+- **Per-file hard cap** — 2 min per file (was 3 min); a file that hangs is SIGKILLed.
+- **Cross-repo E2E driver** — `scripts/cross-repo-e2e.mjs` exercises the full loop across two fake repos.
+- **Memory round-trip suite** — write → persist → recall → format, bloat cap, hallucination guard.
+- **S4x RAG verification** — pins default-enable claims against real code; gaps documented as absent-from-DedupConfig.
+
+### Migration
+
+- **From v0.8.21 or earlier:** the store schema auto-migrates on first open. Checkpoints are backward-compatible. New tables (turns, turn_recall, conversation_branches, raptor_build_history) are created if missing.
+- **From v0.9.1 (raptor-promotion):** this is identical code. No migration needed.
+- **Env vars:** all new flags default ON. Set `MEGACOMPACT_RAPTOR_MULTILEVEL=false` to disable multi-level retrieval; `MEGACOMPACT_RAPTOR_SHADOW_MODE=false` to disable serving; `MEGACOMPACT_CRITIQUE=0` to disable the critique gate (currently spec-only).
+
+---
+
+## v0.9.0 (2026-07-29)
+
+**The trust release.** v0.8.25 shipped a lot of memory machinery; v0.9.0 is the work that makes it verifiable end-to-end. Six commits built on top of v0.8.26's docs release, keyed around proving what the pipeline actually does rather than assuming it.
+
+### What's new
+
+- **RAPTOR `parentId` plumbing.** During a re-cluster pass every internal RAPTOR node now links to its first-leaf ancestor (`null` → concrete id). Downstream consumers that relied on the pointer (S42B dot-graph viewer, S48 branch tracing) now have a real link.
+- **Cross-repo E2E.** `scripts/cross-repo-e2e.mjs` runs the full loop (compact → persist → recall) against two fake repos sharing a state dir. Pins the S25-B contract so cross-repo recall can't silently break.
+- **Memory DB round-trip suite.** `src/memoryRoundtrip.test.ts` walks the chain per phase: write → persist → recall → format carries content+category (R1), `MEMORY_MAX_ROWS` bloat cap holds under 50 iterations (R2), and the apply-time hallucination guard actually drops ungrounded ops (R3).
+- **S4x RAG verification.** `src/sprint4x-rag-verification.test.ts` pins the current default-enable claims: S42 RAPTOR flags hold, S40 wiring gap documented, S41/S43–S47 remain spec-only — pinned absent so a future wiring can't sneak in wrong.
+
+### Test runner hardening
+
+- **Solo adjudication.** Files that fail in the parallel pool are re-run one-at-a-time; a pool-only failure is reported as FLAKY, not FAILED. No false negatives under CPU contention.
+- **Hard cap lowered.** Per-file timeout 3 min → 2 min; a file that stops responds inside the cap or it gets SIGKILLed and reported.
+- **Wasm-handle exit fix.** The memory round-trip file disables the PGlite mirror cleanly — no more 2-minute hangs waiting on WASM teardown.
+
+### Specs pinned
+
+- **S49 — conversation-tracking DB + Dashboard conversations tab.** Spec at `docs/specs/s49-conversation-db-dashboard.md`. Implementation follows in v0.9.x.
+
+### Migration
+
+None. All flags default ON as before; the pinned S4x suite documents existing defaults, no new env vars.
 
 ---
 
-### Per-turn memory platform (S49, S50)
+## v0.8.26 (2026-07-28)
 
-The monolithic `context_chunks` store now shares session ownership with a new
-**isolated `turns.db`** — a per-session SQLite database that survives main-DB
-compaction cycles and enables true per-turn provenance.
+**Documentation release — complete v0.8.25 release notes now ship with the package.** No code changes. v0.8.25's RAPTOR promotion landed without CHANGELOG/RELEASE_NOTES entries; this release closes that gap.
 
-- **S49A — `turns.db` store**: new `TurnStore` interface with isolated
-  `turns.db` per session. All raw transcript entries now carry a `turn_index`
-  stamped at ingest time. Main DB no longer owns turn-level data.
+## v0.8.25 (2026-07-28)
 
-- **S49B — main-db→turns migration**: automatic migration from the monolithic
-  main DB to the isolated turns store. Config flags `MEGACOMPACT_TURNS_DB`
-  (default `true`) and `MEGACOMPACT_TURNS_KEEP_MIN` (default `0`) control the
-  migration and how many turns remain in the main DB after migration.
+**RAPTOR goes live: multi-level retrieval, tree promotion, per-turn tracking, and a hardened retry engine.** The `raptor-promotion` branch lands as one release — the memory hierarchy now serves, tracks every turn, and the S38 retry safety net no longer blinds retries on poisoned contexts.
 
-- **S49C — retention + legacy quarantine**: configurable retention via
-  `MEGACOMPACT_TURNS_RETENTION_DAYS` (default `0` = infinite). Legacy sessions
-  without turn data are quarantined rather than silently dropped. The adapter
-  layer re-points all turn-level queries to `turns.db` transparently.
+### What's new
 
-- **S50A — `turn_index` wiring**: every `raw_transcript` row now carries a
-  `turn_index` column stamped at `compact-commit` time, enabling per-turn
-  provenance queries.
+- **S25 — RAPTOR promotion (the headline).** Shadow mode is now a hard SERVE gate, not just logging. A `built_at` freshness guard skips stale trees automatically; per-session tree cache removes per-recall rebuild cost; hierarchical overview headers (root + top level-1 clusters) are prepended to recall blocks via `formatRaptorBlock`; `raptor_serve` events feed canary p95 monitoring. Config: `RAPTOR_SHADOW_MODE=false` disables serving entirely for rollback.
+- **S42B — multi-level retrieval wired into recall.** Level-weighted scoring across the RAPTOR tree (leaves + cluster summaries) with leaf expansion and MMR rerank. Cluster surfaces appear as labeled `Recalled cluster summary` hits. Flags default ON; turning `RAPTOR_MULTILEVEL_ENABLED=false` restores exact pre-S42 behavior.
+- **S42D — build history & freshness.** A new `raptor_build_history` table records every build with a coherence score and leaf count. The compact pipeline skips rebuilds when the tree is fresh (under 20% drift, within `RAPTOR_FRESHNESS_HOURS`).
+- **S48 — per-turn vector tracking + conversation branching.** New `turns`, `turn_recall`, and `conversation_branches` tables trace every turn and provenance of recall hits. A `forkConversation` primitive enables recall-fork (moving memory between session branches without token replay).
+- **R1–R4 retry engine redesign.** The S38 retry safety net got three independent caps: in-flight nudge dedup (R1), a session-global `errorRetrySessionMax=3` (R2), and a poisoned-context detector (R3) that recognizes 0-token-failure signatures and recommends `/clear` instead of blind retry. Retry telemetry now flows to the dashboard (R7).
+- **Boundary rewrite (PREVENT-PI-002).** A single forward-pass `isPairSafe` guarantees no toolCall/toolResult pair is ever split at a compaction boundary, for any interleaving. 9 regression tests added.
+- **Dedup-mirror atomicity.** Checkpoint mirrors now use `ON CONFLICT DO UPDATE ... RETURNING ref_count` — upserts are race-safe under concurrent turns.
 
-- **S50B — `epoch_id` stamping**: compaction epochs are now stamped on each
-  turn at commit, so you can reconstruct exactly which compaction produced a
-  given turn's state.
+### Fixed
 
-- **S50C — per-turn memory-quality metrics**: new `mega-metrics` CLI command
-  and dashboard `/api/sessions` + `/api/sessions/timeseries` endpoints.
-  Metrics include: chunks per compaction, dedup hit rates per tier, latency
-  breakdowns, and per-epoch quality scores. New `mega-fork` command creates a
-  session fork primitive (branch a session's memory from a given epoch).
+- Overview inject path now honors shadow mode and tree staleness — RAPTOR headers can't leak into recall while the tree is still logging-only.
+- Orphaned multilevel leaf hits (checkpoints removed by SemDeDup before serving) no longer synthesize empty cluster blocks.
+- Local developer state (`.claw/`, `.pi-subagents/`, `.clawd-todos.json`) scrubbed from history and gitignored.
+- Added troubleshooting section for npm scripts and `node:sqlite` engine compatibility in README.
 
-### Auto-categorizing wiki (S51)
+**Migration:** none — fully backward-compatible. RAPTOR serving and multilevel default to ON; opt out with `RAPTOR_SHADOW_MODE=false` and `RAPTOR_MULTILEVEL_ENABLED=false` if undesired.
+Full gate green: `build` + `745 tests` + `lint` + `regression_check --all` + `guardrails-scan`.
 
-Automatic topic clustering and extractive wiki generation — every compaction
-now builds a live topic model that feeds a dashboard wiki tab.
+## v0.8.24 (2026-07-27)
 
-- **S51A — k-means clustering + TF-IDF labels**: chunks are clustered via
-  k-means++ on their embedding vectors; each cluster gets TF-IDF top-term
-  labels. Config: `MEGACOMPACT_WIKI_LABEL_TOP_TERMS` (default `5`).
+**Fully decomposed runtime.** The mega-runtime monolith is gone: Phases 1, 2, and 2d split it into per-section modules under `extensions/mega-runtime/` with `runtime.ts` reduced to a delegates-only shell (~437 lines). Purely structural — no behavior change; smaller edit surfaces and safer future changes. Merged from the `raptor-promotion` branch.
 
-- **S51B — persistent topic model**: clusters and labels are persisted in
-  `turns.db` and rebuilt incrementally at each compaction. Config:
-  `MEGACOMPACT_WIKI_REBUILD_EVERY` (default `1`, i.e. every compaction).
+No migration required. Full gate green (`build` + `test` + `lint` + `regression_check` + `guardrails-scan`).
 
-- **S51C — extractive wiki + dashboard Topics tab**: each cluster produces a
-  one-paragraph extractive summary. New `mega-topic` / `mega-topics` /
-  `mega-topics-rebuild` CLI commands. Dashboard gains a **Topics tab** at
-  `/api/topics` showing live cluster labels, chunk counts, and summaries.
-  Config: `MEGACOMPACT_AUTO_WIKI` (default `true`).
+## v0.8.23 (2026-07-27)
 
-### Multi-level RAPTOR retrieval (S42B/S42D)
+**S42A — multi-level RAPTOR retrieval engine.** `src/dedup/raptor/multilevel.ts` adds level-weighted scoring with leaf expansion and build-history freshness metadata. Feature flags default ON (per the S42 re-plan). **Heads-up:** the engine is not yet wired into recall — zero behavior change until the S42B sub-sprint lands. Extractive cluster summaries are permanent (the Ollama enrichment sub-sprint was deleted, keeping the extension fully local).
 
-The RAPTOR tree now supports multi-level retrieval: queries match not just leaf
-chunks but also intermediate and root summaries, improving recall on
-broad/thematic questions.
+## v0.8.22 (2026-07-27)
 
-- **S42B — multi-level retrieval engine**: walks the RAPTOR tree from leaves
-  to root, scoring each level independently. A configurable promotion rule
-  (S25-compatible) lifts high-scoring parents above their children.
+**New license, new safety guard, new scoring engine groundwork.**
 
-- **S42D — per-turn tracking**: RAPTOR retrieval results are stamped with
-  `turn_index` so you can trace which turn produced which retrieval hits.
+- **License switched to BSD 3-Clause.**
+- **S38.5 compact-dedup race guard** — chunks already compacted by an earlier handler in the same event are no longer re-processed (postmortem: `docs/specs/postmortem-already-compacted-race.md`).
+- **S40A importance scoring engine** (`src/importance.ts`) — groundwork for importance-aware compaction; not yet wired into the compaction path (S40B pending).
+- **S40–S47 RAG sprint specs** added (self-RAG gate, HyDE, latency routing, CRAG metrics, memory map, auto-wiki).
+- Structural barrel splits of `vectorStore` and the dashboard server.
 
-- Full QA sweep: all RAPTOR paths (leaf, multi-level, promotion) verified
-  against the 745-test suite.
-
-### Runtime decomposition
-
-The monolithic `widget.ts` (1 200+ lines) has been split into focused modules:
-
-- **Phase 1** — extract modules from monolith: handler modules, config
-  extraction, error-pattern isolation.
-- **Phase 2** — split `widget.ts` proper + extract runtime helpers and
-  snapshot logic into dedicated files.
-
-### New environment variables
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `MEGACOMPACT_TURNS_DB` | `true` | Enable isolated turns.db store |
-| `MEGACOMPACT_TURNS_KEEP_MIN` | `0` | Min turns retained in main DB |
-| `MEGACOMPACT_TURNS_RETENTION_DAYS` | `0` | Turn retention (0 = infinite) |
-| `MEGACOMPACT_AUTO_WIKI` | `true` | Enable auto-categorizing wiki |
-| `MEGACOMPACT_WIKI_LABEL_TOP_TERMS` | `5` | TF-IDF terms per cluster label |
-| `MEGACOMPACT_WIKI_REBUILD_EVERY` | `1` | Rebuild topic model every N compactions |
-
-### New CLI commands
-
-| Command | Description |
-| --- | --- |
-| `mega-metrics` | Per-turn memory-quality metrics |
-| `mega-fork` | Fork a session's memory from a given epoch |
-| `mega-topic` | Show details for a single topic cluster |
-| `mega-topics` | List all topic clusters for a session |
-| `mega-topics-rebuild` | Force-rebuild the topic model |
-
-### New dashboard endpoints
-
-| Endpoint | Description |
-| --- | --- |
-| `/api/sessions` | List sessions with metadata |
-| `/api/sessions/timeseries` | Per-session quality metrics over time |
-| `/api/topics` | Topic clusters with labels and summaries |
-
-### What's New (by sprint)
-
-- **Sprint 49** — Per-turn memory platform: isolated `turns.db` store,
-  main-db→turns migration, retention + legacy quarantine.
-- **Sprint 50** — Per-turn metrics: `turn_index` wiring, `epoch_id` stamping,
-  memory-quality metrics, fork primitive.
-- **Sprint 51** — Auto-categorizing wiki: k-means clustering, TF-IDF labels,
-  extractive summaries, dashboard Topics tab.
-
-### Migration notes
-
-- **Automatic**: existing sessions are migrated to `turns.db` on first load
-  after upgrade (no user action required).
-- **Zero-downtime**: the main DB remains the authoritative store during
-  migration; `turns.db` is built incrementally.
-- **Rollback**: set `MEGACOMPACT_TURNS_DB=false` to disable the turns store;
-  all data remains accessible from the main DB.
-
----
+No migration required. Full gate green.
 
 ## v0.8.21 (2026-07-27)
 
@@ -215,7 +237,7 @@ None — bug fixes only. Update with `pi update --extensions`.
 ### Configuration
 
 | Env var | Default | Effect |
-| --- | --- | --- |
+|---|---|---|
 | `MEGACOMPACT_AUTO_RETRY_TRANSIENT_MAX` | `5` | Max transient retries; `0` disables transient retries |
 | `MEGACOMPACT_AUTO_RETRY_PERMANENT_MAX` | `1` | Max permanent retries; `0` disables |
 | `MEGACOMPACT_MAX_CONSECUTIVE_ERRORS` | `10` | Circuit-breaker threshold |

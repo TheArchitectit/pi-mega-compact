@@ -15,6 +15,8 @@ import type { TurnStore } from "../store/turns/types.js";
 
 /** Per-turn memory-quality metrics. Ratios are 0 when their basis is absent. */
 export interface TurnMetrics {
+	/** Per-conversation turn key (the contract TurnEntry is id-less; turnIndex
+	 *  is unique within a conversation). */
 	turnId: number;
 	conversationId: string;
 	sessionId: string;
@@ -68,7 +70,7 @@ export function turnMetrics(
 	mainDb: DatabaseSync,
 	conversationId: string,
 ): TurnMetrics[] {
-	const turns = store.listConversationTurns(conversationId);
+	const turns = store.query({ conversationId, limit: 10000 });
 	if (turns.length === 0) return [];
 
 	const hasRaw = tableExists(mainDb, "raw_transcript");
@@ -100,7 +102,9 @@ export function turnMetrics(
 	// per epoch referenced by any turn.
 	const compressionByEpoch = new Map<string, number>();
 	if (hasEpoch) {
-		const epochIds = turns.map((t) => t.epochId).filter((e): e is string => e != null);
+		const epochIds = turns
+			.map((t) => t.epochId)
+			.filter((e): e is string => e != null);
 		for (const eid of new Set(epochIds)) {
 			const ratio = epochCompressionRatio(mainDb, eid);
 			if (ratio != null) compressionByEpoch.set(eid, ratio);
@@ -108,22 +112,24 @@ export function turnMetrics(
 	}
 
 	return turns.map((t) => {
-		const recall = store.listTurnRecall(t.id);
+		const recall = store.listRecallByIndex(conversationId, t.turnIndex);
 		const agg = rawAggBySessionTurn.get(`${t.sessionId}::${t.turnIndex}`);
 		const rawCount = agg?.raw_count ?? 0;
 		const uniqueCount = agg?.unique_count ?? 0;
 		return {
-			turnId: t.id,
+			turnId: t.turnIndex,
 			conversationId: t.conversationId,
 			sessionId: t.sessionId,
 			turnIndex: t.turnIndex,
-			epochId: t.epochId,
-			ctxTokens: t.ctxTokens,
-			ctxPercent: t.ctxPercent,
+			epochId: t.epochId ?? null,
+			ctxTokens: t.ctxTokens ?? null,
+			ctxPercent: t.ctxPercent ?? null,
 			recallCount: recall.length,
 			rawMessageCount: rawCount,
 			dedupUniqueRatio: rawCount > 0 ? uniqueCount / rawCount : 0,
-			compressionRatio: t.epochId ? (compressionByEpoch.get(t.epochId) ?? 0) : 0,
+			compressionRatio: t.epochId
+				? (compressionByEpoch.get(t.epochId) ?? 0)
+				: 0,
 		};
 	});
 }
@@ -154,8 +160,9 @@ export function conversationMetrics(
 
 function tableExists(db: DatabaseSync, name: string): boolean {
 	return (
-		db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(name) !==
-		undefined
+		db
+			.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
+			.get(name) !== undefined
 	);
 }
 
@@ -164,13 +171,20 @@ function tableExists(db: DatabaseSync, name: string): boolean {
  * committed range. Returns null when the epoch or its raw rows are absent.
  * Ratio < 1 means compression shrank the content (lower = more compression).
  */
-function epochCompressionRatio(mainDb: DatabaseSync, epochId: string): number | null {
+function epochCompressionRatio(
+	mainDb: DatabaseSync,
+	epochId: string,
+): number | null {
 	const epoch = mainDb
 		.prepare(
 			"SELECT session_id, committed_seq, summary_message_text FROM checkpoint_epochs WHERE epoch_id = ?",
 		)
 		.get(epochId) as
-		| { session_id: string; committed_seq: number; summary_message_text: string }
+		| {
+				session_id: string;
+				committed_seq: number;
+				summary_message_text: string;
+		  }
 		| undefined;
 	if (!epoch) return null;
 	const raw = mainDb

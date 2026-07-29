@@ -1,3 +1,18 @@
+// This file exercises the sync node:sqlite memory ops only, but every
+// applyMemoryOps() write also fires indexMemoryWrite() → upsertMemoryEmbedding()
+// at the machine-wide PGlite index, fire-and-forget, keyed by repoKey(stateDir)
+// — which for these tmp state dirs is the tmp path itself. Left alone that lands
+// in the developer's real ~/.pi/mega-compact-vector, where the rows stay
+// eligible for cross-repo recall forever: a live session can be handed
+// "threshold is 50k" and "the threshold is 100k" from this file as if they were
+// another project's memories. scripts/run-tests.mjs sets MEGACOMPACT_INDEX_DIR
+// per child, so the suite was already safe; running the file directly was not.
+//
+// Disabling PGlite is the same guard memoryRoundtrip.test.ts uses for the same
+// reason, and it also keeps the file's exit clean (no WASM handle, and no
+// initdb still running when the first test ends). MEGACOMPACT_INDEX_DIR is set
+// as well so the isolation holds if a later test needs the index re-enabled.
+process.env.MEGACOMPACT_PGLITE_DISABLED = "true";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -13,6 +28,7 @@ import {
 } from "./store/sqlite.js";
 
 const baseTmp = mkdtempSync(join(tmpdir(), "mc-memops-"));
+process.env.MEGACOMPACT_INDEX_DIR = join(baseTmp, "index");
 
 test("applyMemoryOps: ADD inserts a new memory", async () => {
   const dir = join(baseTmp, "add");

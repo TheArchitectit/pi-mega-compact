@@ -4,7 +4,7 @@
 **Focus:** All-Repos table with drill-down + Metrics/Performance tab
 **Priority:** P1
 **Effort:** M (≈ 1 day)
-**Status:** PLANNED
+**Status:** DONE — shipped v0.8.14 (React dashboard parity release)
 **Depends on:** Sprint C1 (core tabs)
 
 ---
@@ -13,9 +13,11 @@
 
 - Read `docs/AGENT_GUARDRAILS.md` + `skills/shared-prompts/four-laws.md` first.
 - Gate before commit:
+
   ```bash
   npm run build && npm run build:dashboard && npm test && npm run lint && python3 scripts/regression_check.py --all && node scripts/guardrails-scan.mjs
   ```
+
 - PREVENT-PI-004: all API calls use relative paths. No external network.
 
 ---
@@ -29,6 +31,7 @@ The existing dashboard shows repo data inline in the HTML template. With 10+ rep
 ## SCOPE BOUNDARY
 
 **IN SCOPE (may modify):**
+
 - `extensions/dashboard-client/src/tabs/ReposTab.tsx` (NEW)
 - `extensions/dashboard-client/src/tabs/MetricsTab.tsx` (NEW)
 - `extensions/dashboard-client/src/components/RepoTable.tsx` (NEW) — sortable table.
@@ -39,6 +42,7 @@ The existing dashboard shows repo data inline in the HTML template. With 10+ rep
 - `extensions/dashboard-client/src/App.tsx` — wire tabs.
 
 **OUT OF SCOPE:**
+
 - Server-side changes.
 - Config/Game tabs.
 - `src/` modules.

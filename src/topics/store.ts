@@ -10,6 +10,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { openTurnStore, withTx } from "../store/turns/connection.js";
+import { getStateDir } from "../store.js";
 import type { ClusterModel, Topic, TopicAssignment } from "./types.js";
 
 /** A topic row joined with its computed member count. */
@@ -97,7 +98,7 @@ function rowToAssignment(r: AssignmentRow): TopicAssignment {
 
 /** Open a TopicStore over the same turns.db the S49 TurnStore uses (shared connection cache). */
 export function createTopicStore(stateDir?: string): TopicStore {
-	const db: DatabaseSync = openTurnStore(stateDir);
+	const db: DatabaseSync = openTurnStore(stateDir ?? getStateDir());
 
 	function replaceTopicModel(model: ClusterModel): void {
 		withTx(db, () => {

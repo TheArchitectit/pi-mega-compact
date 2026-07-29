@@ -154,6 +154,8 @@ export interface MegaConfig {
 	 *  inline/read" so we never re-inject context already resident. */
 	windowDedupe: boolean;
 	debug: boolean;
+	/** Master reconciliation: TUI shutdown widget (MEGACOMPACT_TUI_WIDGET=0 to disable). */
+	tuiWidget: boolean;
 }
 
 function envFlag(name: string, fallback: number): number {
@@ -309,6 +311,7 @@ export function loadConfig(): MegaConfig {
 		memoryReviewInterval: envFlag("MEGACOMPACT_MEMORY_REVIEW_INTERVAL", 10),
 		recallMaxTokens: envFlag("MEGACOMPACT_RECALL_MAX_TOKENS", 1500),
 		windowDedupe: envBool("MEGACOMPACT_WINDOW_DEDUPE", true),
+		tuiWidget: envBool("MEGACOMPACT_TUI_WIDGET", true),
 		debug: envBool("MEGACOMPACT_DEBUG", false),
 	};
 }

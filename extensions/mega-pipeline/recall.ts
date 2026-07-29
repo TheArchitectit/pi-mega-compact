@@ -20,7 +20,6 @@ import {
 	incCacheHitTokens,
 	getIndexDir,
 } from "../../src/store/sqlite.js";
-import type { RecallSource } from "../../src/store/turns/index.js";
 import {
 	ensureConversationIdFor,
 	recordTurnWrite,
@@ -104,6 +103,7 @@ export function doRecall(
 					conversationId: convId,
 					sessionId: sid,
 					turnIndex: runtime.currentTurn,
+					role: "assistant",
 					startedAt: Date.now(),
 				},
 				runtime.currentStateDir,
@@ -114,11 +114,12 @@ export function doRecall(
 				result.toInject.map((h) => ({
 					checkpointId: h.checkpoint.checkpointId,
 					score: h.score,
-					source: (h.raptorLevel !== undefined
-						? "raptor"
-						: h.repoId
-							? "cross-repo"
-							: "flat") as RecallSource,
+					source:
+						h.raptorLevel !== undefined
+							? "raptor"
+							: h.repoId
+								? "cross-repo"
+								: "flat",
 					raptorLevel: h.raptorLevel,
 				})),
 				runtime.currentStateDir,

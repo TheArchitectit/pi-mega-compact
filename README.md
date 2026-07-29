@@ -4,14 +4,16 @@ A local context compressor for the [pi coding agent](https://github.com/earendil
 
 ## Features
 
-- **Auto-compaction** — watches context pressure and compacts in the background before you hit the ceiling
-- **Two-layer compaction** — live trim on every LLM call (model sees a smaller window) + durable checkpoints persisted to SQLite
-- **Semantic dedup** — three-stage pipeline (exact hash → MinHash/LSH → cosine) collapses redundant work so nothing is stored twice
-- **Cross-repo recall** — decisions saved in one repo surface when you start a session in another
-- **Durable memory** — auto-reviews conversation every 10 turns, writes decisions/facts/preferences to SQLite, injects them as RAG context on recall
-- **Fully local** — SQLite + trigram embedder by default. Bring your own localhost embedder (ONNX, Ollama, TEI) for better semantic matching
-- **Team-run aware** — fires native durable trim at agent settle during sub-agent runs, so context relieves mid-run not just at the end
-- **Multi-pi dashboard** — optional localhost-only live dashboard with a real-time stacked memory graph across all active pi processes, per-repo context stack on the Overview tab, token gauge, store stats, and SSE event stream
+- **Auto-compaction** — the store watches context pressure and compacts quietly in the background. You'll notice when a long session just stays long while the token gauge rests comfortably far from the ceiling.
+- **Two-layer compaction** — every LLM call sees a live trim of the context window, and every trim is checkpointed to SQLite so a crash or a `/clear` never loses the work.
+- **Semantic dedup, three layers deep** — exact hash → MinHash/LSH → cosine over trigram embeddings. You rarely notice it; that's the point.
+- **RAPTOR memory hierarchy** — decisions you made an hour ago don't scroll off; they get packed up as hierarchical checkpoints and re-inlined the moment your next session asks for them. Multi-level retrieval (leaves + summary clusters) is on by default and tunes itself off the build history.
+- **Per-turn tracking.** Every turn, checkpoint, and recall hit lands as a row in the local DB — `conversation_branches`, `turns`, `turn_recall`. When things go wrong (or when you want to fork a detour off the main thread), the history is there.
+- **Cross-repo recall** — doors I close in one repo don't reopen when I move to another. A decision stored while hacking repo A is a recall hit the next time I'm in repo B.
+- **Durable memory** — every ten turns the store auto-reviews and safe-keeps decisions, facts, and preferences as first-class RAG memories, so long-running projects remember what mattered.
+- **Fully local** — node:sqlite + trigram embeddings by default. Bring your own localhost embedder (ONNX, Ollama, TEI) for better semantic matches. Zero calls off your machine except the optional, localhost-only dashboard.
+- **Team-run aware** — fine-grained durable trim fires at agent settle during sub-agent runs, so long multi-agent work doesn't just collapse at the end.
+- **Multi-pi dashboard** — one dashboard tab per active pi process with the context stack, per-repo stats, and a live SSE feed across all of them.
 
 ## Install
 
@@ -59,6 +61,7 @@ Set env vars before starting pi. Defaults are in `src/config/dedup.ts`.
 | `MEGACOMPACT_DEDUP_SIM` | `0.90` | Cosine threshold for near-dup collapse |
 | `MEGACOMPACT_CROSSREPO_ENABLED` | `true` | Cross-repo recall on resume |
 | `MEGACOMPACT_EMBEDDING_URL` | _(unset)_ | BYO localhost embedder endpoint |
+| `MEGACOMPACT_TUI_WIDGET` | `true` | Render the above-editor panel. Set to `0` to suppress it — useful when pi runs inside an editor terminal (e.g. Neovim `:terminal`) where you drive scrollback yourself and the panel's repaints fight it. Compaction is unaffected. |
 
 Full config reference: [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)
 
@@ -80,11 +83,37 @@ Detailed architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
 ```bash
 npm run build     # TypeScript compile
-npm test          # Build + 608 tests
+npm test          # Build + 769 tests
 npm run lint      # Type check + guardrails scan
 ```
 
 Testing guide: [`TESTER_GUIDE.md`](TESTER_GUIDE.md)
+
+## Troubleshooting
+
+### npm lifecycle scripts disabled
+
+Some package managers disable lifecycle scripts by default. PGlite and `@mongodb-js/zstd` need scripts enabled to build their native components.
+
+```bash
+# Re-enable install scripts
+npm config set ignore-scripts false
+npm install
+
+# Or allow scripts for specific packages only
+npm install --install-strategy=linked
+```
+
+### node:sqlite not found / experimental flag required
+
+pi-mega-compact requires Node ≥22.13 for the built-in `node:sqlite` module. If you're on an older version or your Node build doesn't include it by default:
+
+```bash
+export NODE_OPTIONS="--experimental-sqlite"
+pi
+```
+
+Add the export to your shell profile (`.bashrc`, `.zshrc`, etc.) to make it permanent.
 
 ## License
 

@@ -1,251 +1,135 @@
-# Roadmap — RAPTOR Promotion + Dedup Pipeline (raptor-promotion branch)
+# Roadmap — pi-mega-compact
 
-> Consolidated roadmap for P1 and P2 deferred work. This branch focuses on RAPTOR
-> Promotion as the primary deliverable, with cross-repo E2E and memory round-trip
-> as parallel P1 items, and Phase 2-4 compression/dedup enhancements as P2.
+> Consolidated roadmap for P1/P2 deferred work. Current version: v0.10.0 (master).
+> The `raptor-promotion` branch has been merged into master.
 
-**Branch:** `raptor-promotion`
-**Created:** 2026-07-20
-**Target version:** v0.9.0
+**Branch:** `master`
+**Current version:** v0.10.0
 
 ---
 
-## P1 — High Priority (Primary Deliverables)
+## Shipped Sprints (Reference)
 
-### S25-A — RAPTOR Promotion: Harden Live Hierarchical Recall
-
-**Source:** `docs/specs/s25-raptor-promote.md`
-**Status:** 🟡 IN PROGRESS (6/10 done — gates + freshness + monitoring shipped; cache + acceptance tests remain)
-**Priority:** P1 (correctness + latency hardening)
-
-**Problem:** RAPTOR was promoted from shadow to live but the promotion is implicit and fragile:
-
-1. Shadow gate `RAPTOR_SHADOW_MODE` is inert for serving (logging-only)
-2. No freshness check — stale trees can serve
-3. `parentId` is always null — future parent-walks break silently
-4. High-level summaries NOT injected — only leaf checkpoints
-5. Per-recall rebuild + linear scan — O(n·leaves) with no cache
-6. No coverage/latency acceptance tests
-
-**Work Items (10 tasks):**
-
-- [x] Add `built_at` column to `raptor_nodes` schema (`src/store/sqlite/schema.ts:102` + `ensureColumn` migration)
-- [x] Plumb `builtAt` through `runRaptor` → `saveRaptorTree` → `upsertRaptorNode`
-- [x] Extend `rehydrateRaptorTree` to return `builtAt` + `timedOut` metadata
-- [ ] Add `raptorCache` to `VectorStore` class (per-session, invalidated on save)
-- [x] Honor `RAPTOR_SHADOW_MODE=false` as hard SERVE gate in `raptorSearchHits`
-- [x] Freshness guard: skip stale trees (`builtAt < maxCheckpointTimestamp`)
-- [x] Skip `timedOut` extractive-fallback trees (level===99)
-- [x] Record `raptor_serve` events for canary p95 monitoring
-- [ ] Optional: `RAPTOR_INJECT_SUMMARIES` flag for high-level summary injection
-- [ ] Tests: shadow mode, stale fallback, coverage breadth, p95 latency (`serve-gate.test.ts`)
-
-**Files:**
-
-- `src/store/sqlite.ts` — `raptor_nodes` schema + `built_at` column
-- `src/dedup/raptor/index.ts` — `builtAt` param, `rehydrateRaptorTree` metadata
-- `src/vectorStore.ts` — `raptorCache`, serve gate, freshness check
-- `src/config/dedup.ts` — `RAPTOR_INJECT_SUMMARIES` flag
-- `src/recall.ts` — optional `formatRaptorBlock`
-- `extensions/mega-pipeline.ts` — pass `builtAt` from checkpoint timestamps
-- `src/dedup/raptor/serve-gate.test.ts` — new test file
+| Sprint | Description | Version | Date |
+| --- | --- | --- | --- |
+| S25-A | RAPTOR Promotion (serve gate + freshness + cache + monitoring) | v0.8.25 | 2026-07-28 |
+| S25-B | Cross-Repo E2E (repoKey unification + headless two-repo driver) | v0.9.0 | 2026-07-29 |
+| S25-C | Durable-Memory Round-Trip (memory DB suite + test-runner hardening) | v0.9.0 | 2026-07-29 |
+| S42 | Multi-Level Retrieval (S42A engine + S42B integration + S42D build history) | v0.8.25 | 2026-07-28 |
+| S48 | Per-Turn Tracking core (turns/recall/fork tables + provenance writers) | v0.8.25 | 2026-07-28 |
+| S9 | Zstd + Content Dedup | v0.1.x | 2026-07-13 |
+| S10 | Tier 0 Exact Match (Bloom pre-check) | v0.1.x | 2026-07-13 |
+| S11 | Tier 1 Near-Duplicate (MinHash+LSH) | v0.1.x | 2026-07-13 |
 
 ---
 
-### S25-B — Cross-Repo E2E
+## P1 — High Priority (Next Work)
 
-**Source:** `docs/specs/s25-cross-repo.md`
-**Status:** ⬜ NOT STARTED
-**Priority:** P1 (headline feature has no automated two-repo proof)
+### S48 — Per-Turn Tracking: Deferred Wiring
 
-**Problem:** The "start in repo B, recall repo A" capability has no automated two-repo proof. Current tests fake one half or mock `searchAsync` entirely.
+**Source:** `docs/specs/s48-per-turn-vector-tracking.md`
+**Status:** 🔧 IN PROGRESS — core shipped v0.8.25; 5 items deferred
+**Priority:** P1 (completes the per-turn tracking feature)
 
-**Work Items (9 tasks):**
+**Deferred Work Items:**
 
-- [ ] `src/store/repoKey.ts` — shared `repoKey()` + `stateDirForRepo()` helpers
-- [ ] `src/vectorStore.ts` — use `repoKey(stateDir)` for repoId
-- [ ] `src/memoryOps.ts` — use `repoKey()` instead of local resolver
-- [ ] `extensions/mega-conflict-cmds.ts` — assert `repo == repoKey(stateDir)`
-- [ ] `scripts/cross-repo-e2e.mjs` — headless two-repo driver (A/B/C phases)
-- [ ] Phase A: checkpoint recall on resume (repo A checkpoint → repo B session_start)
-- [ ] Phase B: memory augmentation (repo A decision → repo B memory block)
-- [ ] Phase C: kill-switch + corrupt fallback tests
-- [ ] Unit-test hardening: vectorIndex corrupt-self-heal, recall.test.ts real HNSW
-
-**Files:**
-
-- `src/store/repoKey.ts` — new
-- `src/vectorStore.ts` — repoId change
-- `src/memoryOps.ts` — repoKey integration
-- `scripts/cross-repo-e2e.mjs` — new
-- `src/store/vectorIndex.test.ts` — extend
-- `src/recall.test.ts` — extend
-- `TESTER_GUIDE.md` — add two-repo manual check
+- [ ] Wire `raw_transcript.turn_index` population — column exists but `appendRawTranscript` doesn't set it
+- [ ] Wire `turns.epoch_id` on compact commit — FK exists but `turn_end` doesn't set it
+- [ ] Dashboard / query surface — no UI yet for per-turn or per-conversation views
+- [ ] Live-window replay — `forkConversation` inherits recall state only; true rewind needs message-log snapshot
+- [ ] `/mega-fork` command — `forkConversation` is a primitive, not a pi command
 
 ---
 
-### S25-C — Durable-Memory DB Round-Trip
+### S49 — Turn-DB Foundation (Contract-First)
 
-**Source:** `docs/specs/s25-memory-db-roundtrip.md`
-**Status:** ⬜ NOT STARTED
-**Priority:** P1 (test/doc only by default)
+**Source:** `docs/specs/s49-turn-db-foundation.md`
+**Status:** ⬜ SPEC ONLY (implement-ready, v1 contract-first revision)
+**Priority:** P1 (foundation for the S49–S52 program)
 
-**Problem:** The durable-memory subsystem is individually unit-tested but the end-to-end chain is unproven:
+**Work Items (from spec, S49A/S49B/S49C gated):**
 
-- No full round-trip test (review → apply → recall → inline)
-- No resume-inline E2E (`pendingMemoryRecallBlock` through handler chain)
-- No bloat assertion (review path stays bounded)
-- Hallucination guard unproven
-- `consolidateMemories` untested
-- Cross-repo floor inconsistency (0.3 vs 0.90)
-
-**Work Items (7 tasks):**
-
-- [ ] `extensions/mega-memory-roundtrip.test.ts` — headless E2E driver
-- [ ] E1: `turn_end` auto-review writes a memory
-- [ ] E2: `session_start` → `before_agent_start` inlines memory block
-- [ ] `src/memoryRoundtrip.test.ts` — full src-level round-trip
-- [ ] Bloat assertion: review path stays ≤ `MEMORY_MAX_ROWS`
-- [ ] Hallucination guard + `consolidateMemories` unit tests
-- [ ] Cross-repo floor reconciliation (code vs docs)
-
-**Files:**
-
-- `extensions/mega-memory-roundtrip.test.ts` — new
-- `src/memoryRoundtrip.test.ts` — new
-- `src/memory.test.ts` — extend
-- `TESTER_GUIDE.md` — extend §10
+- [ ] S49A: `TurnStore` contract (`types.ts`) + `SqliteTurnStore` + `InMemoryTurnStore` + shared compliance suite
+- [ ] S49B: Migration (main-db → turns.db) + config flags (`TURNS_DB_ENABLED`)
+- [ ] S49C: Retention + `StoreSnapshot` + adapter re-point + legacy quarantine
 
 ---
 
-## P2 — Medium Priority (Phase 2-4 from PLAN.md)
+## P2 — Medium Priority (Platform + RAG Suite)
 
-### Phase 2 — Enhanced Compression + Content-Addressable Dedup
+### S50 — Per-Turn Metrics + Fork
 
-**Source:** `PLAN.md` Phase 2
-**Status:** ⬜ NOT STARTED
-**Priority:** P2
+**Source:** `docs/specs/s50-per-turn-metrics-fork.md`
+**Status:** ⬜ SPEC ONLY
+**Depends on:** S49
 
-**Work Items (7 tasks):**
+### S51 — Auto-Categorizing Wiki (replaces S47)
 
-- [ ] Add zstd compression tiers (tags `0x03`, `0x04` for zstd-3/9)
-- [ ] Add brotli tag `0x05` for large blobs (currently `0x03`)
-- [ ] Content-addressable SHA-256 dedup on write
-- [ ] `CompressedOriginal` for digest audit trail (reconstructible context)
-- [ ] Streaming decompression for large checkpoint arrays
-- [ ] Migration: add `content_hash` column to checkpoints
-- [ ] Tests for new tiers + dedup logic
+**Source:** `docs/specs/s51-auto-categorizing-wiki.md`
+**Status:** ⬜ SPEC ONLY
+**Depends on:** S49
 
-**Files:**
+### S52 — Dashboard Management + Rewind
 
-- `src/store/compression.ts` — zstd tiers
-- `src/store.ts` — content hashing
-- `src/store/sqlite.ts` — `content_hash` column
+**Source:** `docs/specs/s52-dashboard-management-rewind.md`
+**Status:** ⬜ SPEC ONLY
+**Depends on:** S50, S51
 
----
+### RAG Suite (spec-only, no consumer code)
 
-### Phase 3 — Tier 0 Exact Match Upgrade
-
-**Source:** `PLAN.md` Phase 3
-**Status:** ⬜ NOT STARTED
-**Priority:** P2
-
-**Work Items (7 tasks):**
-
-- [ ] Normalized content hashing (lowercase, strip ANSI, collapse whitespace)
-- [ ] SQLite UNIQUE index with NOT NULL constraint
-- [ ] Optional Bloom filter pre-check (feature-flagged)
-- [ ] Optional Redis cache (accelerator-only, never sole arbiter)
-- [ ] Circuit breaker on Redis (timeout + fallback to DB-only)
-- [ ] Transactional coupling: DB + cache update in single transaction
-- [ ] Backfill strategy: UNIQUE index BEFORE backfill
-
-**Files:**
-
-- `src/dedup/contentHash.ts` — new
-- `src/store/sqlite.ts` — UNIQUE index
-- `src/dedup/bloom.ts` — optional Bloom filter
+| Sprint | Description | Spec |
+| --- | --- | --- |
+| S43 | HyDE Vague Queries (re-planned as local query reformulation) | `docs/specs/s43-hyde-vague-queries.md` |
+| S44 | Three-Tier Latency Routing | `docs/specs/s44-three-tier-latency-routing.md` |
+| S45 | CRAG Quality Metrics | `docs/specs/s45-crag-quality-metrics.md` |
+| S46 | Visual Memory Map | `docs/specs/s46-visual-memory-map.md` |
 
 ---
 
-### Phase 4 — Tier 1 Near-Duplicate (MinHash + LSH)
+## P3 — Lower Priority (Future)
 
-**Source:** `PLAN.md` Phase 4
-**Status:** ⬜ NOT STARTED
-**Priority:** P2
+### Game Mode Deferred Items
 
-**Work Items (6 tasks):**
-
-- [ ] MinHash with universal hashing (proper a_i, b_i, p parameters)
-- [ ] LSH banding (20 bands × 12 rows, Jaccard threshold 0.7)
-- [ ] FTS5 trigram verification layer (pg_trgm-equivalent)
-- [ ] Candidate caps: 50 per bucket, 200 DB roundtrips per batch
-- [ ] `minhash_signatures` table + migration
-- [ ] Benchmark: latency per chunk at 1K, 10K, 100K chunks
-
-**Files:**
-
-- `src/dedup/minhash.ts` — new
-- `src/dedup/lsh.ts` — new
-- `src/store/sqlite.ts` — `minhash_signatures` table
+- [ ] Mini-game inside the High Score dashboard
+- [ ] Time-windowed leaderboards (daily/weekly)
+- [ ] Per-repo theme overrides
+- [ ] Animated transitions between themes in the TUI
 
 ---
 
 ## Execution Order
 
-**Sprint 1 (P1):**
+**Next (P1):**
 
-1. S25-A RAPTOR Promotion (primary focus)
-2. S25-B Cross-Repo E2E (parallel, test-only)
-3. S25-C Memory Round-Trip (parallel, test-only)
+1. S49 Turn-DB Foundation (contract-first, S49A→S49B→S49C)
+2. S48 Deferred Wiring (turn_index, epoch_id, dashboard surface)
 
-**Sprint 2 (P2 - optional, future branch):**
+**Then (P2):**
 
-1. Phase 2: Zstd + Content Dedup
-2. Phase 3: Tier 0 Exact Match
-3. Phase 4: Tier 1 Near-Duplicate
-
----
-
-## Acceptance Gates
-
-### P1 Acceptance
-
-- [ ] RAPTOR: `RAPTOR_SHADOW_MODE=false` disables serving; freshness guard works; p95 < 100ms
-- [ ] Cross-Repo: Two-repo E2E passes all phases (checkpoint + memory + fallback)
-- [ ] Memory: Full round-trip proven; bloat bounded; hallucination guard verified
-- [ ] All existing tests green; no regressions
-- [ ] `npm run build && npm test && npm run lint && python3 scripts/regression_check.py --all` clean
-
-### P2 Acceptance
-
-- [ ] Zstd compression working with backward compatibility
-- [ ] Content-addressable dedup reduces storage
-- [ ] MinHash/LSH catches near-duplicates that exact-hash misses
-- [ ] All P1 acceptance criteria still pass
+1. S50 Per-Turn Metrics + Fork
+2. S51 Auto-Categorizing Wiki
+3. S52 Dashboard Management + Rewind
 
 ---
 
 ## Rollback
 
-All P1 items are **additive + non-breaking**:
+All items are **additive + non-breaking**:
 
 - RAPTOR: `MEGACOMPACT_RAPTOR_ENABLED=false` → flat MMR fallback
+- Multi-level: `MEGACOMPACT_RAPTOR_MULTILEVEL=false` → leaf-only retrieval
 - Cross-Repo: `MEGACOMPACT_PGLITE_DISABLED=true` → same-repo-only fallback
-- Memory: Test-only, no runtime changes by default
-
-P2 items are **feature-flagged** and can be disabled individually.
+- Turns DB: `MEGACOMPACT_TURNS_DB=0` → legacy main-db path (S49 flag)
 
 ---
 
 ## References
 
-- `docs/specs/s25-raptor-promote.md`
-- `docs/specs/s25-cross-repo.md`
-- `docs/specs/s25-memory-db-roundtrip.md`
-- `PLAN.md` Phase 2-4
+- `docs/specs/s49-program-per-turn-memory-platform.md` — the 4-sprint program
+- `docs/specs/s49-rev1-architecture-upgrade.md` — v0→v1 revision record
+- `docs/ENGINEERING_PRACTICES.md` — codified structural conventions
 - `BACKLOG.md`
 
 ---
 
-*Last updated: 2026-07-20*
+*Last updated: 2026-07-29 (raptor-promotion merged to master; v0.10.0; S25-B/C marked shipped; S49 upgraded to P1)*

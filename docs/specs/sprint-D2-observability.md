@@ -4,7 +4,7 @@
 **Focus:** Performance monitoring, health checks, server diagnostics, debug panel
 **Priority:** P2
 **Effort:** S (≈ ½ day)
-**Status:** PLANNED
+**Status:** DONE — shipped v0.8.14 (React dashboard parity release)
 **Depends on:** Sprint D1 (resilience)
 
 ---
@@ -13,9 +13,11 @@
 
 - Read `docs/AGENT_GUARDRAILS.md` + `skills/shared-prompts/four-laws.md` first.
 - Gate before commit:
+
   ```bash
   npm run build && npm run build:dashboard && npm test && npm run lint && python3 scripts/regression_check.py --all && node scripts/guardrails-scan.mjs
   ```
+
 - PREVENT-PI-004: all API calls use relative paths. No external network.
 
 ---
@@ -31,6 +33,7 @@ Additionally, provider (model endpoint) failures — non-2xx HTTP responses — 
 ## SCOPE BOUNDARY
 
 **IN SCOPE (may modify):**
+
 - `extensions/dashboard-client/src/components/DiagnosticsPanel.tsx` (NEW) — also surfaces provider failures (count, rate, last status) from `/api/diag`.
 - `extensions/dashboard-client/src/components/HealthCheck.tsx` (NEW)
 - `extensions/dashboard-client/src/components/ApiTiming.tsx` (NEW)
@@ -40,6 +43,7 @@ Additionally, provider (model endpoint) failures — non-2xx HTTP responses — 
 - `extensions/dashboard-server/server.ts` — add `/api/health` endpoint (lightweight ping) + `/api/diag` endpoint (aggregated diagnostics: timing, SSE health, provider failure count + rate + last status).
 
 **OUT OF SCOPE:**
+
 - External monitoring integrations.
 - `src/` modules.
 

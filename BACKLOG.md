@@ -10,25 +10,25 @@
 ### S25 — RAPTOR Promotion: Harden Live Hierarchical Recall
 
 **Source:** `docs/specs/s25-raptor-promote.md`
-**Status:** 🟡 IN PROGRESS (gates + freshness + monitoring shipped; per-session tree cache + acceptance tests remain)
+**Status:** ✅ SHIPPED — v0.8.25 (2026-07-28). All 10 work items done (gates, freshness, cache, monitoring) + 5-gate acceptance suite (`src/dedup/raptor/serve-gate.test.ts`). Phase-2 flag `RAPTOR_INJECT_SUMMARIES` also shipped default-ON.
 
 **Problem:** RAPTOR was promoted from shadow to live between S13 and this branch, but the promotion is implicit and fragile:
 
 1. ~~Shadow gate `RAPTOR_SHADOW_MODE` is inert for serving (logging-only)~~ ✅ hard SERVE gate live
 2. ~~No freshness check — stale trees can serve~~ ✅ `builtAt < maxCheckpointTimestamp` guard live
-3. `parentId` is always null — future parent-walks break silently
-4. High-level summaries NOT injected — only leaf checkpoints
-5. Per-recall rebuild + linear scan — O(n·leaves) per recall with no cache ← **open**
-6. No coverage/latency acceptance tests ← **open**
+3. `parentId` is always null — future parent-walks break silently (tracked separately, non-blocking)
+4. ~~High-level summaries NOT injected~~ ✅ `RAPTOR_INJECT_SUMMARIES` (default ON) prepends overview header
+5. ~~Per-recall rebuild + linear scan — O(n·leaves) per recall with no cache~~ ✅ `raptorCache` per-session + indexed `maxRaptorNodeBuiltAt` invalidation (`src/vector-search.ts:76-87`)
+6. ~~No coverage/latency acceptance tests~~ ✅ `serve-gate.test.ts` (5 gates: shadow / stale / timedOut / breadth / p95<100ms)
 
 **Work Items:**
 
 - [x] Honor `RAPTOR_SHADOW_MODE=false` as hard SERVE gate (not just logging)
 - [x] Add `built_at` freshness guard — skip stale trees
-- [ ] Cache rehydrated `RaptorTree` per session
-- [ ] Optional: `raptorSummaryHits` flag for high-level summary injection (Phase 2)
+- [x] Cache rehydrated `RaptorTree` per session
+- [x] `RAPTOR_INJECT_SUMMARIES` flag for high-level summary injection (Phase 2, default ON)
 - [x] Monitoring: `raptor_serve` events for canary p95
-- [ ] Tests: shadow mode disables serve, stale tree fallback, coverage breadth, p95 latency
+- [x] Tests: shadow mode disables serve, stale tree fallback, coverage breadth, p95 latency
 
 ---
 
@@ -67,10 +67,15 @@
 
 ## P2 — Medium Priority (Phase 2-4 from PLAN.md)
 
+> **⚠ SUPERSEDED (2026-07-27):** These three phases already shipped as
+> **sprints 9-11** (see `docs/specs/sprint-09.md`, `sprint-10.md`,
+> `sprint-11.md` — all marked DONE 2026-07-13). Kept below for historical
+> reference only; do NOT treat as pending work.
+
 ### Phase 2 — Enhanced Compression + Content-Addressable Dedup
 
 **Source:** `PLAN.md` Phase 2
-**Status:** ⬜ NOT STARTED
+**Status:** ✅ SHIPPED — Sprint 9 (zstd tiers `0x03`/`0x04`, brotli `0x05`, SHA-256 content dedup, `content_hash` column; `src/store/compression.ts`)
 
 **Work Items:**
 
@@ -87,7 +92,7 @@
 ### Phase 3 — Tier 0 Exact Match Upgrade
 
 **Source:** `PLAN.md` Phase 3
-**Status:** ⬜ NOT STARTED
+**Status:** ✅ SHIPPED — Sprint 10 (normalized hashing + `src/store/bloom.ts`; Redis accelerator descoped per PREVENT-PI-004 → local Bloom pre-check instead)
 
 **Work Items:**
 
@@ -105,7 +110,7 @@
 ### Phase 4 — Tier 1 Near-Duplicate (MinHash + LSH)
 
 **Source:** `PLAN.md` Phase 4
-**Status:** ⬜ NOT STARTED
+**Status:** ✅ SHIPPED — Sprint 11 (`src/dedup/l1-minhash.ts`, `src/dedup/l1-lsh.ts`, FTS5 trigram verify, `minhash_signatures` table)
 
 **Work Items:**
 
@@ -174,25 +179,28 @@
 
 | Priority | Item | Source | Status |
 | ---------- | ------ | -------- | -------- |
-| P1 | RAPTOR Promotion (gates + freshness + monitoring done; cache + tests remain) | s25-raptor-promote.md | 🟡 |
+| P1 | ~~RAPTOR Promotion~~ ✅ v0.8.25 | s25-raptor-promote.md | ✅ |
 | P1 | Cross-Repo E2E | s25-cross-repo.md, WORK_STATUS.md | ⬜ |
 | P1 | Memory DB Round-Trip | s25-memory-db-roundtrip.md | ⬜ |
-| P2 | Phase 2: Zstd + Content Dedup | PLAN.md | ⬜ |
-| P2 | Phase 3: Tier 0 Exact Match | PLAN.md | ⬜ |
-| P2 | Phase 4: Tier 1 Near-Duplicate | PLAN.md | ⬜ |
+| P2 | Phase 2: Zstd + Content Dedup | PLAN.md | ✅ Sprint 9 |
+| P2 | Phase 3: Tier 0 Exact Match | PLAN.md | ✅ Sprint 10 |
+| P2 | Phase 4: Tier 1 Near-Duplicate | PLAN.md | ✅ Sprint 11 |
 | P3 | Game Mode: Mini-game | game-mode-sprint-plan.md | ⬜ |
 | P3 | Game Mode: Time-windowed leaderboards | game-mode-sprint-plan.md | ⬜ |
 | P3 | Game Mode: Per-repo themes | game-mode-sprint-plan.md | ⬜ |
 | P3 | Game Mode: Theme transitions | game-mode-sprint-plan.md | ⬜ |
+| P2 | **S49: conversation-tracking DB + Dashboard tab (turns / turn_recall / conversation_branches → dedicated DB + prune/vacuum/threshold controls)** | [docs/specs/s49-conversation-db-dashboard.md](docs/specs/s49-conversation-db-dashboard.md) | ⬜ |
 
 ---
 
 ## Notes
 
-- **RAPTOR Promotion** is P1 and partially shipped: shadow serve-gate, `built_at` freshness guard, `timedOut` skip, and `raptor_serve` monitoring events are live. Remaining: per-session rehydrated-tree cache (`raptorCache`) and the acceptance test suite (shadow / stale-fallback / coverage breadth / p95 latency).
+- **RAPTOR Promotion** fully shipped v0.8.25 — serve gate, freshness, session cache, monitor events, 5-gate acceptance suite, and the Phase-2 `RAPTOR_INJECT_SUMMARIES` flag all live.
 - **Cross-Repo E2E** is a missing test proof, not new functionality — the feature shipped in v0.5.0 but lacks automated two-repo verification.
-- **Phase 2-4** are the original PLAN.md compression/dedup pipeline enhancements — still valuable but less urgent than RAPTOR hardening.
+- **S4x RAG verification** (v0.8.27) — `src/sprint4x-rag-verification.test.ts` pins the CURRENT default-enable claims: S42 RAPTOR flags hold (default ON, env-overridable off), while S40 wiring + S41/S43–S47 remain spec-only (no consumer code, no flag) — the file pins the absence so future wiring cannot silently add them in the wrong state.
+- **Phase 2-4** shipped as sprints 9-11 (2026-07-13); sections retained for reference.
+- **Sprint numbering collision:** `docs/specs/s40`-`s47` (RAG suite) reuse numbers already spent on earlier shipped work (see BACKLOG Shipped Items + ROADMAP numbering note).
 
 ---
 
-*Last updated: 2026-07-27 (v0.8.23 release)*
+*Last updated: 2026-07-28 (end-of-day; S49 spec pinned, implementation pending)*

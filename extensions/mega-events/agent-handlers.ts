@@ -279,6 +279,7 @@ export function registerAgentHandlers(
 					conversationId: convId,
 					sessionId: runtime.rt.sessionId,
 					turnIndex: event.turnIndex,
+					role: (event as { role?: string }).role ?? "assistant",
 					endedAt: Date.now(),
 					startedAt: undefined,
 					ctxTokens: runtime.lastCtxTokens ?? undefined,

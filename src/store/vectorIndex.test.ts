@@ -12,7 +12,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -88,6 +88,30 @@ test("dimension guard: non-512 vectors are skipped, never corrupt the index", as
     const ok = await searchAsync(spikeVec(3), { k: 1 });
     assert.equal(ok.length, 1, "valid vector stored after a skipped one");
     assert.equal(ok[0].checkpointId, "chkpt_002");
+  } finally {
+    await closeVectorIndex();
+    rmSync(dir, { recursive: true, force: true });
+    delete process.env.MEGACOMPACT_VECTOR_INDEX_DIR;
+  }
+});
+
+test("corrupt-dir self-heal: torn PGlite dir is deleted + retried, never crashes", async () => {
+  delete process.env.MEGACOMPACT_PGLITE_DISABLED;
+  const dir = isolateIndexDir();
+  try {
+    await closeVectorIndex();
+    // Tear the dir: garbage bytes where PGlite expects its data/ files.
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "data"), Buffer.from([0xde, 0xad, 0xbe, 0xef, 0xde, 0xad]));
+    // openPgLite(retryOnCorrupt=true) deletes + retries; if that still fails it
+    // disables gracefully. Either path must NOT throw.
+    const pg = await initVectorIndex();
+    assert.ok(pg, "index self-healed after corruption ");
+    // And the index works after heal: upsert + search round-trip.
+    await upsertEmbedding("/repoE/.pi/mega-compact", "sessE", "chkpt_001", spikeVec(7));
+    const hits = await searchAsync(spikeVec(7), { k: 1 });
+    assert.equal(hits.length, 1, "search works on the healed index");
+    assert.equal(hits[0].checkpointId, "chkpt_001");
   } finally {
     await closeVectorIndex();
     rmSync(dir, { recursive: true, force: true });

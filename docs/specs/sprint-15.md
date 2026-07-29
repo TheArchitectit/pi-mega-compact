@@ -5,7 +5,7 @@
 **Focus:** Prove, document, ship
 **Priority:** P0
 **Effort:** M (≈1 day)
-**Status:** READY
+**Status:** DONE — shipped v0.2.0 (benchmarks, DR drill, docs, release)
 **Depends on:** Sprints 8–14 (full pipeline implemented)
 
 ---
@@ -33,6 +33,7 @@ passes, guardrails + CI green.
 ## SCOPE BOUNDARY
 
 **IN SCOPE:**
+
 - `scripts/dedup-restore-drill.sh` — validate SQLite integrity + rebuild from JSON snapshots; sentinel recompute (dedup plan §6).
 - End-to-end benchmarks at 100 / 1K / 10K checkpoints: dedup hit rate, compression ratio (≥5:1), per-tier p95, storage savings.
 - `docs/RETENTION_POLICY.md` — TTL, soft-delete cleanup.
@@ -63,6 +64,7 @@ passes, guardrails + CI green.
 ```
 
 **Key details:**
+
 - **Benchmarks are the release gate**: if compressionRatio < 5:1 or any p95 over budget, do NOT tag — fix or document the miss.
 - **DR drill** (dedup plan §6): proves the JSON snapshots from Sprint 8 are a valid fallback; sentinel recompute catches state drift.
 - **Docs under 500 lines each** (CLAUDE.md rule); split if needed.

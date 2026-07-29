@@ -21,6 +21,7 @@
 | regression-prevention workflow, failure triage | [workflows/REGRESSION_PREVENTION.md](workflows/REGRESSION_PREVENTION.md) | docs/workflows/ |
 | shared safety prompts (production-first, scope, halt, three-strikes, error-recovery, clean-arch) | [shared-prompts/](../skills/shared-prompts/) | skills/shared-prompts/ |
 | PREVENT-PI rules, local-only invariant | [CLAUDE.md](../CLAUDE.md) | repo root |
+| **engineering practices, file limits, splitting pattern, capability gating, append-only, ledger protocol, feature flags, structured logging, sprint gating** | [ENGINEERING_PRACTICES.md](ENGINEERING_PRACTICES.md) | docs/ |
 
 ---
 
@@ -69,9 +70,11 @@
 | **S47 spec (auto-categorizing memory wiki — rule-based + LLM topic assignment, wiki page generation, topic tree browser)** | [specs/s47-auto-categorizing-wiki.md](specs/s47-auto-categorizing-wiki.md) | docs/specs/ |
 | **S48 spec (per-turn vector tracking — `turns` + `turn_recall` + `conversation_branches` tables, turn_end writer, recall provenance, forkConversation primitive, recall-to-point design)** | [specs/s48-per-turn-vector-tracking.md](specs/s48-per-turn-vector-tracking.md) | docs/specs/ |
 | **S49–S52 program (per-turn memory platform — isolated turns.db, per-turn metrics + fork, full auto-categorizing wiki, dashboard rewind; reuse-grade for own TUI + API gateway)** | [specs/s49-program-per-turn-memory-platform.md](specs/s49-program-per-turn-memory-platform.md) | docs/specs/ |
-| **S49 spec (turn-db foundation — isolated `turns.db` node:sqlite store, host-agnostic `TurnStore` interface, main-db→turns.db migration, retention/pruning; S49A/S49B/S49C gated)** | [specs/s49-turn-db-foundation.md](specs/s49-turn-db-foundation.md) | docs/specs/ |
-| **S50 spec (per-turn metrics + fork — `raw_transcript.turn_index` wiring, `turns.epoch_id` stamping, `/mega-metrics` + `/mega-fork` commands, recall/dedup/compression rollups by turn + conversation; S50A/S50B/S50C shipped)** | [specs/s50-per-turn-metrics-fork.md](specs/s50-per-turn-metrics-fork.md) | docs/specs/ |
-| **S51 spec (auto-categorizing wiki — S47 re-targeted onto the S49 store: k-means over real `context_chunks` embeddings + TF-IDF labels + extractive wiki pages, persisted in the reserved turns.db `topics`/`memory_topics` shells, every-Nth-compaction rebuild, `/mega-topics`; Wiki dashboard tab deferred to S52; S51A/S51B/S51C gated)** | [specs/s51-auto-categorizing-wiki.md](specs/s51-auto-categorizing-wiki.md) | docs/specs/ |
+| **S49 spec (turn-db foundation — revision 1: contract-first, event-sourced, capability-gated `TurnStore` interface, `SqliteTurnStore` + `InMemoryTurnStore`, main-db→turns.db migration, retention/pruning; S49A/S49B/S49C gated)** | [specs/s49-turn-db-foundation.md](specs/s49-turn-db-foundation.md) | docs/specs/ |
+| **S49 revision record (v0→v1: dependency rule → contract-first kernel + append-only + capability gating + ledger protocol + StoreSnapshot)** | [specs/s49-rev1-architecture-upgrade.md](specs/s49-rev1-architecture-upgrade.md) | docs/specs/ |
+| **S50 spec (per-turn metrics + fork — `TurnMetrics` over `TurnReader`, `/mega-fork` over `TurnWriter`, epoch stamping)** | [specs/s50-per-turn-metrics-fork.md](specs/s50-per-turn-metrics-fork.md) | docs/specs/ |
+| **S51 spec (auto-categorizing wiki — k-means topic clustering, TF-IDF labels, extractive wiki pages; replaces S47)** | [specs/s51-auto-categorizing-wiki.md](specs/s51-auto-categorizing-wiki.md) | docs/specs/ |
+| **S52 spec (dashboard management + rewind — capability-gated turns tab, wiki polish, fork button, rewind-intent queue)** | [specs/s52-dashboard-management-rewind.md](specs/s52-dashboard-management-rewind.md) | docs/specs/ |
 | **S39 spec (real-time multi-pi stacked memory graph — shared `session_heartbeats` + `token_samples` tables in `~/.mega-compact-index`, runtime snapshot hook, `/api/sessions` + `/api/sessions/timeseries`, recharts Sessions tab; PREVENT-PI-004 safe)** | [specs/s39-multi-pi-memory-graph.md](specs/s39-multi-pi-memory-graph.md) | docs/specs/ |
 | **game-mode design spec v0.2 (gamified stats: per-metric leaderboards, MEGA CACHE, 6 themes, 3-toggle panel, minimalist TUI)** | [game-mode-design.md](game-mode-design.md) | docs/ |
 | **game-mode QA review + sprint plan S30–S35 (guardrail adherence, 12 QA findings, 52 pre-defined TODOs; S31 ✅ DONE)** | [specs/game-mode-sprint-plan.md](specs/game-mode-sprint-plan.md) | docs/specs/ |
@@ -94,6 +97,9 @@
 | release notes, v0.2.0, migration guide, breaking change, what's new | [RELEASE_NOTES.md](../RELEASE_NOTES.md) | repo root |
 | changelog, per-release changes, sprint breakdown | [CHANGELOG.md](../CHANGELOG.md) | repo root |
 | release pipeline, publish gate, deploy.sh, npm publish gate (v0.8.16) | [scripts/deploy.sh](../scripts/deploy.sh) | scripts/ |
+| S25-B spec (cross-repo + durable-memory headless two-repo E2E — repoKey unification, kill-switch + corrupt-dir fallback) | [specs/s25-cross-repo.md](specs/s25-cross-repo.md) | docs/specs/ |
+| S25-B two-repo driver (checkpoint + memory cross-repo through real handlers) | [scripts/cross-repo-e2e.mjs](../scripts/cross-repo-e2e.mjs) | scripts/ |
+| **S49 spec (conversation-tracking DB + Dashboard conversations tab — turns / recall provenance / branches with prune + vacuum + threshold controls)** | [specs/s49-conversation-db-dashboard.md](specs/s49-conversation-db-dashboard.md) | docs/specs/ |
 | dashboard, live monitoring, widget, SSE, token gauge | [DASHBOARD.md](../extensions/DASHBOARD.md) | extensions/ |
 
 ---

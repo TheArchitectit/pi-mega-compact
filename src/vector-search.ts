@@ -14,6 +14,7 @@
 import { cosineSimilarity } from "./embedder.js";
 import { normalizeSessionId } from "./store.js";
 import { mmrRerank, type MmrItem } from "./dedup/mmr.js";
+import { stateDirForRepo } from "./store/repoKey.js";
 import { topK } from "./dedup/topk.js";
 import {
 	listCheckpoints,
@@ -123,6 +124,9 @@ function raptorSearchHits(
 					hits.push({ checkpoint: cp, score: mh.score });
 					continue;
 				}
+				// Orphaned leaf (checkpoint missing from the stored list, e.g. SemDeDup
+				// removed) — skip; synthesizing it would yield an empty cluster block.
+				if (mh.isLeaf) continue;
 				// Cluster hit: synthesize a SearchHit so the recall block can surface
 				// the hierarchical summary (not a stored checkpoint). The minimal
 				// StoredCheckpoint carries the node's centroid embedding for any
@@ -317,13 +321,17 @@ export async function vectorSearchAsync(
 		// Index empty/unavailable → synchronous per-session fallback (this repo).
 		return vectorSearch(store, sid, query, k);
 	}
-	// Hydrate each index hit from the authoritative node:sqlite store. repoId is
-	// that repo's stateDir, so cross-repo hits resolve against their own store.
-	// Tag cross-repo hits with their source repoId so the recall block can label
-	// them ("from repo <name>"); same-repo hits stay unlabeled.
+	// Hydrate each index hit from the authoritative node:sqlite store. The
+	// index keys on repo_id (S25: git root via repoKey; legacy rows keyed by
+	// stateDir) — resolve repo_id → stateDir via stateDirForRepo, and skip
+	// unresolvable/foreign hits (degrade, never crash). Cross-repo hits carry
+	// their source repoId so the recall block can label them; same-repo stays
+	// unlabeled.
 	const hydrated: SearchHit[] = [];
 	for (const h of indexHits) {
-		const cp = getCheckpoint(h.sessionId, h.checkpointId, h.repoId);
+		const hitStateDir = stateDirForRepo(h.repoId);
+		if (!hitStateDir) continue;
+		const cp = getCheckpoint(h.sessionId, h.checkpointId, hitStateDir);
 		if (cp && cp.dedupStatus !== "removed") {
 			const crossRepo =
 				opts.crossRepo && selfRepo && h.repoId && h.repoId !== selfRepo;

@@ -49,3 +49,8 @@ mega-compact-vector/
 !.crew/graphs/.gitkeep
 # agent temp scratch dir
 tmp/
+
+# Local agent/session state (never track)
+.claw/
+.clawd-todos.json
+.pi-subagents/

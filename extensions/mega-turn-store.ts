@@ -2,17 +2,18 @@
  * mega-turn-store.ts — S49 adapter: route per-turn writes to the isolated
  * turns.db (flag ON) or the legacy main-db helpers (flag OFF).
  *
- * This is the ONLY pi-coupled seam for turn writes. src/store/turns/ stays
- * pi-agnostic; this module maps the extension's (sessionId, stateDir, config)
- * onto whichever backend the flag selects. Both paths are best-effort at the
- * call site (try/catch in the handlers), so a failure never breaks the agent
- * loop or the recall path.
+ * RECONCILIATION: maps the extension's per-turn writes onto the contract-first
+ * `TurnStore` (master's design): `appendTurn` / `appendRecall` /
+ * `ensureConversationId` / `asAdmin().stampTurnsEpoch` / `forkConversation`.
+ * src/store/turns/ stays pi-agnostic; this module is the ONLY pi-coupled seam for
+ * turn writes. Both paths are best-effort at the call site (try/catch in the
+ * handlers), so a failure never breaks the agent loop or the recall path.
  */
 import {
 	createTurnStore,
 	type TurnStore,
-	type RecordTurnInput,
-	type RecordTurnRecallHit,
+	type TurnEntry,
+	type TurnRecallEntry,
 } from "../src/store/turns/index.js";
 import {
 	recordTurn as legacyRecordTurn,
@@ -31,10 +32,24 @@ const stores = new Map<string, TurnStore>();
 function storeFor(stateDir: string): TurnStore {
 	let s = stores.get(stateDir);
 	if (!s) {
-		s = createTurnStore(stateDir);
+		s = createTurnStore({ stateDir });
 		stores.set(stateDir, s);
 	}
 	return s;
+}
+
+/** Map a legacy RecallSource onto the contract `TurnRecallEntry.source` enum. */
+function mapSource(s: string): TurnRecallEntry["source"] {
+	switch (s) {
+		case "flat":
+		case "checkpoint":
+			return "checkpoint";
+		case "raptor":
+		case "cluster_summary":
+			return "cluster_summary";
+		default:
+			return "memory";
+	}
 }
 
 /** Resolve (or generate) a session's conversation id on the active backend. */
@@ -48,28 +63,69 @@ export function ensureConversationIdFor(
 		: legacyEnsureConversationId(sessionId, stateDir);
 }
 
-/** Record one turn row (turn_end). Returns the turn id. */
+/** Record one turn row (turn_end). Returns the contract TurnId (string). */
 export function recordTurnWrite(
 	config: MegaConfig,
-	input: RecordTurnInput,
+	input: {
+		conversationId: string;
+		sessionId: string;
+		turnIndex: number;
+		role: string;
+		startedAt?: number;
+		endedAt?: number;
+		ctxTokens?: number;
+		ctxPercent?: number;
+		pressureBand?: string;
+		modelId?: string;
+		epochId?: string;
+	},
 	stateDir: string,
-): number {
-	return config.turnsDbEnabled
-		? storeFor(stateDir).recordTurn(input)
-		: legacyRecordTurn(input, stateDir);
+): string {
+	if (!config.turnsDbEnabled) {
+		legacyRecordTurn(input as never, stateDir);
+		return "";
+	}
+	const entry: TurnEntry = {
+		conversationId: input.conversationId,
+		sessionId: input.sessionId,
+		turnIndex: input.turnIndex,
+		role: input.role as TurnEntry["role"],
+		endedAt: input.endedAt ?? input.startedAt ?? Date.now(),
+		ctxTokens: input.ctxTokens,
+		ctxPercent: input.ctxPercent,
+		pressureBand: input.pressureBand as TurnEntry["pressureBand"],
+		model: input.modelId,
+		epochId: input.epochId,
+	};
+	return storeFor(stateDir).appendTurn(entry);
 }
 
-/** Record recall provenance for a turn. */
+/** Record recall provenance for a turn (one hit at a time — contract is append-only). */
 export function recordRecallWrite(
 	config: MegaConfig,
-	turnId: number,
-	hits: RecordTurnRecallHit[],
+	turnId: string | number,
+	hits: Array<{
+		checkpointId: string;
+		score: number;
+		source: string;
+		raptorLevel?: number;
+	}>,
 	stateDir: string,
 ): void {
-	if (config.turnsDbEnabled) {
-		storeFor(stateDir).recordTurnRecall(turnId, hits);
-	} else {
-		legacyRecordTurnRecall(turnId, hits, stateDir);
+	if (!config.turnsDbEnabled) {
+		legacyRecordTurnRecall(Number(turnId), hits as never, stateDir);
+		return;
+	}
+	const writer = storeFor(stateDir).asWriter();
+	for (const h of hits) {
+		const entry: TurnRecallEntry = {
+			turnId: String(turnId),
+			checkpointId: h.checkpointId,
+			score: h.score,
+			source: mapSource(h.source),
+			raptorLevel: h.raptorLevel,
+		};
+		writer.appendRecall(entry);
 	}
 }
 
@@ -83,7 +139,7 @@ export function stampTurnsEpochFor(
 	stateDir: string,
 ): number {
 	return config.turnsDbEnabled
-		? storeFor(stateDir).stampTurnsEpoch(sessionId, epochId)
+		? storeFor(stateDir).asAdmin().stampTurnsEpoch(sessionId, epochId)
 		: 0;
 }
 
@@ -101,4 +157,13 @@ export function turnStoreFor(
  *  (raw_transcript + checkpoint_epochs). Callers must NOT close it. */
 export function mainDbFor(stateDir: string): DatabaseSync {
 	return openStore(stateDir);
+}
+
+/** Test/teardown: close all cached turn stores for a state dir. */
+export function closeTurnStoreFor(stateDir: string): void {
+	const s = stores.get(stateDir);
+	if (s) {
+		s.close();
+		stores.delete(stateDir);
+	}
 }
