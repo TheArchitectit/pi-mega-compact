@@ -24,6 +24,7 @@ import type {
   SessionTimeseriesResponse,
   GameStatePatch,
   SseEndpointDef,
+  TopicsResponse,
 } from './game-types.js';
 
 export type {
@@ -38,6 +39,10 @@ export type {
   SessionTimeseriesResponse,
   GameStatePatch,
   SseEndpointDef,
+  TopicRow,
+  TopicAssignmentRow,
+  TopicsResponse,
+  TopicDetailResponse,
 } from './game-types.js';
 
 // ─── New Response Types (inline) ───────────────────────────────────────────
@@ -450,4 +455,11 @@ export const ENDPOINTS = {
     path: '/api/sessions/timeseries',
     description: 'Recharts-ready per-session token timeseries for the stacked memory graph.',
   } as const satisfies EndpointDef<'GET', SessionTimeseriesQuery, SessionTimeseriesResponse>,
+
+  /** GET /api/topics — Auto-categorizing wiki topics (S51). */
+  topics: {
+    method: 'GET',
+    path: '/api/topics',
+    description: 'Auto-categorized wiki topics from k-means + TF-IDF over real embeddings.',
+  } as const satisfies EndpointDef<'GET', undefined, TopicsResponse>,
 } as const;

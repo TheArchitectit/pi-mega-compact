@@ -11,3 +11,4 @@ export type { RouteContext } from "./routes-core.js";
 export { handleIndex, handleRepoIndex, handleStatic } from "./routes-repo.js";
 export { handleGameState, handleGameScores, handlePerf, handleAchievements } from "./routes-game.js";
 export { handleEvents, handleSessions } from "./routes-sessions.js";
+export { handleTopics } from "./routes-topics.js";

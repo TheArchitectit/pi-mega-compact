@@ -139,6 +139,10 @@ export type {
   SessionTimeseriesQuery,
   SessionTimeseriesResponse,
   SseEndpointDef,
+  TopicRow,
+  TopicAssignmentRow,
+  TopicsResponse,
+  TopicDetailResponse,
 } from './endpoints.js';
 
 export { ENDPOINTS } from './endpoints.js';

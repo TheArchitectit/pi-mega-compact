@@ -148,6 +148,56 @@ export interface SessionTimeseriesResponse {
  */
 export type GameStatePatch = Partial<GameConfig>;
 
+// ─── Auto-Categorizing Wiki Topics (S51) ──────────────────────────────────
+
+/** A single topic in the GET /api/topics response. */
+export interface TopicRow {
+  /** Unique topic identifier. */
+  readonly id: string;
+  /** TF-IDF label (top discriminative terms). */
+  readonly label: string;
+  /** Number of memories assigned to this topic. */
+  readonly memoryCount: number;
+  /** Epoch ms when the topic was last updated. */
+  readonly lastUpdated: number;
+  /** Top TF-IDF term scores for this topic. */
+  readonly termScore: ReadonlyArray<{ readonly term: string; readonly score: number }>;
+}
+
+/** A single memory-to-topic assignment. */
+export interface TopicAssignmentRow {
+  /** Memory (context_chunks) id. */
+  readonly memoryId: string;
+  /** Topic id the memory belongs to. */
+  readonly topicId: string;
+  /** Confidence score [0,1]. */
+  readonly confidence: number;
+}
+
+/** Response for GET /api/topics. */
+export interface TopicsResponse {
+  /** ISO timestamp when the response was generated. */
+  readonly updatedAt: string;
+  /** Total number of topics. */
+  readonly totalTopics: number;
+  /** Total number of assigned memories. */
+  readonly totalAssigned: number;
+  /** Epoch ms when the topic model was last rebuilt, or null. */
+  readonly lastRebuildAt: number | null;
+  /** Topics sorted by memory count descending. */
+  readonly topics: TopicRow[];
+}
+
+/** Response for GET /api/topics/:id. */
+export interface TopicDetailResponse {
+  /** Topic metadata. */
+  readonly topic: TopicRow;
+  /** Assignments for this topic, sorted by confidence DESC. */
+  readonly assignments: TopicAssignmentRow[];
+  /** Related topics (co-occurrence). */
+  readonly relatedTopics: TopicRow[];
+}
+
 // ─── SSE Endpoint Definition ────────────────────────────────────────────────
 
 /**

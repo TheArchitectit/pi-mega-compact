@@ -28,6 +28,7 @@ import type {
 	AchievementRow,
 	SessionsResponse,
 	SessionTimeseriesResponse,
+	TopicsResponse,
 } from "@contracts";
 
 /** Error thrown when a dashboard API response is not 2xx. */
@@ -154,4 +155,8 @@ export function fetchSessionTimeseries(minutes: number): Promise<SessionTimeseri
 	return getJson<SessionTimeseriesResponse>(
 		`${ENDPOINTS.sessionTimeseries.path}${query({ minutes })}`,
 	);
+}
+
+export function fetchTopics(): Promise<TopicsResponse> {
+	return getJson<TopicsResponse>(ENDPOINTS.topics.path);
 }

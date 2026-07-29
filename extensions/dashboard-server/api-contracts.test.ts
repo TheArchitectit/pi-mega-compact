@@ -162,7 +162,7 @@ void _c_achievements;
 // (Sprint 39 added /api/sessions + /api/sessions/timeseries.)
 
 const ENDPOINT_KEYS = Object.keys(ENDPOINTS) as (keyof typeof ENDPOINTS)[];
-const EXPECTED_ENDPOINT_COUNT = 15;
+const EXPECTED_ENDPOINT_COUNT = 16;
 
 /** All `/api/*` paths served by server.ts (extracted from the route handlers). */
 const SERVER_TS_PATHS: string[] = [
@@ -180,12 +180,13 @@ const SERVER_TS_PATHS: string[] = [
   "/api/achievements",
   "/api/sessions",
   "/api/sessions/timeseries",
+  "/api/topics",
 ];
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("ENDPOINTS registry", () => {
-  test("has exactly 15 endpoint entries", () => {
+  test("has exactly 16 endpoint entries", () => {
     assert.equal(
       ENDPOINT_KEYS.length,
       EXPECTED_ENDPOINT_COUNT,

@@ -34,6 +34,7 @@ import {
 	handlePerf,
 	handleAchievements,
 	handleSessions,
+	handleTopics,
 	handleStatic,
 } from "./routes.js";
 
@@ -219,6 +220,7 @@ export async function launchDashboardServer(
 		if (handlePerf(req, res, ctx)) return;
 		if (handleAchievements(req, res, ctx)) return;
 		if (handleSessions(req, res, ctx)) return;
+		if (handleTopics(req, res, ctx)) return;
 		handleStatic(req, res, ctx);
 	});
 
