@@ -4,7 +4,7 @@
 **Parent program:** `docs/specs/s49-program-per-turn-memory-platform.md`
 **Depends on:** S48 core (shipped `f65e477` — `turns`/`turn_recall`/`conversation_branches` in main `sqlite.db`)
 **Priority:** P1
-**Status:** implement-ready
+**Status:** ✅ SHIPPED (S49A/S49B/S49C, branch `s49-turn-db`) — isolated `turns.db` + host-agnostic `TurnStore` + main-db→turns.db migration + retention + adapter re-point. 13 new tests (9 turnStore + 4 migrations + 2 adapter); 803 total passing.
 **Target version:** v0.9.0
 **Reuse target:** host-agnostic — our own TUI + API gateway embed `src/store/turns/` directly.
 
