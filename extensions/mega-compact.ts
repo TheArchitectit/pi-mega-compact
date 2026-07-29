@@ -87,20 +87,10 @@ export default function (pi: ExtensionAPI) {
   // The PGlite indexes (vectorIndex / memoryIndex) are lazily opened module
   // singletons. closeVectorIndex()/closeMemoryIndex() existed but had no
   // non-test callers, so a session left both open: PGlite is WASM Postgres and
-  // leaving it open makes process exit nondeterministic — measured on a
-  // teardown that opens both indexes, closing exits in ~3s while leaving them
-  // open either stalls ~13s or never exits at all. That is why `pi -p` produced
-  // its answer and then hung until killed.
-  //
-  // NOTE: an earlier revision of this comment claimed the fs.watch handle "was
-  // not the culprit". That was wrong. A node diagnostic report
-  // (--report-on-signal) taken at hang time shows the game-state watcher as an
-  // active AND referenced fs_event handle, which pins the event loop on its
-  // own — independently of PGlite, and on any path that never reaches
-  // session_shutdown. It is now unref'd at creation
-  // (ensureGameStateWatcherImpl), so it can no longer hold the process open;
-  // dispose() still closes it here for prompt fd release. The perf interval
-  // genuinely is not a culprit — it is unref'd.
+  // its handles keep node's event loop alive, so `pi -p` produced its answer
+  // and then hung until killed rather than exiting. dispose() only released the
+  // fs.watch handle and the perf interval, neither of which was the culprit
+  // (the interval is unref'd).
   //
   // Both closes are idempotent and safe when the index was never opened, and
   // the next initVectorIndex()/initMemoryIndex() re-opens lazily.
