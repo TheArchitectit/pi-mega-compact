@@ -288,6 +288,57 @@ export function runComplianceSuite(
 			assert.equal(forks[0].forkTurnIndex, 1);
 		});
 
+		it("forkConversation seeds child with parent recall", () => {
+			const parentId = "conv_seed_parent";
+			store.asWriter().appendTurn(
+				makeTurn({ conversationId: parentId, turnIndex: 0 }),
+			);
+			const tid1 = store.asWriter().appendTurn(
+				makeTurn({ conversationId: parentId, turnIndex: 1 }),
+			);
+			// Attach recall to the parent's turn at index 1
+			store.asWriter().appendRecall(
+				makeRecall(tid1, { checkpointId: "ckpt_seed1", score: 0.9, source: "checkpoint" }),
+			);
+			store.asWriter().appendRecall(
+				makeRecall(tid1, { checkpointId: "ckpt_seed2", score: 0.7, source: "memory" }),
+			);
+
+			const childId = store.asWriter().forkConversation(parentId, 1);
+
+			// The child should have a seed turn (turnIndex 0, role system)
+			const childTurns = store.asReader().query({ conversationId: childId });
+			assert.ok(childTurns.length >= 1, "child has at least one turn");
+
+			const seedTurn = childTurns.find(
+				(t) => t.turnIndex === 0 && t.role === "system",
+			);
+			assert.ok(seedTurn, "child has a seed turn");
+
+			// The seed turn should have the parent's recall entries.
+			// Use snapshot-based verification (position-stable IDs).
+			const snapshot = store.asAdmin().checkpoint();
+			const childRecallInSnapshot = snapshot.recall.filter((r) => {
+				// The recall's turnId should point to a turn in the child conversation
+				const turnIdx = Number(r.turnId) - 1;
+				const turn = snapshot.turns[turnIdx];
+				return turn && turn.conversationId === childId;
+			});
+			assert.equal(
+				childRecallInSnapshot.length,
+				2,
+				"child seed turn inherits both recall entries from parent",
+			);
+			assert.ok(
+				childRecallInSnapshot.some((r) => r.checkpointId === "ckpt_seed1"),
+				"child has ckpt_seed1",
+			);
+			assert.ok(
+				childRecallInSnapshot.some((r) => r.checkpointId === "ckpt_seed2"),
+				"child has ckpt_seed2",
+			);
+		});
+
 		// ── 6. countTurns ──────────────────────────────────────
 
 		it("countTurns returns the number of turns in a conversation", () => {
@@ -308,15 +359,16 @@ export function runComplianceSuite(
 		it("ensureConversationId returns same id for same session", () => {
 			const id1 = store.asWriter().ensureConversationId("sess_test1");
 			const id2 = store.asWriter().ensureConversationId("sess_test1");
-			// After first call with no existing turns, it generates a new one.
-			// Second call should return the same (if we wired sessionConv).
-			// For in-memory: it should return the same via sessionConv.
-			// For sqlite: it queries the turns table.
-			// Since there are no turns yet, both calls generate new ids.
-			// This is correct behavior — conversationId is bound when the
-			// first turn is written.
-			assert.ok(id1.startsWith("conv_"));
-			assert.ok(id2.startsWith("conv_"));
+			assert.equal(id1, id2, "same session should always get the same conversationId");
+			assert.ok(id1.startsWith("conv_"), "conversationId has conv_ prefix");
+
+			// After writing a turn with this session, ensureConversationId
+			// should still return the same conversationId
+			store.asWriter().appendTurn(
+				makeTurn({ conversationId: id1, sessionId: "sess_test1", turnIndex: 0 }),
+			);
+			const id3 = store.asWriter().ensureConversationId("sess_test1");
+			assert.equal(id3, id1, "conversationId stable after turn is written");
 		});
 
 		// ── 8. prune ────────────────────────────────────────────
@@ -398,21 +450,20 @@ export function runComplianceSuite(
 					model: "test-model",
 				}),
 			);
-			store
-				.asWriter()
-				.appendRecall(
-					makeRecall(tid, {
-						checkpointId: "ckpt_snap",
-						score: 0.95,
-						source: "memory",
-					}),
-				);
+			store.asWriter().appendRecall(
+				makeRecall(tid, {
+					checkpointId: "ckpt_snap",
+					score: 0.95,
+					source: "memory",
+				}),
+			);
 			store.asWriter().forkConversation(convId, 1);
 
 			const snapshot = store.asAdmin().checkpoint();
 			assert.equal(snapshot.version, 1);
-			assert.equal(snapshot.turns.length, 2);
-			assert.equal(snapshot.recall.length, 1);
+			// Fork creates a seed turn in the child, so total turns = 3
+			assert.equal(snapshot.turns.length, 3, "2 parent + 1 child seed turn");
+			assert.equal(snapshot.recall.length, 2, "1 parent recall + 1 child seed recall (copied from parent)");
 			assert.equal(snapshot.forks.length, 1);
 
 			// Clear and restore
@@ -431,16 +482,24 @@ export function runComplianceSuite(
 			assert.equal(turns[1].pressureBand, "red");
 			assert.equal(turns[1].model, "test-model");
 
-			// Verify recall restored by querying via the reader
-			// (recall IDs may be remapped but the logical data should be present)
-			const allTurns = store.asReader().query({ conversationId: convId });
-			for (const t of allTurns) {
-				if (t.turnIndex === 1) {
-					// The second turn should have recall data
-					// (we can't query by the snapshot's TurnId after restore,
-					// but we can verify the data exists in the full snapshot)
-				}
-			}
+			// Verify recall restored: find the restored turn at turnIndex 1
+			// and check its recall entries
+			const turn1 = turns.find((t) => t.turnIndex === 1);
+			assert.ok(turn1, "turn at index 1 should exist after restore");
+			// We need the TurnId to query listRecall. Since restore may
+			// remap IDs, we query by (conversationId, turnIndex) to find
+			// the new TurnId via getTurn.
+			//
+			// Strategy: snapshot recall uses position-based IDs.
+			// After restore, the turn at position 2 (index 1) should have
+			// its recall. We can verify by taking a second checkpoint
+			// and checking it matches the first.
+			const snapshot2 = store.asAdmin().checkpoint();
+			assert.equal(snapshot2.turns.length, 3, "second checkpoint has 3 turns (2 parent + 1 child seed)");
+			assert.equal(snapshot2.recall.length, 2, "second checkpoint has 2 recall (1 parent + 1 child seed)");
+			assert.equal(snapshot2.recall[0].checkpointId, "ckpt_snap", "recall checkpointId preserved");
+			assert.equal(snapshot2.recall[0].score, 0.95, "recall score preserved");
+			assert.equal(snapshot2.recall[0].source, "memory", "recall source preserved");
 
 			// Verify forks restored
 			const forks = store.asReader().listForks(convId);

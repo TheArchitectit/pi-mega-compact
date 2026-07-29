@@ -136,6 +136,11 @@ function initSchema(db: DatabaseSync): void {
 
     CREATE INDEX IF NOT EXISTS idx_forks_parent
       ON conversation_forks(parent_conversation_id);
+
+    CREATE TABLE IF NOT EXISTS session_conversations (
+      session_id        TEXT PRIMARY KEY,
+      conversation_id   TEXT NOT NULL
+    );
   `);
 
 	// Stamp schema version

@@ -197,7 +197,10 @@ export class InMemoryTurnStore implements TurnStore {
 		const sid = normalizeSessionId(sessionId);
 		const existing = this.sessionConv.get(sid);
 		if (existing) return existing;
-		return newConversationId();
+		// Generate and store a new conversation ID for this session
+		const convId = newConversationId();
+		this.sessionConv.set(sid, convId);
+		return convId;
 	}
 
 	forkConversation(
@@ -205,12 +208,53 @@ export class InMemoryTurnStore implements TurnStore {
 		forkTurnIndex: number,
 	): ConversationId {
 		const childId = newConversationId();
+		const now = Date.now();
+
+		// 1. Record the fork lineage
 		this.forks.push({
 			parentConversationId: parentId,
 			childConversationId: childId,
 			forkTurnIndex,
-			createdAt: Date.now(),
+			createdAt: now,
 		});
+
+		// 2. Find the parent's turn at forkTurnIndex
+		const parentTurnIds = this.convIndex.get(parentId) ?? [];
+		const parentTurnRow = parentTurnIds
+			.map((id) => this.turns.get(id))
+			.find((r) => r?.entry.turnIndex === forkTurnIndex);
+
+		if (!parentTurnRow) return childId; // no parent turn — nothing to seed
+
+		// 3. Create a seed turn in the child conversation
+		const seedId = allocId();
+		const seedEntry: TurnEntry = {
+			conversationId: childId,
+			sessionId: `fork_${childId}`,
+			turnIndex: 0,
+			role: "system",
+			endedAt: now,
+		};
+		this.turns.set(seedId, { id: seedId, entry: seedEntry });
+		this.convIndex.set(childId, [seedId]);
+
+		// 4. Copy the parent's recall entries into the child's seed turn
+		const parentRecall = this.recall.filter(
+			(r) => r.turnId === parentTurnRow.id,
+		);
+		for (const r of parentRecall) {
+			this.recall.push({
+				turnId: seedId,
+				entry: {
+					turnId: String(seedId),
+					checkpointId: r.entry.checkpointId,
+					score: r.entry.score,
+					source: r.entry.source,
+					raptorLevel: r.entry.raptorLevel,
+				},
+			});
+		}
+
 		return childId;
 	}
 
@@ -266,21 +310,42 @@ export class InMemoryTurnStore implements TurnStore {
 	}
 
 	checkpoint(): StoreSnapshot {
+		// Emit turns in a stable order (by internal ID / insertion order)
+		const sorted = [...this.turns.values()].sort((a, b) => a.id - b.id);
+		const turns = sorted.map((r) => r.entry);
+
+		// Build mapping: internal ID → 1-based position
+		const idToPos = new Map<number, number>();
+		for (let i = 0; i < sorted.length; i++) {
+			idToPos.set(sorted[i].id, i + 1);
+		}
+
+		// Replace recall's turnId with the stable 1-based position
+		const recall = this.recall.map((r) => ({
+			turnId: String(idToPos.get(r.turnId) ?? r.turnId),
+			checkpointId: r.entry.checkpointId,
+			score: r.entry.score,
+			source: r.entry.source,
+			raptorLevel: r.entry.raptorLevel,
+		}));
+
 		return {
 			version: 1,
 			exportedAt: Date.now(),
-			turns: [...this.turns.values()].map((r) => r.entry),
-			recall: this.recall.map((r) => r.entry),
+			turns,
+			recall,
 			forks: [...this.forks],
 		};
 	}
 
 	restore(from: StoreSnapshot): void {
 		this.clear();
-		// Map old numeric IDs to new IDs
-		const idRemap = new Map<number, number>();
 
-		for (const t of from.turns) {
+		// Map: 1-based position → new internal ID
+		const posToNewId = new Map<number, number>();
+
+		for (let i = 0; i < from.turns.length; i++) {
+			const t = from.turns[i];
 			const newId = allocId();
 			const sid = normalizeSessionId(t.sessionId);
 			const normalized = { ...t, sessionId: sid };
@@ -292,17 +357,15 @@ export class InMemoryTurnStore implements TurnStore {
 			this.convIndex.set(t.conversationId, convIds);
 			this.sessionConv.set(sid, t.conversationId);
 
-			// Track sequential mapping (assumes insertion order = ID order)
-			idRemap.set(this.turns.size, newId);
+			posToNewId.set(i + 1, newId);
 		}
 
-		// Re-attach recall with remapped turn IDs
-		const turnEntries = [...this.turns.values()].sort((a, b) => a.id - b.id);
+		// Re-attach recall with position-based TurnId → new internal ID mapping
 		for (const r of from.recall) {
-			const idx = Number(r.turnId) - 1; // 1-based → 0-based index
-			if (idx >= 0 && idx < turnEntries.length) {
+			const targetInternalId = posToNewId.get(Number(r.turnId));
+			if (targetInternalId !== undefined) {
 				this.recall.push({
-					turnId: turnEntries[idx].id,
+					turnId: targetInternalId,
 					entry: r,
 				});
 			}

@@ -210,6 +210,7 @@ export class SqliteTurnStore implements TurnStore {
 
 	appendTurn(entry: TurnEntry): TurnId {
 		const sid = normalizeSessionId(entry.sessionId);
+		this.persistSessionConv(sid, entry.conversationId);
 		this.db
 			.prepare(
 				`INSERT INTO turns (conversation_id, session_id, turn_index, role, ended_at,
@@ -235,6 +236,15 @@ export class SqliteTurnStore implements TurnStore {
 		return String(row!.id);
 	}
 
+	/** Persist the session → conversation mapping when a turn is written. */
+	private persistSessionConv(sid: string, conversationId: string): void {
+		this.db
+			.prepare(
+				"INSERT OR IGNORE INTO session_conversations (session_id, conversation_id) VALUES (?, ?)",
+			)
+			.run(sid, conversationId);
+	}
+
 	appendRecall(entry: TurnRecallEntry): void {
 		this.db
 			.prepare(
@@ -252,15 +262,38 @@ export class SqliteTurnStore implements TurnStore {
 
 	ensureConversationId(sessionId: SessionId): ConversationId {
 		const sid = normalizeSessionId(sessionId);
-		// Check if any turn exists for this session
+		// Check session_conversations table first (persistent mapping)
 		const row = this.db
+			.prepare(
+				"SELECT conversation_id FROM session_conversations WHERE session_id = ?",
+			)
+			.get(sid) as { conversation_id: string } | undefined;
+		if (row) return row.conversation_id;
+
+		// Check if any turn exists for this session (fallback)
+		const turnRow = this.db
 			.prepare(
 				"SELECT conversation_id FROM turns WHERE session_id = ? ORDER BY ended_at DESC LIMIT 1",
 			)
 			.get(sid) as { conversation_id: string } | undefined;
-		if (row) return row.conversation_id;
-		// No turns yet — create a new conversation id
-		return newConversationId();
+		if (turnRow) {
+			// Persist the mapping so future calls are consistent
+			this.db
+				.prepare(
+					"INSERT OR IGNORE INTO session_conversations (session_id, conversation_id) VALUES (?, ?)",
+				)
+				.run(sid, turnRow.conversation_id);
+			return turnRow.conversation_id;
+		}
+
+		// No turns yet — generate and persist a new conversation id
+		const convId = newConversationId();
+		this.db
+			.prepare(
+				"INSERT OR IGNORE INTO session_conversations (session_id, conversation_id) VALUES (?, ?)",
+			)
+			.run(sid, convId);
+		return convId;
 	}
 
 	forkConversation(
@@ -268,15 +301,58 @@ export class SqliteTurnStore implements TurnStore {
 		forkTurnIndex: number,
 	): ConversationId {
 		const childId = newConversationId();
+		const now = Date.now();
+
+		// 1. Record the fork lineage
 		this.db
 			.prepare(
 				`INSERT INTO conversation_forks (parent_conversation_id, child_conversation_id, fork_turn_index, created_at)
          VALUES (?, ?, ?, ?)`,
 			)
-			.run(parentId, childId, forkTurnIndex, Date.now());
+			.run(parentId, childId, forkTurnIndex, now);
 
-		// The fork records the lineage. The child inherits the parent's
-		// recall by querying listRecall on the parent's turn — no duplication.
+		// 2. Find the parent's turn at forkTurnIndex
+		const parentTurn = this.db
+			.prepare(
+				"SELECT id FROM turns WHERE conversation_id = ? AND turn_index = ?",
+			)
+			.get(parentId, forkTurnIndex) as { id: number } | undefined;
+
+		if (!parentTurn) return childId; // no parent turn at that index — nothing to seed
+
+		// 3. Create a seed turn in the child conversation (turnIndex 0, role system)
+		this.db
+			.prepare(
+				`INSERT INTO turns (conversation_id, session_id, turn_index, role, ended_at)
+         VALUES (?, ?, 0, 'system', ?)`,
+			)
+			.run(childId, `fork_${childId}`, now);
+
+		const childTurnRow = this.db
+			.prepare(
+				"SELECT id FROM turns WHERE conversation_id = ? AND turn_index = 0",
+			)
+			.get(childId) as { id: number } | undefined;
+		if (!childTurnRow) return childId;
+
+		// 4. Copy the parent's recall entries into the child's seed turn
+		const parentRecall = this.db
+			.prepare("SELECT checkpoint_id, score, source, raptor_level FROM turn_recall WHERE turn_id = ?")
+			.all(parentTurn.id) as Array<Record<string, unknown>>;
+
+		const insertRecall = this.db.prepare(
+			`INSERT OR IGNORE INTO turn_recall (turn_id, checkpoint_id, score, source, raptor_level)
+         VALUES (?, ?, ?, ?, ?)`,
+		);
+		for (const r of parentRecall) {
+			insertRecall.run(
+				childTurnRow.id,
+				r.checkpoint_id as string,
+				r.score as number,
+				r.source as string,
+				(r.raptor_level as number | null) ?? null,
+			);
+		}
 
 		return childId;
 	}
@@ -359,17 +435,35 @@ export class SqliteTurnStore implements TurnStore {
 	}
 
 	checkpoint(): StoreSnapshot {
-		const turns = (
-			this.db
-				.prepare("SELECT * FROM turns ORDER BY ended_at ASC")
-				.all() as Array<Record<string, unknown>>
-		).map(rowToEntry);
+		// Query turns in row-id order (ended_at ASC with unique constraint)
+		const turnRows = this.db
+			.prepare("SELECT * FROM turns ORDER BY ended_at ASC")
+			.all() as Array<Record<string, unknown>>;
+		const turns = turnRows.map(rowToEntry);
 
-		const recall = (
-			this.db
-				.prepare("SELECT * FROM turn_recall ORDER BY turn_id ASC")
-				.all() as Array<Record<string, unknown>>
-		).map(rowToRecall);
+		// Build mapping: row_id → 1-based position in turns array
+		const rowIdToPos = new Map<number, number>();
+		for (let i = 0; i < turnRows.length; i++) {
+			rowIdToPos.set(turnRows[i].id as number, i + 1);
+		}
+
+		const recallRows = this.db
+			.prepare("SELECT * FROM turn_recall ORDER BY turn_id ASC")
+			.all() as Array<Record<string, unknown>>;
+
+		// Replace recall's turnId with the 1-based position of the referenced turn
+		// in the turns array. This makes the TurnId stable across restore.
+		const recall = recallRows.map((r) => {
+			const originalTurnId = r.turn_id as number;
+			const stableTurnId = rowIdToPos.get(originalTurnId) ?? originalTurnId;
+			return {
+				turnId: String(stableTurnId),
+				checkpointId: r.checkpoint_id as string,
+				score: r.score as number,
+				source: r.source as TurnRecallEntry["source"],
+				raptorLevel: (r.raptor_level as number | null) ?? undefined,
+			};
+		});
 
 		const forks = (
 			this.db
@@ -404,7 +498,11 @@ export class SqliteTurnStore implements TurnStore {
 
 		this.db.exec("BEGIN TRANSACTION");
 		try {
-			for (const t of from.turns) {
+			// Map: 1-based position → new auto-increment row ID
+			const posToNewId = new Map<number, number>();
+
+			for (let i = 0; i < from.turns.length; i++) {
+				const t = from.turns[i];
 				insertTurn.run(
 					t.conversationId,
 					normalizeSessionId(t.sessionId),
@@ -416,24 +514,18 @@ export class SqliteTurnStore implements TurnStore {
 					t.pressureBand ?? null,
 					t.model ?? null,
 				);
+				const row = this.db
+					.prepare(
+						"SELECT id FROM turns WHERE conversation_id = ? AND turn_index = ?",
+					)
+					.get(t.conversationId, t.turnIndex) as { id: number } | undefined;
+				if (row) posToNewId.set(i + 1, row.id);
 			}
 
-			// For recall, we need the snapshot's turnId → new row id mapping.
-			// Since snapshot turnIds are "1", "2", etc. matching insertion order,
-			// and we inserted turns in the same order, we can map by position.
-			const sortedOldIds = from.turns.map((_, i) => i + 1);
-			const newTurnIds = (
-				this.db.prepare("SELECT id FROM turns ORDER BY id ASC").all() as Array<{
-					id: number;
-				}>
-			).map((r) => r.id);
-			const idRemap = new Map<number, number>();
-			for (let i = 0; i < sortedOldIds.length && i < newTurnIds.length; i++) {
-				idRemap.set(sortedOldIds[i], newTurnIds[i]);
-			}
-
+			// Recall's turnId is now the 1-based position from checkpoint().
+			// Map it to the new row ID.
 			for (const r of from.recall) {
-				const targetTurnId = idRemap.get(Number(r.turnId)) ?? Number(r.turnId);
+				const targetTurnId = posToNewId.get(Number(r.turnId)) ?? Number(r.turnId);
 				insertRecall.run(
 					targetTurnId,
 					r.checkpointId,
@@ -442,6 +534,7 @@ export class SqliteTurnStore implements TurnStore {
 					r.raptorLevel ?? null,
 				);
 			}
+
 			for (const f of from.forks) {
 				insertFork.run(
 					f.parentConversationId,
@@ -461,6 +554,7 @@ export class SqliteTurnStore implements TurnStore {
 		this.db.exec("DELETE FROM turn_recall");
 		this.db.exec("DELETE FROM conversation_forks");
 		this.db.exec("DELETE FROM turns");
+		this.db.exec("DELETE FROM session_conversations");
 		// Reset autoincrement
 		this.db.exec(
 			"DELETE FROM sqlite_sequence WHERE name IN ('turns','turn_recall','conversation_forks')",
