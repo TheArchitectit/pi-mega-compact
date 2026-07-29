@@ -806,3 +806,18 @@
 | Acceptance Criteria | 212 | 0 |
 | Rollback | 229 | 0 |
 | Risks | 238 | 0 |
+
+## docs/specs/s50-per-turn-metrics-fork.md
+
+| Section | Line | Offset |
+| --------- | ------ | -------- |
+| Reuse Contract | 13 | 0 |
+| Safety Protocols | 22 | 0 |
+| Problem | 41 | 0 |
+| Scope (new/modified/out) | 63 | 0 |
+| Execution — S50A: raw_transcript.turn_index wiring | 107 | 0 |
+| Execution — S50B: turns.epoch_id stamping | 128 | 0 |
+| Execution — S50C: Metrics + fork + commands | 148 | 0 |
+| Acceptance Criteria | 184 | 0 |
+| Rollback | 198 | 0 |
+| Risks | 207 | 0 |
