@@ -1,6 +1,56 @@
 # Release Notes — pi-mega-compact
 
-## v0.10.1 (2026-07-29) — S49–S52 program: SHIPPED
+## v0.11.0 (2026-07-29) — S49–S52 program lands on master
+
+**The mainline release.** The `s49-master-reconcile` branch merges into `master`, bringing the full S49–S52 per-turn memory platform to the mainline. This is the same code as v0.10.1 (the feature-branch release) plus a post-release prettier cleanup of the dashboard turns/wiki routes and session-handlers. If you're already on v0.10.1, this is a cosmetic refresh; if you're on master's v0.10.0-rc or earlier, this is the release that ships per-turn memory tracking, recall provenance, the auto-categorizing wiki, and the dashboard Turns + Wiki tabs.
+
+### What's new (since master v0.10.0-rc)
+
+**S49 — Turn-DB Foundation (contract-first, reconciled)**
+
+- The `TurnStore` is contract-first: `TurnReader` / `TurnWriter` / `TurnAdmin` capability interfaces + `StoreSnapshot` for backup/migration + `ConversationStats`. Two backends (`SqliteTurnStore`, `InMemoryTurnStore`) pass a shared compliance suite.
+- Per-turn provenance lives in an **isolated `turns.db`** (own connection cache + own WAL) so turn writes can never touch the authoritative memory DB. A one-time main-db → turns.db migration is idempotent + non-fatal.
+- Host-agnostic: `src/store/turns/` imports no pi types — the same spine backs the dashboard, the TUI, or an API gateway.
+
+**S50 — Per-turn metrics + fork**
+
+- `turnMetrics` / `conversationMetrics` roll up per-turn recall count, dedup unique ratio, and per-epoch compression ratio.
+- `forkFromConversation` branches a child conversation at turn N and returns the parent's injected-checkpoint set to rehydrate (recall-to-point).
+- `stampTurnsEpoch` (admin capability) links each turn to the compact epoch that superseded it.
+
+**S51 — Auto-categorizing wiki**
+
+- Every 10 compactions, the store clusters real memory embeddings (k-means) and labels each cluster with TF-IDF discriminative terms — no LLM, no Ollama, fully local.
+- `/mega-topics` rebuilds on demand; the `topics` / `memory_topics` tables persist the model in `turns.db`.
+
+**S52 — Dashboard turns/recall/wiki viz + rewind**
+
+- **Turns tab**: turn-by-turn memory tracking visualization — context pressure per turn, the compact epoch, and the **injected-checkpoint recall set** at each turn (checkpoint id, score, source, raptor level).
+- **Wiki tab polish**: search topics by label or discriminative term; click through to a topic's member memories.
+- **Fork action** (POST `/api/fork`) + a **rewind** action that queues an intent the host consumes at `before_agent_start`.
+- **Rewind-intent handshake** (`src/intent.ts`): a host-agnostic queue over the pre-created `pending_fork` table. The store never calls back into the host (ledger protocol) — the host polls + consumes.
+- New routes: `GET /api/turns`, `GET /api/turns/conversation/:id`, `GET/POST /api/turns/intents`, `POST /api/fork`, `POST /api/turns/prune`, `POST /api/turns/vacuum`, `GET /api/topics/:id/memories`.
+- Capability gating verified: display via `asReader()`, prune/vacuum via `asAdmin()`, fork via `asWriter()`.
+
+### Fixes
+
+- **Pressure-basis oscillation RESOLVED** — `pressure-getters.ts` unifies the two pressure bases onto the percentage scale when the model context window is known.
+- **PGlite shutdown** — indexes closed on session shutdown; the WASM handle no longer pins the event loop (`pi -p` no longer hangs).
+- **Prettier cleanup** of dashboard turns/wiki routes + session-handlers (code-style only, no logic change).
+
+### Test infrastructure
+
+- **852 tests** across 87 files.
+
+### Migration
+
+- **Turn on per-turn tracking**: set `MEGACOMPACT_TURNS_DB=1`. On first open with the flag ON, legacy main-db turn tables are migrated into `turns.db` (idempotent + non-fatal). Flag OFF = legacy main-db path (being retired).
+- The dashboard Turns tab populates as soon as the session runs through a compaction with the flag ON.
+- No breaking config changes.
+
+---
+
+## v0.10.1 (2026-07-29) — S49–S52 program: SHIPPED (feature branch)
 
 **The per-turn memory platform release.** The `s49-master-reconcile` branch reconciles master's contract-first `TurnStore` with the `s49-turn-db` program and implements the full S49–S52 program: per-turn memory tracking, recall provenance, an auto-categorizing wiki, and a dashboard with turn-by-turn memory visualization, recall display, and rewind.
 
