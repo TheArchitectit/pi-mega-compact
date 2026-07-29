@@ -64,17 +64,23 @@ Additional guardrails (from template): PREVENT-001 (JSON.parse without null chec
 * **Dedup tiers**: L0 exact-hash (`src/dedup/digest.ts`, `src/store/bloom.ts`), L1 MinHash/LSH (`src/dedup/l1-minhash.ts`, `src/dedup/l1-lsh.ts`, `src/dedup/l1-verify.ts`), L2 semantic cosine + MMR (`src/dedup/mmr.ts`), RAPTOR tree (`src/dedup/raptor/`). Config: `src/config/dedup.ts` (single source of truth for all tier flags).
 * **Monitoring**: `src/monitoring.ts` (events.log + dashboard.json + FP alerts), `src/canary.ts` (sequential tier rollout + auto-disable on p95 breach).
 * **Scripts**: `scripts/dedup-benchmark.mjs` (benchmark), `scripts/dedup-restore-drill.sh` (DR drill), `scripts/guardrails-scan.mjs` (guardrails), `scripts/regression_check.py` (regression).
-* **Test count**: 372 tests (unit + integration + handler-level), all passing as of v0.7.3.
+* **Test count**: 769 tests (unit + integration + handler-level), all passing as of v0.9.0.
 
 ---
 
-## 6. Documentation Standards
+## 6. Engineering Practices (MANDATORY)
 
-* **Doc length guideline**: ~500 lines is a soft target for readability. Split with `docs/` subfiles when a doc gets unwieldy, but don't sacrifice completeness to fit.
-* **Source file length — NEVER grow large files** (MANDATORY, mirrors the doc rule): when a `.ts` file approaches ~500 lines, do NOT keep appending logic to it. Instead, build the new logic into its **own** focused module (one responsibility per file) and leave a **thin delegate** in the original file. The established pattern (see `extensions/mega-runtime/`): a context-interface + free-function `*Impl` in a new file, with the class method becoming a 1-line `return *Impl(this, …)` delegate. `runtime.ts` (~437 lines, delegates-only) is the reference example; `effects.ts` / `game-state.ts` / `perf.ts` / `pressure-getters.ts` / etc. are the per-section modules. Rationale: a large file is a large edit surface — every change risks a conflict, a misread, or a partial-edit break; a delegate-shell + focused modules keeps blast radius small and each body independently readable/testable. Apply the same to `src/` (keep `src/` pi-agnostic).
-* **Update Maps**: update `docs/INDEX_MAP.md` + `docs/HEADER_MAP.md` when adding/changing docs.
-* **Sprints**: per-sprint full specs live in `docs/specs/` following the SPRINT_GUIDE structure (Header / Safety / Problem / Scope / Execution / Acceptance / Rollback).
-* **Tester guide**: see `TESTER_GUIDE.md` (repo root) for manual testing checklist + bug report template.
-* **Release notes**: see `RELEASE_NOTES.md` (repo root) for user-facing release notes + migration guide.
-* **Roadmap**: see `ROADMAP.md` (repo root) for consolidated P1/P2 deferred work.
-* **Backlog**: see `BACKLOG.md` (repo root) for detailed backlog items.
+**Full document:** [`docs/ENGINEERING_PRACTICES.md`](docs/ENGINEERING_PRACTICES.md) — read before any code change.
+
+Quick reference:
+
+* **File limits**: `src/` 300 soft / 500 hard; `extensions/` 400 soft / 500 hard; `tests/` 600 hard.
+* **Splitting pattern**: delegate-shell + impl file + context interface. Shell is 1–3 lines per method.
+* **Contract-first**: `types.ts` (the interface) ships before any implementation. Hosts import only types + factory.
+* **Capability gating**: `store.asReader()` / `asWriter()` / `asAdmin()`. Each consumer gets only what it needs.
+* **Append-only provenance**: turns/recall/forks are appended, never mutated. `UPDATE` is forbidden in `src/store/turns/`.
+* **Ledger protocol**: host pushes facts, pulls views. Store never initiates (zero callbacks/emitters).
+* **Feature flags**: default ON, env-overridable OFF, flag-OFF = byte-identical to pre-sprint.
+* **Structured logging**: every event is a JSON line with `ts` + `event`. No `console.log` in `src/`.
+* **Sprint gating**: build + test + lint + regression_check at every sub-sprint boundary.
+* **Non-fatal stores**: every store write is best-effort; failures log and never break the agent loop.

@@ -1,8 +1,9 @@
 # Per-Turn Memory Platform — Multi-Sprint Program (S49–S52)
 
-**Date:** 2026-07-28
+**Date:** 2026-07-28 (revision 1: 2026-07-29)
 **Owner:** pi-mega-compact
 **Status:** Program plan → S49 spec implement-ready
+**Revision record:** `docs/specs/s49-rev1-architecture-upgrade.md` — v0 dependency rule upgraded to v1 contract-first, event-sourced, capability-gated kernel.
 **Reuse target:** this work is designed to be lifted into other hosts (our own TUI, our API gateway). All host-agnostic logic lives in `src/` behind narrow store interfaces; pi-specific wiring stays in `extensions/`.
 
 ---
@@ -86,9 +87,9 @@ Every sprint obeys:
 
 ## 7. Sprint specs
 
-- **S49** → `docs/specs/s49-turn-db-foundation.md` (implement-ready, this program)
-- **S50** → `docs/specs/s50-per-turn-metrics-fork.md` (to be written after S49 lands)
-- **S51** → extends `docs/specs/s47-auto-categorizing-wiki.md` (already implement-ready; re-targeted onto the S49 store)
-- **S52** → `docs/specs/s52-dashboard-rewind.md` (to be written after S50/S51 land)
+- **S49** → `docs/specs/s49-turn-db-foundation.md` (**revision 1** — contract-first, event-sourced, capability-gated; replaces v0 CRUD design)
+- **S50** → `docs/specs/s50-per-turn-metrics-fork.md` (written from the contract-first shape)
+- **S51** → `docs/specs/s51-auto-categorizing-wiki.md` (re-targeted onto S49 store, replaces S47)
+- **S52** → `docs/specs/s52-dashboard-management-rewind.md` (written against capability-gated handles)
 
-Specs are written just-in-time: S49 is fully specced now; S50/S52 are specced once their dependency's real shape exists, so they build on shipped reality rather than assumption. S51 already has a complete, audited spec (S47 re-plan) — it is re-pointed at the new store, not rewritten.
+Engineering practices for all sprints: `docs/ENGINEERING_PRACTICES.md`
