@@ -57,6 +57,7 @@ function rowToEntry(r: Record<string, unknown>): TurnEntry {
 		pressureBand:
 			(r.pressure_band as "green" | "yellow" | "red" | null) ?? undefined,
 		model: (r.model as string | null) ?? undefined,
+		epochId: (r.epoch_id as string | null) ?? undefined,
 	};
 }
 
@@ -142,6 +143,18 @@ export class SqliteTurnStore implements TurnStore {
 		return row ? rowToEntry(row) : undefined;
 	}
 
+	getTurnByIndex(
+		conversationId: ConversationId,
+		turnIndex: number,
+	): TurnEntry | undefined {
+		const row = this.db
+			.prepare(
+				"SELECT * FROM turns WHERE conversation_id = ? AND turn_index = ?",
+			)
+			.get(conversationId, turnIndex) as Record<string, unknown> | undefined;
+		return row ? rowToEntry(row) : undefined;
+	}
+
 	listRecall(turnId: TurnId): TurnRecallEntry[] {
 		const rows = this.db
 			.prepare(
@@ -149,6 +162,19 @@ export class SqliteTurnStore implements TurnStore {
 			)
 			.all(Number(turnId)) as Array<Record<string, unknown>>;
 		return rows.map(rowToRecall);
+	}
+
+	listRecallByIndex(
+		conversationId: ConversationId,
+		turnIndex: number,
+	): TurnRecallEntry[] {
+		const row = this.db
+			.prepare(
+				"SELECT id FROM turns WHERE conversation_id = ? AND turn_index = ?",
+			)
+			.get(conversationId, turnIndex) as { id: number } | undefined;
+		if (!row) return [];
+		return this.listRecall(String(row.id));
 	}
 
 	listForks(conversationId: ConversationId): ConversationFork[] {
@@ -337,7 +363,9 @@ export class SqliteTurnStore implements TurnStore {
 
 		// 4. Copy the parent's recall entries into the child's seed turn
 		const parentRecall = this.db
-			.prepare("SELECT checkpoint_id, score, source, raptor_level FROM turn_recall WHERE turn_id = ?")
+			.prepare(
+				"SELECT checkpoint_id, score, source, raptor_level FROM turn_recall WHERE turn_id = ?",
+			)
 			.all(parentTurn.id) as Array<Record<string, unknown>>;
 
 		const insertRecall = this.db.prepare(
@@ -525,7 +553,8 @@ export class SqliteTurnStore implements TurnStore {
 			// Recall's turnId is now the 1-based position from checkpoint().
 			// Map it to the new row ID.
 			for (const r of from.recall) {
-				const targetTurnId = posToNewId.get(Number(r.turnId)) ?? Number(r.turnId);
+				const targetTurnId =
+					posToNewId.get(Number(r.turnId)) ?? Number(r.turnId);
 				insertRecall.run(
 					targetTurnId,
 					r.checkpointId,
@@ -561,13 +590,25 @@ export class SqliteTurnStore implements TurnStore {
 		);
 	}
 
+	stampTurnsEpoch(sessionId: SessionId, epochId: string): number {
+		const sid = normalizeSessionId(sessionId);
+		const res = this.db
+			.prepare(
+				"UPDATE turns SET epoch_id = ? WHERE session_id = ? AND epoch_id IS NULL",
+			)
+			.run(epochId, sid);
+		return Number(res.changes ?? 0);
+	}
+
 	// ── Capability gating ───────────────────────────────────────
 
 	asReader(): TurnReader {
 		return {
 			query: (f) => this.query(f),
 			getTurn: (id) => this.getTurn(id),
+			getTurnByIndex: (c, t) => this.getTurnByIndex(c, t),
 			listRecall: (id) => this.listRecall(id),
+			listRecallByIndex: (c, t) => this.listRecallByIndex(c, t),
 			listForks: (id) => this.listForks(id),
 			countTurns: (id) => this.countTurns(id),
 			conversationStats: (id) => this.conversationStats(id),
@@ -590,6 +631,7 @@ export class SqliteTurnStore implements TurnStore {
 			checkpoint: () => this.checkpoint(),
 			restore: (s) => this.restore(s),
 			clear: () => this.clear(),
+			stampTurnsEpoch: (s, e) => this.stampTurnsEpoch(s, e),
 		};
 	}
 

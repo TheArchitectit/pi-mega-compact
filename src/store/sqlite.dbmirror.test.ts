@@ -107,6 +107,16 @@ describe("DB mirror", () => {
       assert.equal(rows[0].messageTimestamp, 1234567890);
     });
 
+    it("S50A: stores turn_index when provided; null when omitted (back-compat)", () => {
+      appendRawTranscript(db, makeRow({ contentHash: "with-turn", turnIndex: 7 }));
+      appendRawTranscript(db, makeRow({ contentHash: "no-turn" }));
+      const rows = listRawTranscriptRange(db, "sess-1", 0, 999999);
+      const withTurn = rows.find((r) => r.contentHash === "with-turn");
+      const noTurn = rows.find((r) => r.contentHash === "no-turn");
+      assert.equal(withTurn?.turnIndex, 7);
+      assert.equal(noTurn?.turnIndex, null);
+    });
+
     it("stores checkpoint_epoch", () => {
       appendRawTranscript(db, makeRow({ checkpointEpoch: "ep-42" }));
       const rows = listRawTranscriptRange(db, "sess-1", 0, 999999);

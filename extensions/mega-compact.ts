@@ -37,65 +37,81 @@ import { registerDashboardCommands } from "./mega-dashboard-cmds.js";
 import { registerConflictCommands } from "./mega-conflict-cmds.js";
 import { registerDbCommands } from "./mega-db-cmds.js";
 import { registerGameCommands } from "./mega-game-cmds.js";
+import { registerMetricsCommands } from "./mega-metrics-cmds.js";
+import { registerTopicsCommands } from "./mega-topics-cmds.js";
 
 export default function (pi: ExtensionAPI) {
-  const config = loadConfig();
-  // S38.9: preflight env validation — check for obviously invalid values at startup.
-  // Non-fatal: log warnings and fall back to defaults.
-  if (config.autoRetryTransientMax < 0) {
-    console.warn('[mega-compact] MEGACOMPACT_AUTO_RETRY_TRANSIENT_MAX must be >= 0; using default 5');
-    config.autoRetryTransientMax = 5;
-  }
-  if (config.autoRetryPermanentMax < 0) {
-    console.warn('[mega-compact] MEGACOMPACT_AUTO_RETRY_PERMANENT_MAX must be >= 0; using default 1');
-    config.autoRetryPermanentMax = 1;
-  }
-  if (config.maxConsecutiveErrors < 1) {
-    console.warn('[mega-compact] MEGACOMPACT_MAX_CONSECUTIVE_ERRORS must be >= 1; using default 10');
-    config.maxConsecutiveErrors = 10;
-  }
-  // R2: session-global cap validation — 0 disables (valid), negative is invalid.
-  if (config.errorRetrySessionMax < 0) {
-    console.warn('[mega-compact] MEGACOMPACT_ERROR_RETRY_SESSION_MAX must be >= 0; using default 3');
-    config.errorRetrySessionMax = 3;
-  }
-  // R1: backoff base must be >= 0 (0 means no gating, useful for tests).
-  if (config.errorRetryBackoffMs < 0) {
-    console.warn('[mega-compact] MEGACOMPACT_ERROR_RETRY_BACKOFF_MS must be >= 0; using default 5000');
-    config.errorRetryBackoffMs = 5000;
-  }
-  // R3: repeat threshold must be >= 1.
-  if (config.poisonedContextRepeatThreshold < 1) {
-    console.warn('[mega-compact] MEGACOMPACT_POISONED_REPEAT_THRESHOLD must be >= 1; using default 3');
-    config.poisonedContextRepeatThreshold = 3;
-  }
-  const runtime = new MegaRuntime(config);
-  registerEventHandlers(pi, runtime, config);
-  registerCommands(pi, runtime, config);
-  registerDashboardCommands(pi, runtime);
-  registerConflictCommands(pi, runtime);
-  registerDbCommands(pi, runtime);
-  registerGameCommands(pi, runtime);
-  // v0.8.5 (audit P3): release the fs.watch game-state watcher handle on
-  // session teardown so it doesn't linger across reloads. pi exposes no
-  // extension-unload event (the factory return value is ignored and there is no
-  // "shutdown" event on the ExtensionAPI), so dispose() is wired to the
-  // session_shutdown lifecycle event — the closest valid teardown signal.
-  // dispose() is idempotent, and the next snapshot() re-opens the watcher
-  // lazily via bindRepo() → ensureGameStateWatcher(), so there is no permanent
-  // leak and no per-session fd accumulation.
-  // The PGlite indexes (vectorIndex / memoryIndex) are lazily opened module
-  // singletons. closeVectorIndex()/closeMemoryIndex() existed but had no
-  // non-test callers, so a session left both open: PGlite is WASM Postgres and
-  // its handles keep node's event loop alive, so `pi -p` produced its answer
-  // and then hung until killed rather than exiting. dispose() only released the
-  // fs.watch handle and the perf interval, neither of which was the culprit
-  // (the interval is unref'd).
-  //
-  // Both closes are idempotent and safe when the index was never opened, and
-  // the next initVectorIndex()/initMemoryIndex() re-opens lazily.
-  pi.on("session_shutdown", async () => {
-    runtime.dispose();
-    await Promise.all([closeVectorIndex(), closeMemoryIndex()]);
-  });
+	const config = loadConfig();
+	// S38.9: preflight env validation — check for obviously invalid values at startup.
+	// Non-fatal: log warnings and fall back to defaults.
+	if (config.autoRetryTransientMax < 0) {
+		console.warn(
+			"[mega-compact] MEGACOMPACT_AUTO_RETRY_TRANSIENT_MAX must be >= 0; using default 5",
+		);
+		config.autoRetryTransientMax = 5;
+	}
+	if (config.autoRetryPermanentMax < 0) {
+		console.warn(
+			"[mega-compact] MEGACOMPACT_AUTO_RETRY_PERMANENT_MAX must be >= 0; using default 1",
+		);
+		config.autoRetryPermanentMax = 1;
+	}
+	if (config.maxConsecutiveErrors < 1) {
+		console.warn(
+			"[mega-compact] MEGACOMPACT_MAX_CONSECUTIVE_ERRORS must be >= 1; using default 10",
+		);
+		config.maxConsecutiveErrors = 10;
+	}
+	// R2: session-global cap validation — 0 disables (valid), negative is invalid.
+	if (config.errorRetrySessionMax < 0) {
+		console.warn(
+			"[mega-compact] MEGACOMPACT_ERROR_RETRY_SESSION_MAX must be >= 0; using default 3",
+		);
+		config.errorRetrySessionMax = 3;
+	}
+	// R1: backoff base must be >= 0 (0 means no gating, useful for tests).
+	if (config.errorRetryBackoffMs < 0) {
+		console.warn(
+			"[mega-compact] MEGACOMPACT_ERROR_RETRY_BACKOFF_MS must be >= 0; using default 5000",
+		);
+		config.errorRetryBackoffMs = 5000;
+	}
+	// R3: repeat threshold must be >= 1.
+	if (config.poisonedContextRepeatThreshold < 1) {
+		console.warn(
+			"[mega-compact] MEGACOMPACT_POISONED_REPEAT_THRESHOLD must be >= 1; using default 3",
+		);
+		config.poisonedContextRepeatThreshold = 3;
+	}
+	const runtime = new MegaRuntime(config);
+	registerEventHandlers(pi, runtime, config);
+	registerCommands(pi, runtime, config);
+	registerDashboardCommands(pi, runtime);
+	registerConflictCommands(pi, runtime);
+	registerDbCommands(pi, runtime);
+	registerMetricsCommands(pi, runtime, config);
+	registerGameCommands(pi, runtime);
+	registerTopicsCommands(pi, runtime, config);
+	// v0.8.5 (audit P3): release the fs.watch game-state watcher handle on
+	// session teardown so it doesn't linger across reloads. pi exposes no
+	// extension-unload event (the factory return value is ignored and there is no
+	// "shutdown" event on the ExtensionAPI), so dispose() is wired to the
+	// session_shutdown lifecycle event — the closest valid teardown signal.
+	// dispose() is idempotent, and the next snapshot() re-opens the watcher
+	// lazily via bindRepo() → ensureGameStateWatcher(), so there is no permanent
+	// leak and no per-session fd accumulation.
+	// The PGlite indexes (vectorIndex / memoryIndex) are lazily opened module
+	// singletons. closeVectorIndex()/closeMemoryIndex() existed but had no
+	// non-test callers, so a session left both open: PGlite is WASM Postgres and
+	// its handles keep node's event loop alive, so `pi -p` produced its answer
+	// and then hung until killed rather than exiting. dispose() only released the
+	// fs.watch handle and the perf interval, neither of which was the culprit
+	// (the interval is unref'd).
+	//
+	// Both closes are idempotent and safe when the index was never opened, and
+	// the next initVectorIndex()/initMemoryIndex() re-opens lazily.
+	pi.on("session_shutdown", async () => {
+		runtime.dispose();
+		await Promise.all([closeVectorIndex(), closeMemoryIndex()]);
+	});
 }

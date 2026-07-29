@@ -22,6 +22,9 @@ export interface RawTranscriptRow {
   /** ORIGINAL message timestamp captured at append time (NOT a served ts). */
   messageTimestamp: number | null;
   checkpointEpoch: string;
+  /** S50: the per-session turn that produced this message (runtime.currentTurn).
+   *  Null on rows written before S50 or when the writer omits it (back-compat). */
+  turnIndex?: number | null;
 }
 
 /** One checkpoint-epoch bookkeeping row (informational registry). */
@@ -46,6 +49,7 @@ interface RawTranscriptDBRow {
   tool_name: string | null;
   message_timestamp: number | null;
   checkpoint_epoch: string;
+  turn_index: number | null;
 }
 
 /** DB row shape for checkpoint_epochs (snake_case column names). */
@@ -71,6 +75,7 @@ function rowToRawTranscript(row: RawTranscriptDBRow): RawTranscriptRow {
     messageTimestamp:
       row.message_timestamp == null ? null : Number(row.message_timestamp),
     checkpointEpoch: row.checkpoint_epoch,
+    turnIndex: row.turn_index == null ? null : Number(row.turn_index),
   };
 }
 
@@ -99,11 +104,11 @@ export function appendRawTranscript(db: DatabaseSync, row: RawTranscriptRow): vo
   withTx(db, () => {
     db.prepare(
       `INSERT OR IGNORE INTO raw_transcript
-        (content_hash, session_id, seq, role, content_bytes, tool_name, message_timestamp, checkpoint_epoch)
+        (content_hash, session_id, seq, role, content_bytes, tool_name, message_timestamp, checkpoint_epoch, turn_index)
        VALUES (
          @content_hash, @session_id,
          COALESCE((SELECT MAX(seq) FROM raw_transcript WHERE session_id = @session_id), 0) + 1,
-         @role, @content_bytes, @tool_name, @message_timestamp, @checkpoint_epoch
+         @role, @content_bytes, @tool_name, @message_timestamp, @checkpoint_epoch, @turn_index
        )`,
     ).run({
       "@content_hash": row.contentHash,
@@ -113,6 +118,7 @@ export function appendRawTranscript(db: DatabaseSync, row: RawTranscriptRow): vo
       "@tool_name": row.toolName,
       "@message_timestamp": row.messageTimestamp,
       "@checkpoint_epoch": row.checkpointEpoch,
+      "@turn_index": row.turnIndex ?? null,
     });
   });
 }
@@ -129,7 +135,7 @@ export function listRawTranscriptRange(
 ): RawTranscriptRow[] {
   const rows = db
     .prepare(
-      `SELECT content_hash, session_id, seq, role, content_bytes, tool_name, message_timestamp, checkpoint_epoch
+      `SELECT content_hash, session_id, seq, role, content_bytes, tool_name, message_timestamp, checkpoint_epoch, turn_index
        FROM raw_transcript
        WHERE session_id = @session_id AND seq >= @from_seq AND seq <= @to_seq
        ORDER BY seq ASC`,

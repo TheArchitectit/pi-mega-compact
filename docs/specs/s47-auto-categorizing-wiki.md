@@ -4,7 +4,7 @@
 **Parent plan:** Memory RAG System (borrowed from radical-memory-mcp / R.A.D.1.C.A.1)
 **Depends on:** S40 (importance scoring), S42 (RAPTOR multi-level retrieval), S46 (visual memory map), `src/store/sqlite.ts`, `extensions/dashboard-server/server.ts`
 **Priority:** P2
-**Status:** Draft → implement-ready
+**Status:** SUPERSEDED by S51 (shipped) — the auto-categorizing wiki was implemented as S51 (k-means + TF-IDF over real embeddings). This earlier draft is retained for design history.
 **Target version:** v0.9.x
 
 ---
@@ -63,7 +63,8 @@ Conversation memories accumulate as a flat list in the `memories` and `context_c
 
 ## SCOPE
 
-### IN SCOPE (new files):
+### IN SCOPE (new files)
+
 - `src/topics/cluster.ts` — k-means + silhouette/elbow selection over real embeddings
 - `src/topics/labels.ts` — TF-IDF term extraction + cluster labeling
 - `src/topics/types.ts` — `Topic`, `TopicAssignment`, `ClusterModel` types
@@ -77,14 +78,16 @@ Conversation memories accumulate as a flat list in the `memories` and `context_c
 - `extensions/dashboard-client/src/components/WikiPage.tsx` — wiki page renderer
 - `extensions/dashboard-client/src/components/TopicTree.tsx` — topic hierarchy browser
 
-### IN SCOPE (modified files):
+### IN SCOPE (modified files)
+
 - `extensions/mega-events/compact-handlers.ts` — trigger wiki rebuild on the Nth compaction count
 - `extensions/dashboard-server/server.ts` — add wiki API endpoints
 - `extensions/dashboard-client/src/App.tsx` — add "Wiki" tab
 - `src/store/sqlite.ts` — add barrel re-export for topics submodule
 - `src/config/dedup.ts` — add wiki config flags
 
-### OUT OF SCOPE:
+### OUT OF SCOPE
+
 - Real-time topic updates — topics are assigned at rebuild time (every Nth compaction), not refreshed per-write.
 - User-editable topics — wiki pages are auto-generated; manual editing is a future feature.
 - Full-text search within wiki — the wiki is browsed by topic tree; search is via existing `/recall-context` endpoint.

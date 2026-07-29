@@ -23,6 +23,14 @@ import { autoCompactCheck } from "../../src/compact.js";
 import { estimateSessionTokens } from "../../src/tokens.js";
 import type { MegaRuntime } from "../mega-runtime.js";
 import { runCompact, piCompactWouldNoop } from "../mega-pipeline.js";
+import { stampTurnsEpochFor } from "../mega-turn-store.js";
+import { TurnsConfig } from "../../src/config/turns.js";
+import { openTurnStore } from "../../src/store/turns/connection.js";
+import {
+	buildTopicModel,
+	createTopicStore,
+	bumpWikiCompactCounter,
+} from "../../src/topics/index.js";
 import { computeLiveTrimCut, liveTrimSummaryMessage } from "../mega-trim.js";
 import {
 	pressureFromPct,
@@ -71,6 +79,7 @@ function toRawTranscriptRow(
 	msg: AgentMessage,
 	sessionId: string,
 	epochId: string,
+	currentTurn?: number,
 ): RawTranscriptRow | null {
 	// Narrow to Message union (has content + timestamp).
 	const m = msg as {
@@ -101,6 +110,9 @@ function toRawTranscriptRow(
 		toolName: m.toolName ?? null,
 		messageTimestamp: m.timestamp ?? null,
 		checkpointEpoch: epochId,
+		// S50: label the row with the turn that produced it (per-turn dedup /
+		// compression-by-turn metrics). Null when the writer omits it (back-compat).
+		turnIndex: currentTurn ?? null,
 	};
 }
 
@@ -162,7 +174,7 @@ export function registerContextHandler(
 				const db = openStore(runtime.currentStateDir);
 				const epochId = epochIdFor(runtime.rt.sessionId);
 				for (const msg of messages) {
-					const raw = toRawTranscriptRow(msg, runtime.rt.sessionId, epochId);
+					const raw = toRawTranscriptRow(msg, runtime.rt.sessionId, epochId, runtime.currentTurn);
 					if (raw) appendRawTranscript(db, raw);
 				}
 			} catch (e) {
@@ -279,6 +291,43 @@ export function registerContextHandler(
 					createdAt: Date.now(),
 				};
 				writeCheckpointEpoch(db, epoch);
+				// S50B: link this session's turns to the epoch that just compacted
+				// them (compression-by-conversation-epoch metrics). Isolated-store
+				// only; best-effort + non-fatal.
+				try {
+					stampTurnsEpochFor(config, runtime.rt.sessionId, epoch.epochId, runtime.currentStateDir);
+				} catch {
+					/* non-fatal: epoch stamping never breaks compaction */
+				}
+				// S51B: auto-categorizing wiki rebuild — every Nth compaction, derived
+				// from real context_chunks embeddings. Isolated-store only, gated on
+				// AUTO_WIKI_ENABLED; best-effort + non-fatal (never breaks compaction).
+				try {
+					if (config.autoWikiEnabled && config.turnsDbEnabled) {
+						const every = Math.max(1, TurnsConfig.WIKI_REBUILD_EVERY_N_COMPACTS);
+						const tdb = openTurnStore(runtime.currentStateDir);
+						const n = bumpWikiCompactCounter(tdb);
+						if (n % every === 0) {
+							const model = buildTopicModel(db, {
+								kRange: [TurnsConfig.WIKI_K_MIN, TurnsConfig.WIKI_K_MAX],
+								labelTopTerms: TurnsConfig.WIKI_LABEL_TOP_TERMS,
+								restarts: 5,
+								seed: 0x9e3779b9,
+							});
+							createTopicStore(runtime.currentStateDir).replaceTopicModel(model);
+							runtime.logger.info("wiki_rebuild", {
+								clusterCount: model.k,
+								totalChunks: model.totalChunks,
+								method: "kmeans+tfidf",
+								criterion: model.criterion,
+								silhouetteScore: model.silhouetteScore,
+								uncalibrated: false,
+							});
+						}
+					}
+				} catch (wikiErr) {
+					runtime.logger.warn("wiki_rebuild_failed", { error: String(wikiErr) });
+				}
 				// S27 Task 6: Fire-and-forget dedup pipeline.
 				// Deduplicates raw_transcript rows for the compacted range.
 				try {

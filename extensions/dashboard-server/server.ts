@@ -34,6 +34,8 @@ import {
 	handlePerf,
 	handleAchievements,
 	handleSessions,
+	handleTopics,
+	handleTurns,
 	handleStatic,
 } from "./routes.js";
 
@@ -201,7 +203,7 @@ export async function launchDashboardServer(
 			res.setHeader("Access-Control-Allow-Origin", origin);
 			res.setHeader("Vary", "Origin");
 		}
-		res.setHeader("Access-Control-Allow-Methods", "GET, PUT, OPTIONS");
+		res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
 		res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
 		if (req.method === "OPTIONS") {
@@ -219,6 +221,8 @@ export async function launchDashboardServer(
 		if (handlePerf(req, res, ctx)) return;
 		if (handleAchievements(req, res, ctx)) return;
 		if (handleSessions(req, res, ctx)) return;
+		if (handleTopics(req, res, ctx)) return;
+		if (handleTurns(req, res, ctx)) return;
 		handleStatic(req, res, ctx);
 	});
 

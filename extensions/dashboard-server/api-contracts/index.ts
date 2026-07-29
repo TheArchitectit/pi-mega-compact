@@ -9,160 +9,180 @@
 
 // Core types
 export type {
-  HttpMethod,
-  EndpointDef,
-  SseCompactStart,
-  SseCompactEnd,
-  SseCompactTrigger,
-  SseCompactSkip,
-  SseTierChanged,
-  SseModelChanged,
-  SsePressureLifted,
-  SseCheckpointPersisted,
-  SseRecallInject,
-  SseAnchorsUpdated,
-  SseConfigUpdated,
-  SseConfigPreset,
-  SseCrewPresenceChanged,
-  SseCrewTurnChanged,
-  SseCrewBanditChosen,
-  SseSessionSample,
-} from './core.js';
+	HttpMethod,
+	EndpointDef,
+	SseCompactStart,
+	SseCompactEnd,
+	SseCompactTrigger,
+	SseCompactSkip,
+	SseTierChanged,
+	SseModelChanged,
+	SsePressureLifted,
+	SseCheckpointPersisted,
+	SseRecallInject,
+	SseAnchorsUpdated,
+	SseConfigUpdated,
+	SseConfigPreset,
+	SseCrewPresenceChanged,
+	SseCrewTurnChanged,
+	SseCrewBanditChosen,
+	SseSessionSample,
+} from "./core.js";
 
 // Snapshot / store / compression / session
 export type {
-  SnapshotResponse,
-  TriggerResponse,
-  CompressionTotalsResponse,
-  CompactHistoryEntry,
-  CompactionRequest,
-  CompactionResponse,
-} from './snapshot.js';
+	SnapshotResponse,
+	TriggerResponse,
+	CompressionTotalsResponse,
+	CompactHistoryEntry,
+	CompactionRequest,
+	CompactionResponse,
+} from "./snapshot.js";
 
 // Multi-repo index and repo management
 export type {
-  RepoListItem,
-  RepoSnapshotEntry,
-  RepoSnapshotMap,
-  IndexesIndexRow,
-  IndexesSummaryResponse,
-  IndexesDiffEntry,
-  DiffRequest,
-  SnapshotLike,
-  DiffResponse,
-  UpdateRepoConfigRequest,
-} from './multi-repo.js';
+	RepoListItem,
+	RepoSnapshotEntry,
+	RepoSnapshotMap,
+	IndexesIndexRow,
+	IndexesSummaryResponse,
+	IndexesDiffEntry,
+	DiffRequest,
+	SnapshotLike,
+	DiffResponse,
+	UpdateRepoConfigRequest,
+} from "./multi-repo.js";
 
 // Game mode and mega-game
 export type {
-  GameConfig,
-  GameStateResponse,
-  GameRitualStage,
-  SseGameRitualStart,
-  SseGameRitualStage,
-  SseGameRitualEnd,
-  SseGameModeChanged,
-  SseGameRender,
-} from './game.js';
+	GameConfig,
+	GameStateResponse,
+	GameRitualStage,
+	SseGameRitualStart,
+	SseGameRitualStage,
+	SseGameRitualEnd,
+	SseGameModeChanged,
+	SseGameRender,
+} from "./game.js";
 
 // Infrastructure, diagnostics, and monitoring
 export type {
-  InfraHealthResponse,
-  InfraPerfSampleResponse,
-  InfraRateLimitStatus,
-  InfraRateLimitResponse,
-  ContextLevelState,
-  TierOverrideState,
-  FallbackState,
-  RepeatInjectionState,
-  SupersedeGatingState,
-  MinHashBandState,
-} from './infrastructure.js';
+	InfraHealthResponse,
+	InfraPerfSampleResponse,
+	InfraRateLimitStatus,
+	InfraRateLimitResponse,
+	ContextLevelState,
+	TierOverrideState,
+	FallbackState,
+	RepeatInjectionState,
+	SupersedeGatingState,
+	MinHashBandState,
+} from "./infrastructure.js";
 
 // Composite SSE event union (domain imports for type composition)
 import type {
-  SseGameRitualStart,
-  SseGameRitualStage,
-  SseGameRitualEnd,
-  SseGameModeChanged,
-  SseGameRender,
-} from './game.js';
+	SseGameRitualStart,
+	SseGameRitualStage,
+	SseGameRitualEnd,
+	SseGameModeChanged,
+	SseGameRender,
+} from "./game.js";
 
 import type {
-  SseCompactStart,
-  SseCompactEnd,
-  SseCompactTrigger,
-  SseCompactSkip,
-  SseTierChanged,
-  SseModelChanged,
-  SsePressureLifted,
-  SseCheckpointPersisted,
-  SseRecallInject,
-  SseAnchorsUpdated,
-  SseConfigUpdated,
-  SseConfigPreset,
-  SseCrewPresenceChanged,
-  SseCrewTurnChanged,
-  SseCrewBanditChosen,
-  SseSessionSample,
-} from './core.js';
+	SseCompactStart,
+	SseCompactEnd,
+	SseCompactTrigger,
+	SseCompactSkip,
+	SseTierChanged,
+	SseModelChanged,
+	SsePressureLifted,
+	SseCheckpointPersisted,
+	SseRecallInject,
+	SseAnchorsUpdated,
+	SseConfigUpdated,
+	SseConfigPreset,
+	SseCrewPresenceChanged,
+	SseCrewTurnChanged,
+	SseCrewBanditChosen,
+	SseSessionSample,
+} from "./core.js";
 
 // Endpoints registry (Sprint A1)
 export type {
-  VersionResponse,
-  IndexSummary,
-  IndexFallbackResponse,
-  ReposQuery,
-  ReposResponse,
-  SummaryResponse,
-  DriftSeverity,
-  DriftSignal,
-  RepoDrift,
-  DriftReportResponse,
-  ServerEntry,
-  ServersResponse,
-  PerfPercentile,
-  PerfAverage,
-  PerfLatest,
-  PerfCacheHit,
-  PerfDiag,
-  PerfQuery,
-  PerfResponse,
-  GameScoreRow,
-  GameScoresQuery,
-  AchievementRow,
-  GameStatePatch,
-  ActiveSession,
-  SessionsResponse,
-  SessionDataPoint,
-  SessionSeries,
-  SessionTimeseriesQuery,
-  SessionTimeseriesResponse,
-  SseEndpointDef,
-} from './endpoints.js';
+	VersionResponse,
+	IndexSummary,
+	IndexFallbackResponse,
+	ReposQuery,
+	ReposResponse,
+	SummaryResponse,
+	DriftSeverity,
+	DriftSignal,
+	RepoDrift,
+	DriftReportResponse,
+	ServerEntry,
+	ServersResponse,
+	PerfPercentile,
+	PerfAverage,
+	PerfLatest,
+	PerfCacheHit,
+	PerfDiag,
+	PerfQuery,
+	PerfResponse,
+	GameScoreRow,
+	GameScoresQuery,
+	AchievementRow,
+	GameStatePatch,
+	ActiveSession,
+	SessionsResponse,
+	SessionDataPoint,
+	SessionSeries,
+	SessionTimeseriesQuery,
+	SessionTimeseriesResponse,
+	SseEndpointDef,
+	TopicRow,
+	TopicAssignmentRow,
+	TopicsResponse,
+	TopicDetailResponse,
+} from "./endpoints.js";
 
-export { ENDPOINTS } from './endpoints.js';
+export { ENDPOINTS } from "./endpoints.js";
 
 /** Union of all SSE event types the client may receive. */
 export type SseEvent =
-  | SseCompactStart
-  | SseCompactEnd
-  | SseCompactTrigger
-  | SseCompactSkip
-  | SseTierChanged
-  | SseModelChanged
-  | SsePressureLifted
-  | SseCheckpointPersisted
-  | SseRecallInject
-  | SseAnchorsUpdated
-  | SseConfigUpdated
-  | SseConfigPreset
-  | SseCrewPresenceChanged
-  | SseCrewTurnChanged
-  | SseCrewBanditChosen
-  | SseGameRitualStart
-  | SseGameRitualStage
-  | SseGameRitualEnd
-  | SseGameModeChanged
-  | SseGameRender
-  | SseSessionSample;
+	| SseCompactStart
+	| SseCompactEnd
+	| SseCompactTrigger
+	| SseCompactSkip
+	| SseTierChanged
+	| SseModelChanged
+	| SsePressureLifted
+	| SseCheckpointPersisted
+	| SseRecallInject
+	| SseAnchorsUpdated
+	| SseConfigUpdated
+	| SseConfigPreset
+	| SseCrewPresenceChanged
+	| SseCrewTurnChanged
+	| SseCrewBanditChosen
+	| SseGameRitualStart
+	| SseGameRitualStage
+	| SseGameRitualEnd
+	| SseGameModeChanged
+	| SseGameRender
+	| SseSessionSample;
+
+// S52 — turn-by-turn memory tracking + recall + rewind
+export type {
+	TurnRow,
+	RecallHit,
+	ConversationSummary,
+	TurnsResponse,
+	ConversationTurnsResponse,
+	RewindIntentsResponse,
+	ForkRequest,
+	ForkResponse,
+	PostIntentRequest,
+	PruneRequest,
+	PruneTurnsResponse,
+	TopicMemoriesResponse,
+} from "./turns.js";

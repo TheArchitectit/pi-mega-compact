@@ -5,8 +5,8 @@
  * related type definitions that previously lived in endpoints.ts.
  */
 
-import type { GameConfig } from './game.js';
-import type { SseEvent } from './index.js';
+import type { GameConfig } from "./game.js";
+import type { SseEvent } from "./index.js";
 
 // ─── Game Score & Achievement Types ─────────────────────────────────────────
 
@@ -14,42 +14,42 @@ import type { SseEvent } from './index.js';
  * A leaderboard row for GET /api/game-scores. One row per repo per metric.
  */
 export interface GameScoreRow {
-  /** Absolute path to the repo root. */
-  readonly repo_root: string;
-  /** Score value (interpretation depends on the metric). */
-  readonly value: number;
-  /** Unix timestamp (milliseconds) when the score was recorded. */
-  readonly ts: number;
-  /** Optional metadata associated with the score event. */
-  readonly meta: unknown;
+	/** Absolute path to the repo root. */
+	readonly repo_root: string;
+	/** Score value (interpretation depends on the metric). */
+	readonly value: number;
+	/** Unix timestamp (milliseconds) when the score was recorded. */
+	readonly ts: number;
+	/** Optional metadata associated with the score event. */
+	readonly meta: unknown;
 }
 
 /**
  * Query parameters for GET /api/game-scores.
  */
 export interface GameScoresQuery {
-  /** Leaderboard metric (must be one of: cache, dedupe, turns, repos, mega_cache). Optional. */
-  readonly metric?: string;
-  /** Maximum number of rows to return (default: 10, clamped to [1, 100]). Optional. */
-  readonly limit?: number;
+	/** Leaderboard metric (must be one of: cache, dedupe, turns, repos, mega_cache). Optional. */
+	readonly metric?: string;
+	/** Maximum number of rows to return (default: 10, clamped to [1, 100]). Optional. */
+	readonly limit?: number;
 }
 
 /**
  * An achievement row for GET /api/achievements. One row per seeded achievement.
  */
 export interface AchievementRow {
-  /** Achievement identifier. */
-  readonly id: string;
-  /** Display title of the achievement. */
-  readonly title: string;
-  /** Description of the unlock condition. */
-  readonly description: string;
-  /** Whether the achievement is hidden (1 = hidden, 0 = visible). */
-  readonly hidden: number;
-  /** Icon identifier, or null if no icon. */
-  readonly icon: string | null;
-  /** Unix timestamp (seconds) when unlocked, or null if not yet unlocked. */
-  readonly unlocked_at: number | null;
+	/** Achievement identifier. */
+	readonly id: string;
+	/** Display title of the achievement. */
+	readonly title: string;
+	/** Description of the unlock condition. */
+	readonly description: string;
+	/** Whether the achievement is hidden (1 = hidden, 0 = visible). */
+	readonly hidden: number;
+	/** Icon identifier, or null if no icon. */
+	readonly icon: string | null;
+	/** Unix timestamp (seconds) when unlocked, or null if not yet unlocked. */
+	readonly unlocked_at: number | null;
 }
 
 // ─── Sessions Memory Graph (S39) ─────────────────────────────────────────
@@ -59,26 +59,26 @@ export interface AchievementRow {
  * live pi process with its latest token usage and heartbeat.
  */
 export interface ActiveSession {
-  /** OS process ID of the pi process. */
-  readonly pid: number;
-  /** Session identifier (normalized). */
-  readonly sessionId: string;
-  /** Absolute path to the repo root, or null if not in a git repo. */
-  readonly repoRoot: string | null;
-  /** Display name (repo basename or state dir basename). */
-  readonly displayName: string;
-  /** Model name, or null if not captured. Available from repo_registry join. */
-  readonly model: string | null;
-  /** Latest context token count, or null if no sample yet. */
-  readonly tokens: number | null;
-  /** Latest context pressure percentage (0–100), or null. */
-  readonly percent: number | null;
-  /** Context window size in tokens. */
-  readonly ctxWindow: number;
-  /** Unix timestamp (ms) of the last heartbeat. */
-  readonly lastSeen: number;
-  /** State directory of the session. */
-  readonly stateDir: string | null;
+	/** OS process ID of the pi process. */
+	readonly pid: number;
+	/** Session identifier (normalized). */
+	readonly sessionId: string;
+	/** Absolute path to the repo root, or null if not in a git repo. */
+	readonly repoRoot: string | null;
+	/** Display name (repo basename or state dir basename). */
+	readonly displayName: string;
+	/** Model name, or null if not captured. Available from repo_registry join. */
+	readonly model: string | null;
+	/** Latest context token count, or null if no sample yet. */
+	readonly tokens: number | null;
+	/** Latest context pressure percentage (0–100), or null. */
+	readonly percent: number | null;
+	/** Context window size in tokens. */
+	readonly ctxWindow: number;
+	/** Unix timestamp (ms) of the last heartbeat. */
+	readonly lastSeen: number;
+	/** State directory of the session. */
+	readonly stateDir: string | null;
 }
 
 /**
@@ -86,34 +86,34 @@ export interface ActiveSession {
  * token usage after pruning stale entries.
  */
 export interface SessionsResponse {
-  /** ISO timestamp when the response was generated. */
-  readonly updatedAt: string;
-  /** Number of stale sessions pruned during this request. */
-  readonly pruned: number;
-  /** Array of active sessions, sorted by lastSeen descending. */
-  readonly sessions: ActiveSession[];
+	/** ISO timestamp when the response was generated. */
+	readonly updatedAt: string;
+	/** Number of stale sessions pruned during this request. */
+	readonly pruned: number;
+	/** Array of active sessions, sorted by lastSeen descending. */
+	readonly sessions: ActiveSession[];
 }
 
 /** A single time-series data point for a session. */
 export interface SessionDataPoint {
-  /** Unix timestamp (ms). */
-  readonly ts: number;
-  /** Token count at this sample. */
-  readonly tokens: number;
-  /** Context pressure percentage (0–100). */
-  readonly percent: number;
+	/** Unix timestamp (ms). */
+	readonly ts: number;
+	/** Token count at this sample. */
+	readonly tokens: number;
+	/** Context pressure percentage (0–100). */
+	readonly percent: number;
 }
 
 /** A recharts-ready per-session series with a stable color. */
 export interface SessionSeries {
-  /** Session identifier. */
-  readonly sessionId: string;
-  /** Short display label for the legend. */
-  readonly label: string;
-  /** Stable hex color string (e.g. "#60a5fa"). */
-  readonly color: string;
-  /** Data points ordered by timestamp ascending. */
-  readonly data: SessionDataPoint[];
+	/** Session identifier. */
+	readonly sessionId: string;
+	/** Short display label for the legend. */
+	readonly label: string;
+	/** Stable hex color string (e.g. "#60a5fa"). */
+	readonly color: string;
+	/** Data points ordered by timestamp ascending. */
+	readonly data: SessionDataPoint[];
 }
 
 /**
@@ -121,8 +121,8 @@ export interface SessionSeries {
  * controls the rolling window size.
  */
 export interface SessionTimeseriesQuery {
-  /** Rolling window size in minutes (default: 30, clamped to [1, 1440]). */
-  readonly minutes?: number;
+	/** Rolling window size in minutes (default: 30, clamped to [1, 1440]). */
+	readonly minutes?: number;
 }
 
 /**
@@ -130,14 +130,14 @@ export interface SessionTimeseriesQuery {
  * per-session series + a totals array.
  */
 export interface SessionTimeseriesResponse {
-  /** ISO timestamp when the response was generated. */
-  readonly updatedAt: string;
-  /** Rolling window size in minutes. */
-  readonly windowMinutes: number;
-  /** Per-session series with stable colors. */
-  readonly series: SessionSeries[];
-  /** Totals (sum of all sessions) per timestamp. */
-  readonly totals: { readonly ts: number; readonly tokens: number }[];
+	/** ISO timestamp when the response was generated. */
+	readonly updatedAt: string;
+	/** Rolling window size in minutes. */
+	readonly windowMinutes: number;
+	/** Per-session series with stable colors. */
+	readonly series: SessionSeries[];
+	/** Totals (sum of all sessions) per timestamp. */
+	readonly totals: { readonly ts: number; readonly tokens: number }[];
 }
 
 // ─── Game State Patch (PUT request body) ────────────────────────────────────
@@ -148,6 +148,59 @@ export interface SessionTimeseriesResponse {
  */
 export type GameStatePatch = Partial<GameConfig>;
 
+// ─── Auto-Categorizing Wiki Topics (S51) ──────────────────────────────────
+
+/** A single topic in the GET /api/topics response. */
+export interface TopicRow {
+	/** Unique topic identifier. */
+	readonly id: string;
+	/** TF-IDF label (top discriminative terms). */
+	readonly label: string;
+	/** Number of memories assigned to this topic. */
+	readonly memoryCount: number;
+	/** Epoch ms when the topic was last updated. */
+	readonly lastUpdated: number;
+	/** Top TF-IDF term scores for this topic. */
+	readonly termScore: ReadonlyArray<{
+		readonly term: string;
+		readonly score: number;
+	}>;
+}
+
+/** A single memory-to-topic assignment. */
+export interface TopicAssignmentRow {
+	/** Memory (context_chunks) id. */
+	readonly memoryId: string;
+	/** Topic id the memory belongs to. */
+	readonly topicId: string;
+	/** Confidence score [0,1]. */
+	readonly confidence: number;
+}
+
+/** Response for GET /api/topics. */
+export interface TopicsResponse {
+	/** ISO timestamp when the response was generated. */
+	readonly updatedAt: string;
+	/** Total number of topics. */
+	readonly totalTopics: number;
+	/** Total number of assigned memories. */
+	readonly totalAssigned: number;
+	/** Epoch ms when the topic model was last rebuilt, or null. */
+	readonly lastRebuildAt: number | null;
+	/** Topics sorted by memory count descending. */
+	readonly topics: TopicRow[];
+}
+
+/** Response for GET /api/topics/:id. */
+export interface TopicDetailResponse {
+	/** Topic metadata. */
+	readonly topic: TopicRow;
+	/** Assignments for this topic, sorted by confidence DESC. */
+	readonly assignments: TopicAssignmentRow[];
+	/** Related topics (co-occurrence). */
+	readonly relatedTopics: TopicRow[];
+}
+
 // ─── SSE Endpoint Definition ────────────────────────────────────────────────
 
 /**
@@ -157,16 +210,16 @@ export type GameStatePatch = Partial<GameConfig>;
  * @template Data - The SSE event data type streamed by this endpoint.
  */
 export interface SseEndpointDef<Data extends SseEvent = SseEvent> {
-  /** Discriminator: always 'sse' for streaming endpoints. */
-  readonly type: 'sse';
-  /** HTTP method (always 'GET' for SSE). */
-  readonly method: 'GET';
-  /** URL path of the endpoint. */
-  readonly path: string;
-  /** Human-readable description of the endpoint. */
-  readonly description: string;
-  /** SSE event name sent with each data frame. */
-  readonly event: string;
-  /** The SSE event data type streamed by this endpoint. */
-  readonly dataType?: Data;
+	/** Discriminator: always 'sse' for streaming endpoints. */
+	readonly type: "sse";
+	/** HTTP method (always 'GET' for SSE). */
+	readonly method: "GET";
+	/** URL path of the endpoint. */
+	readonly path: string;
+	/** Human-readable description of the endpoint. */
+	readonly description: string;
+	/** SSE event name sent with each data frame. */
+	readonly event: string;
+	/** The SSE event data type streamed by this endpoint. */
+	readonly dataType?: Data;
 }

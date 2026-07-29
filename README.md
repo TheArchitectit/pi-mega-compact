@@ -8,12 +8,13 @@ A local context compressor for the [pi coding agent](https://github.com/earendil
 - **Two-layer compaction** — every LLM call sees a live trim of the context window, and every trim is checkpointed to SQLite so a crash or a `/clear` never loses the work.
 - **Semantic dedup, three layers deep** — exact hash → MinHash/LSH → cosine over trigram embeddings. You rarely notice it; that's the point.
 - **RAPTOR memory hierarchy** — decisions you made an hour ago don't scroll off; they get packed up as hierarchical checkpoints and re-inlined the moment your next session asks for them. Multi-level retrieval (leaves + summary clusters) is on by default and tunes itself off the build history.
-- **Per-turn tracking.** Every turn, checkpoint, and recall hit lands as a row in the local DB — `conversation_branches`, `turns`, `turn_recall`. When things go wrong (or when you want to fork a detour off the main thread), the history is there.
+- **Per-turn tracking + rewind.** Every turn, checkpoint, and recall hit lands as a row in an isolated `turns.db` — `turns`, `turn_recall`, `conversation_forks`. The dashboard **Turns tab** shows turn-by-turn memory: context pressure, the compact epoch that superseded each turn, and the exact checkpoints recalled into it. A **fork** action branches a conversation at any turn (carrying its recall set); a **rewind** action queues an intent the host consumes at the next `before_agent_start`. The `TurnStore` is contract-first (capability-gated reader/writer/admin views) so the same spine backs the dashboard, the TUI, or an API gateway.
 - **Cross-repo recall** — doors I close in one repo don't reopen when I move to another. A decision stored while hacking repo A is a recall hit the next time I'm in repo B.
 - **Durable memory** — every ten turns the store auto-reviews and safe-keeps decisions, facts, and preferences as first-class RAG memories, so long-running projects remember what mattered.
 - **Fully local** — node:sqlite + trigram embeddings by default. Bring your own localhost embedder (ONNX, Ollama, TEI) for better semantic matches. Zero calls off your machine except the optional, localhost-only dashboard.
 - **Team-run aware** — fine-grained durable trim fires at agent settle during sub-agent runs, so long multi-agent work doesn't just collapse at the end.
-- **Multi-pi dashboard** — one dashboard tab per active pi process with the context stack, per-repo stats, and a live SSE feed across all of them.
+- **Multi-pi dashboard** — one dashboard tab per active pi process with the context stack, per-repo stats, and a live SSE feed across all of them. The React SPA now has lazy-loaded tabs: Overview, Repos, Events, Config, Metrics, Cache, Game, Achievements, Sessions, Topics (wiki), and Turns (per-turn memory + recall + rewind).
+- **Auto-categorizing wiki.** Every ten compactions, the store clusters your real memory embeddings (k-means) and labels each cluster with its most discriminative terms (TF-IDF) — no LLM, no Ollama, fully local. The dashboard **Wiki tab** browses topics, searches by label or term, and drills down into the member memories of each cluster.
 
 ## Install
 

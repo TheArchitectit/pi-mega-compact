@@ -12,12 +12,11 @@ import {
 	recentUserQuery,
 	WIDGET_KEY,
 } from "../mega-runtime.js";
-import {
-	doRecall,
-	doRecallAsync,
-} from "../mega-pipeline.js";
+import { doRecall, doRecallAsync } from "../mega-pipeline.js";
 import { recallMemoriesAndInline } from "../../src/recall.js";
 import { vectorStats } from "../../src/vectorStore.js";
+import { openTurnStore } from "../../src/store/turns/connection.js";
+import { openIntentQueue } from "../../src/intent.js";
 import type { MegaConfig } from "../mega-config.js";
 
 /** Register session lifecycle event handlers. */
@@ -96,7 +95,8 @@ export function registerSessionHandlers(
 		// one-line summary for diagnostics.
 		try {
 			const m = autoMaintain(runtime.currentStateDir);
-			if (m && !m.endsWith("nothing to do")) runtime.logger.info("db-auto-maintain", { result: m });
+			if (m && !m.endsWith("nothing to do"))
+				runtime.logger.info("db-auto-maintain", { result: m });
 		} catch (e) {
 			runtime.logger.warn("db-auto-maintain-fail", { error: String(e) });
 		}
@@ -148,6 +148,27 @@ export function registerSessionHandlers(
 	// ---- Auto-inline injection point: prepend staged recall to systemPrompt ----
 	pi.on("before_agent_start", async (event, ctx) => {
 		runtime.captureModel(ctx); // most reliable point ctx.model is populated
+		// S52A: consume any pending rewind intents the dashboard queued. The host
+		// polls the intent queue here (the only safe lifecycle point) and marks each
+		// consumed. Best-effort + non-fatal — the store never calls back into the
+		// host (ledger protocol). A real rewind (reloading pi's conversation to turn
+		// N) is host-specific; this consumes the intent so the round-trip completes.
+		try {
+			if (config.turnsDbEnabled) {
+				const tdb = openTurnStore(runtime.currentStateDir);
+				const q = openIntentQueue(tdb);
+				const pending = q.pendingIntents();
+				for (const intent of pending) {
+					q.consumeIntent(intent.id);
+					runtime.dashboard.event("rewind_intent_consumed", {
+						conversationId: intent.conversationId,
+						targetTurnIndex: intent.targetTurnIndex,
+					});
+				}
+			}
+		} catch {
+			/* non-fatal: intent polling never breaks the agent loop */
+		}
 		const cpBlock = runtime.pendingRecallBlock;
 		const memBlock = runtime.pendingMemoryRecallBlock;
 		if (!cpBlock && !memBlock) return;

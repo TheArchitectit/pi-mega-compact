@@ -48,6 +48,7 @@ function resetIdCounter(): void {
 interface TurnRow {
 	id: number;
 	entry: TurnEntry;
+	epochId?: string;
 }
 
 interface RecallRow {
@@ -104,7 +105,21 @@ export class InMemoryTurnStore implements TurnStore {
 
 	getTurn(turnId: TurnId): TurnEntry | undefined {
 		const row = this.turns.get(Number(turnId));
-		return row?.entry;
+		return row ? { ...row.entry, epochId: row.epochId } : undefined;
+	}
+
+	getTurnByIndex(
+		conversationId: ConversationId,
+		turnIndex: number,
+	): TurnEntry | undefined {
+		const ids = this.convIndex.get(conversationId) ?? [];
+		for (const id of ids) {
+			const row = this.turns.get(id);
+			if (row && row.entry.turnIndex === turnIndex) {
+				return { ...row.entry, epochId: row.epochId };
+			}
+		}
+		return undefined;
 	}
 
 	listRecall(turnId: TurnId): TurnRecallEntry[] {
@@ -112,6 +127,23 @@ export class InMemoryTurnStore implements TurnStore {
 			.filter((r) => r.turnId === Number(turnId))
 			.map((r) => r.entry)
 			.sort((a, b) => b.score - a.score);
+	}
+
+	listRecallByIndex(
+		conversationId: ConversationId,
+		turnIndex: number,
+	): TurnRecallEntry[] {
+		const turn = this.getTurnByIndex(conversationId, turnIndex);
+		if (!turn) return [];
+		// Resolve the numeric row id for this turn via the convIndex.
+		const ids = this.convIndex.get(conversationId) ?? [];
+		for (const id of ids) {
+			const row = this.turns.get(id);
+			if (row && row.entry.turnIndex === turnIndex) {
+				return this.listRecall(String(id));
+			}
+		}
+		return [];
 	}
 
 	listForks(conversationId: ConversationId): ConversationFork[] {
@@ -383,13 +415,27 @@ export class InMemoryTurnStore implements TurnStore {
 		resetIdCounter();
 	}
 
+	stampTurnsEpoch(sessionId: SessionId, epochId: string): number {
+		const sid = normalizeSessionId(sessionId);
+		let stamped = 0;
+		for (const row of this.turns.values()) {
+			if (row.epochId === undefined && row.entry.sessionId === sid) {
+				row.epochId = epochId;
+				stamped++;
+			}
+		}
+		return stamped;
+	}
+
 	// ── Capability gating ───────────────────────────────────────
 
 	asReader(): TurnReader {
 		return {
 			query: (f) => this.query(f),
 			getTurn: (id) => this.getTurn(id),
+			getTurnByIndex: (c, t) => this.getTurnByIndex(c, t),
 			listRecall: (id) => this.listRecall(id),
+			listRecallByIndex: (c, t) => this.listRecallByIndex(c, t),
 			listForks: (id) => this.listForks(id),
 			countTurns: (id) => this.countTurns(id),
 			conversationStats: (id) => this.conversationStats(id),
@@ -412,6 +458,7 @@ export class InMemoryTurnStore implements TurnStore {
 			checkpoint: () => this.checkpoint(),
 			restore: (s) => this.restore(s),
 			clear: () => this.clear(),
+			stampTurnsEpoch: (s, e) => this.stampTurnsEpoch(s, e),
 		};
 	}
 

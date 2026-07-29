@@ -36,6 +36,8 @@ export interface TurnEntry {
 	ctxPercent?: number; // context window utilization 0-1
 	pressureBand?: "green" | "yellow" | "red";
 	model?: string; // model used for this turn
+	/** S50B: the compact epoch that superseded this turn (stamped post-hoc). */
+	epochId?: string;
 }
 
 /** A recall hit recorded during a turn — an immutable, append-only fact. */
@@ -105,7 +107,18 @@ export interface ConversationStats {
 export interface TurnReader {
 	query(filter: TurnFilter): TurnEntry[];
 	getTurn(turnId: TurnId): TurnEntry | undefined;
+	/** Resolve a turn by its (conversationId, turnIndex) coordinate (fork + recall replay). */
+	getTurnByIndex(
+		conversationId: ConversationId,
+		turnIndex: number,
+	): TurnEntry | undefined;
 	listRecall(turnId: TurnId): TurnRecallEntry[];
+	/** Recall hits recorded for the turn at (conversationId, turnIndex) — the
+	 *  replay set a fork rehydrates. Avoids needing the opaque TurnId. */
+	listRecallByIndex(
+		conversationId: ConversationId,
+		turnIndex: number,
+	): TurnRecallEntry[];
 	listForks(conversationId: ConversationId): ConversationFork[];
 	countTurns(conversationId: ConversationId): number;
 	conversationStats(conversationId: ConversationId): ConversationStats;
@@ -129,6 +142,11 @@ export interface TurnAdmin {
 	checkpoint(): StoreSnapshot;
 	restore(from: StoreSnapshot): void;
 	clear(): void; // test-only; wipes all data
+	/** S50B: stamp `epoch_id` on this session's turns that have none yet (links
+	 *  a turn to the compact epoch that superseded it). Backfill UPDATE, so it
+	 *  lives on the admin capability (the writer is append-only). Returns the
+	 *  number of turns stamped. */
+	stampTurnsEpoch(sessionId: SessionId, epochId: string): number;
 }
 
 /** The composed store — hosts get a capability-gated view. */
