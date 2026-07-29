@@ -15,26 +15,26 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { join } from "node:path";
-import { type FSWatcher } from "node:fs";
+import type { FSWatcher } from "node:fs";
 import { VectorStore } from "../../src/vectorStore.js";
-import { toEngineMessages } from "../../src/adapt.js";
+import type { toEngineMessages } from "../../src/adapt.js";
 import { normalizeSessionId } from "../../src/store.js";
 import { Logger } from "../../src/log.js";
-import {
-	type ModelSnapshot,
-	type GameState,
+import type {
+	ModelSnapshot,
+	GameState,
 } from "../../src/store/sqlite.js";
-import {
-	type MegaConfig,
-	type PressureBand,
+import type {
+	MegaConfig,
+	PressureBand,
 } from "../mega-config.js";
 import { Dashboard } from "../mega-dashboard.js";
-import {
-	type SessionRuntime,
+import type {
+	SessionRuntime,
 } from "./helpers.js";
-import {
-	type TickerEntry,
-	type WidgetData,
+import type {
+	TickerEntry,
+	WidgetData,
 } from "./widget.js";
 import {
 	ensureGameStateWatcherImpl,
@@ -95,6 +95,14 @@ export class MegaRuntime {
 		errorRetryCount: 0,
 		errorRetryUntil: 0,
 		consecutiveErrors: 0,
+		lastErrorRetryAt: 0,
+		retryNudgePending: false,
+		errorRetrySessionCount: 0,
+		lastErrorText: undefined,
+		errorTextRepeatCount: 0,
+		poisonedAdviseSent: false,
+		poisonedCompactSignatures: new Set(),
+		poisonedCount: 0,
 	};
 	// v0.8.6 cache-stability: the cached live-trim view for the current
 	// compaction epoch. Set after a fresh runCompact + computeLiveTrimCut, and

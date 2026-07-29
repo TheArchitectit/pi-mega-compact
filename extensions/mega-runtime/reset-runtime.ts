@@ -62,6 +62,14 @@ export function resetRuntimeImpl(
 		errorRetryCount: 0,
 		errorRetryUntil: 0,
 		consecutiveErrors: 0,
+		lastErrorRetryAt: 0,
+		retryNudgePending: false,
+		errorRetrySessionCount: 0,
+		lastErrorText: undefined,
+		errorTextRepeatCount: 0,
+		poisonedAdviseSent: false,
+		poisonedCompactSignatures: new Set(),
+		poisonedCount: 0,
 	};
 	self.trimCache = null; // v0.8.6: never replay a stale trim into a new session
 	self.statusKey = undefined;
