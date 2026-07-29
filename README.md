@@ -61,6 +61,7 @@ Set env vars before starting pi. Defaults are in `src/config/dedup.ts`.
 | `MEGACOMPACT_DEDUP_SIM` | `0.90` | Cosine threshold for near-dup collapse |
 | `MEGACOMPACT_CROSSREPO_ENABLED` | `true` | Cross-repo recall on resume |
 | `MEGACOMPACT_EMBEDDING_URL` | _(unset)_ | BYO localhost embedder endpoint |
+| `MEGACOMPACT_TUI_WIDGET` | `true` | Render the above-editor panel. Set to `0` to suppress it — useful when pi runs inside an editor terminal (e.g. Neovim `:terminal`) where you drive scrollback yourself and the panel's repaints fight it. Compaction is unaffected. |
 
 Full config reference: [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)
 
