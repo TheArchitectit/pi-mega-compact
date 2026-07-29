@@ -64,8 +64,12 @@ describe("SqliteTurnStore — file-backed", () => {
 	});
 
 	it("uses WAL journal mode", () => {
-		const row = (store as unknown as { db: { prepare: (s: string) => { get: () => unknown } } })
-			.db.prepare("PRAGMA journal_mode")
+		const row = (
+			store as unknown as {
+				db: { prepare: (s: string) => { get: () => unknown } };
+			}
+		).db
+			.prepare("PRAGMA journal_mode")
 			.get() as { journal_mode: string };
 		assert.equal(row.journal_mode, "wal");
 	});

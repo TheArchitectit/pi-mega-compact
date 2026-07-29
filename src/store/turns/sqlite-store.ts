@@ -337,7 +337,9 @@ export class SqliteTurnStore implements TurnStore {
 
 		// 4. Copy the parent's recall entries into the child's seed turn
 		const parentRecall = this.db
-			.prepare("SELECT checkpoint_id, score, source, raptor_level FROM turn_recall WHERE turn_id = ?")
+			.prepare(
+				"SELECT checkpoint_id, score, source, raptor_level FROM turn_recall WHERE turn_id = ?",
+			)
 			.all(parentTurn.id) as Array<Record<string, unknown>>;
 
 		const insertRecall = this.db.prepare(
@@ -525,7 +527,8 @@ export class SqliteTurnStore implements TurnStore {
 			// Recall's turnId is now the 1-based position from checkpoint().
 			// Map it to the new row ID.
 			for (const r of from.recall) {
-				const targetTurnId = posToNewId.get(Number(r.turnId)) ?? Number(r.turnId);
+				const targetTurnId =
+					posToNewId.get(Number(r.turnId)) ?? Number(r.turnId);
 				insertRecall.run(
 					targetTurnId,
 					r.checkpointId,

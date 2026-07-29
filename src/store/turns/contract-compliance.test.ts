@@ -290,19 +290,31 @@ export function runComplianceSuite(
 
 		it("forkConversation seeds child with parent recall", () => {
 			const parentId = "conv_seed_parent";
-			store.asWriter().appendTurn(
-				makeTurn({ conversationId: parentId, turnIndex: 0 }),
-			);
-			const tid1 = store.asWriter().appendTurn(
-				makeTurn({ conversationId: parentId, turnIndex: 1 }),
-			);
+			store
+				.asWriter()
+				.appendTurn(makeTurn({ conversationId: parentId, turnIndex: 0 }));
+			const tid1 = store
+				.asWriter()
+				.appendTurn(makeTurn({ conversationId: parentId, turnIndex: 1 }));
 			// Attach recall to the parent's turn at index 1
-			store.asWriter().appendRecall(
-				makeRecall(tid1, { checkpointId: "ckpt_seed1", score: 0.9, source: "checkpoint" }),
-			);
-			store.asWriter().appendRecall(
-				makeRecall(tid1, { checkpointId: "ckpt_seed2", score: 0.7, source: "memory" }),
-			);
+			store
+				.asWriter()
+				.appendRecall(
+					makeRecall(tid1, {
+						checkpointId: "ckpt_seed1",
+						score: 0.9,
+						source: "checkpoint",
+					}),
+				);
+			store
+				.asWriter()
+				.appendRecall(
+					makeRecall(tid1, {
+						checkpointId: "ckpt_seed2",
+						score: 0.7,
+						source: "memory",
+					}),
+				);
 
 			const childId = store.asWriter().forkConversation(parentId, 1);
 
@@ -359,14 +371,24 @@ export function runComplianceSuite(
 		it("ensureConversationId returns same id for same session", () => {
 			const id1 = store.asWriter().ensureConversationId("sess_test1");
 			const id2 = store.asWriter().ensureConversationId("sess_test1");
-			assert.equal(id1, id2, "same session should always get the same conversationId");
+			assert.equal(
+				id1,
+				id2,
+				"same session should always get the same conversationId",
+			);
 			assert.ok(id1.startsWith("conv_"), "conversationId has conv_ prefix");
 
 			// After writing a turn with this session, ensureConversationId
 			// should still return the same conversationId
-			store.asWriter().appendTurn(
-				makeTurn({ conversationId: id1, sessionId: "sess_test1", turnIndex: 0 }),
-			);
+			store
+				.asWriter()
+				.appendTurn(
+					makeTurn({
+						conversationId: id1,
+						sessionId: "sess_test1",
+						turnIndex: 0,
+					}),
+				);
 			const id3 = store.asWriter().ensureConversationId("sess_test1");
 			assert.equal(id3, id1, "conversationId stable after turn is written");
 		});
@@ -463,7 +485,11 @@ export function runComplianceSuite(
 			assert.equal(snapshot.version, 1);
 			// Fork creates a seed turn in the child, so total turns = 3
 			assert.equal(snapshot.turns.length, 3, "2 parent + 1 child seed turn");
-			assert.equal(snapshot.recall.length, 2, "1 parent recall + 1 child seed recall (copied from parent)");
+			assert.equal(
+				snapshot.recall.length,
+				2,
+				"1 parent recall + 1 child seed recall (copied from parent)",
+			);
 			assert.equal(snapshot.forks.length, 1);
 
 			// Clear and restore
@@ -495,11 +521,27 @@ export function runComplianceSuite(
 			// its recall. We can verify by taking a second checkpoint
 			// and checking it matches the first.
 			const snapshot2 = store.asAdmin().checkpoint();
-			assert.equal(snapshot2.turns.length, 3, "second checkpoint has 3 turns (2 parent + 1 child seed)");
-			assert.equal(snapshot2.recall.length, 2, "second checkpoint has 2 recall (1 parent + 1 child seed)");
-			assert.equal(snapshot2.recall[0].checkpointId, "ckpt_snap", "recall checkpointId preserved");
+			assert.equal(
+				snapshot2.turns.length,
+				3,
+				"second checkpoint has 3 turns (2 parent + 1 child seed)",
+			);
+			assert.equal(
+				snapshot2.recall.length,
+				2,
+				"second checkpoint has 2 recall (1 parent + 1 child seed)",
+			);
+			assert.equal(
+				snapshot2.recall[0].checkpointId,
+				"ckpt_snap",
+				"recall checkpointId preserved",
+			);
 			assert.equal(snapshot2.recall[0].score, 0.95, "recall score preserved");
-			assert.equal(snapshot2.recall[0].source, "memory", "recall source preserved");
+			assert.equal(
+				snapshot2.recall[0].source,
+				"memory",
+				"recall source preserved",
+			);
 
 			// Verify forks restored
 			const forks = store.asReader().listForks(convId);
