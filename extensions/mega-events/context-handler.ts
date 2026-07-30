@@ -174,7 +174,12 @@ export function registerContextHandler(
 				const db = openStore(runtime.currentStateDir);
 				const epochId = epochIdFor(runtime.rt.sessionId);
 				for (const msg of messages) {
-					const raw = toRawTranscriptRow(msg, runtime.rt.sessionId, epochId, runtime.currentTurn);
+					const raw = toRawTranscriptRow(
+						msg,
+						runtime.rt.sessionId,
+						epochId,
+						runtime.currentTurn,
+					);
 					if (raw) appendRawTranscript(db, raw);
 				}
 			} catch (e) {
@@ -233,7 +238,7 @@ export function registerContextHandler(
 		// is only valid while the transcript grows within the epoch — it is
 		// cleared on session_compact (durable truncation) + resetRuntime, so we
 		// never replay a stale cut into a truncated transcript (PREVENT-PI-001/002).
-		const RECOMPACT_PCT_DELTA = 10;
+		const RECOMPACT_PCT_DELTA = 50;
 		if (
 			runtime.trimCache &&
 			runtime.trimCache.checkpointId === runtime.rt.lastCheckpointId &&
@@ -295,7 +300,12 @@ export function registerContextHandler(
 				// them (compression-by-conversation-epoch metrics). Isolated-store
 				// only; best-effort + non-fatal.
 				try {
-					stampTurnsEpochFor(config, runtime.rt.sessionId, epoch.epochId, runtime.currentStateDir);
+					stampTurnsEpochFor(
+						config,
+						runtime.rt.sessionId,
+						epoch.epochId,
+						runtime.currentStateDir,
+					);
 				} catch {
 					/* non-fatal: epoch stamping never breaks compaction */
 				}
@@ -304,7 +314,10 @@ export function registerContextHandler(
 				// AUTO_WIKI_ENABLED; best-effort + non-fatal (never breaks compaction).
 				try {
 					if (config.autoWikiEnabled && config.turnsDbEnabled) {
-						const every = Math.max(1, TurnsConfig.WIKI_REBUILD_EVERY_N_COMPACTS);
+						const every = Math.max(
+							1,
+							TurnsConfig.WIKI_REBUILD_EVERY_N_COMPACTS,
+						);
 						const tdb = openTurnStore(runtime.currentStateDir);
 						const n = bumpWikiCompactCounter(tdb);
 						if (n % every === 0) {
@@ -314,7 +327,9 @@ export function registerContextHandler(
 								restarts: 5,
 								seed: 0x9e3779b9,
 							});
-							createTopicStore(runtime.currentStateDir).replaceTopicModel(model);
+							createTopicStore(runtime.currentStateDir).replaceTopicModel(
+								model,
+							);
 							runtime.logger.info("wiki_rebuild", {
 								clusterCount: model.k,
 								totalChunks: model.totalChunks,
@@ -326,7 +341,9 @@ export function registerContextHandler(
 						}
 					}
 				} catch (wikiErr) {
-					runtime.logger.warn("wiki_rebuild_failed", { error: String(wikiErr) });
+					runtime.logger.warn("wiki_rebuild_failed", {
+						error: String(wikiErr),
+					});
 				}
 				// S27 Task 6: Fire-and-forget dedup pipeline.
 				// Deduplicates raw_transcript rows for the compacted range.

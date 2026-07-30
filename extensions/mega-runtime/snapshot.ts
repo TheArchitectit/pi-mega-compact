@@ -81,6 +81,9 @@ export interface SnapshotInput {
 	// Model snapshot (pre-fetched)
 	modelSnap: ModelSnapshot | undefined;
 
+	// Provider prompt cache hit rate (lifetime avg from perf-samples, null if no samples)
+	providerCachePct: number | null;
+
 	// Game-mode state (callers that need real-time values pass lambdas)
 	getCachedGameState: () => GameState;
 	getTurnLevel: () => number;
@@ -150,8 +153,7 @@ export function computeMegaSnapshot(p: SnapshotInput): SnapshotResult {
 	const ctxPct = p.lastCtxPercent != null ? p.lastCtxPercent / 100 : 0;
 
 	// ── model + provider (S26 capture) for the header ─────────────────────
-	const modelName =
-		p.modelSnap?.modelName ?? p.modelSnap?.modelId ?? "?";
+	const modelName = p.modelSnap?.modelName ?? p.modelSnap?.modelId ?? "?";
 	const modelStr = p.modelSnap?.provider
 		? `${modelName}·${p.modelSnap.provider}`
 		: modelName;
@@ -177,7 +179,9 @@ export function computeMegaSnapshot(p: SnapshotInput): SnapshotResult {
 	// ── S31: game-mode state ──────────────────────────────────────────────
 	const gs = p.getCachedGameState();
 	const curLevel = p.getTurnLevel();
-	const cachePct = st.dedupHitRate * 100;
+	// C.1: prefer provider cache hit rate, fall back to dedup hit rate
+	const cachePct =
+		p.providerCachePct != null ? p.providerCachePct : st.dedupHitRate * 100;
 
 	const widgetData: WidgetData = {
 		version: ownVersion(),

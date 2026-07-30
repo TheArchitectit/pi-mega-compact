@@ -35,6 +35,7 @@ import type {
 	ForkResponse,
 	PruneTurnsResponse,
 	TopicMemoriesResponse,
+	ProviderCacheResponse,
 } from "@contracts";
 
 /** Error thrown when a dashboard API response is not 2xx. */
@@ -184,6 +185,11 @@ export function fetchSessionTimeseries(
 
 export function fetchTopics(): Promise<TopicsResponse> {
 	return getJson<TopicsResponse>(ENDPOINTS.topics.path);
+}
+
+/** Lifetime provider prompt cache aggregates + $ savings estimate. */
+export function fetchProviderCache(): Promise<ProviderCacheResponse> {
+	return getJson<ProviderCacheResponse>(ENDPOINTS.providerCache.path);
 }
 
 // ── S52: turn-by-turn memory tracking + recall + rewind ───────────────

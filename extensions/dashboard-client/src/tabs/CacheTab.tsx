@@ -2,21 +2,30 @@
  * dashboard-client/src/tabs/CacheTab.tsx — Cache tab (NEW).
  *
  * Renders CacheHitsCard + TimeSavedCard from /api/snapshot
- * via the useApi hook with 5s polling.
+ * + ProviderCacheCard from /api/provider-cache via the useApi hook with 5s/30s polling.
  */
 
 import type React from "react";
 import { useCallback } from "react";
-import type { SnapshotResponse } from "@contracts";
+import type { SnapshotResponse, ProviderCacheResponse } from "@contracts";
 import { useApi } from "../hooks/useApi";
-import { fetchSnapshot } from "../api/client";
+import { fetchSnapshot, fetchProviderCache } from "../api/client";
 import { CacheHitsCard } from "../components/CacheHitsCard";
 import { TimeSavedCard } from "../components/TimeSavedCard";
+import { ProviderCacheCard } from "../components/ProviderCacheCard";
 
 export default function CacheTab(): React.ReactElement {
-	const { data: snapshot, loading, error } = useApi<SnapshotResponse>(
+	const {
+		data: snapshot,
+		loading,
+		error,
+	} = useApi<SnapshotResponse>(
 		useCallback(() => fetchSnapshot(), []),
 		{ pollInterval: 5000 },
+	);
+	const { data: providerCache } = useApi<ProviderCacheResponse>(
+		useCallback(() => fetchProviderCache(), []),
+		{ pollInterval: 30000 },
 	);
 
 	if (loading && !snapshot)
@@ -44,6 +53,7 @@ export default function CacheTab(): React.ReactElement {
 					cacheHitSessionSec={timeSaved.cacheHit.sessionSec}
 					cacheHitTotalSec={timeSaved.cacheHit.totalSec}
 				/>
+				{providerCache && <ProviderCacheCard data={providerCache} />}
 			</div>
 		</div>
 	);

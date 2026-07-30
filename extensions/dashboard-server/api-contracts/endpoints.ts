@@ -14,6 +14,7 @@ import type { SnapshotResponse } from "./snapshot.js";
 import type { IndexesIndexRow, IndexesSummaryResponse } from "./multi-repo.js";
 import type { GameStateResponse } from "./game.js";
 import type { SseEvent } from "./index.js";
+import type { ProviderCacheResponse } from "./provider-cache.js";
 import type {
 	TurnsResponse,
 	ConversationTurnsResponse,
@@ -345,6 +346,8 @@ export interface PerfResponse {
 	readonly diag: PerfDiag | null;
 }
 
+// ─── Provider Cache Lifetime (A.2) — see provider-cache.ts ─────────────────
+
 // ─── Game Score & Achievement Types ─────────────────────────────────────────
 // (moved to game-types.ts; re-exported for backwards compatibility)
 
@@ -360,7 +363,7 @@ export interface PerfResponse {
 // ─── ENDPOINTS Registry ─────────────────────────────────────────────────────
 
 /**
- * Central registry of all 13 dashboard API endpoints. Each entry is an
+ * Central registry of all 14 dashboard API endpoints. Each entry is an
  * `EndpointDef` or `SseEndpointDef` instance serving as the single source of
  * truth for route paths, methods, descriptions, and typed request/response
  * contracts.
@@ -553,4 +556,12 @@ export const ENDPOINTS = {
 		path: "/api/topics/:topicId/memories",
 		description: "Member memories assigned to a wiki topic (drill-down).",
 	} as const satisfies EndpointDef<"GET", undefined, TopicMemoriesResponse>,
+
+	/** GET /api/provider-cache — Lifetime provider prompt cache aggregates + $ savings. */
+	providerCache: {
+		method: "GET",
+		path: "/api/provider-cache",
+		description:
+			"Lifetime provider prompt cache hit-rate aggregates + dollar savings estimate.",
+	} as const satisfies EndpointDef<"GET", undefined, ProviderCacheResponse>,
 } as const;

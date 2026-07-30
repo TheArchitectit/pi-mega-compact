@@ -75,12 +75,7 @@ export function recordPerfSample(
 	db.prepare(
 		`INSERT INTO perf_samples (ts, kind, value, meta)
 		 VALUES (?, ?, ?, ?)`,
-	).run(
-		Date.now(),
-		kind,
-		value,
-		meta != null ? JSON.stringify(meta) : null,
-	);
+	).run(Date.now(), kind, value, meta != null ? JSON.stringify(meta) : null);
 }
 
 /**
@@ -122,4 +117,131 @@ export function readPerfSamples(
 		out.push({ id: r.id, ts: r.ts, kind: r.kind, value: r.value, meta });
 	}
 	return out;
+}
+
+// ─── Provider prompt-cache lifetime aggregates ────────────────
+
+/** Lifetime provider prompt cache aggregates from `perf_samples`. */
+export interface ProviderCacheLifetime {
+	/** Total samples (turns) recorded. */
+	sampleCount: number;
+	/** Average cache hit rate across all samples (0-100). */
+	avgHitPct: number;
+	/** Sum of cacheRead tokens across all samples. */
+	totalCacheRead: number;
+	/** Sum of cacheWrite tokens across all samples. */
+	totalCacheWrite: number;
+	/** Sum of input (non-cached) tokens across all samples. */
+	totalInput: number;
+	/** ISO timestamp of the first sample, or null if no samples. */
+	firstSampleAt: string | null;
+	/** ISO timestamp of the most recent sample, or null if no samples. */
+	latestSampleAt: string | null;
+}
+
+/**
+ * Read lifetime provider prompt cache aggregates from `perf_samples`.
+ *
+ * Aggregates `cache_creation_input_tokens` / `cache_read_input_tokens` from
+ * the `meta` JSON column of `cache_hit_pct` samples (`json_extract`,
+ * available in node:sqlite ≥22.13 / SQLite ≥3.38). Returns a zeroed
+ * `ProviderCacheLifetime` when no samples exist (never undefined).
+ */
+export function readProviderCacheLifetime(
+	stateDir: string = getStateDir(),
+): ProviderCacheLifetime {
+	const db = openStore(stateDir);
+	const rows = db
+		.prepare(
+			`SELECT ts, meta FROM perf_samples
+       WHERE kind = ?
+       ORDER BY ts ASC`,
+		)
+		.all("cache_hit_pct") as Array<{
+		ts: number;
+		meta: string | null;
+	}>;
+	if (rows.length === 0) {
+		return {
+			sampleCount: 0,
+			avgHitPct: 0,
+			totalCacheRead: 0,
+			totalCacheWrite: 0,
+			totalInput: 0,
+			firstSampleAt: null,
+			latestSampleAt: null,
+		};
+	}
+	let totalCacheRead = 0;
+	let totalCacheWrite = 0;
+	let totalInput = 0;
+	let sumHitPct = 0;
+	let hitPctCount = 0;
+	for (const r of rows) {
+		if (r.meta != null) {
+			let meta: Record<string, unknown> | null = null;
+			try {
+				meta = JSON.parse(r.meta) as Record<string, unknown>;
+			} catch {
+				meta = null;
+			}
+			if (meta != null) {
+				const cr =
+					typeof meta.cacheRead === "number"
+						? meta.cacheRead
+						: typeof meta.cache_read === "number"
+							? meta.cache_read
+							: 0;
+				const cw =
+					typeof meta.cacheWrite === "number"
+						? meta.cacheWrite
+						: typeof meta.cache_write === "number"
+							? meta.cache_write
+							: 0;
+				const inp = typeof meta.input === "number" ? meta.input : 0;
+				totalCacheRead += cr;
+				totalCacheWrite += cw;
+				totalInput += inp;
+				// Compute hit pct for this sample (same formula as perf-handler.ts)
+				const denom = cr + inp + cw;
+				if (denom > 0) {
+					sumHitPct += (cr / denom) * 100;
+					hitPctCount++;
+				}
+			}
+		}
+	}
+	return {
+		sampleCount: rows.length,
+		avgHitPct: hitPctCount > 0 ? sumHitPct / hitPctCount : 0,
+		totalCacheRead,
+		totalCacheWrite,
+		totalInput,
+		firstSampleAt: new Date(rows[0].ts).toISOString(),
+		latestSampleAt: new Date(rows[rows.length - 1].ts).toISOString(),
+	};
+}
+
+/**
+ * Read the most recent `cache_hit_pct` value from `perf_samples`.
+ *
+ * Returns 0 when no samples exist (never NaN/undefined). When multiple
+ * rows share the same timestamp the tie is broken by highest id (most
+ * recently inserted).
+ */
+export function readLatestCacheHitPct(
+	stateDir: string = getStateDir(),
+): number {
+	const db = openStore(stateDir);
+	const row = db
+		.prepare(
+			`SELECT value FROM perf_samples
+       WHERE kind = ?
+       ORDER BY ts DESC, id DESC
+       LIMIT 1`,
+		)
+		.get("cache_hit_pct") as { value: number } | undefined;
+	if (!row || typeof row.value !== "number" || !Number.isFinite(row.value))
+		return 0;
+	return row.value;
 }
