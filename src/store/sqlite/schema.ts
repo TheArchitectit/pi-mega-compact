@@ -1,7 +1,7 @@
 /**
  * schema.ts — table creation, migrations, `ensureColumn`, PRAGMA setup.
  */
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import { ACHIEVEMENT_DEFS } from "../../game/scoring.js";
 
 const SCHEMA_VERSION = 2;
@@ -111,10 +111,6 @@ export function initSchema(db: DatabaseSync): void {
     );
     CREATE INDEX IF NOT EXISTS idx_raptor_session ON raptor_nodes(session_id);
     CREATE INDEX IF NOT EXISTS idx_raptor_parent ON raptor_nodes(parent_id);
-    -- S42D/QA perf: session-scoped built_at ordering so the per-search cache
-    -- invalidation MAX(built_at) is index-satisfied.
-    CREATE INDEX IF NOT EXISTS idx_raptor_session_built
-      ON raptor_nodes(session_id, built_at DESC);
 
     -- S42D: structured RAPTOR build history. One row per tree build; the
     -- freshness check (buildHistory.ts) uses completed_at + leaf_count to skip
@@ -381,6 +377,13 @@ export function initSchema(db: DatabaseSync): void {
   // S25: RAPTOR freshness-guard timestamp. Additive; old DBs have NULL → 0 →
   // treated as stale → flat fallback (safe).
   ensureColumn(db, "raptor_nodes", "built_at", "INTEGER");
+  // S42D/QA perf: session-scoped built_at ordering. Must follow ensureColumn
+  // above — old DBs already have raptor_nodes without built_at, so CREATE TABLE
+  // IF NOT EXISTS is a no-op that doesn't add the column, and moving this index
+  // inside the DDL block caused "no such column: built_at" on upgrade.
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS idx_raptor_session_built ON raptor_nodes(session_id, built_at DESC)",
+  );
   // S43: turn_index on raw_transcript so a message points directly at its
   // conversation turn (otherwise it must be inferred from seq ordering). NULL
   // for legacy rows — turns written before S43 have no turn link.
