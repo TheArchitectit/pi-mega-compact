@@ -15,6 +15,7 @@ import {
 	openStore,
 	appendRawTranscript,
 	writeCheckpointEpoch,
+	recordPerfSample,
 	type CheckpointEpoch,
 	type RawTranscriptRow,
 } from "../../src/store/sqlite.js";
@@ -38,6 +39,11 @@ import {
 	type MegaConfig,
 } from "../mega-config.js";
 import { computeContentDigest } from "../../src/dedup/digest.js";
+import {
+	diffPrefixChain,
+	hashPrefixMessage,
+	isPrefixTelemetryEnabled,
+} from "../../src/prompt/prefix-telemetry.js";
 
 /**
  * Recursively canonicalize a value for deterministic JSON serialization:
@@ -162,6 +168,80 @@ export function registerContextHandler(
 		runtime.lastCtxPercent = pct ?? null;
 		runtime.lastCtxWindow = usage?.contextWindow ?? 0;
 		runtime.snapshot(ctx);
+
+		// S54 prefix-break telemetry: hash the outgoing message chain
+		// (role + canonical content bytes, FNV-1a) and diff it against the
+		// previous context event's chain. A first-divergence index below the
+		// previous length = the provider's cache prefix broke this call; the
+		// cause classifier attributes it (epoch roll / recall prepend / tool
+		// insertion / other) and one cache_prefix_break sample is recorded.
+		// Flag MEGACOMPACT_PREFIX_TELEMETRY=0 removes this whole block's work
+		// (byte-identical behavior). Runs BEFORE the auto gate so manual-only
+		// sessions get telemetry too. Non-fatal: telemetry never blocks a call.
+		if (isPrefixTelemetryEnabled()) {
+			try {
+				const epochId = epochIdFor(runtime.rt.sessionId);
+				const chain = new Array<string>(messages.length);
+				const toolFlags = new Array<boolean>(messages.length);
+				for (let i = 0; i < messages.length; i++) {
+					const m = messages[i] as {
+						role?: string;
+						content?: unknown;
+						toolName?: string;
+					};
+					const c = m.content;
+					const bytes =
+						c == null
+							? ""
+							: typeof c === "string"
+								? c
+								: JSON.stringify(canonicalize(c));
+					chain[i] = hashPrefixMessage(m.role ?? "unknown", bytes);
+					toolFlags[i] =
+						m.role === "toolResult" ||
+						m.toolName != null ||
+						(Array.isArray(c) &&
+							c.some(
+								(b) =>
+									(b as { type?: string } | null)?.type === "toolCall" ||
+									(b as { type?: string } | null)?.type === "tool_result",
+							));
+				}
+				const res = diffPrefixChain(runtime.lastPrefixChain, chain, {
+					epochChanged:
+						runtime.lastPrefixEpochId != null &&
+						runtime.lastPrefixEpochId !== epochId,
+					recallInjected:
+						runtime.lastRecallInjectAt != null &&
+						Date.now() - runtime.lastRecallInjectAt < 30_000,
+					isToolMessage: (i) => toolFlags[i] ?? false,
+				});
+				if (res.broke) {
+					recordPerfSample(
+						runtime.currentStateDir,
+						"cache_prefix_break",
+						res.breakIndex,
+						{
+							cause: res.cause,
+							epochId,
+							prevLen: res.prevLen,
+							currLen: res.currLen,
+							turnIndex: runtime.currentTurn,
+						},
+					);
+					runtime.logger.info("cache-prefix-break", {
+						cause: res.cause,
+						breakIndex: res.breakIndex,
+						prevLen: res.prevLen,
+						currLen: res.currLen,
+					});
+				}
+				runtime.lastPrefixChain = chain;
+				runtime.lastPrefixEpochId = epochId;
+			} catch {
+				/* non-fatal: prefix telemetry must never affect the prompt path */
+			}
+		}
 		if (!config.auto) return;
 
 		const view = viewForFallback ?? runtime.engineView(messages);
@@ -373,7 +453,11 @@ export function registerContextHandler(
 			if (config.raceGuardStrict) {
 				const stamp = runtime.rt.lastNativeCompactAt;
 				const liveSid = runtime.rt.sessionId;
-				setTimeout(() => {
+				// RT2 (audit): track the timer so reset/dispose can cancel it.
+				if (runtime.pendingDurableTrimTimer)
+					clearTimeout(runtime.pendingDurableTrimTimer);
+				runtime.pendingDurableTrimTimer = setTimeout(() => {
+					runtime.pendingDurableTrimTimer = null;
 					try {
 						if (runtime.rt.sessionId !== liveSid) return; // session reset
 						const since2 = Date.now() - (runtime.rt.lastNativeCompactAt ?? 0);

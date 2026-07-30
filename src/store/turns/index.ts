@@ -31,6 +31,9 @@ export type {
 
 export { SqliteTurnStore } from "./sqlite-store.js";
 export { InMemoryTurnStore } from "./memory-store.js";
+// ISSUE #9: the typed error both backends throw on a duplicate (conversationId,
+// turnIndex) append. Re-exported so callers can `instanceof DuplicateTurnError`.
+export { DuplicateTurnError } from "./types.js";
 
 // Reconciled connection layer (master shape + this branch's migration +
 // closed-handle eviction + env override + openTurnStore back-compat alias).

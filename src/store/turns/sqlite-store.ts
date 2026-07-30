@@ -15,6 +15,7 @@ import { statSync } from "node:fs";
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { openTurnDb, closeTurnDb } from "./connection.js";
+import { DuplicateTurnError } from "./types.js";
 import type {
 	TurnStore,
 	TurnReader,
@@ -236,6 +237,17 @@ export class SqliteTurnStore implements TurnStore {
 
 	appendTurn(entry: TurnEntry): TurnId {
 		const sid = normalizeSessionId(entry.sessionId);
+		// ISSUE #9: a turn already exists at this coordinate → throw the typed
+		// DuplicateTurnError (not a raw ERR_SQLITE_ERROR from the UNIQUE
+		// constraint). The coordinate is unique by construction; a duplicate is a
+		// programming error. Pre-check keeps the SQL abstraction private to this
+		// impl and matches InMemoryTurnStore's behavior.
+		const existing = this.db
+			.prepare(
+				"SELECT id FROM turns WHERE conversation_id = ? AND turn_index = ?",
+			)
+			.get(entry.conversationId, entry.turnIndex) as { id: number } | undefined;
+		if (existing) throw new DuplicateTurnError(entry.conversationId, entry.turnIndex);
 		this.persistSessionConv(sid, entry.conversationId);
 		this.db
 			.prepare(

@@ -27,6 +27,7 @@ import type {
 	TurnRecallEntry,
 	TurnStoreOptions,
 } from "./types.js";
+import { DuplicateTurnError } from "./types.js";
 
 /** Factory function — backend test files provide the concrete constructor. */
 export type StoreFactory = (options: TurnStoreOptions) => TurnStore;
@@ -118,6 +119,30 @@ export function runComplianceSuite(
 			assert.equal(retrieved!.ctxPercent, 0.65);
 			assert.equal(retrieved!.pressureBand, "yellow");
 			assert.equal(retrieved!.model, "claude-sonnet-4");
+		});
+
+		// ISSUE #9: a duplicate (conversationId, turnIndex) append must throw the
+		// typed DuplicateTurnError on BOTH backends — not a raw ERR_SQLITE_ERROR
+		// (Sqlite) and not a silent second row (InMemory). Runs against both
+		// backends via the shared suite so the contract can't silently diverge.
+		it("appendTurn throws DuplicateTurnError on a duplicate coordinate", () => {
+			const writer = store.asWriter();
+			writer.appendTurn(makeTurn({ conversationId: "conv_dup", turnIndex: 0 }));
+			let threw = false;
+			let caught: unknown = null;
+			try {
+				writer.appendTurn(makeTurn({ conversationId: "conv_dup", turnIndex: 0 }));
+			} catch (e) {
+				threw = true;
+				caught = e;
+			}
+			assert.equal(threw, true, "duplicate append must throw");
+			assert.ok(caught instanceof DuplicateTurnError, "throws the typed DuplicateTurnError");
+			assert.equal((caught as DuplicateTurnError).turnIndex, 0);
+			assert.equal((caught as DuplicateTurnError).conversationId, "conv_dup");
+			// And no second row was stored.
+			const rows = store.asReader().query({ conversationId: "conv_dup" });
+			assert.equal(rows.length, 1, "duplicate did not store a second row");
 		});
 
 		// ── 2. appendRecall + listRecall round-trip ──────────────

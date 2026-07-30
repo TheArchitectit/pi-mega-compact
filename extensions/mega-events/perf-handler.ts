@@ -75,6 +75,9 @@ export function registerPerfHandler(
 						hitPct,
 						{ input: u.input, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite },
 					);
+					// S53C: stash for the widget cachePct (snapshot.ts reads this when
+					// MEGACOMPACT_TUI_CACHE_SOURCE=provider, the default).
+					runtime.lastProviderCacheHitPct = hitPct;
 			}
 		}
 		} catch {

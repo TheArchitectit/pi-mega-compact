@@ -15,6 +15,17 @@ export interface PerfContext {
 	perfCpuBaseline: { user: number; sys: number } | undefined;
 }
 
+/**
+ * RT2 (audit): the tracked deferred durable-trim timer (the setTimeout(500)
+ * ctx.compact() recheck armed by the agent_end durable trim, the context/
+ * poisoned error handlers, and the context handler's race-guarded path). Stored
+ * on the runtime so resetRuntime() and dispose() can clearTimeout it, mirroring
+ * perfCpuInterval. Only one such recheck is ever in flight at a time.
+ */
+export interface PendingTimerContext {
+	pendingDurableTrimTimer: ReturnType<typeof setTimeout> | null;
+}
+
 // ---------------------------------------------------------- ensurePerfInterval
 
 /** v0.8.8: (re)start the 5s cpu/mem sampling interval (idempotent). One per
@@ -56,5 +67,15 @@ export function disposePerf(ctx: PerfContext): void {
 		clearInterval(ctx.perfCpuInterval);
 		ctx.perfCpuInterval = null;
 		ctx.perfCpuBaseline = undefined;
+	}
+}
+
+/** RT2 (audit): cancel the in-flight deferred durable-trim recheck timer on
+ *  teardown / session reset. Re-armed lazily by the next race-guarded path that
+ *  calls ctx.compact(). Safe to call when none is pending. */
+export function disposePendingTimers(ctx: PendingTimerContext): void {
+	if (ctx.pendingDurableTrimTimer) {
+		clearTimeout(ctx.pendingDurableTrimTimer);
+		ctx.pendingDurableTrimTimer = null;
 	}
 }

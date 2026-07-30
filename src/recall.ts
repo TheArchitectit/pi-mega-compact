@@ -351,7 +351,14 @@ export function formatMemoryRecallBlock(
 /** Recall top-k durable memories, format into a token-capped block. */
 export async function recallMemoriesAndInline(
 	opts: MemoryRecallInjectOptions,
-): Promise<{ empty: boolean; block: string; report: string[] }> {
+): Promise<{
+	empty: boolean;
+	block: string;
+	report: string[];
+	/** S53B: ids+scores of the memories actually included in `block` (after
+	 *  the token cap), for turn_recall provenance (checkpointId `memory#<id>`). */
+	hits: Array<{ memoryId: number; score: number }>;
+}> {
 	const limit = opts.limit ?? 5;
 	const maxTokens = opts.recallMaxTokens ?? 0;
 	const { recallMemories, recallMemoriesCrossRepo } = await import(
@@ -379,13 +386,15 @@ export async function recallMemoriesAndInline(
 		}
 	}
 	if (hits.length === 0 && crossHits.length === 0)
-		return { empty: true, block: "", report: [] };
+		return { empty: true, block: "", report: [], hits: [] };
 
 	// Same incremental token cap pattern as checkpoint recall.
 	const parts: string[] = [];
 	const report: string[] = [];
+	const included: Array<{ memoryId: number; score: number }> = [];
 	let blockTokens = 0;
 	const pushHit = (
+		memoryId: number,
 		content: string,
 		category: string | null,
 		score: number,
@@ -400,11 +409,13 @@ export async function recallMemoriesAndInline(
 			`  • ${label} (${(score * 100).toFixed(0)}%): ${content.slice(0, 60).replace(/\n/g, " ")}…`,
 		);
 		blockTokens += partTokens;
+		included.push({ memoryId, score });
 		return true;
 	};
 	for (const h of hits) {
 		if (
 			!pushHit(
+				h.memory.id,
 				h.memory.content,
 				h.memory.category,
 				h.score,
@@ -417,6 +428,7 @@ export async function recallMemoriesAndInline(
 		const repoLabel = h.repoId.split(/[\\/]/).filter(Boolean).pop() ?? h.repoId;
 		if (
 			!pushHit(
+				h.memory.id,
 				h.memory.content,
 				h.memory.category,
 				h.score,
@@ -426,7 +438,12 @@ export async function recallMemoriesAndInline(
 		)
 			break;
 	}
-	return { empty: parts.length === 0, block: parts.join("\n"), report };
+	return {
+		empty: parts.length === 0,
+		block: parts.join("\n"),
+		report,
+		hits: included,
+	};
 }
 
 /**

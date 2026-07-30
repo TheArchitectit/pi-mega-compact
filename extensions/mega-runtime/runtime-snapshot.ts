@@ -71,6 +71,8 @@ export interface RuntimeSnapshotContext extends RuntimeHelpersContext {
 	diagCtxFastGate: number;
 	diagLiveTrimFires: number;
 	diagLiveTrimReplays: number;
+	/** S53C: latest provider prompt-cache hit % (fed by the perf handler). */
+	lastProviderCacheHitPct: number | null;
 
 	// ── public methods the orchestration calls ──
 	bindRepo(cwd: string | undefined): string;
@@ -228,6 +230,7 @@ export function snapshotImpl(self: RuntimeSnapshotContext, ctx?: ExtensionContex
 			repo,
 			rtTokensSaved: self.rt.tokensSaved,
 			lastCompactAt: self.rt.lastCompactAt,
+			lastProviderCacheHitPct: self.lastProviderCacheHitPct,
 			ticker: self.ticker,
 			lastWhy: self.lastWhy,
 			tierTrace: self.tierTrace,

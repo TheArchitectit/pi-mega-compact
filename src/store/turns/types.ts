@@ -101,6 +101,35 @@ export interface ConversationStats {
 	pressureBands: Record<string, number>;
 }
 
+// ─── Errors ─────────────────────────────────────────────────────────
+
+/**
+ * Thrown by `appendTurn` when a turn already exists at the given
+ * `(conversationId, turnIndex)` coordinate. A turn index is a position in a
+ * conversation, so the coordinate is unique by construction — a duplicate is a
+ * programming error, not a data conflict.
+ *
+ * ISSUE #9: both backends MUST throw this (not a raw `ERR_SQLITE_ERROR`, and
+ * not silently store a second row). Previously `SqliteTurnStore` threw an
+ * uncaught `ERR_SQLITE_ERROR` (leaking the SQL abstraction) while
+ * `InMemoryTurnStore` silently appended a duplicate — the contract diverged.
+ * Callers (the extension's `recordTurnWrite`) already wrap `appendTurn` in
+ * try/catch, so this is non-fatal to the agent loop; the typed error makes the
+ * failure catchable and uniform across backends.
+ */
+export class DuplicateTurnError extends Error {
+	readonly conversationId: string;
+	readonly turnIndex: number;
+	constructor(conversationId: string, turnIndex: number) {
+		super(
+			`Duplicate turn: a turn already exists at (conversationId=${conversationId}, turnIndex=${turnIndex})`,
+		);
+		this.name = "DuplicateTurnError";
+		this.conversationId = conversationId;
+		this.turnIndex = turnIndex;
+	}
+}
+
 // ─── Capability interfaces ──────────────────────────────────────────
 
 /** Read-only view — dashboards, TUI, analytics. Cannot write. */

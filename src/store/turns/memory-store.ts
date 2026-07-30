@@ -8,6 +8,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { DuplicateTurnError } from "./types.js";
 import type {
 	TurnStore,
 	TurnReader,
@@ -198,13 +199,24 @@ export class InMemoryTurnStore implements TurnStore {
 	// ── TurnWriter ──────────────────────────────────────────────
 
 	appendTurn(entry: TurnEntry): TurnId {
+		// ISSUE #9: a turn already exists at this coordinate → throw the typed
+		// DuplicateTurnError, matching SqliteTurnStore. Previously InMemory
+		// silently stored a second row (no uniqueness check) while Sqlite threw —
+		// the contract diverged and in-memory tests couldn't catch a duplicate
+		// that explodes on SQLite. The coordinate is unique by construction.
+		const convIds = this.convIndex.get(entry.conversationId) ?? [];
+		for (const id of convIds) {
+			const existing = this.turns.get(id);
+			if (existing?.entry.turnIndex === entry.turnIndex) {
+				throw new DuplicateTurnError(entry.conversationId, entry.turnIndex);
+			}
+		}
 		const id = allocId();
 		const sid = normalizeSessionId(entry.sessionId);
 		const normalized = { ...entry, sessionId: sid };
 		this.turns.set(id, { id, entry: normalized });
 
 		// Update indices
-		const convIds = this.convIndex.get(entry.conversationId) ?? [];
 		convIds.push(id);
 		this.convIndex.set(entry.conversationId, convIds);
 

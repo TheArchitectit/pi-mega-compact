@@ -198,7 +198,13 @@ export class VectorStore {
 		const t0 = Date.now();
 		const sessionId = normalizeSessionId(input.sessionId);
 		const regionHash = computeRegionHash(input.regionText);
-		const all = listCheckpoints(sessionId, this.stateDir);
+		// H1 (audit): exclude SemDeDup-'removed' rows so add()'s tier matching
+		// cannot dedup-match against a row that vectorSemDedup already collapsed,
+		// which (via the upsertCheckpoint in each tier) would resurrect it back to
+		// active. Mirrors the filter vectorSemDedup/search already apply to `all`.
+		const all = listCheckpoints(sessionId, this.stateDir).filter(
+			(cp) => cp.dedupStatus !== "removed",
+		);
 		// Honest "tokens saved" base for this region. For a deduped add the whole
 		// original region is discarded (nothing new stored); for a new checkpoint
 		// we persist (orig − stored). Falls back to stored when orig is unknown.

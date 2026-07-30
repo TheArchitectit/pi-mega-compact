@@ -65,6 +65,8 @@ export interface SnapshotInput {
 	// Session counters
 	rtTokensSaved: number;
 	lastCompactAt: number | null;
+	/** S53C: latest provider prompt-cache hit % (null until first usage block). */
+	lastProviderCacheHitPct: number | null;
 
 	// Widget display fields
 	ticker: TickerEntry[];
@@ -177,7 +179,17 @@ export function computeMegaSnapshot(p: SnapshotInput): SnapshotResult {
 	// ── S31: game-mode state ──────────────────────────────────────────────
 	const gs = p.getCachedGameState();
 	const curLevel = p.getTurnLevel();
-	const cachePct = st.dedupHitRate * 100;
+	// S53C: the cache % users mean is the PROVIDER prompt-cache hit rate (the
+	// cost lever), not mega-compact's internal dedup rate. Default source is
+	// the provider value stashed by the perf handler, falling back to the
+	// dedup rate until the first turn reports usage. Flag
+	// MEGACOMPACT_TUI_CACHE_SOURCE=dedup restores the pre-S53C source
+	// byte-identically (feature-flag rule: default ON, env OFF).
+	const cacheSource = process.env.MEGACOMPACT_TUI_CACHE_SOURCE ?? "provider";
+	const cachePct =
+		cacheSource === "dedup"
+			? st.dedupHitRate * 100
+			: (p.lastProviderCacheHitPct ?? st.dedupHitRate * 100);
 
 	const widgetData: WidgetData = {
 		version: ownVersion(),

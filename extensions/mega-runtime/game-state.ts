@@ -10,7 +10,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { watch } from "node:fs";
 import { getGameState, type GameState } from "../../src/store/sqlite.js";
 import { getTheme } from "../../src/config/themes.js";
-import { disposePerf, type PerfContext } from "./perf.js";
+import { disposePerf, disposePendingTimers, type PerfContext, type PendingTimerContext } from "./perf.js";
 
 export interface GameWatcherLike {
 	close(): void;
@@ -72,7 +72,7 @@ export function bumpGameStateImpl(self: GameStateContext): void {
  * watcher (GameStateContext) plus the v0.8.8 perf cpu/mem sampling interval
  * (PerfContext). `MegaRuntime` satisfies this structurally.
  */
-export interface DisposeRuntimeContext extends GameStateContext, PerfContext {}
+export interface DisposeRuntimeContext extends GameStateContext, PerfContext, PendingTimerContext {}
 
 /** S32: release the fs.watch game-state watcher AND stop the v0.8.8 perf
  *  sampling interval. Called when the runtime is torn down (no existing
@@ -86,6 +86,7 @@ export function disposeRuntimeImpl(self: DisposeRuntimeContext): void {
 		self.gameStateWatchDir = undefined;
 	}
 	disposePerf(self);
+	disposePendingTimers(self);
 }
 
 export function ensureGameStateWatcherImpl(self: GameStateContext, view: GameStateViewApi): void {

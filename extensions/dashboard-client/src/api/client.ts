@@ -35,6 +35,9 @@ import type {
 	ForkResponse,
 	PruneTurnsResponse,
 	TopicMemoriesResponse,
+	ProviderCacheQuery,
+	ProviderCacheStatsResponse,
+	MemoryStatusResponse,
 } from "@contracts";
 
 /** Error thrown when a dashboard API response is not 2xx. */
@@ -164,6 +167,20 @@ export function fetchPerf(params: PerfQuery = {}): Promise<PerfResponse> {
 	return getJson<PerfResponse>(
 		`${ENDPOINTS.perf.path}${query({ minutes: params.minutes })}`,
 	);
+}
+
+/** S53A — provider prompt-cache aggregates (Cache tab). Omit minutes for all-time. */
+export function fetchProviderCacheStats(
+	params: ProviderCacheQuery = {},
+): Promise<ProviderCacheStatsResponse> {
+	return getJson<ProviderCacheStatsResponse>(
+		`${ENDPOINTS.providerCache.path}${query({ minutes: params.minutes })}`,
+	);
+}
+
+/** S53B — durable-memory effectiveness aggregates. */
+export function fetchMemoryStatus(): Promise<MemoryStatusResponse> {
+	return getJson<MemoryStatusResponse>(ENDPOINTS.memoryStatus.path);
 }
 
 export function fetchAchievements(): Promise<AchievementRow[]> {

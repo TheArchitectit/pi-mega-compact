@@ -152,6 +152,26 @@ export class MegaRuntime {
 	// S21: memory recall block, parallel to pendingRecallBlock. Same one-shot
 	// semantics; composed with the checkpoint block in before_agent_start.
 	pendingMemoryRecallBlock: string | undefined;
+	// S53B: ids+scores of the memories inside pendingMemoryRecallBlock — staged
+	// beside it, moved to lastInjectedMemoryHits when before_agent_start
+	// actually prepends (that's the moment of true prompt injection).
+	pendingMemoryRecallHits:
+		| Array<{ memoryId: number; score: number }>
+		| undefined = undefined;
+	// S53B: memory hits injected at the CURRENT run's start; flushed into
+	// turn_recall (source='memory', checkpointId `memory#<id>`) by the turn_end
+	// writer, which owns the turn row for the turn the injection fed.
+	lastInjectedMemoryHits:
+		| Array<{ memoryId: number; score: number }>
+		| undefined = undefined;
+	// S54: timestamp of the last before_agent_start recall/memory prepend (the
+	// prepend mutates the provider-visible system prompt, so a coinciding
+	// prefix break is attributed to recall injection). Null when never.
+	lastRecallInjectAt: number | null = null;
+	// S54: previous context-event message digest chain + epoch id (prefix
+	// stability telemetry; see src/prompt/prefix-telemetry.ts).
+	lastPrefixChain: string[] | null = null;
+	lastPrefixEpochId: string | null = null;
 	statusKey: string | undefined; // current status text for dashboard
 	// Active model/provider (for real cost estimation). Captured from ctx.model
 	// on model_select + session_start; persisted to SQL so cost + the dashboard
@@ -187,6 +207,21 @@ export class MegaRuntime {
 	perfProviderStart = 0;
 	perfCpuInterval: ReturnType<typeof setInterval> | null = null;
 	perfCpuBaseline: { user: number; sys: number } | undefined;
+	// S53C: most recent provider prompt-cache hit % (set by the perf handler on
+	// turn_end alongside the cache_hit_pct sample). Null until the first turn
+	// with a usage block. Read by snapshot.ts for the widget cachePct when
+	// MEGACOMPACT_TUI_CACHE_SOURCE=provider (the default).
+	lastProviderCacheHitPct: number | null = null;
+	// RT2 (audit): tracked handle for the deferred ctx.compact() recheck timer
+	// (setTimeout(500)) armed by the agent_end durable trim, the context-overflow
+	// and poisoned-context error handlers, and the context handler's race-guarded
+	// path. Previously each setTimeout was untracked, pinning `ctx` on the closure
+	// and firing after session churn. Storing the handle lets resetRuntime() and
+	// dispose() clearTimeout the prior arm before a new one is queued and on
+	// teardown — mirroring perfCpuInterval. Only one durable-trim recheck is ever
+	// in flight at a time (they all gate on the same lastNativeCompactAt race
+	// window), so a single slot suffices.
+	pendingDurableTrimTimer: ReturnType<typeof setTimeout> | null = null;
 
 	// Context tracking for the dashboard (updated in the context handler).
 	lastCtxTokens: number | null = null;
