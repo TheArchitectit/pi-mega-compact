@@ -33,7 +33,22 @@ export {
 } from "./widget-ansi.js";
 export type { TickerEntry, WidgetData } from "./widget-types.js";
 
-import { C, PULSE, DEFAULT_PANEL_BG, panelBgFor, themeAnsi, sgrReset, wrapLine, panelLine, panelBar, effectBorderSgr, effectBar, fmtTokens, ramp, sinceCompactStr } from "./widget-ansi.js";
+import {
+	C,
+	PULSE,
+	DEFAULT_PANEL_BG,
+	panelBgFor,
+	themeAnsi,
+	sgrReset,
+	wrapLine,
+	panelLine,
+	panelBar,
+	effectBorderSgr,
+	effectBar,
+	fmtTokens,
+	ramp,
+	sinceCompactStr,
+} from "./widget-ansi.js";
 import type { WidgetData } from "./widget-types.js";
 
 // ── buildWidgetLines ───────────────────────────────────────────────────────
@@ -70,13 +85,13 @@ export function buildWidgetLines(
 	// width guard + theme bg apply identically to the full panel. Level is shown
 	// only when game mode is on (otherwise just the cache %).
 	if (wd.tuiMode === "minimal") {
-		const lvl = wd.gameMode ? wd.level ?? 1 : undefined;
+		const lvl = wd.gameMode ? (wd.level ?? 1) : undefined;
 		const cachePct = wd.cachePct ?? 0;
 		const cacheStr = `${Math.round(cachePct * 10) / 10}%`;
 		const accent = themeAnsi(wd.theme, "accent");
 		const mega = themeAnsi(wd.theme, "mega");
 		const megaFlare =
-			wd.gameMode && wd.megaCacheFlare && cachePct >= 100
+			wd.gameMode && wd.megaCacheFlare && (wd.megaCacheFlarePct ?? 0) >= 100
 				? ` ${mega}MEGA CACHE${sgrReset(mega)}`
 				: "";
 		const body =
@@ -100,7 +115,7 @@ export function buildWidgetLines(
 		? `${themeAnsi(wd.theme, "accent")}${wd.gameMode && wd.levelUpFlare ? "\x1b[5m" : ""}LVL ${wd.level ?? 1}${wd.gameMode && wd.levelUpFlare ? "\x1b[0m" : ""}${sgrReset(themeAnsi(wd.theme, "accent"))} `
 		: "";
 	const megaFlareSuffix =
-		wd.gameMode && wd.megaCacheFlare && (wd.cachePct ?? 0) >= 100
+		wd.gameMode && wd.megaCacheFlare && (wd.megaCacheFlarePct ?? 0) >= 100
 			? `${sep}${themeAnsi(wd.theme, "mega")}MEGA CACHE! (oops, you cached so hard the dedup caught fire)${sgrReset(themeAnsi(wd.theme, "mega"))}`
 			: "";
 	// Build one long content line — let terminal wrap it naturally
@@ -157,13 +172,21 @@ export function buildWidgetLines(
 			),
 		);
 	} else if (wd.pulsing) {
-		lines.push(panelLine(`   ${pulse}${C.teal}compacting…${C.reset}`, width, panelBg));
+		lines.push(
+			panelLine(`   ${pulse}${C.teal}compacting…${C.reset}`, width, panelBg),
+		);
 	}
 	// S35: achievement-unlock toast (one-line, accent) -- fires for one render cycle.
 	if (wd.gameMode && wd.achievementFlare && wd.achievementFlareTitles?.length) {
 		const accentSgr = themeAnsi(wd.theme, "accent");
 		const titlesStr = wd.achievementFlareTitles.join(", ");
-		lines.push(panelLine(`   ${accentSgr}🏆 Achievement unlocked: ${titlesStr}${sgrReset(accentSgr)}`, width, panelBg));
+		lines.push(
+			panelLine(
+				`   ${accentSgr}🏆 Achievement unlocked: ${titlesStr}${sgrReset(accentSgr)}`,
+				width,
+				panelBg,
+			),
+		);
 	}
 	// bottom border
 	lines.push(effectBar(panelBar(width, "─", panelBg), borderSgr));

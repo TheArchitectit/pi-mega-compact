@@ -226,7 +226,15 @@ export function snapshotImpl(
 		}
 		// ── gather widget data (computed per snapshot, rendered per frame) ────
 		const modelSnap = latestModelSnapshot(self.currentStateDir);
-		const providerCachePct = readLatestCacheHitPct(self.currentStateDir);
+		// Provider prompt cache hit % for the widget (B/C): latest
+		// cache_hit_pct sample. Non-fatal — one extra sync open per
+		// material-change-gated recompute, acceptably cheap.
+		let providerCachePct = 0;
+		try {
+			providerCachePct = readLatestCacheHitPct(self.currentStateDir);
+		} catch {
+			/* non-fatal */
+		}
 		const _snapResult = computeMegaSnapshot({
 			lastCtxTokens: self.lastCtxTokens,
 			lastCtxWindow: self.lastCtxWindow,

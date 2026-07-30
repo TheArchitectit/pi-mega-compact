@@ -99,6 +99,8 @@ describe("buildWidgetLines (S31)", () => {
 							level: 1,
 							cachePct,
 							megaCacheFlare: flare,
+							// C.3: flare gate reads megaCacheFlarePct, not cachePct
+							...(flare ? { megaCacheFlarePct: cachePct } : {}),
 						});
 						const lines = buildWidgetLines(wd, WIDTH, 0);
 						const body = contentLines(lines);
@@ -161,123 +163,306 @@ describe("buildWidgetLines (S31)", () => {
 	}
 });
 
-
 describe("buildWidgetLines ambient border effect (v0.8.3)", () => {
-  const effBase = (overrides: Partial<WidgetData> = {}): WidgetData => baseWd({
-    theme: DEFAULT_THEME, tuiMode: "full", gameMode: true, level: 1, cachePct: 42, ...overrides,
-  });
-  const isBorder = (l: string): boolean => l.includes("─");
+	const effBase = (overrides: Partial<WidgetData> = {}): WidgetData =>
+		baseWd({
+			theme: DEFAULT_THEME,
+			tuiMode: "full",
+			gameMode: true,
+			level: 1,
+			cachePct: 42,
+			...overrides,
+		});
+	const isBorder = (l: string): boolean => l.includes("─");
 
-  it("activeEffect (pulse, mid-window) -> border lines carry a 256-color fg SGR", () => {
-    const ae = { type: "pulse" as const, role: "accent" as const, startedAt: Date.now() - 250, durationMs: 2000 };
-    const lines = buildWidgetLines(effBase({ activeEffect: ae }), WIDTH, 0);
-    const borders = lines.filter(isBorder);
-    assert.ok(borders.length >= 2, "has top + bottom borders");
-    for (const b of borders) {
-      assert.ok(b.includes("\x1b[38;5;"), `border carries 256-color fg: ${JSON.stringify(b)}`);
-    }
-  });
+	it("activeEffect (pulse, mid-window) -> border lines carry a 256-color fg SGR", () => {
+		const ae = {
+			type: "pulse" as const,
+			role: "accent" as const,
+			startedAt: Date.now() - 250,
+			durationMs: 2000,
+		};
+		const lines = buildWidgetLines(effBase({ activeEffect: ae }), WIDTH, 0);
+		const borders = lines.filter(isBorder);
+		assert.ok(borders.length >= 2, "has top + bottom borders");
+		for (const b of borders) {
+			assert.ok(
+				b.includes("\x1b[38;5;"),
+				`border carries 256-color fg: ${JSON.stringify(b)}`,
+			);
+		}
+	});
 
-  it("activeEffect null -> plain borders, no 38;5 fg SGR on border lines", () => {
-    const lines = buildWidgetLines(effBase({ activeEffect: null }), WIDTH, 0);
-    const borders = lines.filter(isBorder);
-    for (const b of borders) {
-      assert.ok(!b.includes("\x1b[38;5;"), `no effect SGR on plain border: ${JSON.stringify(b)}`);
-    }
-  });
+	it("activeEffect null -> plain borders, no 38;5 fg SGR on border lines", () => {
+		const lines = buildWidgetLines(effBase({ activeEffect: null }), WIDTH, 0);
+		const borders = lines.filter(isBorder);
+		for (const b of borders) {
+			assert.ok(
+				!b.includes("\x1b[38;5;"),
+				`no effect SGR on plain border: ${JSON.stringify(b)}`,
+			);
+		}
+	});
 
-  it("expired activeEffect -> plain borders (per-frame expiry enforced)", () => {
-    const ae = { type: "pulse" as const, role: "accent" as const, startedAt: Date.now() - 5000, durationMs: 1000 };
-    const lines = buildWidgetLines(effBase({ activeEffect: ae }), WIDTH, 0);
-    const borders = lines.filter(isBorder);
-    for (const b of borders) {
-      assert.ok(!b.includes("\x1b[38;5;"), `expired effect -> plain border: ${JSON.stringify(b)}`);
-    }
-  });
+	it("expired activeEffect -> plain borders (per-frame expiry enforced)", () => {
+		const ae = {
+			type: "pulse" as const,
+			role: "accent" as const,
+			startedAt: Date.now() - 5000,
+			durationMs: 1000,
+		};
+		const lines = buildWidgetLines(effBase({ activeEffect: ae }), WIDTH, 0);
+		const borders = lines.filter(isBorder);
+		for (const b of borders) {
+			assert.ok(
+				!b.includes("\x1b[38;5;"),
+				`expired effect -> plain border: ${JSON.stringify(b)}`,
+			);
+		}
+	});
 
-  it("activeEffect border lines are width-safe (pulse, minimal + full)", () => {
-    for (const tuiMode of ["minimal", "full"] as const) {
-      const ae = { type: "pulse" as const, role: "mega" as const, startedAt: Date.now() - 100, durationMs: 2000 };
-      const lines = buildWidgetLines(effBase({ activeEffect: ae, tuiMode }), 60, 0);
-      for (const l of lines) assert.ok(visibleWidth(l) <= 60, `width safe (${tuiMode}): ${visibleWidth(l)}`);
-    }
-  });
+	it("activeEffect border lines are width-safe (pulse, minimal + full)", () => {
+		for (const tuiMode of ["minimal", "full"] as const) {
+			const ae = {
+				type: "pulse" as const,
+				role: "mega" as const,
+				startedAt: Date.now() - 100,
+				durationMs: 2000,
+			};
+			const lines = buildWidgetLines(
+				effBase({ activeEffect: ae, tuiMode }),
+				60,
+				0,
+			);
+			for (const l of lines)
+				assert.ok(
+					visibleWidth(l) <= 60,
+					`width safe (${tuiMode}): ${visibleWidth(l)}`,
+				);
+		}
+	});
 
-  it("flash effect mid-window border carries the full base index SGR", () => {
-    // Force an 'on' phase of the 120ms alternate by starting just now.
-    const ae = { type: "flash" as const, role: "red" as const, startedAt: Date.now(), durationMs: 1200 };
-    const lines = buildWidgetLines(effBase({ activeEffect: ae }), WIDTH, 0);
-    const borders = lines.filter(isBorder);
-    assert.ok(borders.some((b) => b.includes("\x1b[38;5;203m")), `flash-on phase uses red base 203`);
-  });
+	it("flash effect mid-window border carries the full base index SGR", () => {
+		// Force an 'on' phase of the 120ms alternate by starting just now.
+		const ae = {
+			type: "flash" as const,
+			role: "red" as const,
+			startedAt: Date.now(),
+			durationMs: 1200,
+		};
+		const lines = buildWidgetLines(effBase({ activeEffect: ae }), WIDTH, 0);
+		const borders = lines.filter(isBorder);
+		assert.ok(
+			borders.some((b) => b.includes("\x1b[38;5;203m")),
+			`flash-on phase uses red base 203`,
+		);
+	});
+});
+
+describe("buildWidgetLines C.3 flare gate regression", () => {
+	const flareBase = (overrides: Partial<WidgetData> = {}): WidgetData =>
+		baseWd({
+			theme: DEFAULT_THEME,
+			tuiMode: "full",
+			gameMode: true,
+			level: 1,
+			cachePct: 42,
+			...overrides,
+		});
+
+	it("flare fires when megaCacheFlarePct >= 100 even when cachePct < 100", () => {
+		// Regression: the old code read (wd.cachePct ?? 0) >= 100, so when
+		// cachePct was 56 (provider hit rate) the flare silently broke.
+		const lines = buildWidgetLines(
+			flareBase({
+				cachePct: 56,
+				megaCacheFlare: true,
+				megaCacheFlarePct: 287,
+			}),
+			WIDTH,
+			0,
+		);
+		assert.ok(
+			lines.join("\n").includes("MEGA CACHE"),
+			"flare fires from megaCacheFlarePct",
+		);
+	});
+
+	it("flare suppressed when megaCacheFlarePct < 100 even when cachePct >= 100", () => {
+		// Symmetric regression: high cachePct should NOT alone trigger flare.
+		const lines = buildWidgetLines(
+			flareBase({
+				cachePct: 150,
+				megaCacheFlare: true,
+				megaCacheFlarePct: 42,
+			}),
+			WIDTH,
+			0,
+		);
+		assert.ok(
+			!lines.join("\n").includes("MEGA CACHE"),
+			"no flare when megaCacheFlarePct below threshold",
+		);
+	});
+
+	it("flare suppressed when megaCacheFlarePct is missing (undefined)", () => {
+		const lines = buildWidgetLines(
+			flareBase({
+				cachePct: 150,
+				megaCacheFlare: true,
+			}),
+			WIDTH,
+			0,
+		);
+		assert.ok(
+			!lines.join("\n").includes("MEGA CACHE"),
+			"no flare without megaCacheFlarePct",
+		);
+	});
 });
 
 describe("buildWidgetLines footer stability (P1 — no 250ms rotation)", () => {
-  // P1: the L5 ticker branch used to re-pick the head text every 250ms via
-  // `step = floor(Date.now()/250)`, flipping the footer line on a 250·N ms
-  // cycle. After the fix it pins to the most-recent entry, so two renders of
-  // the SAME WidgetData at t and t+500ms (well past one rotation slot) must
-  // produce byte-identical footer lines. Proves the metronome is gone.
-  const stabBase = (overrides: Partial<WidgetData> = {}): WidgetData => baseWd({
-    theme: DEFAULT_THEME, tuiMode: "full", gameMode: false, level: 1, cachePct: 42, ...overrides,
-  });
+	// P1: the L5 ticker branch used to re-pick the head text every 250ms via
+	// `step = floor(Date.now()/250)`, flipping the footer line on a 250·N ms
+	// cycle. After the fix it pins to the most-recent entry, so two renders of
+	// the SAME WidgetData at t and t+500ms (well past one rotation slot) must
+	// produce byte-identical footer lines. Proves the metronome is gone.
+	const stabBase = (overrides: Partial<WidgetData> = {}): WidgetData =>
+		baseWd({
+			theme: DEFAULT_THEME,
+			tuiMode: "full",
+			gameMode: false,
+			level: 1,
+			cachePct: 42,
+			...overrides,
+		});
 
-  it("ticker footer is byte-identical across simulated frames 500ms apart", () => {
-    const wd = stabBase({
-      ticker: [
-        { text: "first", at: 1000 },
-        { text: "second", at: 2000 },
-        { text: "third", at: 3000 },
-      ],
-      lastWhy: "because",
-    });
-    const realNow = Date.now;
-    try {
-      Date.now = () => 1_000_000; // t
-      const a = buildWidgetLines(wd, WIDTH, 0);
-      Date.now = () => 1_000_500; // t+500ms (would have rotated twice under the old code)
-      const b = buildWidgetLines(wd, WIDTH, 0);
-      assert.deepEqual(a, b, "footer byte-identical across 500ms with no state change");
-      // And the pinned head is the most-recent entry (third), not a rotation:
-      assert.ok(a.some((l) => l.includes("third")), "shows most-recent ticker entry");
-      assert.ok(a.some((l) => l.includes("(+2 more)")), "(+N more) suffix preserved");
-      assert.ok(a.some((l) => l.includes("because")), "lastWhy preserved");
-    } finally {
-      Date.now = realNow;
-    }
-  });
+	it("ticker footer is byte-identical across simulated frames 500ms apart", () => {
+		const wd = stabBase({
+			ticker: [
+				{ text: "first", at: 1000 },
+				{ text: "second", at: 2000 },
+				{ text: "third", at: 3000 },
+			],
+			lastWhy: "because",
+		});
+		const realNow = Date.now;
+		try {
+			Date.now = () => 1_000_000; // t
+			const a = buildWidgetLines(wd, WIDTH, 0);
+			Date.now = () => 1_000_500; // t+500ms (would have rotated twice under the old code)
+			const b = buildWidgetLines(wd, WIDTH, 0);
+			assert.deepEqual(
+				a,
+				b,
+				"footer byte-identical across 500ms with no state change",
+			);
+			// And the pinned head is the most-recent entry (third), not a rotation:
+			assert.ok(
+				a.some((l) => l.includes("third")),
+				"shows most-recent ticker entry",
+			);
+			assert.ok(
+				a.some((l) => l.includes("(+2 more)")),
+				"(+N more) suffix preserved",
+			);
+			assert.ok(
+				a.some((l) => l.includes("because")),
+				"lastWhy preserved",
+			);
+		} finally {
+			Date.now = realNow;
+		}
+	});
 
-  it("footer still flips when the ticker actually changes (new pushTicker)", () => {
-    const realNow = Date.now;
-    try {
-      Date.now = () => 1_000_000;
-      const before = buildWidgetLines(stabBase({ ticker: [{ text: "a", at: 1 }] }), WIDTH, 0);
-      const after = buildWidgetLines(stabBase({ ticker: [{ text: "a", at: 1 }, { text: "b", at: 2 }] }), WIDTH, 0);
-      assert.notDeepEqual(before, after, "footer changes when ticker grows");
-    } finally {
-      Date.now = realNow;
-    }
-  });
+	it("footer still flips when the ticker actually changes (new pushTicker)", () => {
+		const realNow = Date.now;
+		try {
+			Date.now = () => 1_000_000;
+			const before = buildWidgetLines(
+				stabBase({ ticker: [{ text: "a", at: 1 }] }),
+				WIDTH,
+				0,
+			);
+			const after = buildWidgetLines(
+				stabBase({
+					ticker: [
+						{ text: "a", at: 1 },
+						{ text: "b", at: 2 },
+					],
+				}),
+				WIDTH,
+				0,
+			);
+			assert.notDeepEqual(before, after, "footer changes when ticker grows");
+		} finally {
+			Date.now = realNow;
+		}
+	});
 });
 
 describe("buildWidgetLines achievement flare (S35)", () => {
-  const achBase = (overrides: Partial<WidgetData> = {}): WidgetData => baseWd({
-    theme: DEFAULT_THEME, tuiMode: "full", gameMode: true, level: 1, cachePct: 42, ...overrides,
-  });
-  it("achievementFlare + titles -> renders the unlock toast line", () => {
-    const lines = buildWidgetLines(achBase({ achievementFlare: true, achievementFlareTitles: ["First Compact"] }), WIDTH, 0);
-    assert.ok(lines.some((l) => l.includes("Achievement unlocked: First Compact")), "toast line present");
-  });
-  it("achievementFlare off -> no toast line", () => {
-    const lines = buildWidgetLines(achBase({ achievementFlare: false, achievementFlareTitles: ["First Compact"] }), WIDTH, 0);
-    assert.ok(!lines.some((l) => l.includes("Achievement unlocked")), "no toast when flare off");
-  });
-  it("gameMode off -> no toast even if flare set", () => {
-    const lines = buildWidgetLines(achBase({ gameMode: false, achievementFlare: true, achievementFlareTitles: ["X"] }), WIDTH, 0);
-    assert.ok(!lines.some((l) => l.includes("Achievement unlocked")), "no toast when game off");
-  });
-  it("achievement toast is width-safe", () => {
-    const lines = buildWidgetLines(achBase({ achievementFlare: true, achievementFlareTitles: ["First Compact", "Turn Veteran"] }), 60, 0);
-    for (const l of lines) assert.ok(visibleWidth(l) <= 60, "width safe");
-  });
+	const achBase = (overrides: Partial<WidgetData> = {}): WidgetData =>
+		baseWd({
+			theme: DEFAULT_THEME,
+			tuiMode: "full",
+			gameMode: true,
+			level: 1,
+			cachePct: 42,
+			...overrides,
+		});
+	it("achievementFlare + titles -> renders the unlock toast line", () => {
+		const lines = buildWidgetLines(
+			achBase({
+				achievementFlare: true,
+				achievementFlareTitles: ["First Compact"],
+			}),
+			WIDTH,
+			0,
+		);
+		assert.ok(
+			lines.some((l) => l.includes("Achievement unlocked: First Compact")),
+			"toast line present",
+		);
+	});
+	it("achievementFlare off -> no toast line", () => {
+		const lines = buildWidgetLines(
+			achBase({
+				achievementFlare: false,
+				achievementFlareTitles: ["First Compact"],
+			}),
+			WIDTH,
+			0,
+		);
+		assert.ok(
+			!lines.some((l) => l.includes("Achievement unlocked")),
+			"no toast when flare off",
+		);
+	});
+	it("gameMode off -> no toast even if flare set", () => {
+		const lines = buildWidgetLines(
+			achBase({
+				gameMode: false,
+				achievementFlare: true,
+				achievementFlareTitles: ["X"],
+			}),
+			WIDTH,
+			0,
+		);
+		assert.ok(
+			!lines.some((l) => l.includes("Achievement unlocked")),
+			"no toast when game off",
+		);
+	});
+	it("achievement toast is width-safe", () => {
+		const lines = buildWidgetLines(
+			achBase({
+				achievementFlare: true,
+				achievementFlareTitles: ["First Compact", "Turn Veteran"],
+			}),
+			60,
+			0,
+		);
+		for (const l of lines) assert.ok(visibleWidth(l) <= 60, "width safe");
+	});
 });
