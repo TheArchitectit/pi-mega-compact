@@ -63,6 +63,9 @@ export interface MegaConfig {
 	/** High-pressure floor for preserveRecent — when context is near the limit
 	 *  we compact deeper, but never below this (keeps recent turns for coherence). */
 	preserveRecentMin: number;
+	/** D.1: minimum context-growth percentage delta before re-compacting instead of
+	 *  replaying the cached trim (Default 50). Set via MEGACOMPACT_RECOMPACT_PCT_DELTA.*/
+	recompactPctDelta: number;
 	auto: boolean;
 	autoInline: boolean;
 	autoInlineK: number;
@@ -312,6 +315,9 @@ export function loadConfig(): MegaConfig {
 		recallMaxTokens: envFlag("MEGACOMPACT_RECALL_MAX_TOKENS", 1500),
 		windowDedupe: envBool("MEGACOMPACT_WINDOW_DEDUPE", true),
 		tuiWidget: envBool("MEGACOMPACT_TUI_WIDGET", true),
+		// D.1: env-overridable recompact delta (minimum context growth % before
+		// re-compacting instead of replaying the cached live trim). Default 50.
+		recompactPctDelta: envFlag("MEGACOMPACT_RECOMPACT_PCT_DELTA", 50),
 		debug: envBool("MEGACOMPACT_DEBUG", false),
 	};
 }
