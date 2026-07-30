@@ -191,7 +191,10 @@ export function registerAgentHandlers(
 								runtime.pendingDurableTrimTimer = null;
 								try {
 									if (runtime.rt.sessionId !== liveSid) return; // session reset
-									const since2 = now - (runtime.rt.lastNativeCompactAt ?? 0);
+									// RT1: recompute since2 from a FRESH Date.now() — `now` was captured
+									// ~500ms earlier (before this setTimeout) and would skew the cooldown
+									// check vs the context-handler mirror.
+									const since2 = Date.now() - (runtime.rt.lastNativeCompactAt ?? 0);
 									if (
 										runtime.rt.lastNativeCompactAt !== stamp &&
 										since2 < cooldownMs
