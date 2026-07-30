@@ -171,6 +171,18 @@ export type SseEvent =
 	| SseGameRender
 	| SseSessionSample;
 
+// S49B — maintenance tab API
+export type {
+	TableStats,
+	DbFiles,
+	DbStorageStats,
+	DbStatsResponse,
+	MaintenanceActionResult,
+	SchemaHealthRow,
+	SchemaHealthResponse,
+	MaintenanceAction,
+} from "./maintenance.js";
+
 // S52 — turn-by-turn memory tracking + recall + rewind
 export type {
 	TurnRow,

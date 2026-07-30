@@ -56,6 +56,13 @@ export type {
 	TopicDetailResponse,
 } from "./game-types.js";
 
+import type {
+	DbStatsResponse,
+	MaintenanceActionResult,
+	MaintenanceAction,
+	SchemaHealthResponse,
+} from "./maintenance.js";
+
 // ─── New Response Types (inline) ───────────────────────────────────────────
 
 /**
@@ -553,4 +560,27 @@ export const ENDPOINTS = {
 		path: "/api/topics/:topicId/memories",
 		description: "Member memories assigned to a wiki topic (drill-down).",
 	} as const satisfies EndpointDef<"GET", undefined, TopicMemoriesResponse>,
+
+	// ─── S49B Maintenance Tab ─────────────────────────────────────────
+
+	/** GET /api/maintenance — DB stats (table row counts + storage). */
+	maintenanceStats: {
+		method: "GET",
+		path: "/api/maintenance",
+		description: "SQLite table row counts, storage stats, and DB file sizes.",
+	} as const satisfies EndpointDef<"GET", undefined, DbStatsResponse>,
+
+	/** GET /api/maintenance/schema-health — Schema version + integrity audit. */
+	schemaHealth: {
+		method: "GET",
+		path: "/api/maintenance/schema-health",
+		description: "SCHEMA_VERSION, PRAGMA integrity_check, FK check, and per-column audit.",
+	} as const satisfies EndpointDef<"GET", undefined, SchemaHealthResponse>,
+
+	/** POST /api/maintenance/action — Trigger a maintenance action. */
+	maintenanceAction: {
+		method: "POST",
+		path: "/api/maintenance/action",
+		description: "Run vacuum, checkpoint, reindex, fts5-rebuild, reconcile-dedup, prune, or integrity-check.",
+	} as const satisfies EndpointDef<"POST", MaintenanceAction, MaintenanceActionResult>,
 } as const;

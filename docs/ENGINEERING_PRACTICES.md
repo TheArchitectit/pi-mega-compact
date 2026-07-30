@@ -13,7 +13,7 @@ disagrees with this document, **this document wins** (and the other gets updated
 ## 1. File Size Limits (HARD)
 
 | Kind | Soft limit | Hard limit | Action on breach |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Source (`src/**/*.ts`) | 300 lines | 500 lines | Split immediately |
 | Extension (`extensions/**/*.ts`) | 400 lines | 500 lines | Split immediately |
 | Test (`*.test.ts`) | 400 lines | 600 lines | Extract shared helpers; split by describe block |
@@ -81,7 +81,7 @@ export function doThingImpl(ctx: DoThingContext, arg: Arg): Result {
 ### Reference examples
 
 | Shell | Impl files | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `extensions/mega-runtime/runtime.ts` (~437 lines) | `effects.ts`, `game-state.ts`, `perf.ts`, `pressure-getters.ts`, … | Original reference; delegates-only |
 | `src/store/sqlite.ts` | `schema.ts`, `turns.ts`, `utils.ts`, `raptor.ts`, `global-index.ts`, … | Main store barrel + impl split |
 | `extensions/dashboard-server/routes.ts` | `routes-core.ts`, `routes-game.ts`, `routes-repo.ts`, `routes-sessions.ts` | Route-level split |
@@ -272,7 +272,7 @@ Every store operation that matters (write, prune, migrate, error) logs a structu
 ### Event naming convention
 
 | Pattern | Meaning | Example |
-|---|---|---|
+| --- | --- | --- |
 | `*_recorded` | A fact was appended | `turn_recorded`, `recall_recorded` |
 | `*_pruned` | Data was removed | `turns_pruned`, `recall_pruned` |
 | `*_failed` | An operation failed | `turn_record_failed`, `migration_failed` |
@@ -295,7 +295,7 @@ python3 scripts/regression_check.py --all              # Four Laws / scope / sec
 ### Additional per-sprint gates
 
 | Gate | When | What |
-|---|---|---|
+| --- | --- | --- |
 | **Contract review** | Before any impl code | Types file reviewed + approved |
 | **Compliance suite** | After impl | Shared test suite passes for all backends |
 | **Capability check** | After adapter wiring | Dashboard gets reader only; compaction gets writer only |
@@ -356,7 +356,7 @@ These files exceed the 500-line hard limit and should be split in the next sprin
 touches them:
 
 | File | Lines | Proposed split |
-|---|---|---|
+| --- | --- | --- |
 | `extensions/mega-events/agent-handlers.ts` | 681 | Extract turn-recall writer adapter → `turn-adapter.ts` |
 | `src/recall.ts` | 558 | Extract `formatRecallBlock` → `recall-format.ts` |
 | `src/vectorStore.ts` | 506 | Extract `searchHits` → `vector-search-hits.ts` |
@@ -370,8 +370,40 @@ touches them:
 
 ---
 
-## 13. Revision History
+## 13. Schema Health Validation (S49B)
+
+Every release MUST pass a schema-health check that validates:
+
+1. **Contract vs. DB**: every column declared in the API contract (`SchemaHealthResponse`)
+   actually exists in the live SQLite schema.
+2. **Foreign key integrity** (`PRAGMA foreign_key_check`).
+3. **Overall database integrity** (`PRAGMA integrity_check`).
+
+This is enforced at `scripts/deploy.sh` step 2.5 (runs `scripts/schema-health-check.mjs`) and
+is a blocking gate — a failing check halts the publish pipeline.
+
+**Maintenance tab:** the `/dashboard#maintenance` tab surfaces this same check at runtime
+with per-column granularity, so operators can audit health without deploying.
+
+**Backup-before-maintenance:** all destructive maintenance actions (VACUUM, REINDEX,
+FTS5 rebuild, prune) MUST create a `.bak` snapshot of the SQLite database before executing.
+The backup is written to the state dir as `sqlite.db.bak-<ISO-timestamp>` and is a simple
+file copy (not a VACUUM INTO). This is enforced by the maintenance route handler, not by
+each action individually.
+
+Each module that owns a database table MUST keep its contract types in sync with its
+`CREATE TABLE` statements. When a table column is added, removed, or retyped:
+
+1. Update `src/store/sqlite/schema.ts` (the SQL DDL).
+2. Update `extensions/dashboard-server/api-contracts/maintenance.ts` (the contract type).
+3. Re-run `node scripts/schema-health-check.mjs` — it MUST pass.
+4. The CI gate blocks the release if it fails.
+
+---
+
+## 14. Revision History
 
 | Date | Version | Change |
-|---|---|---|
+| --- | --- | --- |
 | 2026-07-29 | 1.0 | Initial codification from CLAUDE.md + spec conventions + agent session decisions |
+| 2026-08-02 | 1.1 | S49B: schema-health validation gate, maintenance tab, backup-before-maintenance, schema-health-check script |

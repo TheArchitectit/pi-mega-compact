@@ -66,6 +66,15 @@ export type {
   MinHashBandState,
   // Composite
   SseEvent,
+  // S49B — maintenance tab
+  TableStats,
+  DbFiles,
+  DbStorageStats,
+  DbStatsResponse,
+  MaintenanceActionResult,
+  SchemaHealthRow,
+  SchemaHealthResponse,
+  MaintenanceAction,
   // Endpoints registry (Sprint A1)
   VersionResponse,
   IndexSummary,

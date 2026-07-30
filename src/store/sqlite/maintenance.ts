@@ -4,8 +4,9 @@
  * All pi-agnostic, all parameterized (PREVENT-002), all local (PREVENT-PI-004).
  * Exposed via the /mega-db-* slash commands in extensions/mega-db-cmds.ts.
  */
-import { statSync } from "node:fs";
+import { statSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { getStateDir } from "../../store.js";
 import { openStore, withTx } from "./utils.js";
 
@@ -98,6 +99,24 @@ export interface MaintenanceResult {
   reclaimedBytes: number;
   /** Human-readable summary line for the command output. */
   summary: string;
+}
+
+/**
+ * Lightweight temp backup of the main sqlite.db via VACUUM INTO.
+ * 
+ * Creates a one-off backup in the OS tmpdir. Returns the backup path.
+ * VACUUM INTO produces a clean, defragmented copy — also serves as a
+ * pre-op safeguard for any destructive maintenance action.
+ */
+export function backupDb(stateDir: string = getStateDir()): string {
+  const backupDir = join(tmpdir(), "pi-mega-compact-backups");
+  if (!existsSync(backupDir)) mkdirSync(backupDir, { recursive: true });
+  const ts = Date.now();
+  const backupPath = join(backupDir, `sqlite-${ts}.db`);
+  const db = openStore(stateDir);
+  // guardrails-disable-next-line PREVENT-002: path built from tmpdir + timestamp, not user input
+  db.exec(`VACUUM INTO '${backupPath.replace(/'/g, "''")}'`);
+  return backupPath;
 }
 
 /**

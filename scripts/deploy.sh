@@ -84,6 +84,11 @@ python3 scripts/regression_check.py --all
 node scripts/guardrails-scan.mjs
 echo "[deploy] gate green."
 
+# --- 2.5 schema-health validation (S49B) ------------------------------------
+echo "[deploy] validating schema health (S49B gate)"
+node scripts/schema-health-check.mjs
+echo "[deploy] schema health OK."
+
 # --- 3. build the React dashboard --------------------------------------------
 echo "[deploy] building React dashboard (npm run build:dashboard)"
 npm run build:dashboard

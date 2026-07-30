@@ -35,6 +35,10 @@ import type {
 	ForkResponse,
 	PruneTurnsResponse,
 	TopicMemoriesResponse,
+	DbStatsResponse,
+	SchemaHealthResponse,
+	MaintenanceAction,
+	MaintenanceActionResult,
 } from "@contracts";
 
 /** Error thrown when a dashboard API response is not 2xx. */
@@ -242,5 +246,24 @@ export function fetchTopicMemories(
 			":topicId",
 			encodeURIComponent(topicId),
 		),
+	);
+}
+
+// ─── Maintenance (S49B) ─────────────────────────────────────────────────
+
+export function fetchDbStats(): Promise<DbStatsResponse> {
+	return getJson<DbStatsResponse>(ENDPOINTS.maintenanceStats.path);
+}
+
+export function fetchSchemaHealth(): Promise<SchemaHealthResponse> {
+	return getJson<SchemaHealthResponse>(ENDPOINTS.schemaHealth.path);
+}
+
+export function postMaintenanceAction(
+	action: MaintenanceAction,
+): Promise<MaintenanceActionResult> {
+	return postJson<MaintenanceActionResult>(
+		ENDPOINTS.maintenanceAction.path,
+		action,
 	);
 }
