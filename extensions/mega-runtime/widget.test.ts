@@ -9,7 +9,10 @@
  *  (b) non-transparent themes → at least one line carries '\x1b[48;'
  *  (c) minimal mode → exactly one content line (between the two panel bars)
  *  (d) gameMode off → no 'LVL' + no 'MEGA CACHE'
- *  (e) megaCacheFlare + gameMode on + cachePct>=100 → 'MEGA CACHE' text present
+ *  (e) megaCacheFlare + gameMode on + megaCacheFlarePct>=100 → 'MEGA CACHE' text present
+ *      (S53-C/D5: gate reads megaCacheFlarePct — the dedup rate that armed the
+ *      flare — not cachePct, which after S53-C is the bounded 0–100 provider
+ *      prompt-cache pct and would silently kill the flare.)
  *  (f) every line visibleWidth <= the terminal width passed in
  *
  * Uses MEGACOMPACT_STATE_DIR + mkdtemp (G7). No pi runtime.
@@ -99,6 +102,12 @@ describe("buildWidgetLines (S31)", () => {
 							level: 1,
 							cachePct,
 							megaCacheFlare: flare,
+							// S53-C/D5: the flare gate reads megaCacheFlarePct (the dedup
+							// hit rate that armed it — can legitimately exceed 100%), not
+							// cachePct (now the bounded 0–100 provider prompt-cache pct).
+							// The fixture arms the flare from the same dedup rate it sets as
+							// cachePct, so the gate fires identically to pre-D5 behavior.
+							megaCacheFlarePct: cachePct,
 						});
 						const lines = buildWidgetLines(wd, WIDTH, 0);
 						const body = contentLines(lines);

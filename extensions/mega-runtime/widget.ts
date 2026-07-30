@@ -76,7 +76,11 @@ export function buildWidgetLines(
 		const accent = themeAnsi(wd.theme, "accent");
 		const mega = themeAnsi(wd.theme, "mega");
 		const megaFlare =
-			wd.gameMode && wd.megaCacheFlare && cachePct >= 100
+			// S53-C/D5: gate the dedup flare on megaCacheFlarePct (the dedup hit
+			// rate that armed it, which legitimately exceeds 100%), NOT on cachePct —
+			// after S53-C, cachePct is the provider prompt-cache hit pct (bounded
+			// 0–100, practically never 100), which silently killed the flare.
+			wd.gameMode && wd.megaCacheFlare && (wd.megaCacheFlarePct ?? 0) >= 100
 				? ` ${mega}MEGA CACHE${sgrReset(mega)}`
 				: "";
 		const body =
@@ -100,7 +104,9 @@ export function buildWidgetLines(
 		? `${themeAnsi(wd.theme, "accent")}${wd.gameMode && wd.levelUpFlare ? "\x1b[5m" : ""}LVL ${wd.level ?? 1}${wd.gameMode && wd.levelUpFlare ? "\x1b[0m" : ""}${sgrReset(themeAnsi(wd.theme, "accent"))} `
 		: "";
 	const megaFlareSuffix =
-		wd.gameMode && wd.megaCacheFlare && (wd.cachePct ?? 0) >= 100
+		// S53-C/D5: gate on megaCacheFlarePct (dedup hit rate that armed the
+		// flare), not cachePct (now the provider prompt-cache pct, bounded 0–100).
+		wd.gameMode && wd.megaCacheFlare && (wd.megaCacheFlarePct ?? 0) >= 100
 			? `${sep}${themeAnsi(wd.theme, "mega")}MEGA CACHE! (oops, you cached so hard the dedup caught fire)${sgrReset(themeAnsi(wd.theme, "mega"))}`
 			: "";
 	// Build one long content line — let terminal wrap it naturally

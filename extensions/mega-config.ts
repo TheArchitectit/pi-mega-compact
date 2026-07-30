@@ -140,6 +140,13 @@ export interface MegaConfig {
 	 *  tighter than same-repo so only genuinely-relevant cross-repo context is
 	 *  injected. */
 	crossRepoCosine: number;
+	/** S53-D cache-stability: re-compact only after the context % grows by at
+	 *  least this many points since the last compact (percent basis). The cached
+	 *  live-trim view is replayed verbatim below this delta, which stabilizes the
+	 *  provider KV-cache prefix (the alternating cache-miss regression). Default
+	 *  50 — the v0.8.6 value of 10 rebuilt the prefix on every 10% window growth
+	 *  and suppressed the hit rate. Env: MEGACOMPACT_RECOMPACT_PCT_DELTA. */
+	recompactPctDelta: number;
 	/** Memory-RAG auto-review enabled (S20). Every memoryReviewInterval turns the
 	 *  conversation is auto-reviewed into durable add/replace/remove memories. */
 	memoryAutoReview: boolean;
@@ -307,6 +314,9 @@ export function loadConfig(): MegaConfig {
 		autoWikiEnabled: envBool("MEGACOMPACT_AUTO_WIKI", true),
 		crossRepoEnabled: envBool("MEGACOMPACT_CROSSREPO_ENABLED", true),
 		crossRepoCosine: envFlag("MEGACOMPACT_CROSSREPO_COSINE", 0.9),
+		// S53-D: widen the re-compact delta 10 → 50 (env-overridable). See the
+		// interface docstring; the old 10 rebuilt the prefix every 10% growth.
+		recompactPctDelta: envFlag("MEGACOMPACT_RECOMPACT_PCT_DELTA", 50),
 		memoryAutoReview: envBool("MEGACOMPACT_MEMORY_AUTO_REVIEW", true),
 		memoryReviewInterval: envFlag("MEGACOMPACT_MEMORY_REVIEW_INTERVAL", 10),
 		recallMaxTokens: envFlag("MEGACOMPACT_RECALL_MAX_TOKENS", 1500),

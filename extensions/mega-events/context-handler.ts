@@ -308,12 +308,14 @@ export function registerContextHandler(
 		// cut are reused verbatim) instead of regenerating a fresh summary +
 		// sentinel every fire, which invalidated the prefix on every other turn
 		// (the alternating cache-miss regression). Re-compact only when context
-		// grew >=10% of the window (percent basis) or >=50% of the effective
-		// threshold (token basis, when percent is unavailable). The cached `cut`
-		// is only valid while the transcript grows within the epoch — it is
-		// cleared on session_compact (durable truncation) + resetRuntime, so we
-		// never replay a stale cut into a truncated transcript (PREVENT-PI-001/002).
-		const RECOMPACT_PCT_DELTA = 10;
+		// grew >= recompactPctDelta of the window (percent basis, default 50 —
+		// S53-D raised it from 10, which rebuilt the prefix every 10% growth) or
+		// >=50% of the effective threshold (token basis, when percent is
+		// unavailable). The cached `cut` is only valid while the transcript grows
+		// within the epoch — it is cleared on session_compact (durable truncation)
+		// + resetRuntime, so we never replay a stale cut into a truncated
+		// transcript (PREVENT-PI-001/002).
+		const RECOMPACT_PCT_DELTA = config.recompactPctDelta;
 		if (
 			runtime.trimCache &&
 			runtime.trimCache.checkpointId === runtime.rt.lastCheckpointId &&
@@ -351,6 +353,25 @@ export function registerContextHandler(
 		});
 		if (ran.skipped) {
 			runtime.diagCtxRunSkipped++;
+			// S53-D/D7 cache-stability: a skipped compaction used to return nothing
+			// → pi sent the FULL transcript for that call, a guaranteed cache miss.
+			// Fall back to the cached trim replay when it is still valid (same
+			// guards as the replay above) — never to the full transcript. This is
+			// the v0.8.6 design intent: the replay cache exists to stabilize the KV
+			// prefix, and a skip is precisely when stability matters most.
+			if (
+				runtime.trimCache &&
+				runtime.trimCache.checkpointId === runtime.rt.lastCheckpointId &&
+				runtime.trimCache.cut <= messages.length
+			) {
+				const recent = messages.slice(runtime.trimCache.cut); // guardrails-allow PREVENT-PI-002: cached `cut` sanitized once by computeLiveTrimCut; replayed verbatim within the epoch.
+				runtime.diagLiveTrimFires++;
+				runtime.diagLiveTrimReplays++;
+				runtime.snapshot(ctx);
+				return {
+					messages: [{ ...runtime.trimCache.summaryAgentMsg }, ...recent],
+				};
+			}
 			return;
 		}
 
