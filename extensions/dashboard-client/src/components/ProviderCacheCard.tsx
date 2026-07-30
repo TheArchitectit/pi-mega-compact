@@ -3,121 +3,139 @@
  *
  * Displays lifetime provider prompt cache hit-rate aggregates + estimated
  * dollar savings from the /api/provider-cache endpoint.
- * Mirrors the PerfCards pattern (perf-metric CSS classes).
+ * Reuses the `ov-stat-row` / `StatRow` pattern from CacheHitsCard.tsx.
+ *
+ * B.2 spec: Cache Hit Rate with color classes, humanized token counts,
+ * priced $ rows with green/red net, model name, locale date + relative time.
  */
 
 import type React from "react";
-import type { ProviderCacheResponse } from "@contracts";
+import {
+	fmtTokens,
+	fmtDollars,
+	fmtDate,
+	fmtRelativeTime,
+} from "../utils/format";
 
-/** Format milliseconds (em-dash for null/undefined).
-function fmtMs(v: number | null | undefined): string {
-	return v == null
-		? "\u2014"
-		: v >= 100
-			? `${Math.round(v)}ms`
-			: `${v.toFixed(1)}ms`;
+// ---------------------------------------------------------------------------
+// Flattened props — destructured from ProviderCacheResponse in CacheTab.
+// ---------------------------------------------------------------------------
+
+export interface ProviderCacheCardProps {
+	/** Cache hit rate percentage (0–100). */
+	hitPct: number;
+	/** Number of turns with cache_hit_pct samples. */
+	turnCount: number;
+	/** Total cache-read tokens across all sampled turns. */
+	totalCacheRead: number;
+	/** Total cache-write tokens across all sampled turns. */
+	totalCacheWrite: number;
+	/** Total input tokens across all sampled turns. */
+	totalInput: number;
+	/** $ saved from cache reads (null when unpriced). */
+	cacheReadSaved: number | null;
+	/** $ spent on cache writes (null when unpriced). */
+	cacheWriteCost: number | null;
+	/** netSaved = cacheReadSaved - cacheWriteCost (null when unpriced). */
+	netSaved: number | null;
+	/** Model display name (modelName || modelId, or null). */
+	modelLabel: string | null;
+	/** ISO timestamp of first recorded turn. */
+	firstTurnAt: string | null;
+	/** ISO timestamp of latest recorded turn. */
+	latestTurnAt: string | null;
 }
 
-/** Format a number with fixed decimals (em-dash for null/non-number). */
-function fmtNum(v: number | null | undefined, dec: number): string {
-	return v == null || typeof v !== "number" ? "\u2014" : v.toFixed(dec);
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Hit-rate color: green ≥80, yellow ≥50, red <50. */
+function hitPctClass(pct: number): string {
+	if (pct >= 80) return "ov-stat-value-green";
+	if (pct >= 50) return "ov-stat-value-yellow";
+	return "ov-stat-value-red";
 }
 
-/** Format tokens as human-readable. */
-function fmtTokens(v: number | null | undefined): string {
-	if (v == null) return "\u2014";
-	if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-	if (v >= 1_000) return `${(v / 1_000).toFixed(1)}k`;
-	return String(v);
+/** Net-saved color: green positive, red negative. */
+function netClass(v: number | null): string {
+	if (v == null) return "";
+	return v >= 0 ? "ov-stat-value-green" : "ov-stat-value-red";
 }
 
-/** Format dollars with micro-cent precision for < $0.01. */
-function fmtDollars(v: number): string {
-	const abs = Math.abs(v);
-	if (abs < 0.0001) return "$0.00";
-	if (abs < 0.01) return `$${v.toFixed(4)}`;
-	if (abs < 1) return `$${v.toFixed(4)}`;
-	return `$${v.toFixed(2)}`;
-}
-
-interface Props {
-	data: ProviderCacheResponse;
-}
-
-/** A single stat row. */
-function Stat({
+function StatRow({
 	label,
 	value,
+	className,
+	title,
 }: {
 	label: string;
 	value: string;
+	className?: string;
+	title?: string;
 }): React.ReactElement {
 	return (
-		<div className="perf-metric">
-			<span className="perf-label">{label}</span>
-			<span className="perf-value">{value}</span>
+		<div className="ov-stat-row">
+			<span className="ov-stat-label" title={title}>
+				{label}
+			</span>
+			<span className={`ov-stat-value${className ? ` ${className}` : ""}`}>
+				{value}
+			</span>
 		</div>
 	);
 }
 
-/** Card wrapper with a title. */
-function Card({
-	title,
-	children,
-}: {
-	title: string;
-	children: React.ReactNode;
-}): React.ReactElement {
-	return (
-		<div className="perf-card">
-			<h3 className="perf-card-title">{title}</h3>
-			<div className="perf-card-body">{children}</div>
-		</div>
-	);
-}
+// ---------------------------------------------------------------------------
+// Card
+// ---------------------------------------------------------------------------
 
-export function ProviderCacheCard({ data }: Props): React.ReactElement {
-	const { cache, savings } = data;
-	const { avgHitPct, turnCount, totalCacheRead, totalCacheWrite, totalInput } =
-		cache;
+export function ProviderCacheCard(
+props: ProviderCacheCardProps,
+): React.ReactElement {
+return (
+		<div className="card provider-cache-card">
+			{/* --- Hit Rate + Turns --- */}
+			<StatRow
+				label="Cache Hit Rate"
+				value={`${props.hitPct.toFixed(1)}%`}
+				className={hitPctClass(props.hitPct)}
+			/>
+			<StatRow label="Turns Recorded" value={String(props.turnCount)} />
 
-	const pctStr = turnCount > 0 ? `${fmtNum(avgHitPct, 1)}%` : "\u2014";
+			{/* --- Token counts --- */}
+			<StatRow
+				label="Cache Read Tokens"
+				value={fmtTokens(props.totalCacheRead)}
+			/>
+			<StatRow
+				label="Cache Write Tokens"
+				value={fmtTokens(props.totalCacheWrite)}
+			/>
+			<StatRow label="Input Tokens" value={fmtTokens(props.totalInput)} />
 
-	const netSavedStr = savings != null ? fmtDollars(savings.netSaved) : "\u2014";
+			{/* --- Dollar rows (null when unpriced) --- */}
+			<StatRow
+				label="$ Saved (reads)"
+				value={fmtDollars(props.cacheReadSaved)}
+			/>
+			<StatRow
+				label="Write Investment"
+				value={fmtDollars(props.cacheWriteCost)}
+			/>
+			<StatRow
+				label="Net Saved"
+				value={fmtDollars(props.netSaved)}
+				className={netClass(props.netSaved)}
+			/>
 
-	const modelLabel = savings?.model ?? "\u2014";
-	const rateLabel =
-		savings?.inputRate != null
-			? `$${fmtNum(savings.inputRate / 1_000_000, 2)}/M tok`
-			: "\u2014";
-
-	return (
-		<div className="perf-cards-grid">
-			<Card title="Provider cache hits">
-				<Stat label="Lifetime avg" value={pctStr} />
-				<Stat label="Samples" value={String(turnCount)} />
-				<Stat label="Cache read" value={fmtTokens(totalCacheRead)} />
-				<Stat label="Cache write" value={fmtTokens(totalCacheWrite)} />
-				<Stat label="Total input" value={fmtTokens(totalInput)} />
-			</Card>
-
-			<Card title="Estimated savings">
-				<Stat label="Net saved" value={netSavedStr} />
-				<Stat label="Model" value={modelLabel} />
-				<Stat label="Input rate" value={rateLabel} />
-				{savings != null && (
-					<>
-						<Stat
-							label="Read saved"
-							value={fmtDollars(savings.cacheReadSaved)}
-						/>
-						<Stat
-							label="Write cost"
-							value={fmtDollars(savings.cacheWriteCost)}
-						/>
-					</>
-				)}
-			</Card>
+			{/* --- Model + timestamps --- */}
+			<StatRow label="Model" value={props.modelLabel ?? "\u2014"} />
+			<StatRow label="Tracked Since" value={fmtDate(props.firstTurnAt)} />
+			<StatRow
+				label="Last Updated"
+				value={fmtRelativeTime(props.latestTurnAt)}
+			/>
 		</div>
 	);
 }

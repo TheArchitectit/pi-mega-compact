@@ -83,3 +83,43 @@ export function fmtDate(ts: string | number | null | undefined): string {
 		return "\u2014";
 	}
 }
+
+/** Format tokens as human-readable (1.2M / 340K / 890 / —). */
+export function fmtTokens(v: number | null | undefined): string {
+	if (v == null) return "\u2014";
+	if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+	if (v >= 1_000) return `${Math.round(v / 1000)}K`;
+	return v.toLocaleString();
+}
+
+/** Format USD savings (always 4 decimals, null → em-dash). */
+export function fmtDollars(v: number | null | undefined): string {
+	if (v == null) return "\u2014";
+	return `$${v.toFixed(4)}`;
+}
+
+/**
+ * Format an ISO timestamp as relative time ("2m ago", "3h ago", "just now").
+ * Falls back to locale date for times >24h or unparseable input.
+ */
+export function fmtRelativeTime(
+	ts: string | number | null | undefined,
+): string {
+	if (!ts) return "\u2014";
+	let date: Date;
+	try {
+		date = new Date(ts);
+		if (isNaN(date.getTime())) return "\u2014";
+	} catch {
+		return "\u2014";
+	}
+	const diffMs = Date.now() - date.getTime();
+	if (diffMs < 0) return "just now";
+	const sec = Math.floor(diffMs / 1000);
+	if (sec < 60) return "just now";
+	const min = Math.floor(sec / 60);
+	if (min < 60) return `${min}m ago`;
+	const hrs = Math.floor(min / 60);
+	if (hrs < 24) return `${hrs}h ago`;
+	return date.toLocaleDateString();
+}
