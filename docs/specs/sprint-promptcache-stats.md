@@ -1,10 +1,10 @@
 # Sprint — Prompt Cache Stats: Surface Provider Cache Metrics + Cheap Cache-Stability Wins
 
-**Date:** 2026-07-29 (revised after Opus design review + external source audit)
+**Date:** 2026-08-01 (respec v3: add Sub-Sprint E for PLAN_V2 1.5/1.6/1.7 gap closure)
 **Branch:** `feature/promptcache-stats`
 **Priority:** P0 (cost visibility — every competitor surfaces this; three confirmed cache-breakers are one-line/contained fixes)
-**Status:** Draft v2
-**Effort:** M (≈1–1.5 days across 4 gated sub-sprints)
+**Status:** Ready
+**Effort:** M (≈2 days across 5 gated sub-sprints A–E)
 **Depends on:** v0.11.0 (S49-S52 per-turn memory platform, perf_samples table, dashboard)
 **Parent docs:** `docs/PROMPTCACHE_FINDINGS.md`, `docs/PROMPTCACHE_FULL_GAP_ANALYSIS.md`, `docs/PROMPTCACHE_PLAN_V2.md`
 
@@ -19,6 +19,24 @@
 - **PREVENT-002** (parameterized SQL): all queries parameterized or code-controlled literals only.
 - **Non-fatal**: every store read in the dashboard/TUI path is try/catch — instrumentation never blocks the agent loop.
 - **Gate (every sub-sprint)**: `npm run build && npm test && npm run lint && python3 scripts/regression_check.py --all` **plus, for any sub-sprint touching `extensions/dashboard-client/`, `cd extensions/dashboard-client && npm run typecheck`** (the root tsconfig excludes the dashboard client — without this, the gate cannot see broken `.tsx`).
+
+---
+
+## PLAN_V2 Phase 1 Traceability
+
+Every item in `docs/PROMPTCACHE_PLAN_V2.md` Phase 1 is covered by exactly one sub-sprint:
+
+| PLAN_V2 | Sprint | File(s) |
+| --------- | -------- | --------- |
+| 1.1 `readProviderCacheStats()` | A.1 | `src/store/sqlite/perf-samples.ts` |
+| 1.2 `/api/provider-cache` endpoint | A.3 | `extensions/dashboard-server/routes-cache.ts` |
+| 1.3 ProviderCacheCard in CacheTab | B.1–B.3 | `ProviderCacheCard.tsx` + `CacheTab.tsx` |
+| 1.4 `cachePct` swap (dedup→provider) | C.1–C.3 | `snapshot.ts` + `runtime-snapshot.ts` + `widget.ts` |
+| 1.5 Active Repos provider cache columns | **E.2** | `perf-samples.ts` + `routes-repo.ts` + `ActiveReposTable.tsx` |
+| 1.6 Savings by Model cache columns | **E.3** | `routes-repo.ts` + `multi-repo.ts` + `SavingsByModelTable.tsx` |
+| 1.7 `src/pricing.ts` + $ saved calc | **E.1** | `src/pricing.ts` (new) + refactor `routes-cache.ts` |
+
+---
 
 ---
 
@@ -40,15 +58,15 @@ confirmed bugs actively suppress the hit rate.
 
 ### Cache-stability bugs (sub-sprint D) — from external source audit, verified against code
 
-4. **Doc/code drift on the re-compact threshold.** `docs/cache-stabilization-design.md:17` states
+1. **Doc/code drift on the re-compact threshold.** `docs/cache-stabilization-design.md:17` states
    the 10% threshold "caused unnecessary invalidations" and "has been corrected by the 50% shift" —
    but `context-handler.ts:236` still hardcodes `RECOMPACT_PCT_DELTA = 10`. Every re-compact
    regenerates the summary and moves the cut: a full prefix rebuild every 10% of window growth.
-5. **Debounce sits before the replay check.** `context-handler.ts:219-223` returns (full transcript
+2. **Debounce sits before the replay check.** `context-handler.ts:219-223` returns (full transcript
    for that call) when `now < runtime.debounceUntil` — *before* the trimCache replay check at
    `:237`. In fast tool loops (two LLM calls under 2s apart) the debounce itself causes the thrash:
    the prefix flip-flops between trimmed view and full transcript, a full cache miss both ways.
-6. **Skip paths revert to the full transcript.** When compaction runs but is skipped
+3. **Skip paths revert to the full transcript.** When compaction runs but is skipped
    (`ran.skipped`, `:272-275`), the handler returns nothing even when a valid `trimCache` exists —
    pi sends the untrimmed transcript for that call.
 
@@ -541,6 +559,7 @@ between the fast gate and `runCompact` where a valid cached view exists. The inv
 ### D.4 — Tests
 
 Extend the context-handler tests:
+
 - **Debounce exemption:** fire two context events <2s apart with a valid `trimCache` and
   un-grown context → the second returns the replayed view (assert `diagLiveTrimReplays` increments,
   `diagCtxDebounce` does not).
@@ -559,17 +578,171 @@ Extend the context-handler tests:
 
 ---
 
+## Sub-Sprint E: PLAN_V2 Table Coverage + Pricing Module
+
+**Goal:** close the 3 remaining PLAN_V2 Phase 1 gaps: provider cache columns in Active Repos
+and Savings by Model tables, plus a reusable pricing module.
+
+**Note:** PLAN_V2 calls these items 1.5, 1.6, 1.7. They were omitted from the original
+A–D sprint boundary because A–D scoped to one surface (CacheTab + ProviderCacheCard).
+This sub-sprint extends coverage to the two remaining dashboard tables and extracts the
+pricing constants the endpoint already uses inline.
+
+### E.1 — `src/pricing.ts` (extract first, consume second)
+
+**Files:** `src/pricing.ts` (new, ≈50 lines)
+
+The `/api/provider-cache` endpoint already computes dollar savings with hardcoded
+constants (0.9 = cache read discount, 0.25 = cache write premium). Extract these into
+a single-source-of-truth module consumed by every dashboard savings display:
+
+```typescript
+// src/pricing.ts
+
+/** Anthropic prompt-caching price multipliers (public pricing page). */
+export const CACHE_READ_MULTIPLIER = 0.10;   // reads cost 10% of base input
+// CACHE_READ_DISCOUNT = 0.90 → derived: 1.0 - 0.10
+export const CACHE_WRITE_MULTIPLIER = 1.25;  // writes cost 125% of base input
+
+/** Known model pricing (USD per 1M input tokens). Source: Anthropic pricing page. */
+export const MODEL_INPUT_RATES: Record<string, number> = {
+  "claude-sonnet-4-20250514":  3.00,
+  "claude-3.5-sonnet":          3.00,
+  "claude-3.5-haiku":           0.80,
+  "claude-3-opus":             15.00,
+  "claude-3.5-opus":           15.00,
+  "claude-haiku-4-20250514":    1.00,
+};
+
+/** Compute lifetime dollar savings from provider cache metrics. */
+export function computeCacheSavings(
+  totalCacheReadTokens: number,
+  totalCacheWriteTokens: number,
+  inputRate: number,   // USD per 1M input tokens
+): { cacheReadSaved: number; cacheWriteCost: number; netSaved: number } {
+  const readDiscount = 1.0 - CACHE_READ_MULTIPLIER; // 0.90
+  const writePremium  = CACHE_WRITE_MULTIPLIER - 1.0; // 0.25
+  const perToken = inputRate / 1_000_000;
+  const cacheReadSaved = totalCacheReadTokens * perToken * readDiscount;
+  const cacheWriteCost = totalCacheWriteTokens * perToken * writePremium;
+  return {
+    cacheReadSaved:  round4(cacheReadSaved),
+    cacheWriteCost:  round4(cacheWriteCost),
+    netSaved:        round4(cacheReadSaved - cacheWriteCost),
+  };
+}
+
+function round4(n: number): number {
+  return Math.round(n * 10_000) / 10_000;
+}
+
+/** Look up the input rate for a model string (fuzzy match). */
+export function lookupModelInputRate(model: string): number | undefined {
+  // exact match first
+  if (MODEL_INPUT_RATES[model] != null) return MODEL_INPUT_RATES[model];
+  // prefix match (e.g. "claude-sonnet-4-20250514-vendor" → "claude-sonnet-4-20250514")
+  for (const [key, rate] of Object.entries(MODEL_INPUT_RATES)) {
+    if (model.startsWith(key)) return rate;
+  }
+  return undefined;
+}
+```
+
+**Refactor `routes-cache.ts`** to import `computeCacheSavings` instead of inline arithmetic.
+
+**Gate:** `tsc --noEmit src/pricing.ts` clean; existing `/api/provider-cache` response
+byte-identical.
+
+### E.2 — Provider cache per-repo (Active Repos table)
+
+**Files:** `src/store/sqlite/perf-samples.ts`, `extensions/dashboard-server/routes-repo.ts`,
+`extensions/dashboard-server/api-contracts/endpoints.ts`,
+`extensions/dashboard-client/src/components/ActiveReposTable.tsx`
+
+**Backend (step 1):** Add `readProviderCacheForRepo(stateDir)` to perf-samples. Reads
+`perf_samples` table (already has `stateDir` column) for the single repo — returns the
+same aggregate shape as `readProviderCacheLifetime` scoped to one repo.
+
+```typescript
+export function readProviderCacheForRepo(
+  stateDir: string,
+): ProviderCacheLifetime | null;
+```
+
+**Backend (step 2):** In `/api/servers` handler (`routes-repo.ts`), call
+`readProviderCacheForRepo(r.stateDir)` for each active repo and merge a
+`providerCache` field into the output record.
+
+**Contract (step 3):** Add to `ServerEntry`:
+
+```typescript
+readonly providerCache?: {
+  readonly hitPct: number;
+  readonly totalCacheRead: number;
+  readonly totalCacheWrite: number;
+} | null;
+```
+
+**Frontend (step 4):** Add 3 columns to `ActiveReposTable.tsx` after the existing
+"CacheHit s/t (s)" column:
+
+| Column | Source | Format |
+| -------- | -------- | -------- |
+| Prompt Hit % | `r.providerCache?.hitPct` | `56.2%` (same green/yellow/red as ProviderCacheCard) |
+| Cache Read | `r.providerCache?.totalCacheRead` | humanized `1.2M` |
+| Cache Write | `r.providerCache?.totalCacheWrite` | humanized `345K` |
+
+When `providerCache` is null/absent → "—".
+
+### E.3 — Provider cache per-model (Savings by Model table)
+
+**Files:** `extensions/dashboard-server/routes-repo.ts`,
+`extensions/dashboard-server/api-contracts/multi-repo.ts`,
+`extensions/dashboard-client/src/components/SavingsByModelTable.tsx`
+
+**Backend (step 1):** Extend `IndexesIndexRow` with an optional provider cache field:
+
+```typescript
+readonly providerCachePct: number | null;  // lifetime cache hit % for this repo
+readonly providerCacheRead: number | null;  // lifetime cache read tokens
+readonly providerCacheWrite: number | null; // lifetime cache write tokens
+```
+
+**Backend (step 2):** In `/api/index` handler (`routes-repo.ts`), populate these
+fields from SQLite (`readProviderCacheForRepo`) for each repo row.
+
+**Frontend (step 3):** `SavingsByModelTable.tsx` already groups repos by `modelName`
+and accumulates `tokensSaved` (dedup tokens). Add 2 columns:
+
+| Column | Source | Format |
+|--------|--------|--------|
+| Avg Cache Hit % | Weighted avg of `providerCachePct` across model group | `56.2%` |
+| Est. $ Saved | Sum of `computeCacheSavings(...)` per repo, summed by model | `$1.23` (4 decimals) |
+
+Clients aggregate client-side from `IndexesIndexRow[]` (no new endpoint).
+
+**Gate:** base gate; dashboard-client typecheck pass.
+
+---
+
 ## Success Criteria
 
 | Criterion | Measurable (behavioral, CI-reproducible) |
 | --------- | ---------------------------------------- |
+| **A–C (existing)** | |
 | CacheTab shows provider cache | Seeded fixture → rendered card matches fixture arithmetic |
-| $ Saved displays | Priced model snapshot → non-"—" USD; no snapshot → "—" |
+| $ Saved displays | Priced model snapshot → non-\"—\" USD; no snapshot → \"—\" |
 | TUI shows provider cache | `widgetData.cachePct` === latest seeded sample |
 | Dedup flare intact | Flare renders when `megaCacheFlarePct >= 100` with `cachePct < 100` |
+| **D (cache stability)** | |
 | Replay exempt from debounce | Two events <2s apart → replay, no debounce increment |
 | Skip fallback | `ran.skipped` + valid trimCache → replayed view returned |
 | Recompact threshold | 9% growth replays, 51% re-compacts; env override honored |
+| **E (table coverage + pricing)** | |
+| ActiveRepos provider cache columns | Seeded fixture → 3 columns (Hit%, Read, Write) rendered per repo; null safety → "—" |
+| SavingsByModel provider cache columns | Client-side aggregation → Avg Hit% + Est. $ Saved rendered per model group |
+| `src/pricing.ts` reusable | `computeCacheSavings()` called from routes-cache; byte-identical response vs inline |
+| **Gate** | |
 | All tests pass | `npm test` green (incl. new tests) |
 | Lint + regression + guardrails | all clean; dashboard-client typecheck clean |
 
@@ -578,24 +751,29 @@ Extend the context-handler tests:
 ## Risks and Mitigations
 
 ### R1: json_extract portability
+
 First use of `json_extract` in the codebase. Mitigation: verified on Node 26 (bundled SQLite);
 engines require ≥22.13 which bundles SQLite ≥3.38. Comment on the function notes this (A.1).
 
 ### R2: Per-turn SQLite read in the snapshot path
+
 C.2 adds one sync read per material-change-gated recompute. The gate (`runtime-snapshot.ts:99-113`)
 already skips recompute when nothing material changed, and turn boundaries change the signature —
 so this costs one read per turn, same cadence as the existing `latestModelSnapshot` call beside it.
 
 ### R3: TUI meaning change surprises users
+
 `C:68%` (dedup) becomes `C:56%` (provider). Mitigation: dedup stays visible in the dashboard
 Cache tab; call out in release notes.
 
 ### R4: Rolling-window gap in `/api/perf` remains
+
 The MetricsTab "Cache hit %" card still zeroes when samples age out of the 30-min window.
 Pre-existing, not worsened; the new lifetime endpoint gives the always-populated view. Logged as
 tech debt for a future `?minutes=` on `/api/provider-cache`.
 
 ### R5: D-ordering regression risk
+
 Moving the replay check above debounce changes which diag counters fire in fast loops
 (`diagLiveTrimReplays` up, `diagCtxDebounce` down). Any tooling keyed on debounce counts sees a
 shift — checked: counters are dashboard diagnostics only, no behavioral coupling.
