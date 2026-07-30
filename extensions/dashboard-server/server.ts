@@ -36,6 +36,8 @@ import {
 	handleSessions,
 	handleTopics,
 	handleTurns,
+	handleProviderCache,
+	handleMemoryStatus,
 	handleStatic,
 } from "./routes.js";
 
@@ -223,6 +225,8 @@ export async function launchDashboardServer(
 		if (handleSessions(req, res, ctx)) return;
 		if (handleTopics(req, res, ctx)) return;
 		if (handleTurns(req, res, ctx)) return;
+		if (handleProviderCache(req, res, ctx)) return;
+		if (handleMemoryStatus(req, res, ctx)) return;
 		handleStatic(req, res, ctx);
 	});
 

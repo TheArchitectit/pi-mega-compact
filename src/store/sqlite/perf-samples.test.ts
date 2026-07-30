@@ -11,6 +11,7 @@ import { closeStore } from "./utils.js";
 import {
 	recordPerfSample,
 	readPerfSamples,
+	readProviderCacheStats,
 	PERF_KINDS,
 } from "./perf-samples.js";
 
@@ -57,9 +58,76 @@ describe("perf-samples (v0.8.8)", () => {
 		assert.equal(after, before);
 	});
 
-	it("PERF_KINDS lists the 10 instrumentation kinds", () => {
-		assert.equal(PERF_KINDS.length, 10);
+	it("PERF_KINDS lists the 11 instrumentation kinds", () => {
+		assert.equal(PERF_KINDS.length, 11);
 		assert.ok(PERF_KINDS.includes("db_recompute_ms"));
 		assert.ok(PERF_KINDS.includes("cache_hit_pct"));
+		assert.ok(PERF_KINDS.includes("cache_prefix_break"));
+	});
+});
+
+describe("readProviderCacheStats (S53A)", () => {
+	let dir: string;
+	before(() => {
+		dir = mkdtempSync(join(tmpdir(), "mc-pcache-"));
+		process.env.MEGACOMPACT_STATE_DIR = dir;
+	});
+	after(() => {
+		closeStore(dir);
+		delete process.env.MEGACOMPACT_STATE_DIR;
+		rmSync(dir, { recursive: true, force: true });
+	});
+
+	it("returns zeroed stats with null bounds on an empty table", () => {
+		const s = readProviderCacheStats(dir);
+		assert.equal(s.sampleCount, 0);
+		assert.equal(s.totalInput, 0);
+		assert.equal(s.totalCacheRead, 0);
+		assert.equal(s.totalCacheWrite, 0);
+		assert.equal(s.avgHitPct, 0);
+		assert.equal(s.latestHitPct, 0);
+		assert.equal(s.oldestTs, null);
+		assert.equal(s.newestTs, null);
+	});
+
+	it("aggregates totals + averages across cache_hit_pct samples", () => {
+		recordPerfSample(dir, "cache_hit_pct", 96.0, {
+			input: 1210,
+			cacheRead: 28800,
+			cacheWrite: 0,
+		});
+		recordPerfSample(dir, "cache_hit_pct", 50.6, {
+			input: 20031,
+			cacheRead: 20480,
+			cacheWrite: 0,
+		});
+		// Non-cache kinds must not pollute the aggregates.
+		recordPerfSample(dir, "tps", 42, { outputTokens: 100 });
+		const s = readProviderCacheStats(dir);
+		assert.equal(s.sampleCount, 2);
+		assert.equal(s.totalInput, 21241);
+		assert.equal(s.totalCacheRead, 49280);
+		assert.equal(s.totalCacheWrite, 0);
+		assert.ok(Math.abs(s.avgHitPct - 73.3) < 0.001);
+		assert.equal(s.latestHitPct, 50.6);
+		assert.ok(s.oldestTs != null && s.newestTs != null);
+		assert.ok(s.newestTs >= s.oldestTs);
+	});
+
+	it("skips malformed meta for totals but keeps the sample for hit %", () => {
+		recordPerfSample(dir, "cache_hit_pct", 75, undefined);
+		recordPerfSample(dir, "cache_hit_pct", 25, { bogus: true });
+		const s = readProviderCacheStats(dir);
+		assert.equal(s.sampleCount, 4); // 2 here + 2 from the previous test
+		assert.equal(s.avgHitPct, (96.0 + 50.6 + 75 + 25) / 4);
+		// Totals still only from the two well-formed metas.
+		assert.equal(s.totalInput, 21241);
+		assert.equal(s.totalCacheRead, 49280);
+	});
+
+	it("honors the sinceTs window", () => {
+		const future = readProviderCacheStats(dir, Date.now() + 60_000);
+		assert.equal(future.sampleCount, 0);
+		assert.equal(future.oldestTs, null);
 	});
 });

@@ -13,6 +13,7 @@ import { normalizeSessionId } from "../../src/store.js";
 import type { TickerEntry } from "./widget.js";
 import type { GameState } from "../../src/store/sqlite.js";
 import type { SessionRuntime } from "./helpers.js";
+import { disposePendingTimers, type PendingTimerContext } from "./perf.js";
 
 // ---------------------------------------------------------------------- types
 
@@ -21,7 +22,7 @@ import type { SessionRuntime } from "./helpers.js";
  * `unknown` — this function only ever *clears* it, so the precise
  * snapshot-cache shape does not need to be imported.
  */
-export interface ResetRuntimeContext {
+export interface ResetRuntimeContext extends PendingTimerContext {
 	rt: SessionRuntime;
 	trimCache: unknown;
 	ticker: TickerEntry[];
@@ -34,6 +35,11 @@ export interface ResetRuntimeContext {
 	pulsing: boolean;
 	savedGoal: number;
 	lastWhy: string | undefined;
+	pendingMemoryRecallHits: Array<{ memoryId: number; score: number }> | undefined;
+	lastInjectedMemoryHits: Array<{ memoryId: number; score: number }> | undefined;
+	lastRecallInjectAt: number | null;
+	lastPrefixChain: string[] | null;
+	lastPrefixEpochId: string | null;
 }
 
 // --------------------------------------------------------------- resetRuntime
@@ -43,6 +49,9 @@ export function resetRuntimeImpl(
 	sessionId: string | undefined,
 ): void {
 	const sid = normalizeSessionId(sessionId);
+	// RT2 (audit): cancel any in-flight deferred durable-trim recheck so it can't
+	// fire (and pin a stale ctx) after a session switch.
+	disposePendingTimers(self);
 	if (self.rt.sessionId === sid && self.rt.persistedThisSession) return; // same session, keep checkpoint memory
 	self.rt = {
 		sessionId: sid,
@@ -85,4 +94,11 @@ export function resetRuntimeImpl(
 	// that re-binds the repo, so drop the memo too. Cheap; the next
 	// getCachedGameState() re-queries lazily.
 	self.cachedGameState = undefined;
+	// S53B/S54: per-session recall provenance + prefix-telemetry state must not
+	// leak across sessions (a new session's chain/epoch baseline is fresh).
+	self.pendingMemoryRecallHits = undefined;
+	self.lastInjectedMemoryHits = undefined;
+	self.lastRecallInjectAt = null;
+	self.lastPrefixChain = null;
+	self.lastPrefixEpochId = null;
 }

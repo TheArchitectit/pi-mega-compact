@@ -13,6 +13,7 @@ import { evaluateAndUnlockAchievements } from "../../src/store/sqlite/game-achie
 import {
 	ensureConversationIdFor,
 	recordTurnWrite,
+	recordRecallWrite,
 } from "../mega-turn-store.js";
 import { isMegaCache } from "../../src/game/scoring.js";
 import { resolveRepoRoot } from "../mega-config.js";
@@ -183,7 +184,11 @@ export function registerAgentHandlers(
 							// would re-check before it lands.
 							const stamp = runtime.rt.lastNativeCompactAt;
 							const liveSid = runtime.rt.sessionId;
-							setTimeout(() => {
+							// RT2 (audit): track the timer so reset/dispose can cancel it.
+							if (runtime.pendingDurableTrimTimer)
+								clearTimeout(runtime.pendingDurableTrimTimer);
+							runtime.pendingDurableTrimTimer = setTimeout(() => {
+								runtime.pendingDurableTrimTimer = null;
 								try {
 									if (runtime.rt.sessionId !== liveSid) return; // session reset
 									const since2 = now - (runtime.rt.lastNativeCompactAt ?? 0);
@@ -273,7 +278,7 @@ export function registerAgentHandlers(
 				runtime.rt.sessionId,
 				runtime.currentStateDir,
 			);
-			recordTurnWrite(
+			const turnId = recordTurnWrite(
 				config,
 				{
 					conversationId: convId,
@@ -289,6 +294,27 @@ export function registerAgentHandlers(
 				},
 				runtime.currentStateDir,
 			);
+			// S53B: flush memory-recall provenance staged by the before_agent_start
+			// prepend onto the turn row we just wrote (the writer owns the row, so
+			// there is no duplicate-coordinate hazard). One-shot: cleared after
+			// the flush attempt regardless of outcome.
+			if (runtime.lastInjectedMemoryHits?.length && turnId) {
+				try {
+					recordRecallWrite(
+						config,
+						turnId,
+						runtime.lastInjectedMemoryHits.map((h) => ({
+							checkpointId: `memory#${h.memoryId}`,
+							score: h.score,
+							source: "memory",
+						})),
+						runtime.currentStateDir,
+					);
+				} catch {
+					/* non-fatal: provenance never breaks the agent loop */
+				}
+			}
+			runtime.lastInjectedMemoryHits = undefined;
 		} catch {
 			/* non-fatal: per-turn tracking never breaks the agent loop */
 		}
@@ -489,7 +515,11 @@ export function registerAgentHandlers(
 							runtime.debounceUntil = now2 + 0;
 							const stamp2 = runtime.rt.lastNativeCompactAt;
 							const liveSid2 = runtime.rt.sessionId;
-							setTimeout(() => {
+							// RT2 (audit): track the timer so reset/dispose can cancel it.
+							if (runtime.pendingDurableTrimTimer)
+								clearTimeout(runtime.pendingDurableTrimTimer);
+							runtime.pendingDurableTrimTimer = setTimeout(() => {
+								runtime.pendingDurableTrimTimer = null;
 								try {
 									if (runtime.rt.sessionId !== liveSid2) return; // session reset
 									const since3 =
@@ -557,7 +587,11 @@ export function registerAgentHandlers(
 							runtime.debounceUntil = nowP + 0;
 							const stampP = runtime.rt.lastNativeCompactAt;
 							const liveSidP = runtime.rt.sessionId;
-							setTimeout(() => {
+							// RT2 (audit): track the timer so reset/dispose can cancel it.
+							if (runtime.pendingDurableTrimTimer)
+								clearTimeout(runtime.pendingDurableTrimTimer);
+							runtime.pendingDurableTrimTimer = setTimeout(() => {
+								runtime.pendingDurableTrimTimer = null;
 								try {
 									if (runtime.rt.sessionId !== liveSidP) return; // session reset
 									const sinceP =

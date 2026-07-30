@@ -59,17 +59,53 @@ function fnv1a(str: string): number {
  * Default embedder: character 3-gram bag-of-counts, hashed into a fixed-dim
  * vector, L2-normalized. Captures local lexical/structure overlap well enough
  * for checkpoint relevance ranking.
+ *
+ * S53B: in-process embedding cache. The embedder is deterministic, so cached
+ * vectors are exact; a small FIFO-capped Map avoids re-embedding identical
+ * texts (recall queries, consolidate/review cycles re-rank the same corpus).
+ * Results are COPIED on hit so a caller mutating its vector can never poison
+ * the cache. Flag: MEGACOMPACT_EMBED_CACHE=0/false disables (byte-identical
+ * pre-sprint code path); default ON.
  */
 export class TrigramEmbedder implements Embedder {
   readonly dim: number;
   private readonly seed: number;
+  private static readonly CACHE_CAP = 256;
+  private readonly cache = new Map<string, Vector>();
 
   constructor(dim = 512, seed = 0x9e3779b9) {
     this.dim = dim;
     this.seed = seed >>> 0;
   }
 
+  /** Current embedding-cache size (test introspection only). */
+  get cacheSize(): number {
+    return this.cache.size;
+  }
+
   embed(text: string): Vector {
+    const flag = process.env.MEGACOMPACT_EMBED_CACHE;
+    const cacheOn = flag !== "0" && flag !== "false";
+    if (cacheOn) {
+      const hit = this.cache.get(text);
+      if (hit) return hit.slice();
+    }
+    const vec = this.compute(text);
+    if (cacheOn) {
+      if (this.cache.size >= TrigramEmbedder.CACHE_CAP) {
+        // FIFO eviction: Map preserves insertion order, so the first key is
+        // the oldest. Bounded (256 × dim floats) so the cache can never grow
+        // unbounded on long sessions.
+        const oldest = this.cache.keys().next().value;
+        if (oldest !== undefined) this.cache.delete(oldest);
+      }
+      this.cache.set(text, vec);
+      return vec.slice();
+    }
+    return vec;
+  }
+
+  private compute(text: string): Vector {
     const vec = new Array<number>(this.dim).fill(0);
     const norm = text.toLowerCase().replace(/\s+/g, " ");
     if (norm.length === 0) return l2Normalize(vec);

@@ -186,3 +186,16 @@ export type {
 	PruneTurnsResponse,
 	TopicMemoriesResponse,
 } from "./turns.js";
+
+// S53A — provider prompt-cache stats (Cache tab data source)
+export type {
+	PrefixBreakRow,
+	ProviderCacheQuery,
+	ProviderCacheStatsResponse,
+} from "./cache.js";
+
+// S53B — durable-memory effectiveness (memory-status endpoint)
+export type {
+	MemoryStabilityRowResponse,
+	MemoryStatusResponse,
+} from "./memory.js";

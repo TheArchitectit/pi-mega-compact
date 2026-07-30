@@ -1,21 +1,46 @@
 /**
- * dashboard-client/src/tabs/CacheTab.tsx — Cache tab (NEW).
+ * dashboard-client/src/tabs/CacheTab.tsx — Cache tab.
  *
- * Renders CacheHitsCard + TimeSavedCard from /api/snapshot
- * via the useApi hook with 5s polling.
+ * S53A: renders the Provider Prompt Cache card (provider hit %, cache
+ * read/write token totals, $ estimate) from /api/provider-cache alongside the
+ * original mega-compact dedup cards from /api/snapshot. Previously this tab
+ * rendered ONLY the dedup stats — which read zeros before any compaction —
+ * leaving the tab effectively empty (see docs/BRANCH_GAP_ANALYSIS.md §4).
+ *
+ * Both fetches poll on a 5s interval via the useApi hook.
  */
 
 import type React from "react";
 import { useCallback } from "react";
-import type { SnapshotResponse } from "@contracts";
+import type {
+	SnapshotResponse,
+	ProviderCacheStatsResponse,
+	MemoryStatusResponse,
+} from "@contracts";
 import { useApi } from "../hooks/useApi";
-import { fetchSnapshot } from "../api/client";
+import {
+	fetchSnapshot,
+	fetchProviderCacheStats,
+	fetchMemoryStatus,
+} from "../api/client";
 import { CacheHitsCard } from "../components/CacheHitsCard";
+import { ProviderCacheCard } from "../components/ProviderCacheCard";
+import { MemoryEffectivenessCard } from "../components/MemoryEffectivenessCard";
 import { TimeSavedCard } from "../components/TimeSavedCard";
 
 export default function CacheTab(): React.ReactElement {
 	const { data: snapshot, loading, error } = useApi<SnapshotResponse>(
 		useCallback(() => fetchSnapshot(), []),
+		{ pollInterval: 5000 },
+	);
+	// Provider cache + memory effectiveness load independently: keep the dedup
+	// cards working even if these newer endpoints fail on an older server build.
+	const { data: providerCache } = useApi<ProviderCacheStatsResponse>(
+		useCallback(() => fetchProviderCacheStats(), []),
+		{ pollInterval: 5000 },
+	);
+	const { data: memoryStatus } = useApi<MemoryStatusResponse>(
+		useCallback(() => fetchMemoryStatus(), []),
 		{ pollInterval: 5000 },
 	);
 
@@ -30,6 +55,13 @@ export default function CacheTab(): React.ReactElement {
 	return (
 		<div className="cache-tab">
 			<div className="card-grid overview-card-grid">
+				{providerCache && (
+					<ProviderCacheCard
+						stats={providerCache}
+						inputRatePerToken={snapshot.model?.inputRate ?? null}
+					/>
+				)}
+				{memoryStatus && <MemoryEffectivenessCard status={memoryStatus} />}
 				<CacheHitsCard
 					cacheHitsSession={cacheHits.session}
 					cacheHitsTotal={cacheHits.total}

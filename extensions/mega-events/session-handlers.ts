@@ -84,7 +84,12 @@ export function registerSessionHandlers(
 					crossRepo: config.crossRepoEnabled,
 					crossRepoCosine: config.crossRepoCosine,
 				});
-				if (!mr.empty) runtime.pendingMemoryRecallBlock = mr.block;
+				if (!mr.empty) {
+					runtime.pendingMemoryRecallBlock = mr.block;
+					// S53B: stage the hit provenance beside the block (flushed into
+					// turn_recall after the prepend actually happens).
+					runtime.pendingMemoryRecallHits = mr.hits;
+				}
 			} catch (err) {
 				runtime.logger.warn("memory-recall skipped", { err: String(err) });
 			}
@@ -133,7 +138,10 @@ export function registerSessionHandlers(
 						crossRepo: config.crossRepoEnabled,
 						crossRepoCosine: config.crossRepoCosine,
 					});
-					if (!mr.empty) runtime.pendingMemoryRecallBlock = mr.block;
+					if (!mr.empty) {
+						runtime.pendingMemoryRecallBlock = mr.block;
+						runtime.pendingMemoryRecallHits = mr.hits; // S53B provenance
+					}
 				} catch (err) {
 					runtime.logger.warn("memory-recall skipped", { err: String(err) });
 				}
@@ -174,6 +182,14 @@ export function registerSessionHandlers(
 		if (!cpBlock && !memBlock) return;
 		runtime.pendingRecallBlock = undefined;
 		runtime.pendingMemoryRecallBlock = undefined;
+		// S53B/S54: the prepend is about to reach the model — mark the injection
+		// (prefix-break attribution) and hand memory provenance to the turn_end
+		// writer, which owns this turn's row.
+		runtime.lastRecallInjectAt = Date.now();
+		runtime.lastInjectedMemoryHits = memBlock
+			? runtime.pendingMemoryRecallHits
+			: undefined;
+		runtime.pendingMemoryRecallHits = undefined;
 		const composed = [cpBlock, memBlock].filter(Boolean).join("\n\n");
 		return { systemPrompt: `${event.systemPrompt}\n\n${composed}` };
 	});

@@ -22,6 +22,7 @@ export type PerfKind =
 	| "provider_latency_ms"
 	| "tps"
 	| "cache_hit_pct"
+	| "cache_prefix_break"
 	| "rss_mb"
 	| "heap_mb"
 	| "cpu_user_ms"
@@ -35,6 +36,7 @@ export const PERF_KINDS: readonly PerfKind[] = [
 	"provider_latency_ms",
 	"tps",
 	"cache_hit_pct",
+	"cache_prefix_break",
 	"rss_mb",
 	"heap_mb",
 	"cpu_user_ms",
@@ -122,4 +124,109 @@ export function readPerfSamples(
 		out.push({ id: r.id, ts: r.ts, kind: r.kind, value: r.value, meta });
 	}
 	return out;
+}
+
+// ---------------------------------------------------------------------------
+// S53A — provider prompt-cache aggregates (Cache tab data source)
+// ---------------------------------------------------------------------------
+
+/**
+ * Aggregated provider prompt-cache stats over `cache_hit_pct` samples.
+ * Token totals are summed from the per-sample meta {input, cacheRead,
+ * cacheWrite}; rows with missing/malformed meta contribute to the hit-rate
+ * averages (their value) but not to the token totals.
+ */
+export interface ProviderCacheStats {
+	/** Number of cache_hit_pct samples aggregated. */
+	readonly sampleCount: number;
+	/** Σ meta.input (fresh, uncached input tokens). */
+	readonly totalInput: number;
+	/** Σ meta.cacheRead (tokens served from the provider cache). */
+	readonly totalCacheRead: number;
+	/** Σ meta.cacheWrite (tokens written into the provider cache). */
+	readonly totalCacheWrite: number;
+	/** Mean hit rate across samples (percent, 0–100). */
+	readonly avgHitPct: number;
+	/** Most recent sample's hit rate (percent, 0–100). */
+	readonly latestHitPct: number;
+	/** ts of the oldest sample, or null when empty. */
+	readonly oldestTs: number | null;
+	/** ts of the newest sample, or null when empty. */
+	readonly newestTs: number | null;
+}
+
+/** Narrow a parsed meta block to its numeric token fields (PREVENT-011). */
+function metaTokens(meta: unknown): {
+	input: number;
+	cacheRead: number;
+	cacheWrite: number;
+} | null {
+	if (meta == null || typeof meta !== "object") return null;
+	const m = meta as Record<string, unknown>;
+	const input = m.input;
+	const cacheRead = m.cacheRead;
+	const cacheWrite = m.cacheWrite;
+	if (
+		typeof input !== "number" ||
+		typeof cacheRead !== "number" ||
+		typeof cacheWrite !== "number"
+	)
+		return null;
+	if (
+		!Number.isFinite(input) ||
+		!Number.isFinite(cacheRead) ||
+		!Number.isFinite(cacheWrite)
+	)
+		return null;
+	return { input, cacheRead, cacheWrite };
+}
+
+/**
+ * Aggregate all `cache_hit_pct` samples since `sinceTs` (default 0 =
+ * all-time). Unlike the rolling-window /api/perf path there is no default
+ * window, so the dashboard Cache tab shows lifetime provider cache data even
+ * when the session has been idle past the perf window. Pi-agnostic,
+ * parameterized (PREVENT-002), defensive meta parse (PREVENT-001).
+ */
+export function readProviderCacheStats(
+	stateDir: string = getStateDir(),
+	sinceTs: number = 0,
+): ProviderCacheStats {
+	const rows = readPerfSamples(stateDir, sinceTs, "cache_hit_pct");
+	if (rows.length === 0) {
+		return {
+			sampleCount: 0,
+			totalInput: 0,
+			totalCacheRead: 0,
+			totalCacheWrite: 0,
+			avgHitPct: 0,
+			latestHitPct: 0,
+			oldestTs: null,
+			newestTs: null,
+		};
+	}
+	let totalInput = 0;
+	let totalCacheRead = 0;
+	let totalCacheWrite = 0;
+	let hitSum = 0;
+	for (const r of rows) {
+		hitSum += r.value;
+		const t = metaTokens(r.meta);
+		if (t) {
+			totalInput += t.input;
+			totalCacheRead += t.cacheRead;
+			totalCacheWrite += t.cacheWrite;
+		}
+	}
+	// rows are ASC by ts — last row is the most recent sample.
+	return {
+		sampleCount: rows.length,
+		totalInput,
+		totalCacheRead,
+		totalCacheWrite,
+		avgHitPct: hitSum / rows.length,
+		latestHitPct: rows[rows.length - 1].value,
+		oldestTs: rows[0].ts,
+		newestTs: rows[rows.length - 1].ts,
+	};
 }

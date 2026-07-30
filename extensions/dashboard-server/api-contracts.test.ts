@@ -162,7 +162,7 @@ void _c_achievements;
 // (Sprint 39 added /api/sessions + /api/sessions/timeseries.)
 
 const ENDPOINT_KEYS = Object.keys(ENDPOINTS) as (keyof typeof ENDPOINTS)[];
-const EXPECTED_ENDPOINT_COUNT = 23;
+const EXPECTED_ENDPOINT_COUNT = 25;
 
 /** All `/api/*` paths served by server.ts (extracted from the route handlers). */
 const SERVER_TS_PATHS: string[] = [
@@ -181,6 +181,8 @@ const SERVER_TS_PATHS: string[] = [
 	"/api/sessions",
 	"/api/sessions/timeseries",
 	"/api/topics",
+	"/api/provider-cache",
+	"/api/memory-status",
 ];
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -1060,5 +1062,127 @@ describe("SSE /api/events — SseEvent union discriminator validation", () => {
 			discriminators.length,
 			"SSE discriminators must be unique",
 		);
+	});
+});
+
+describe("GET /api/provider-cache (S53A)", () => {
+	test("sample payload validates field presence and types", () => {
+		const raw = JSON.stringify({
+			updatedAt: "2026-07-29T00:00:00Z",
+			windowMinutes: null,
+			sampleCount: 43,
+			avgHitPct: 55.95,
+			latestHitPct: 60.34,
+			totalInput: 559217,
+			totalCacheRead: 850886,
+			totalCacheWrite: 0,
+			oldestTs: 1785368041484,
+			newestTs: 1785369041484,
+		});
+		const obj: Record<string, unknown> = JSON.parse(raw);
+
+		assertField(obj, "updatedAt", ["string"]);
+		assertField(obj, "windowMinutes", ["number", "null"]);
+		assertField(obj, "sampleCount", ["number"]);
+		assertField(obj, "avgHitPct", ["number"]);
+		assertField(obj, "latestHitPct", ["number"]);
+		assertField(obj, "totalInput", ["number"]);
+		assertField(obj, "totalCacheRead", ["number"]);
+		assertField(obj, "totalCacheWrite", ["number"]);
+		assertField(obj, "oldestTs", ["number", "null"]);
+		assertField(obj, "newestTs", ["number", "null"]);
+	});
+
+	test("empty window payload validates (null ts bounds, zeroed stats)", () => {
+		const raw = JSON.stringify({
+			updatedAt: "2026-07-29T00:00:00Z",
+			windowMinutes: 30,
+			sampleCount: 0,
+			avgHitPct: 0,
+			latestHitPct: 0,
+			totalInput: 0,
+			totalCacheRead: 0,
+			totalCacheWrite: 0,
+			oldestTs: null,
+			newestTs: null,
+		});
+		const obj: Record<string, unknown> = JSON.parse(raw);
+
+		assertField(obj, "windowMinutes", ["number"]);
+		assertField(obj, "sampleCount", ["number"]);
+		assertField(obj, "oldestTs", ["null"]);
+		assertField(obj, "newestTs", ["null"]);
+	});
+
+	test("ENDPOINTS.providerCache entry matches the served path", () => {
+		assert.equal(ENDPOINTS.providerCache.method, "GET");
+		assert.equal(ENDPOINTS.providerCache.path, "/api/provider-cache");
+	});
+});
+
+describe("GET /api/memory-status (S53B)", () => {
+	test("sample payload validates field presence and nesting", () => {
+		const raw = JSON.stringify({
+			updatedAt: "2026-07-29T00:00:00Z",
+			scope: null,
+			totals: { memories: 12, neverReferenced: 3, stable: 4 },
+			recall: { windowDays: 30, events30d: 17, distinctMemories30d: 5, avgScore: 0.62 },
+			topStable: [
+				{
+					id: 7,
+					kind: "decision",
+					category: null,
+					stability: 0.81,
+					events30d: 6,
+					avgScore: 0.55,
+					lastReferencedAt: 1785369041484,
+				},
+			],
+			stabilityEnabled: true,
+		});
+		const obj: Record<string, unknown> = JSON.parse(raw);
+
+		assertField(obj, "updatedAt", ["string"]);
+		assertField(obj, "scope", ["string", "null"]);
+		assertField(obj, "totals", ["object"]);
+		assertField(obj, "recall", ["object"]);
+		assertField(obj, "topStable", ["array"]);
+		assertField(obj, "stabilityEnabled", ["boolean"]);
+
+		const totals = assertObject(obj, "totals")!;
+		assertField(totals, "memories", ["number"]);
+		assertField(totals, "neverReferenced", ["number"]);
+		assertField(totals, "stable", ["number", "null"]);
+
+		const recall = assertObject(obj, "recall")!;
+		assertField(recall, "windowDays", ["number"]);
+		assertField(recall, "events30d", ["number"]);
+		assertField(recall, "distinctMemories30d", ["number"]);
+		assertField(recall, "avgScore", ["number", "null"]);
+
+		const top = (obj.topStable as Array<Record<string, unknown>>)[0];
+		assertField(top, "id", ["number"]);
+		assertField(top, "stability", ["number"]);
+		assertField(top, "events30d", ["number"]);
+	});
+
+	test("flag-off shape validates (null stable, empty topStable)", () => {
+		const raw = JSON.stringify({
+			updatedAt: "2026-07-29T00:00:00Z",
+			scope: null,
+			totals: { memories: 0, neverReferenced: 0, stable: null },
+			recall: { windowDays: 30, events30d: 0, distinctMemories30d: 0, avgScore: null },
+			topStable: [],
+			stabilityEnabled: false,
+		});
+		const obj: Record<string, unknown> = JSON.parse(raw);
+		const totals = assertObject(obj, "totals")!;
+		assertField(totals, "stable", ["null"]);
+		assertField(obj, "stabilityEnabled", ["boolean"]);
+	});
+
+	test("ENDPOINTS.memoryStatus entry matches the served path", () => {
+		assert.equal(ENDPOINTS.memoryStatus.method, "GET");
+		assert.equal(ENDPOINTS.memoryStatus.path, "/api/memory-status");
 	});
 });

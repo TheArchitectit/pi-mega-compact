@@ -888,3 +888,27 @@
 | Component + state | 30 | 0 |
 | Conversation list | 90 | 0 |
 | TurnDetail (per-turn viz + recall) | 150 | 0 |
+
+## docs/BRANCH_GAP_ANALYSIS.md
+
+| Section | Line | Offset |
+| --------- | ------ | -------- |
+| TL;DR (branch verdict table) | 9 | 0 |
+| Inventory | 25 | 0 |
+| Per-Branch Findings (3.2 promptcache = empty-Cache-tab root cause) | 39 | 0 |
+| Feature Gaps matrix (why the Cache tab is empty) | 99 | 0 |
+| Landing Order | 117 | 0 |
+
+## docs/specs/s53-prompt-cache-memory-program.md
+
+| Section | Line | Offset |
+| --------- | ------ | -------- |
+| Problem Statement | 11 | 0 |
+| Program map (S53A/B/C, S54, S55) | 19 | 0 |
+| S53A Provider Cache Visibility | 31 | 0 |
+| S53C TUI + Cost Accounting | 85 | 0 |
+| S53B Memory Enhancements | 95 | 0 |
+| S54 Prefix-Stability Telemetry | 106 | 0 |
+| S55 Cache-Stable Prompt Layout (contingent) | 114 | 0 |
+| Open Questions | 136 | 0 |
+| Gates & Flags | 143 | 0 |

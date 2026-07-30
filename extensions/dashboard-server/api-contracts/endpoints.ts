@@ -11,6 +11,11 @@
 
 import type { EndpointDef } from "./core.js";
 import type { SnapshotResponse } from "./snapshot.js";
+import type {
+	ProviderCacheQuery,
+	ProviderCacheStatsResponse,
+} from "./cache.js";
+import type { MemoryStatusResponse } from "./memory.js";
 import type { IndexesIndexRow, IndexesSummaryResponse } from "./multi-repo.js";
 import type { GameStateResponse } from "./game.js";
 import type { SseEvent } from "./index.js";
@@ -464,6 +469,26 @@ export const ENDPOINTS = {
 		path: "/api/perf",
 		description: "Rolling-window performance aggregates over perf_samples.",
 	} as const satisfies EndpointDef<"GET", PerfQuery, PerfResponse>,
+
+	/** GET /api/provider-cache — Provider prompt-cache lifetime/windowed stats (S53A). */
+	providerCache: {
+		method: "GET",
+		path: "/api/provider-cache",
+		description:
+			"Provider prompt-cache aggregates (hit %, token totals) over perf_samples; all-time unless `minutes` is given.",
+	} as const satisfies EndpointDef<
+		"GET",
+		ProviderCacheQuery,
+		ProviderCacheStatsResponse
+	>,
+
+	/** GET /api/memory-status — Durable-memory effectiveness aggregates (S53B). */
+	memoryStatus: {
+		method: "GET",
+		path: "/api/memory-status",
+		description:
+			"Durable-memory effectiveness: stored vs served counts, 30d recall events/scores, top-stable list.",
+	} as const satisfies EndpointDef<"GET", undefined, MemoryStatusResponse>,
 
 	/** GET /api/achievements — Achievement tiles with unlock state. */
 	achievements: {
