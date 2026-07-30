@@ -12,6 +12,9 @@ import { readIndex, getIndexDir } from "./index-reader.js";
 import { ACTIVE_WINDOW_SEC } from "./types.js";
 import type { RouteContext } from "./routes-core.js";
 import type { LiveSnapshot } from "./types.js";
+import { readProviderCacheForRepo } from "../../src/store/sqlite/perf-samples.js";
+import { computeCacheSavings, lookupModelInputRate } from "../../src/pricing.js";
+import { latestModelSnapshot } from "../../src/store/sqlite/model-snapshots.js";
 
 // ---------------------------------------------------------------------------
 // handleIndex — "/" | "/index.html" | "/api/snapshot" | "/api/version"
@@ -160,10 +163,34 @@ export function handleRepoIndex(
 									? snap.context.percent
 									: null;
 							out.state = (snap.session && snap.session.state) || null;
-							out.cacheHits = snap.cacheHits ?? null;
-							out.compacts = snap.compacts ?? null;
-							out.timeSaved = snap.timeSaved ?? null;
-							out.updatedAt = snap.updatedAt ?? null;
+						out.cacheHits = snap.cacheHits ?? null;
+						out.compacts = snap.compacts ?? null;
+						out.timeSaved = snap.timeSaved ?? null;
+						out.updatedAt = snap.updatedAt ?? null;
+						// Provider cache per-repo lifetime (E.2)
+						try {
+							const pc = readProviderCacheForRepo(r.stateDir);
+							// Price from model snapshot if available
+							const modelSnap = latestModelSnapshot(r.stateDir);
+							const inputRate = modelSnap
+								? modelSnap.inputRate
+								: lookupModelInputRate(r.modelName ?? "") ?? 0;
+							const savings = computeCacheSavings(
+								pc.totalCacheRead,
+								pc.totalCacheWrite,
+								inputRate,
+							);
+							out.providerCache = {
+								avgHitPct: pc.avgHitPct,
+								cacheRead: pc.totalCacheRead,
+								cacheWrite: pc.totalCacheWrite,
+								totalInput: pc.totalInput,
+								sampleCount: pc.sampleCount,
+								estimatedSaved: savings.netSaved > 0 ? savings.netSaved : null,
+							};
+						} catch {
+							/* best-effort — repo may not have perf_samples */
+						}
 						}
 					} catch {
 						/* best-effort */

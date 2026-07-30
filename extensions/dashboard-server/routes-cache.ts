@@ -12,6 +12,7 @@ import { createRequire } from "node:module";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { RouteContext } from "./routes-core.js";
+import { computeCacheSavings } from "../../src/pricing.js";
 
 // ---------------------------------------------------------------------------
 // handleProviderCache — "/api/provider-cache"
@@ -57,14 +58,15 @@ export function handleProviderCache(
 		try {
 			const snap = latestModelSnapshot(stateDir); // guardrails-allow PREVENT-PI-004: local SQLite read (loopback dashboard)
 			if (snap && snap.inputRate > 0) {
-				// cacheReadSaved = totalCacheRead × inputRate × 0.9 (reads cost 10% of input → save 90%)
-				const cacheReadSaved = lifetime.totalCacheRead * snap.inputRate * 0.9;
-				// cacheWriteCost = totalCacheWrite × inputRate × 0.25 (writes cost 125% → 25% premium)
-				const cacheWriteCost = lifetime.totalCacheWrite * snap.inputRate * 0.25;
+				const s = computeCacheSavings(
+					lifetime.totalCacheRead,
+					lifetime.totalCacheWrite,
+					snap.inputRate,
+				);
 				savings = {
-					cacheReadSaved,
-					cacheWriteCost,
-					netSaved: cacheReadSaved - cacheWriteCost,
+					cacheReadSaved: s.cacheReadSaved,
+					cacheWriteCost: s.cacheWriteCost,
+					netSaved: s.netSaved,
 					model: snap.modelName ?? snap.modelId ?? "unknown",
 					inputRate: snap.inputRate,
 				};

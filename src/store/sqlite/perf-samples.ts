@@ -245,3 +245,17 @@ export function readLatestCacheHitPct(
 		return 0;
 	return row.value;
 }
+
+/**
+ * Read provider cache lifetime aggregates for a specific repo by state directory.
+ *
+ * This is a convenience alias over `readProviderCacheLifetime(stateDir)` —
+ * both open the same underlying global store database. Accepts an explicit
+ * `stateDir` rather than relying on the implicit default, making it suitable
+ * for per-repo dashboard handlers.
+ */
+export function readProviderCacheForRepo(
+	stateDir: string,
+): ProviderCacheLifetime {
+	return readProviderCacheLifetime(stateDir);
+}

@@ -30,6 +30,8 @@ const HEADERS = [
 	"State",
 	"Compactions (s/t)",
 	"Cache Hits (s/t)",
+	"Cache Hit %",
+	"Est. Saved",
 	"Compact s/t (s)",
 	"CacheHit s/t (s)",
 ] as const;
@@ -61,7 +63,7 @@ export function ActiveReposTable({
 					<tbody>
 						{servers.length === 0 && (
 							<tr>
-								<td colSpan={9} className="repo-empty">
+								<td colSpan={HEADERS.length} className="repo-empty">
 									No active repositories.
 								</td>
 							</tr>
@@ -96,6 +98,16 @@ export function ActiveReposTable({
 									</td>
 									<td className="num">
 										{ch.session} / {ch.total}
+									</td>
+									<td className="num">
+										{r.providerCache != null
+											? `${r.providerCache.avgHitPct.toFixed(1)}%`
+											: "—"}
+									</td>
+									<td className="num">
+										{r.providerCache?.estimatedSaved != null
+											? `$${r.providerCache.estimatedSaved.toFixed(2)}`
+											: "—"}
 									</td>
 									<td className="num">
 										{fmtSec(ts.compact.sessionSec)} /{" "}

@@ -248,6 +248,15 @@ export interface ServerEntry {
 	} | null;
 	/** ISO timestamp of the live snapshot, or null. Present when a live snapshot has updatedAt. */
 	readonly updatedAt?: string | null;
+	/** Provider prompt-cache lifetime aggregates for this repo, or null when unavailable. */
+	readonly providerCache?: {
+		readonly avgHitPct: number;
+		readonly cacheRead: number;
+		readonly cacheWrite: number;
+		readonly totalInput: number;
+		readonly sampleCount: number;
+		readonly estimatedSaved: number | null;
+	} | null;
 }
 
 /**
