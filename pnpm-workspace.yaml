@@ -1,0 +1,6 @@
+allowBuilds:
+  '@google/genai': set this to true or false
+  '@mongodb-js/zstd': set this to true or false
+  openclaw: set this to true or false
+  protobufjs: set this to true or false
+  tree-sitter-bash: set this to true or false

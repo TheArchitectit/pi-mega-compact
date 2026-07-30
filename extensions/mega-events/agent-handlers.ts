@@ -8,7 +8,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { MegaRuntime } from "../mega-runtime.js";
 import { piCompactWouldNoop, runMemoryReview } from "../mega-pipeline.js";
 import { memoryReviewCadence, type MegaConfig } from "../mega-config.js";
-import { recordScore } from "../../src/store/sqlite.js";
+import { recordScore, readLatestCacheHitPct } from "../../src/store/sqlite.js";
 import { evaluateAndUnlockAchievements } from "../../src/store/sqlite/game-achievements.js";
 import {
 	ensureConversationIdFor,
@@ -301,7 +301,10 @@ export function registerAgentHandlers(
 			if (runtime.getCachedGameState().game_mode_on) {
 				const repo = resolveRepoRoot(ctx.cwd) ?? runtime.currentStateDir;
 				const st = vectorStats(runtime.store, runtime.rt.sessionId);
-				const cachePct = st.dedupHitRate * 100;
+				// C.3: prefer provider cache hit rate, fall back to dedup hit rate
+				const providerPct = readLatestCacheHitPct(runtime.currentStateDir);
+				const cachePct =
+					providerPct != null ? providerPct : st.dedupHitRate * 100;
 				const modelId = runtime.currentModel?.modelId ?? "unknown";
 				recordScore(runtime.currentStateDir, {
 					repo_root: repo,

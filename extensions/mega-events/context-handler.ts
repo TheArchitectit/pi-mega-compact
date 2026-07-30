@@ -174,7 +174,12 @@ export function registerContextHandler(
 				const db = openStore(runtime.currentStateDir);
 				const epochId = epochIdFor(runtime.rt.sessionId);
 				for (const msg of messages) {
-					const raw = toRawTranscriptRow(msg, runtime.rt.sessionId, epochId, runtime.currentTurn);
+					const raw = toRawTranscriptRow(
+						msg,
+						runtime.rt.sessionId,
+						epochId,
+						runtime.currentTurn,
+					);
 					if (raw) appendRawTranscript(db, raw);
 				}
 			} catch (e) {
@@ -214,26 +219,19 @@ export function registerContextHandler(
 			return;
 		}
 
-		// Debounce so we don't fire on every context event past threshold.
-		const now = Date.now();
-		if (now < runtime.debounceUntil) {
-			runtime.diagCtxDebounce++;
-			return;
-		}
-		runtime.debounceUntil = now + 2000;
-
+		// D.2: Replay MUST be exempt from debounce — replay is free (no compute,
+		// no re-write) and prevents unnecessary KV-cache invalidation. Check
+		// replay FIRST, before debounce, so two context events <2s apart both
+		// return the cached sentinel verbatim (re-stabilises the provider prefix).
+		//
 		// v0.8.6 cache-stability: replay the cached trim view when still in the
 		// same compaction epoch AND context hasn't grown enough to warrant a
-		// re-compact. This stabilizes the provider KV-cache prefix (the summary +
-		// cut are reused verbatim) instead of regenerating a fresh summary +
-		// sentinel every fire, which invalidated the prefix on every other turn
-		// (the alternating cache-miss regression). Re-compact only when context
-		// grew >=10% of the window (percent basis) or >=50% of the effective
-		// threshold (token basis, when percent is unavailable). The cached `cut`
-		// is only valid while the transcript grows within the epoch — it is
-		// cleared on session_compact (durable truncation) + resetRuntime, so we
-		// never replay a stale cut into a truncated transcript (PREVENT-PI-001/002).
-		const RECOMPACT_PCT_DELTA = 10;
+		// re-compact. Re-compact only when context grew >=config.recompactPctDelta%
+		// of the window (percent basis) or >=50% of the effective threshold
+		// (token basis, when percent is unavailable). The cached `cut` is only
+		// valid while the transcript grows within the epoch — it is cleared on
+		// session_compact (durable truncation) + resetRuntime, so we never replay
+		// a stale cut into a truncated transcript (PREVENT-PI-001/002).
 		if (
 			runtime.trimCache &&
 			runtime.trimCache.checkpointId === runtime.rt.lastCheckpointId &&
@@ -241,7 +239,7 @@ export function registerContextHandler(
 		) {
 			const grewEnough =
 				pct != null && runtime.trimCache.ctxPct != null
-					? pct - runtime.trimCache.ctxPct >= RECOMPACT_PCT_DELTA
+					? pct - runtime.trimCache.ctxPct >= config.recompactPctDelta
 					: currentTokens - (runtime.trimCache.ctxTokens ?? 0) >=
 						runtime.effectiveThreshold * 0.5;
 			if (!grewEnough) {
@@ -258,6 +256,15 @@ export function registerContextHandler(
 			// else: context grew enough → fall through to re-compact (cache is stale)
 		}
 
+		// Debounce so we don't fire on every context event past threshold.
+		// (Replay already returned above — only fresh compacts reach this point.)
+		const now = Date.now();
+		if (now < runtime.debounceUntil) {
+			runtime.diagCtxDebounce++;
+			return;
+		}
+		runtime.debounceUntil = now + 2000;
+
 		// Adaptive compression (Fix E): scale compression strength + keepFrom depth
 		// with how close we are to the model context limit. Null-safe: when the
 		// token-fallback path ran (pct unavailable) use the token-basis pressure
@@ -269,8 +276,24 @@ export function registerContextHandler(
 		const ran = runCompact(pi, runtime, config, ctx, messages, {
 			compressionPressure: pressure,
 		});
+		// D.3: skip paths fall back to replay instead of returning empty.
+		// If runCompact skipped and we have a valid trimCache, replay it
+		// (free stability win) — otherwise defer to the next event.
 		if (ran.skipped) {
 			runtime.diagCtxRunSkipped++;
+			if (
+				runtime.trimCache &&
+				runtime.trimCache.checkpointId === runtime.rt.lastCheckpointId &&
+				runtime.trimCache.cut <= messages.length
+			) {
+				const recent = messages.slice(runtime.trimCache.cut); // guardrails-allow PREVENT-PI-002
+				runtime.diagLiveTrimFires++;
+				runtime.diagLiveTrimReplays++;
+				runtime.snapshot(ctx);
+				return {
+					messages: [{ ...runtime.trimCache.summaryAgentMsg }, ...recent],
+				};
+			}
 			return;
 		}
 
@@ -295,7 +318,12 @@ export function registerContextHandler(
 				// them (compression-by-conversation-epoch metrics). Isolated-store
 				// only; best-effort + non-fatal.
 				try {
-					stampTurnsEpochFor(config, runtime.rt.sessionId, epoch.epochId, runtime.currentStateDir);
+					stampTurnsEpochFor(
+						config,
+						runtime.rt.sessionId,
+						epoch.epochId,
+						runtime.currentStateDir,
+					);
 				} catch {
 					/* non-fatal: epoch stamping never breaks compaction */
 				}
@@ -304,7 +332,10 @@ export function registerContextHandler(
 				// AUTO_WIKI_ENABLED; best-effort + non-fatal (never breaks compaction).
 				try {
 					if (config.autoWikiEnabled && config.turnsDbEnabled) {
-						const every = Math.max(1, TurnsConfig.WIKI_REBUILD_EVERY_N_COMPACTS);
+						const every = Math.max(
+							1,
+							TurnsConfig.WIKI_REBUILD_EVERY_N_COMPACTS,
+						);
 						const tdb = openTurnStore(runtime.currentStateDir);
 						const n = bumpWikiCompactCounter(tdb);
 						if (n % every === 0) {
@@ -314,7 +345,9 @@ export function registerContextHandler(
 								restarts: 5,
 								seed: 0x9e3779b9,
 							});
-							createTopicStore(runtime.currentStateDir).replaceTopicModel(model);
+							createTopicStore(runtime.currentStateDir).replaceTopicModel(
+								model,
+							);
 							runtime.logger.info("wiki_rebuild", {
 								clusterCount: model.k,
 								totalChunks: model.totalChunks,
@@ -326,7 +359,9 @@ export function registerContextHandler(
 						}
 					}
 				} catch (wikiErr) {
-					runtime.logger.warn("wiki_rebuild_failed", { error: String(wikiErr) });
+					runtime.logger.warn("wiki_rebuild_failed", {
+						error: String(wikiErr),
+					});
 				}
 				// S27 Task 6: Fire-and-forget dedup pipeline.
 				// Deduplicates raw_transcript rows for the compacted range.

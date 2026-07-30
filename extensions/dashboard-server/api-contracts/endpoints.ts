@@ -14,6 +14,7 @@ import type { SnapshotResponse } from "./snapshot.js";
 import type { IndexesIndexRow, IndexesSummaryResponse } from "./multi-repo.js";
 import type { GameStateResponse } from "./game.js";
 import type { SseEvent } from "./index.js";
+import type { ProviderCacheResponse } from "./provider-cache.js";
 import type {
 	TurnsResponse,
 	ConversationTurnsResponse,
@@ -25,6 +26,13 @@ import type {
 	PruneTurnsResponse,
 	TopicMemoriesResponse,
 } from "./turns.js";
+
+import type {
+	DbStatsResponse,
+	MaintenanceActionResult,
+	MaintenanceAction,
+	SchemaHealthResponse,
+} from "./maintenance.js";
 
 import type {
 	GameScoreRow,
@@ -55,13 +63,6 @@ export type {
 	TopicsResponse,
 	TopicDetailResponse,
 } from "./game-types.js";
-
-import type {
-	DbStatsResponse,
-	MaintenanceActionResult,
-	MaintenanceAction,
-	SchemaHealthResponse,
-} from "./maintenance.js";
 
 // ─── New Response Types (inline) ───────────────────────────────────────────
 
@@ -352,6 +353,8 @@ export interface PerfResponse {
 	readonly diag: PerfDiag | null;
 }
 
+// ─── Provider Cache Lifetime (A.2) — see provider-cache.ts ─────────────────
+
 // ─── Game Score & Achievement Types ─────────────────────────────────────────
 // (moved to game-types.ts; re-exported for backwards compatibility)
 
@@ -367,7 +370,7 @@ export interface PerfResponse {
 // ─── ENDPOINTS Registry ─────────────────────────────────────────────────────
 
 /**
- * Central registry of all 13 dashboard API endpoints. Each entry is an
+ * Central registry of all 14 dashboard API endpoints. Each entry is an
  * `EndpointDef` or `SseEndpointDef` instance serving as the single source of
  * truth for route paths, methods, descriptions, and typed request/response
  * contracts.
@@ -583,4 +586,15 @@ export const ENDPOINTS = {
 		path: "/api/maintenance/action",
 		description: "Run vacuum, checkpoint, reindex, fts5-rebuild, reconcile-dedup, prune, or integrity-check.",
 	} as const satisfies EndpointDef<"POST", MaintenanceAction, MaintenanceActionResult>,
+
+	// ─── Provider Cache (Sprint A.2) ─────────────────────────────────
+
+	/** GET /api/provider-cache — Lifetime provider prompt cache aggregates + $ savings. */
+	providerCache: {
+		method: "GET",
+		path: "/api/provider-cache",
+		description:
+			"Lifetime provider prompt cache hit-rate aggregates + dollar savings estimate.",
+	} as const satisfies EndpointDef<"GET", undefined, ProviderCacheResponse>,
+
 } as const;

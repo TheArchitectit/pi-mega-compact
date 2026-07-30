@@ -19,3 +19,4 @@ export { handleEvents, handleSessions } from "./routes-sessions.js";
 export { handleTopics } from "./routes-topics.js";
 export { handleTurns } from "./routes-turns.js";
 export { handleMaintenance } from "./routes-maintenance.js";
+export { handleProviderCache } from "./routes-cache.js";

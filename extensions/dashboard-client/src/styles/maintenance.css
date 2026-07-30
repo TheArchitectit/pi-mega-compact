@@ -1,0 +1,267 @@
+/**
+ * dashboard-client/src/styles/maintenance.css — Maintenance tab styles (S49B).
+ *
+ * Cards, stat tables, action grid, badges, and buttons.
+ */
+
+/* ─── Layout ──────────────────────────────────────────────────────────────── */
+
+.maintenance-tab {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+/* ─── Card structure (shared card base in base.css + overview-events.css) ── */
+
+.card-header {
+	font-size: 13px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	color: var(--muted);
+	margin-bottom: 10px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.card-body {
+	font-size: 13px;
+}
+
+/* ─── Stat sections ──────────────────────────────────────────────────────── */
+
+.stat-section {
+	margin-bottom: 12px;
+}
+
+.stat-section:last-child {
+	margin-bottom: 0;
+}
+
+.stat-label {
+	font-size: 11px;
+	color: var(--muted);
+	text-transform: uppercase;
+	letter-spacing: 0.4px;
+	margin-bottom: 4px;
+}
+
+.stat-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	padding: 3px 0;
+	border-bottom: 1px solid var(--border);
+	font-size: 13px;
+}
+
+.num {
+	text-align: right;
+	font-family: monospace;
+	font-weight: 600;
+}
+
+/* ─── Compact table ──────────────────────────────────────────────────────── */
+
+.compact-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 13px;
+}
+
+.compact-table th {
+	text-align: left;
+	padding: 4px 6px;
+	border-bottom: 1px solid var(--border);
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.4px;
+	color: var(--muted);
+}
+
+.compact-table th.num {
+	text-align: right;
+}
+
+.compact-table td {
+	padding: 3px 6px;
+	border-bottom: 1px solid var(--border);
+}
+
+.compact-table td.num {
+	text-align: right;
+	font-family: monospace;
+	font-weight: 600;
+}
+
+.compact-table tbody tr:last-child td {
+	border-bottom: none;
+}
+
+/* ─── Text colors ────────────────────────────────────────────────────────── */
+
+.text-muted {
+	color: var(--muted);
+}
+
+.text-error {
+	color: var(--err);
+}
+
+.text-ok {
+	color: var(--ok);
+}
+
+.text-warn {
+	color: var(--warn);
+}
+
+.text-mono {
+	font-family: monospace;
+	font-size: 12px;
+}
+
+/* ─── Badges ─────────────────────────────────────────────────────────────── */
+
+.badge {
+	display: inline-block;
+	padding: 1px 8px;
+	font-size: 10px;
+	font-weight: 700;
+	border-radius: 8px;
+	text-transform: uppercase;
+	letter-spacing: 0.3px;
+}
+
+.badge-ok {
+	background: color-mix(in srgb, var(--ok) 20%, transparent);
+	color: var(--ok);
+	border: 1px solid var(--ok);
+}
+
+.badge-bad {
+	background: color-mix(in srgb, var(--err) 20%, transparent);
+	color: var(--err);
+	border: 1px solid var(--err);
+}
+
+.badge-warn {
+	background: color-mix(in srgb, var(--warn) 20%, transparent);
+	color: var(--warn);
+	border: 1px solid var(--warn);
+}
+
+/* ─── Action grid ────────────────────────────────────────────────────────── */
+
+.action-grid {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 8px;
+}
+
+.action-item {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 12px;
+	padding: 10px 12px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+}
+
+.action-info {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	flex: 1;
+	min-width: 0;
+}
+
+.action-label {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text);
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.action-desc {
+	font-size: 11px;
+	color: var(--muted);
+}
+
+.action-result {
+	font-size: 11px;
+	margin-top: 2px;
+}
+
+.action-controls {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-shrink: 0;
+}
+
+/* ─── Buttons ────────────────────────────────────────────────────────────── */
+
+.btn {
+	padding: 5px 14px;
+	font-size: 12px;
+	font-weight: 600;
+	border: none;
+	border-radius: 6px;
+	cursor: pointer;
+	white-space: nowrap;
+	transition: opacity 0.15s;
+}
+
+.btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.btn-primary {
+	background: var(--accent);
+	color: #0d1117;
+}
+
+.btn-danger {
+	background: var(--err);
+	color: #fff;
+}
+
+/* ─── Days input ─────────────────────────────────────────────────────────── */
+
+.days-input {
+	width: 60px;
+	padding: 4px 6px;
+	font-size: 12px;
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	color: var(--text);
+	text-align: center;
+}
+
+.days-input:disabled {
+	opacity: 0.5;
+}
+
+/* ─── Responsive ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+	.action-item {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 8px;
+	}
+
+	.action-controls {
+		justify-content: flex-end;
+	}
+}

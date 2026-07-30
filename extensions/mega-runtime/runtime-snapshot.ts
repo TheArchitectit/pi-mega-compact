@@ -20,20 +20,25 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { join } from "node:path";
 import {
-	VectorStore,
+	type VectorStore,
 	vectorStats,
 	vectorRepoStats,
 	vectorDataInvariant,
 } from "../../src/vectorStore.js";
 import {
 	latestModelSnapshot,
+	readLatestCacheHitPct,
 	recordPerfSample,
 	recordSessionHeartbeat,
 	appendTokenSample,
 	type GameState,
 } from "../../src/store/sqlite.js";
-import { resolveRepoRoot, type MegaConfig, type PressureBand } from "../mega-config.js";
-import { Dashboard } from "../mega-dashboard.js";
+import {
+	resolveRepoRoot,
+	type MegaConfig,
+	type PressureBand,
+} from "../mega-config.js";
+import type { Dashboard } from "../mega-dashboard.js";
 import type { WidgetData } from "./widget.js";
 import { computeMegaSnapshot } from "./snapshot.js";
 import { buildDashboardSnapshot } from "./dashboard-snapshot.js";
@@ -93,7 +98,10 @@ export interface RuntimeSnapshotContext extends RuntimeHelpersContext {
 /** Collect live state and write it to disk (+ paint the above-editor widget).
  *  Extracted verbatim from `MegaRuntime.snapshot()` (runtime.ts); the public
  *  method there is now `snapshotImpl(this, ctx)`. */
-export function snapshotImpl(self: RuntimeSnapshotContext, ctx?: ExtensionContext): void {
+export function snapshotImpl(
+	self: RuntimeSnapshotContext,
+	ctx?: ExtensionContext,
+): void {
 	if (ctx) self.lastWidgetCtx = ctx;
 	if (ctx) self.bindRepo(ctx.cwd);
 	// v0.8.5: gate the expensive body (6 sync SQLite opens +
@@ -179,7 +187,8 @@ export function snapshotImpl(self: RuntimeSnapshotContext, ctx?: ExtensionContex
 	// try/catch mirrors the recordPerfSample pattern below. Skip the token
 	// sample when lastCtxTokens is null (no context data yet).
 	try {
-		const repo = resolveRepoRoot(ctx?.cwd ?? self.currentStateDir) ?? self.currentStateDir;
+		const repo =
+			resolveRepoRoot(ctx?.cwd ?? self.currentStateDir) ?? self.currentStateDir;
 		recordSessionHeartbeat(
 			process.pid,
 			self.rt.sessionId,
@@ -194,7 +203,7 @@ export function snapshotImpl(self: RuntimeSnapshotContext, ctx?: ExtensionContex
 				self.lastCtxTokens,
 				self.lastCtxPercent ?? 0,
 				self.lastCtxWindow || 0,
-			join(self.currentStateDir, "events.log"),
+				join(self.currentStateDir, "events.log"),
 			);
 		}
 	} catch {
@@ -217,6 +226,15 @@ export function snapshotImpl(self: RuntimeSnapshotContext, ctx?: ExtensionContex
 		}
 		// ── gather widget data (computed per snapshot, rendered per frame) ────
 		const modelSnap = latestModelSnapshot(self.currentStateDir);
+		// Provider prompt cache hit % for the widget (B/C): latest
+		// cache_hit_pct sample. Non-fatal — one extra sync open per
+		// material-change-gated recompute, acceptably cheap.
+		let providerCachePct = 0;
+		try {
+			providerCachePct = readLatestCacheHitPct(self.currentStateDir);
+		} catch {
+			/* non-fatal */
+		}
 		const _snapResult = computeMegaSnapshot({
 			lastCtxTokens: self.lastCtxTokens,
 			lastCtxWindow: self.lastCtxWindow,
@@ -248,6 +266,7 @@ export function snapshotImpl(self: RuntimeSnapshotContext, ctx?: ExtensionContex
 			ready,
 			armed,
 			modelSnap,
+			providerCachePct,
 		});
 		self.widgetData = _snapResult.widgetData;
 		// S33: consume the flare after copying it into widgetData so it fires
@@ -271,8 +290,7 @@ export function snapshotImpl(self: RuntimeSnapshotContext, ctx?: ExtensionContex
 		// free the slot and prevent a stale effect lingering between snapshots.
 		if (
 			self.activeEffect &&
-			Date.now() - self.activeEffect.startedAt >=
-				self.activeEffect.durationMs
+			Date.now() - self.activeEffect.startedAt >= self.activeEffect.durationMs
 		) {
 			self.activeEffect = null;
 		}
@@ -284,7 +302,11 @@ export function snapshotImpl(self: RuntimeSnapshotContext, ctx?: ExtensionContex
 	// v0.8.5: record the material-change signature computed at the top so the
 	// next snapshot() can skip this whole body when nothing material changed.
 	try {
-		recordPerfSample(self.currentStateDir, "db_recompute_ms", performance.now() - perfT0);
+		recordPerfSample(
+			self.currentStateDir,
+			"db_recompute_ms",
+			performance.now() - perfT0,
+		);
 		recordPerfSample(self.currentStateDir, "disk_write_ms", perfDiskMs);
 	} catch {
 		/* non-fatal: perf instrumentation never blocks the agent */

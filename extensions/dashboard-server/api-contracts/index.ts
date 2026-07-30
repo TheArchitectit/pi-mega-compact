@@ -144,6 +144,10 @@ export type {
 	TopicsResponse,
 	TopicDetailResponse,
 } from "./endpoints.js";
+export type {
+	ProviderCacheSavings,
+	ProviderCacheResponse,
+} from "./provider-cache.js";
 
 export { ENDPOINTS } from "./endpoints.js";
 
