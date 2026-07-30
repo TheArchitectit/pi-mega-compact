@@ -172,6 +172,12 @@ export interface IndexesIndexRow {
   maxTokens: number | null;
   /** Whether reasoning/extended-thinking mode is enabled, or `null` if not configured. */
   reasoning: boolean | null;
+  /** Lifetime provider prompt-cache hit percentage, or `null` if no samples. */
+  providerCachePct: number | null;
+  /** Lifetime provider prompt-cache read tokens, or `null` if no samples. */
+  providerCacheRead: number | null;
+  /** Lifetime provider prompt-cache write tokens, or `null` if no samples. */
+  providerCacheWrite: number | null;
 }
 
 /**

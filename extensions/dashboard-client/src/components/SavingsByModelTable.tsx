@@ -29,6 +29,8 @@ interface ModelGroup {
 	maxTokens: number[];
 	reasoning: boolean | null;
 	lastAt: number;
+	cacheRead: number;
+	cacheWrite: number;
 }
 
 /** Collapse numeric samples: "—" | single | "lo–hi" (matches html.ts). */
@@ -71,6 +73,8 @@ function aggregate(repos: IndexesIndexRow[]): ModelGroup[] {
 				maxTokens: [],
 				reasoning: null,
 				lastAt: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
 			};
 		}
 		const g = map[key];
@@ -87,6 +91,8 @@ function aggregate(repos: IndexesIndexRow[]): ModelGroup[] {
 		if (r.contextWindow) g.ctxWindows.push(r.contextWindow);
 		if (r.maxTokens) g.maxTokens.push(r.maxTokens);
 		if (r.reasoning != null) g.reasoning = r.reasoning;
+		if (r.providerCacheRead) g.cacheRead += r.providerCacheRead;
+		if (r.providerCacheWrite) g.cacheWrite += r.providerCacheWrite;
 		if (r.lastCompactedAt && r.lastCompactedAt > g.lastAt)
 			g.lastAt = r.lastCompactedAt;
 	}
@@ -151,13 +157,19 @@ export function SavingsByModelTable({
 								Out $/tok
 							</th>
 							<th className="num">$ Saved</th>
+							<th className="num" title="Provider prompt-cache hit rate (reads / reads+writes+tokens_in)">
+								Cache Hit %
+							</th>
+							<th className="num" title="Estimated provider prompt-cache savings (read tokens * 0.9 * inputRate − write tokens * 0.25 * inputRate)">
+								Cache $ Saved
+							</th>
 							<th className="num">Last Used</th>
 						</tr>
 					</thead>
 					<tbody>
 						{groups.length === 0 && (
 							<tr>
-								<td colSpan={14} className="repo-empty">
+								<td colSpan={16} className="repo-empty">
 									No repositories registered yet.
 								</td>
 							</tr>
@@ -207,8 +219,24 @@ export function SavingsByModelTable({
 									<td className="num">
 										{collapseRate(g.outRates)}
 									</td>
-									<td className="num">{usd}</td>
-									<td className="num">{when}</td>
+								<td className="num">{usd}</td>
+								<td className="num">
+									{g.cacheRead > 0
+										? `${(
+												(g.cacheRead * 100) /
+												(g.cacheRead + g.cacheWrite + g.tokensIn || 1)
+											).toFixed(1)}%`
+										: "—"}
+								</td>
+								<td className="num">
+									{g.cacheRead > 0
+										? `$${(
+												g.cacheRead * 0.9 * (g.inRates[0] || 0) -
+												g.cacheWrite * 0.25 * (g.inRates[0] || 0)
+											).toFixed(4)}`
+										: "—"}
+								</td>
+								<td className="num">{when}</td>
 								</tr>
 							);
 						})}

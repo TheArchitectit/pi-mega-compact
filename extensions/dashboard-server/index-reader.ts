@@ -58,6 +58,9 @@ export function readIndex(): IndexIndex | null {
       contextWindow: null,
       maxTokens: null,
       reasoning: null,
+      providerCachePct: null,
+      providerCacheRead: null,
+      providerCacheWrite: null,
     }));
     // Enrich each repo with per-store token + model detail read directly via
     // node:sqlite (same zero-dependency invariant as readIndex; no store graph
@@ -90,6 +93,26 @@ export function readIndex(): IndexIndex | null {
               repo.contextWindow = Number(mrow.context_window ?? 0) || null;
               repo.maxTokens = Number(mrow.max_tokens ?? 0) || null;
               repo.reasoning = Number(mrow.reasoning ?? 0) === 1;
+            }
+            // Provider prompt-cache stats (E.3)
+            try {
+              const pRow = sdb
+                .prepare(
+                  `SELECT
+                    SUM(cache_read) AS totalRead,
+                    SUM(cache_write) AS totalWrite,
+                    SUM(cache_read + cache_write) * 1.0 / MAX(SUM(cache_read + cache_write + tokens_in), 1) AS hitPct
+                   FROM perf_samples
+                   WHERE cache_read > 0 OR cache_write > 0`,
+                )
+                .get() as { totalRead: number; totalWrite: number; hitPct: number } | undefined;
+              if (pRow && pRow.totalRead > 0) {
+                repo.providerCacheRead = Number(pRow.totalRead);
+                repo.providerCacheWrite = Number(pRow.totalWrite);
+                repo.providerCachePct = Number((pRow.hitPct * 100).toFixed(1));
+              }
+            } catch {
+              /* best-effort — perf_samples may not exist */
             }
           } finally {
             sdb.close();
