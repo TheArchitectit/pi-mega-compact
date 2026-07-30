@@ -187,6 +187,11 @@ export class MegaRuntime {
 	perfProviderStart = 0;
 	perfCpuInterval: ReturnType<typeof setInterval> | null = null;
 	perfCpuBaseline: { user: number; sys: number } | undefined;
+	// RT2: the deferred durable-trim setTimeout handle (agent_end + context race
+	// guards). Tracked so resetRuntime/dispose can cancel it instead of leaving a
+	// dangling timer + ctx closure on session churn. At most one is pending at a
+	// time (the cooldown/debounce gates scheduling above the setTimeout).
+	pendingDurableTrimTimer: ReturnType<typeof setTimeout> | null = null;
 
 	// Context tracking for the dashboard (updated in the context handler).
 	lastCtxTokens: number | null = null;
@@ -333,6 +338,13 @@ export class MegaRuntime {
 	/** Per-session state reset (session_start / session_tree) — thin delegate to
 	 *  `resetRuntimeImpl` (reset-runtime.ts). */
 	resetRuntime(sessionId: string | undefined): void {
+		// RT2: cancel a pending deferred durable-trim so it can't fire its
+		// ctx.compact() into a reset session (the session-id recheck already guards
+		// this, but cancelling also frees the ctx closure promptly).
+		if (this.pendingDurableTrimTimer) {
+			clearTimeout(this.pendingDurableTrimTimer);
+			this.pendingDurableTrimTimer = null;
+		}
 		resetRuntimeImpl(this, sessionId);
 	}
 
@@ -368,6 +380,11 @@ export class MegaRuntime {
 	 *  correct for any in-process reload / test reuse). Thin delegate to
 	 *  `disposeRuntimeImpl` (game-state.ts). */
 	dispose(): void {
+		// RT2: cancel a pending deferred durable-trim timer on teardown.
+		if (this.pendingDurableTrimTimer) {
+			clearTimeout(this.pendingDurableTrimTimer);
+			this.pendingDurableTrimTimer = null;
+		}
 		disposeRuntimeImpl(this);
 	}
 

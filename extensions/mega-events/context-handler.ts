@@ -373,7 +373,10 @@ export function registerContextHandler(
 			if (config.raceGuardStrict) {
 				const stamp = runtime.rt.lastNativeCompactAt;
 				const liveSid = runtime.rt.sessionId;
-				setTimeout(() => {
+				// RT2: track the timer so resetRuntime/dispose can cancel it.
+				if (runtime.pendingDurableTrimTimer) clearTimeout(runtime.pendingDurableTrimTimer);
+				runtime.pendingDurableTrimTimer = setTimeout(() => {
+					runtime.pendingDurableTrimTimer = null;
 					try {
 						if (runtime.rt.sessionId !== liveSid) return; // session reset
 						const since2 = Date.now() - (runtime.rt.lastNativeCompactAt ?? 0);

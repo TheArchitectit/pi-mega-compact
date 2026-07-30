@@ -7,7 +7,7 @@ import { VectorStore, L2_ENABLED, vectorSemDedup, vectorList, vectorSearch } fro
 import { mmrRerank } from "./mmr.js";
 import { topK } from "./topk.js";
 import { cosineSimilarity, defaultEmbedder } from "../embedder.js";
-import { upsertCheckpoint } from "../store/sqlite.js";
+import { upsertCheckpoint, setDedupStatus } from "../store/sqlite.js";
 import type { StoredCheckpoint } from "../store.js";
 
 const baseTmp = mkdtempSync(join(tmpdir(), "mc-s12-"));
@@ -144,6 +144,49 @@ test("semDedup is idempotent (re-run removes nothing new)", () => {
   const second = vectorSemDedup(s,"sess_sd2", 0.85);
   assert.equal(first, 1);
   assert.equal(second, 0);
+});
+
+// H1 regression: add() must NOT resurrect a SemDeDup-'removed' row back to
+// 'active'. Before the fix, add() dedup-matched against removed rows and
+// upsertCheckpoint'd them to active, defeating SemDeDup. add() now filters
+// removed rows like search() already does.
+test("add() does NOT resurrect a SemDeDup-removed checkpoint (H1)", () => {
+  const dir = join(baseTmp, `run-${counter++}`);
+  const s = new VectorStore({ stateDir: dir });
+  const removedText = "exact content of the row that semdedup will remove";
+  const otherText = "completely different subject matter about database indexing";
+  seed(dir, "sess_h1", [
+    { id: "chkpt_001", text: removedText, tok: 100 },
+    { id: "chkpt_002", text: otherText, tok: 100 },
+  ]);
+  // Mark chkpt_001 removed (the state SemDeDup produces). chkpt_002 stays active
+  // and is dissimilar, so it will NOT match the re-added removedText.
+  setDedupStatus("chkpt_001", "sess_h1", "removed", dir);
+  assert.equal(vectorList(s, "sess_h1").find((c) => c.checkpointId === "chkpt_001")?.dedupStatus, "removed");
+
+  // Re-add the removed row's EXACT content. Pre-fix: L0 contentHash matched the
+  // removed row → upsertCheckpoint resurrected it to active → deduped:true.
+  // Post-fix: removed rows are filtered from `all`, no match → new row.
+  const r = s.add({
+    sessionId: "sess_h1",
+    summary: removedText,
+    regionText: removedText,
+    timestamp: 2,
+  });
+  assert.equal(r.deduped, false, "add() did not dedup against the removed row");
+
+  // The removed row must STILL be removed (not resurrected to active).
+  assert.equal(
+    vectorList(s, "sess_h1").find((c) => c.checkpointId === "chkpt_001")?.dedupStatus,
+    "removed",
+    "removed row stays removed",
+  );
+  // And search() still excludes it (only active rows retrievable).
+  const activeHits = vectorSearch(s, "sess_h1", removedText, 10);
+  assert.ok(
+    activeHits.every((h) => h.checkpoint.checkpointId !== "chkpt_001"),
+    "search still excludes the removed row",
+  );
 });
 
 // --- HttpEmbedder (BYO localhost backend) ----------------------------------

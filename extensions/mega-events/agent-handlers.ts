@@ -183,10 +183,16 @@ export function registerAgentHandlers(
 							// would re-check before it lands.
 							const stamp = runtime.rt.lastNativeCompactAt;
 							const liveSid = runtime.rt.sessionId;
-							setTimeout(() => {
+							// RT2: track the timer so resetRuntime/dispose can cancel it instead
+							// of leaving a dangling ctx closure. At most one is pending.
+							if (runtime.pendingDurableTrimTimer) clearTimeout(runtime.pendingDurableTrimTimer);
+							runtime.pendingDurableTrimTimer = setTimeout(() => {
+								runtime.pendingDurableTrimTimer = null;
 								try {
 									if (runtime.rt.sessionId !== liveSid) return; // session reset
-									const since2 = now - (runtime.rt.lastNativeCompactAt ?? 0);
+									// RT1: recompute since2 from a FRESH Date.now() — `now` was captured
+									// ~500ms earlier and would skew the cooldown check.
+									const since2 = Date.now() - (runtime.rt.lastNativeCompactAt ?? 0);
 									if (
 										runtime.rt.lastNativeCompactAt !== stamp &&
 										since2 < cooldownMs
@@ -489,7 +495,9 @@ export function registerAgentHandlers(
 							runtime.debounceUntil = now2 + 0;
 							const stamp2 = runtime.rt.lastNativeCompactAt;
 							const liveSid2 = runtime.rt.sessionId;
-							setTimeout(() => {
+							if (runtime.pendingDurableTrimTimer) clearTimeout(runtime.pendingDurableTrimTimer);
+							runtime.pendingDurableTrimTimer = setTimeout(() => {
+								runtime.pendingDurableTrimTimer = null;
 								try {
 									if (runtime.rt.sessionId !== liveSid2) return; // session reset
 									const since3 =
@@ -557,7 +565,9 @@ export function registerAgentHandlers(
 							runtime.debounceUntil = nowP + 0;
 							const stampP = runtime.rt.lastNativeCompactAt;
 							const liveSidP = runtime.rt.sessionId;
-							setTimeout(() => {
+							if (runtime.pendingDurableTrimTimer) clearTimeout(runtime.pendingDurableTrimTimer);
+							runtime.pendingDurableTrimTimer = setTimeout(() => {
+								runtime.pendingDurableTrimTimer = null;
 								try {
 									if (runtime.rt.sessionId !== liveSidP) return; // session reset
 									const sinceP =
