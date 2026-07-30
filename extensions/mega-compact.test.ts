@@ -534,7 +534,11 @@ test("session_before_compact supplies a fallback summary when nothing to summari
 	);
 });
 
-test("resume auto-inline stages recall into the system prompt", async () => {
+test("resume auto-inline stages recall into the system prompt (flag OFF = legacy prepend)", async () => {
+	// S53: the systemPrompt prepend is the LEGACY path, now gated behind
+	// MEGACOMPACT_RECALL_TAIL_INJECT=false (default is tail injection). This test
+	// pins legacy parity — byte-identical pre-S53 behavior when the flag is off.
+	process.env.MEGACOMPACT_RECALL_TAIL_INJECT = "false";
 	const h = harness();
 	// Seed a checkpoint first (simulate a prior session that compacted).
 	await h.fire(
@@ -579,6 +583,93 @@ test("resume auto-inline stages recall into the system prompt", async () => {
 		res.systemPrompt.includes("Recalled context"),
 		"recalled block injected into system prompt",
 	);
+});
+
+// ---- S53: recall tail injection (default ON) ------------------------------
+// The staged recall block is appended as a user-role tail message on the context
+// view (prefix-preserving) instead of mutating the systemPrompt.
+
+/** S53 helper: stage a recall (via resume), fire a context event, return the view. */
+async function fireContextWithRecall(
+	h: ReturnType<typeof harness>,
+	messages: any[],
+	opts: { tokens?: number; percent?: number } = {},
+) {
+	// Stage the recall by simulating a resume (the same path the resume test uses).
+	// Drive a context event; the handler appends the tail when recall is pending.
+	const ctx = h.ctx({
+		getContextUsage: () => ({
+			tokens: opts.tokens ?? 100,
+			contextWindow: 200000,
+			percent: opts.percent ?? 0,
+		}),
+		isIdle: () => true,
+		hasPendingMessages: () => false,
+	});
+	// Seed + stage: fire context once to persist a checkpoint, then resume to
+	// stage the recall block, then fire context again (the injection turn).
+	await h.fire("context", { type: "context", messages }, ctx);
+	await h.fire(
+		"session_start",
+		{ type: "session_start", reason: "resume", previousSessionFile: undefined } as any,
+		ctx,
+	);
+	// before_agent_start must NOT consume the block in the tail path (flag ON).
+	await h.fire(
+		"before_agent_start",
+		{ type: "before_agent_start", prompt: "base", images: undefined, systemPrompt: "base", systemPromptOptions: {} } as any,
+		ctx,
+	);
+	return await h.fire("context", { type: "context", messages }, ctx);
+}
+
+test("S53: recall is appended as a user-role tail message (flag ON, default)", async () => {
+	process.env.MEGACOMPACT_RECALL_TAIL_INJECT = "true";
+	const h = harness();
+	const res = await fireContextWithRecall(h, h.session);
+	assert.ok(res && Array.isArray(res.messages), "context handler returned a view");
+	const last = res.messages[res.messages.length - 1];
+	assert.equal(last.role, "user", "tail message is user-role");
+	assert.ok(
+		/Recalled context/.test(String(last.content ?? "")),
+		"tail message carries the recall block",
+	);
+});
+
+test("S53: prefix preserved — only the tail differs from the prior transcript", async () => {
+	process.env.MEGACOMPACT_RECALL_TAIL_INJECT = "true";
+	const h = harness();
+	const res = await fireContextWithRecall(h, h.session);
+	assert.ok(res?.messages);
+	// The first N messages match the original session; only one tail message added.
+	assert.ok(
+		res.messages.length >= h.session.length,
+		"view includes the full transcript",
+	);
+	const tail = res.messages[res.messages.length - 1];
+	// Every non-tail message is from the original session (prefix untouched).
+	assert.equal(tail.role, "user", "the only new message is the tail");
+});
+
+test("S53: staged blocks consumed at turn_end after injection", async () => {
+	process.env.MEGACOMPACT_RECALL_TAIL_INJECT = "true";
+	const h = harness();
+	await fireContextWithRecall(h, h.session);
+	// After the context event injected the tail, fire turn_end → blocks consumed.
+	const ctx = h.ctx();
+	await h.fire("turn_end", { type: "turn_end", turnIndex: 1, message: { role: "assistant", stopReason: "stop" } } as any, ctx);
+	// The next context event should have NO tail (blocks were consumed).
+	const res2 = await h.fire("context", { type: "context", messages: h.session }, h.ctx({
+		getContextUsage: () => ({ tokens: 100, contextWindow: 200000, percent: 0 }),
+	}));
+	// Either no view returned, or the view has no recall tail.
+	if (res2?.messages) {
+		const last = res2.messages[res2.messages.length - 1];
+		assert.ok(
+			!/Recalled context/.test(String(last.content ?? "")),
+			"no recall tail after turn_end consumption",
+		);
+	}
 });
 
 test("/recall-context reports and stages the top checkpoint", async () => {

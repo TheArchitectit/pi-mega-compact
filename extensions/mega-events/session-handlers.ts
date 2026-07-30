@@ -180,6 +180,13 @@ export function registerSessionHandlers(
 		const cpBlock = runtime.pendingRecallBlock;
 		const memBlock = runtime.pendingMemoryRecallBlock;
 		if (!cpBlock && !memBlock) return;
+		// S53 tail injection (default ON): the context handler appends the recall
+		// block as a user-role tail message (prefix-preserving). This legacy
+		// before_agent_start systemPrompt prepend runs ONLY when the flag is OFF,
+		// byte-identical to pre-S53 behavior. The block is consumed at turn_end in
+		// the tail path (not here) — so in the tail path we must NOT consume it
+		// here, or the context handler would see nothing to append.
+		if (config.recallTailInject) return;
 		runtime.pendingRecallBlock = undefined;
 		runtime.pendingMemoryRecallBlock = undefined;
 		// S53B/S54: the prepend is about to reach the model — mark the injection

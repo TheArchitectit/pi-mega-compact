@@ -156,6 +156,12 @@ export interface MegaConfig {
 	 *  adding checkpoints once the block would exceed this — bounds read-path
 	 *  token cost so it can never net-inflate the window. */
 	recallMaxTokens: number;
+	/** S53 recall tail injection: append the staged recall/memory block as a
+	 *  user-role tail message on the context view (prefix-preserving) instead of
+	 *  prepending it to the systemPrompt for one run (which caused two full-cache
+	 *  misses per recall: inject + revert). Default ON. Flag OFF = legacy
+	 *  before_agent_start systemPrompt prepend (byte-identical to pre-S53). */
+	recallTailInject: boolean;
 	/** Inline-dedupe recalled checkpoints against the live window (Fix C): drop
 	 *  a hit whose summary is ≥ dedupSim similar to a live message — "dedupe on
 	 *  inline/read" so we never re-inject context already resident. */
@@ -320,6 +326,9 @@ export function loadConfig(): MegaConfig {
 		memoryAutoReview: envBool("MEGACOMPACT_MEMORY_AUTO_REVIEW", true),
 		memoryReviewInterval: envFlag("MEGACOMPACT_MEMORY_REVIEW_INTERVAL", 10),
 		recallMaxTokens: envFlag("MEGACOMPACT_RECALL_MAX_TOKENS", 1500),
+		// S53: prefix-preserving recall tail injection (default ON). Flag OFF =
+		// legacy before_agent_start systemPrompt prepend.
+		recallTailInject: envBool("MEGACOMPACT_RECALL_TAIL_INJECT", true),
 		windowDedupe: envBool("MEGACOMPACT_WINDOW_DEDUPE", true),
 		tuiWidget: envBool("MEGACOMPACT_TUI_WIDGET", true),
 		debug: envBool("MEGACOMPACT_DEBUG", false),

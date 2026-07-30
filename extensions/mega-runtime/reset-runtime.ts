@@ -38,6 +38,7 @@ export interface ResetRuntimeContext extends PendingTimerContext {
 	pendingMemoryRecallHits: Array<{ memoryId: number; score: number }> | undefined;
 	lastInjectedMemoryHits: Array<{ memoryId: number; score: number }> | undefined;
 	lastRecallInjectAt: number | null;
+	recallInjectedThisTurn: boolean;
 	lastPrefixChain: string[] | null;
 	lastPrefixEpochId: string | null;
 }
@@ -99,6 +100,7 @@ export function resetRuntimeImpl(
 	self.pendingMemoryRecallHits = undefined;
 	self.lastInjectedMemoryHits = undefined;
 	self.lastRecallInjectAt = null;
+	self.recallInjectedThisTurn = false;
 	self.lastPrefixChain = null;
 	self.lastPrefixEpochId = null;
 }

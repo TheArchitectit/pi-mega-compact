@@ -122,6 +122,47 @@ function toRawTranscriptRow(
 	};
 }
 
+/**
+ * S53: append the staged recall/memory block as a user-role tail message.
+ * Prefix-preserving — the existing messages are unchanged, so the provider cache
+ * prefix stays a hit; only the appended tail is new (vs the legacy path, which
+ * mutated the systemPrompt and caused two full-cache misses per recall).
+ *
+ * View-only: never written to raw_transcript (the dbMirror append runs on the
+ * real transcript BEFORE any view is built) and never persisted.
+ * PREVENT-PI-002: appended after the last message — cannot split a tool pair.
+ * PREVENT-PI-003: user-role, never `role:"system"`.
+ * Non-fatal: any failure returns the view unchanged.
+ */
+function withRecallTail(
+	runtime: MegaRuntime,
+	messages: AgentMessage[],
+): AgentMessage[] {
+	const cpBlock = runtime.pendingRecallBlock;
+	const memBlock = runtime.pendingMemoryRecallBlock;
+	if (!cpBlock && !memBlock) return messages;
+	const composed = [cpBlock, memBlock].filter(Boolean).join("\n\n");
+	runtime.recallInjectedThisTurn = true; // consumed at turn_end (agent-handlers)
+	// S53B provenance + S54 prefix-break attribution: the prepend is reaching the
+	// model via the tail this turn — mirror the legacy before_agent_start bookkeeping
+	// so memory hit tracking + telemetry stay correct.
+	runtime.lastRecallInjectAt = Date.now();
+	if (memBlock) {
+		runtime.lastInjectedMemoryHits = runtime.pendingMemoryRecallHits;
+		runtime.pendingMemoryRecallHits = undefined;
+	}
+	return [
+		...messages,
+		{
+			role: "user",
+			content: composed,
+			// Stable per-turn timestamp (NOT Date.now()) so replays within the turn
+			// are byte-identical — mirrors the v0.8.6 summaryAgentMsg rationale.
+			timestamp: runtime.perfTurnStart ?? Date.now(),
+		} as unknown as AgentMessage,
+	];
+}
+
 /** Register the context event handler (live-trim auto-trigger). */
 export function registerContextHandler(
 	pi: ExtensionAPI,
@@ -242,7 +283,15 @@ export function registerContextHandler(
 				/* non-fatal: prefix telemetry must never affect the prompt path */
 			}
 		}
-		if (!config.auto) return;
+		if (!config.auto) {
+			// S53: recall pending but auto-compaction is off → still return the
+			// full transcript + recall tail (prefix-preserving; only the tail is
+			// new). Without this, recall would never fire when auto is off.
+			if (config.recallTailInject && (runtime.pendingRecallBlock || runtime.pendingMemoryRecallBlock)) {
+				return { messages: withRecallTail(runtime, messages) };
+			}
+			return;
+		}
 
 		const view = viewForFallback ?? runtime.engineView(messages);
 
@@ -280,17 +329,23 @@ export function registerContextHandler(
 			// custom tier OR tiered-but-pct-unavailable → token gate (S27 fallback).
 			if (currentTokens < runtime.effectiveThreshold) {
 				runtime.diagCtxFastGate++;
+				if (config.recallTailInject && (runtime.pendingRecallBlock || runtime.pendingMemoryRecallBlock))
+					return { messages: withRecallTail(runtime, messages) };
 				return;
 			}
 			const check = autoCompactCheck(currentTokens, runtime.effectiveThreshold); // SERVER-STYLE CONFIRM (local)
 			if (!check.shouldCompact) {
 				runtime.diagCtxNoCompact++;
+				if (config.recallTailInject && (runtime.pendingRecallBlock || runtime.pendingMemoryRecallBlock))
+					return { messages: withRecallTail(runtime, messages) };
 				return;
 			}
 			gatePassed = true;
 		}
 		if (!gatePassed) {
 			runtime.diagCtxFastGate++;
+			if (config.recallTailInject && (runtime.pendingRecallBlock || runtime.pendingMemoryRecallBlock))
+				return { messages: withRecallTail(runtime, messages) };
 			return;
 		}
 
@@ -298,6 +353,8 @@ export function registerContextHandler(
 		const now = Date.now();
 		if (now < runtime.debounceUntil) {
 			runtime.diagCtxDebounce++;
+			if (config.recallTailInject && (runtime.pendingRecallBlock || runtime.pendingMemoryRecallBlock))
+				return { messages: withRecallTail(runtime, messages) };
 			return;
 		}
 		runtime.debounceUntil = now + 2000;
@@ -332,9 +389,11 @@ export function registerContextHandler(
 				runtime.diagLiveTrimReplays++;
 				runtime.snapshot(ctx);
 				// v0.8.7: shallow-copy the cached summary so pi's transformContext can't
-				// mutate the shared reference across replays (audit P3).
+				// mutate the shared reference across replays (audit P3). S53: wrap the
+				// replay view with the recall tail (prefix-preserving; replayed prefix
+				// bytes unchanged).
 				return {
-					messages: [{ ...runtime.trimCache.summaryAgentMsg }, ...recent],
+					messages: withRecallTail(runtime, [{ ...runtime.trimCache.summaryAgentMsg }, ...recent]),
 				};
 			}
 			// else: context grew enough → fall through to re-compact (cache is stale)
@@ -369,7 +428,7 @@ export function registerContextHandler(
 				runtime.diagLiveTrimReplays++;
 				runtime.snapshot(ctx);
 				return {
-					messages: [{ ...runtime.trimCache.summaryAgentMsg }, ...recent],
+					messages: withRecallTail(runtime, [{ ...runtime.trimCache.summaryAgentMsg }, ...recent]),
 				};
 			}
 			return;
@@ -585,7 +644,7 @@ export function registerContextHandler(
 				ctxPct: pct,
 				ctxTokens: usage?.tokens ?? null,
 			});
-			return { messages: [summaryAgentMsg, ...recent] };
+			return { messages: withRecallTail(runtime, [summaryAgentMsg, ...recent]) };
 		} catch {
 			runtime.diagCtxThrown++;
 			return; // non-fatal: no trim this call; the next context event retries

@@ -168,6 +168,11 @@ export class MegaRuntime {
 	// prepend mutates the provider-visible system prompt, so a coinciding
 	// prefix break is attributed to recall injection). Null when never.
 	lastRecallInjectAt: number | null = null;
+	// S53 tail injection: set true when withRecallTail() actually appended the
+	// staged block to a context view this turn; consumed (cleared) at turn_end.
+	// If a turn ends with NO context event firing, this stays false and the
+	// staged blocks persist for the next turn's first context event.
+	recallInjectedThisTurn = false;
 	// S54: previous context-event message digest chain + epoch id (prefix
 	// stability telemetry; see src/prompt/prefix-telemetry.ts).
 	lastPrefixChain: string[] | null = null;
