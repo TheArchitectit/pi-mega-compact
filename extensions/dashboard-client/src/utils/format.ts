@@ -26,9 +26,7 @@ export function fmtSec(s: number | null | undefined): string {
  * Display a 0–1 fraction as a percentage string.
  * Uses one decimal place below 10%, rounded above (matches html.ts pct logic).
  */
-export function fmtPctFromFraction(
-	v: number | null | undefined,
-): string {
+export function fmtPctFromFraction(v: number | null | undefined): string {
 	const n = v ?? 0;
 	const pct = n * 100;
 	if (pct >= 10) return `${Math.round(pct)}%`;
@@ -48,10 +46,7 @@ export function fmtMs(v: number | null | undefined): string {
 }
 
 /** Format a number with fixed decimals or em-dash for null (matches fmtNum). */
-export function fmtNum(
-	v: number | null | undefined,
-	dec: number,
-): string {
+export function fmtNum(v: number | null | undefined, dec: number): string {
 	if (v == null || typeof v !== "number") return "\u2014";
 	return v.toFixed(dec);
 }

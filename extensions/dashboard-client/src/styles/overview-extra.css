@@ -31,6 +31,15 @@
 	color: var(--text);
 	font-family: monospace;
 }
+.ov-stat-value-green {
+	color: var(--ok);
+}
+.ov-stat-value-yellow {
+	color: var(--warn);
+}
+.ov-stat-value-red {
+	color: var(--err);
+}
 .ov-value-ok {
 	color: var(--ok) !important;
 }

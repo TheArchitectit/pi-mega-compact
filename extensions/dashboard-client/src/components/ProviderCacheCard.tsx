@@ -91,9 +91,9 @@ function StatRow({
 // ---------------------------------------------------------------------------
 
 export function ProviderCacheCard(
-props: ProviderCacheCardProps,
+	props: ProviderCacheCardProps,
 ): React.ReactElement {
-return (
+	return (
 		<div className="card provider-cache-card">
 			{/* --- Hit Rate + Turns --- */}
 			<StatRow

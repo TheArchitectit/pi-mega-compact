@@ -46,9 +46,11 @@ export default function CacheTab(): React.ReactElement {
 			    ============================================================== */}
 			<h2>Provider Prompt Cache</h2>
 			{pcLoading ? (
-				<p className="tab-loading">Loading…</p>
+				<p className="tab-stub">Loading…</p>
 			) : pcError ? (
-				<p className="tab-error">Provider cache unavailable: {pcError.message}</p>
+				<p className="tab-stub">
+					Provider cache unavailable: {pcError.message}
+				</p>
 			) : providerCache ? (
 				<ProviderCacheCard
 					hitPct={providerCache.cache.avgHitPct}
@@ -70,11 +72,12 @@ export default function CacheTab(): React.ReactElement {
 			    ============================================================== */}
 			<h2>Mega-Compact Dedup Cache</h2>
 			{snapLoading ? (
-				<p className="tab-loading">Loading…</p>
+				<p className="tab-stub">Loading…</p>
 			) : snapError ? (
-				<p className="tab-error">Snapshot unavailable: {snapError.message}</p>
+				<p className="tab-stub">Snapshot unavailable: {snapError.message}</p>
 			) : (
-				snapshot && (() => {
+				snapshot &&
+				(() => {
 					const { cacheHits, compacts, timeSaved } = snapshot;
 					return (
 						<div className="card-grid overview-card-grid">
