@@ -69,7 +69,7 @@ describe("/api/setup-status", () => {
 			assert.ok(typeof body.currentEmbedder === "string", "currentEmbedder is a string");
 			assert.ok(typeof body.embeddingUrl === "string" || body.embeddingUrl === null);
 			assert.ok(typeof body.minilm === "boolean");
-			assert.ok(typeof body.cacheSize === "number");
+			assert.ok(typeof body.embedCache === "string" || body.embedCache === null);
 		});
 	});
 
