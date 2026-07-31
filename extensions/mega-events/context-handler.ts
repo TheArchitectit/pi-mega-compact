@@ -13,10 +13,8 @@ import type {
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
 	openStore,
-	appendRawTranscript,
 	writeCheckpointEpoch,
 	type CheckpointEpoch,
-	type RawTranscriptRow,
 } from "../../src/store/sqlite.js";
 import { epochIdFor } from "../../src/mirror/epoch.js";
 import { autoCompactCheck } from "../../src/compact.js";
@@ -37,84 +35,7 @@ import {
 	pressureRatio,
 	type MegaConfig,
 } from "../mega-config.js";
-import { computeContentDigest } from "../../src/dedup/digest.js";
-
-/**
- * Recursively canonicalize a value for deterministic JSON serialization:
- * - Objects: keys sorted alphabetically, values recursively canonicalized
- * - Arrays: elements recursively canonicalized (array ORDER is preserved)
- * - Primitives: returned as-is
- *
- * F5 fix: shallow-sorted JSON.stringify(content, Object.keys(content).sort())
- * omitted nested keys not in the top-level keys array and only sorted one level.
- * This recursively sorts every object at every depth so semantically-equal
- * differently-ordered content hashes identically.
- */
-function canonicalize(value: unknown): unknown {
-	if (value === null || value === undefined) return value;
-	if (typeof value !== "object") return value;
-	if (Array.isArray(value)) return value.map(canonicalize);
-	// Plain object: sort keys, recursively canonicalize values.
-	const sorted = Object.keys(value as Record<string, unknown>).sort();
-	const out: Record<string, unknown> = {};
-	for (const k of sorted) {
-		out[k] = canonicalize((value as Record<string, unknown>)[k]);
-	}
-	return out;
-}
-
-/**
- * Convert a pi AgentMessage to a RawTranscriptRow for the DB mirror.
- * content_bytes is canonical JSON (sorted keys, recursive) for deterministic
- * storage; contentHash is the canonical digest (normalize + hash) that matches
- * what dedupTranscript computes so the two pipelines use the same linkage key.
- *
- * F4 fix: the hash key MUST match on both sides of the append/dedup split.
- * Using computeContentDigest here (normalize → hash) ensures content_ref set
- * by dedupTranscript always resolves to an existing dedup_mirror row even for
- * whitespace/case-variant content. F5 fix: recursive canonicalize replaces the
- * broken shallow-sorted JSON.stringify replacer.
- */
-function toRawTranscriptRow(
-	msg: AgentMessage,
-	sessionId: string,
-	epochId: string,
-	currentTurn?: number,
-): RawTranscriptRow | null {
-	// Narrow to Message union (has content + timestamp).
-	const m = msg as {
-		role?: string;
-		content?: unknown;
-		timestamp?: number;
-		toolName?: string;
-	};
-	const content = m.content;
-	if (content == null || content === "") return null;
-	// Canonical bytes: string content → normalize for consistent byte content;
-	// object content → recursive canonicalize then JSON (no replacer).
-	const contentBytes =
-		typeof content === "string"
-			? content // F5: strings are primitives; their byte content is fixed
-			: JSON.stringify(canonicalize(content));
-	// F4 fix: use the same digest as dedupTranscript so contentHash is consistent
-	// on both sides of the append/dedup split. computeContentDigest normalizes
-	// (strip ANSI, NFC, case-fold, collapse whitespace) then hashes → the same
-	// key is stored in raw_transcript.content_hash AND used as the dedup link.
-	const { contentHash } = computeContentDigest(contentBytes);
-	return {
-		contentHash,
-		sessionId,
-		seq: 0, // assigned by appendRawTranscript (COALESCE(MAX(seq),0)+1)
-		role: m.role ?? "unknown",
-		contentBytes,
-		toolName: m.toolName ?? null,
-		messageTimestamp: m.timestamp ?? null,
-		checkpointEpoch: epochId,
-		// S50: label the row with the turn that produced it (per-turn dedup /
-		// compression-by-turn metrics). Null when the writer omits it (back-compat).
-		turnIndex: currentTurn ?? null,
-	};
-}
+import { appendMirrorMessages } from "./mirror-append.js";
 
 /** Register the context event handler (live-trim auto-trigger). */
 export function registerContextHandler(
@@ -166,26 +87,27 @@ export function registerContextHandler(
 
 		const view = viewForFallback ?? runtime.engineView(messages);
 
-		// S27 DB-mirror: append ALL incoming messages to raw_transcript.
-		// Runs BEFORE fast-gate so every message is captured, even if we
-		// don't compact this turn. Append is idempotent (content_hash PK).
-		if (config.dbMirror) {
-			try {
-				const db = openStore(runtime.currentStateDir);
-				const epochId = epochIdFor(runtime.rt.sessionId);
-				for (const msg of messages) {
-					const raw = toRawTranscriptRow(
-						msg,
+		// S27 DB-mirror: append incoming messages to raw_transcript.
+			// Runs BEFORE fast-gate so every message is captured, even if we
+			// don't compact this turn. Append is idempotent (content_hash PK).
+			// F3: high-water mark (mirror-append.ts) skips already-processed
+			// messages on subsequent events. On fork/rewind (shorter list or
+			// boundary hash mismatch) the mark is dropped, falling back to a
+			// full reprocess.
+			if (config.dbMirror) {
+				try {
+					const db = openStore(runtime.currentStateDir);
+					appendMirrorMessages(
+						db,
+						messages,
 						runtime.rt.sessionId,
-						epochId,
+						epochIdFor(runtime.rt.sessionId),
 						runtime.currentTurn,
 					);
-					if (raw) appendRawTranscript(db, raw);
+				} catch (e) {
+					runtime.logger.warn("db-mirror-append-fail", { error: String(e) });
 				}
-			} catch (e) {
-				runtime.logger.warn("db-mirror-append-fail", { error: String(e) });
 			}
-		}
 
 		// S29 FAST GATE: drive the auto-trigger off the context % (the number the
 		// menu bar shows), NOT the token count — the model under-reports tokens,
