@@ -405,23 +405,45 @@ Remaining before release as v0.8.15:
 
 ---
 
-## 7. Post-Release Fix: Network-Guard for Poisoned-Context Upgrade (2026-07-28)
+## 7. Post-Release Fix: Known-Retryable Guard for Poisoned-Context Upgrade (2026-07-30)
 
 ### Incident
 
 A user observed the `/clear or /new` poisoned-context message firing when the
-API timed out 3 times in a row. The error text was:
+API timed out repeatedly. The error text was:
 
 > Request timed out or failed. Try again
 
-### Root Cause
+### Root Cause (three layers, one shared defect)
 
-The `classifyError()` function correctly returned `'transient'` for this error
-(matched `timeout` in the network pattern). However, the repeat-detection logic
-in `agent-handlers.ts` (lines ~405–418) **upgraded** `'transient'` →
-`'poisoned-context'` after `poisonedContextRepeatThreshold` (default 3) identical
-error signatures — regardless of whether the error was a network/timeout or a
-truly deterministic rejection.
+The repeat-detection logic in `agent-handlers.ts` **upgraded** `'transient'` →
+`'poisoned-context'` after `poisonedContextRepeatThreshold` (default 3)
+identical error signatures — regardless of whether the error was a
+network/timeout failure or a truly deterministic rejection. A first-pass fix
+added an inline `networkPattern` regex gate before the upgrade, but code review
+found the gate had the same coverage gaps as the classifier list it duplicated:
+
+1. **The incident's own phrasing slipped through.** `/timeout/` does NOT match
+   "timed out" (two words) — the first-pass guard silently failed against the
+   exact error text it was written for. Node's `ETIMEDOUT` errno (lowercased
+   "etimedout" — no "timeout" substring) and "socket hang up" (Node's
+   ECONNRESET *message*; the errno lives in `error.code`, which
+   `extractErrorSignature` never sees) missed too.
+2. **429/rate-limit still upgraded.** The classifier explicitly keeps 429
+   transient (retry can fix it; `/clear` cannot), but the guard's pattern
+   subset omitted it, so 3 identical 429s fired the same false alarm.
+3. **Deeper: the 0-token poisoned signal fires on turn ONE.** With `usage`
+   present at 0 tokens, `classifyError`'s 0-token poisoned signal matches
+   `/error/` against the text blob (which includes the stopReason) — so a
+   0-token "timed out" turn was classified `poisoned-context` immediately,
+   before the repeat guard was ever consulted. (The doc's earlier claim that
+   the classifier "matched `timeout`" was wrong: with usage absent it fell
+   through the generic stopReason='error' fallthrough; with 0-token usage it
+   went straight to poisoned.)
+
+Underlying cause of all three: the "which errors are known-retryable" knowledge
+existed as **two hand-maintained regex lists** (classifier transient markers +
+the guard's subset), which had already drifted.
 
 ### Why the Upgrade Exists
 
@@ -430,52 +452,70 @@ During the **2026-07-28 incident**, a provider returned:
 > Request failed — please retry.
 
 on every request (0-token, non-timeout, deterministic). The classifier returned
-`'transient'` conservatively (no timeout/network/5xx match), and the repeat
-upgrade correctly detected that retrying was futile — advising `/clear or /new`
-instead of spamming ~60 retry messages.
+`'transient'` conservatively, and the repeat upgrade correctly detected that
+retrying was futile — advising `/clear or /new` instead of spamming ~60 retry
+messages. That behavior is correct and preserved (see R7(f)/R7(g) controls).
 
-The problem: the upgrade was **too aggressive** — it applied to ALL repeating
-transient errors, including genuine network failures.
+### Fix (hardened)
 
-### Fix
+**Files:** `extensions/mega-events/error-classifier.ts`, `extensions/mega-events/agent-handlers.ts`
 
-**File:** `extensions/mega-events/agent-handlers.ts` (line ~418)
+A single source of truth now defines "known-retryable transient" —
+`KNOWN_RETRYABLE_TRANSIENT_PATTERN` + `isKnownRetryableTransient(text)` exported
+from `error-classifier.ts` — used in BOTH places:
 
-Before upgrading `transient` → `poisoned-context`, the code now tests the
-error signature against a network-error regex:
+1. `classifyError`'s transient-marker stage (before the poisoned signals, so a
+   0-token "timed out" turn is transient, not poisoned-on-first-turn);
+2. the R3 repeat-upgrade guard in `agent-handlers.ts`:
 
 ```typescript
-const networkPattern =
- /network|timeout|econnreset|econnrefused|epipe|connection (lost|refused|reset|aborted)|stream (interrupted|closed|ended|failed)|disconnected|5\d\d|internal server|bad gateway|service unavailable/;
-if (!networkPattern.test(errSig)) {
- effectiveCategory = "poisoned-context";
+if (!isKnownRetryableTransient(errSig)) {
+	effectiveCategory = "poisoned-context";
 }
 ```
 
-If the error signature contains any network/timeout marker, the category stays
-`'transient'` and follows the normal retry path (`maxConsecutiveErrors` circuit
-breaker + `errorRetryCount` per-turn cap). Non-network errors that repeat
-identically still get the upgrade.
+Coverage added beyond the first-pass fix: `timed out` / `timed-out` phrasings,
+`etimedout`, `socket hang up`, `premature close`, `other side closed`,
+`eai_again`, `overloaded`, `429` / `rate limit` / `too many requests`,
+`connection abort`, `max output token`. Because the marker set is shared, the
+classifier and the upgrade guard can no longer drift.
+
+Errors carrying any known-retryable marker stay `'transient'` and follow the
+normal retry path (`maxConsecutiveErrors` circuit breaker + per-burst
+`autoRetryTransientMax` + `errorRetrySessionMax` session cap). Errors with NO
+marker that repeat identically still upgrade.
 
 ### Behavior Summary
 
-| Error Type | Repeat Count | Before Fix | After Fix |
-| ------------ | ------------- | ------------ | ----------- |
-| API timeout × 3+ | ≥3 | poisoned-context (false positive) | transient (correct — retry) |
-| ECONNRESET × 3+ | ≥3 | poisoned-context (false positive) | transient (correct — retry) |
-| "Request failed — please retry." × 3+ | ≥3 | poisoned-context (correct) | poisoned-context (still correct — no network pattern) |
-| 0-token error × 1 | 1 | poisoned-context (classifier verdict) | poisoned-context (unchanged) |
+| Error Type | Repeats | Before any fix | After first-pass fix | After hardened fix |
+| ------------ | ------- | --------------- | --------------------- | ------------------- |
+| "timed out" phrasing (incident text) | ≥3 | poisoned (false alarm) | **poisoned (STILL — "timed out" ≠ /timeout/)** | transient (correct — retry) |
+| ETIMEDOUT / socket hang up | ≥3 | poisoned (false alarm) | poisoned (STILL) | transient (correct — retry) |
+| 429 / rate limit | ≥3 | poisoned (false alarm) | poisoned (STILL) | transient (correct — retry) |
+| ECONNRESET / 5xx / connection lost | ≥3 | poisoned (false alarm) | transient (correct) | transient (unchanged) |
+| 0-token "timed out" turn | 1 | poisoned on turn 1 (0-token signal) | poisoned on turn 1 (STILL) | transient (markers checked before 0-token signal) |
+| "Request failed — please retry." (2026-07-28) | any | poisoned (correct) | poisoned (correct) | poisoned (unchanged — control) |
+| Non-network transient, no marker | ≥3 | poisoned (correct) | poisoned (correct) | poisoned (unchanged — control) |
 
 ### Config
 
 The `poisonedContextRepeatThreshold` field in `MegaConfig` is preserved and
-still controls the repeat-count trigger threshold. The network guard was added
-as a second gate below the threshold check — not a replacement.
+still controls the repeat-count trigger threshold. The guard remains an
+additive second gate below the threshold check — not a replacement.
 
 ### Evidence
 
-- **File changed:** `extensions/mega-events/agent-handlers.ts` — added `networkPattern` regex filter in the `transient → poisoned-context` upgrade block (lines ~415–422).
-- **Test gate:** 880 passed, 1 known-pre-existing failure (zstd native addon not built, unrelated).
+- **Files changed:** `extensions/mega-events/error-classifier.ts` (shared
+  `KNOWN_RETRYABLE_TRANSIENT_PATTERN` + `isKnownRetryableTransient`, unified
+  transient-marker stage), `extensions/mega-events/agent-handlers.ts` (guard
+  uses the shared helper).
+- **Regression tests (TDD — written red first):** `extensions/mega-compact-s38.test.ts`
+  R7(a)–R7(e) (network/429 repeats + 0-token first-turn stay transient — all
+  failed pre-fix), R7(f)/R7(g) (true-positive controls still upgrade), R7
+  classifier unit tests. 58/58 pass post-fix.
+- **Test-infra fix:** the file's `cleanup` test's bare `process.exit(0)`
+  discarded unflushed pipe buffers, silently dropping trailing tests from
+  piped TAP reports — it now drains stdout/stderr and defers the exit.
 - **Build:** `tsc` clean with no errors.
 
 ---

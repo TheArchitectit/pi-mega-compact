@@ -20,6 +20,7 @@ import {
 	classifyError,
 	errorRetryBackoffMs,
 	extractErrorSignature,
+	isKnownRetryableTransient,
 } from "./error-classifier.js";
 import { safeSendUserMessage } from "./send-safe.js";
 import { vectorStats } from "../../src/vectorStore.js";
@@ -397,9 +398,11 @@ export function registerAgentHandlers(
 				// upgrade happens here. A 'transient' (or 'poisoned-context') turn
 				// whose normalized error signature matches the previous one bumps
 				// errorTextRepeatCount; once it crosses the threshold, the category
-				// is upgraded to 'poisoned-context' (the request is deterministic).
-				// Conservative: only upgrade, never downgrade, and only for transient
-				// (a 'permanent' auth error repeating is still permanent).
+				// is upgraded to 'poisoned-context' (the request is deterministic) —
+				// R7: unless the signature carries a known-retryable network/
+				// throughput marker (guard below). Conservative: only upgrade, never
+				// downgrade, and only for transient (a 'permanent' auth error
+				// repeating is still permanent).
 				let effectiveCategory = category;
 				const errSig = extractErrorSignature(event.message);
 				if (category === "transient" || category === "poisoned-context") {
@@ -415,18 +418,17 @@ export function registerAgentHandlers(
 								config.poisonedContextRepeatThreshold &&
 							category === "transient"
 						) {
-							// R3: upgrade only if the error is NOT a network/timeout failure.
-							// Network errors (timeout, ECONNRESET, 5xx, connection lost) that
-							// repeat are still retryable — the API is just flaky. Only upgrade
-							// transient → poisoned-context for NON-network errors that repeat
-							// identically, like the 2026-07-28 incident where the provider
-							// returned "Request failed — please retry." deterministically.
-							// The classifier already returns 'poisoned-context' for 0-token
-							// deterministic rejections; this upgrade only fires for errors
-							// that the classifier mapped to 'transient' conservatively.
-							const networkPattern =
-								/network|timeout|econnreset|econnrefused|epipe|connection (lost|refused|reset|aborted)|stream (interrupted|closed|ended|failed)|disconnected|5\d\d|internal server|bad gateway|service unavailable/;
-							if (!networkPattern.test(errSig)) {
+							// R3/R7: upgrade only when the repeating error carries NO
+							// known-retryable marker. Network/throughput failures (timeout,
+							// ECONNRESET, 5xx, 429, connection lost, …) that repeat are
+							// still retryable — the API is just flaky, and /clear cannot fix
+							// them (2026-07-30 false-alarm incident). Only upgrade
+							// transient → poisoned-context for errors that repeat identically
+							// with no known-retryable cause, like the 2026-07-28 incident
+							// where the provider returned "Request failed — please retry."
+							// deterministically. The marker set is shared with classifyError
+							// (error-classifier.ts) so the two never drift.
+							if (!isKnownRetryableTransient(errSig)) {
 								effectiveCategory = "poisoned-context";
 							}
 						}

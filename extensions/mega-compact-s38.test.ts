@@ -624,9 +624,11 @@ test("R6(e): success resets retry-nudge-pending state", async () => {
 
 test("R3: repeated identical transient error text upgrades to poisoned-context at threshold", async () => {
 	// The stateful repeat signal: 3 consecutive identical transient errors
-	// (default threshold) upgrade to poisoned. Uses "5xx server error" (5xx
-	// marker → transient) so the classifier returns transient, then the repeat
-	// tracker upgrades it. auto=false to skip the compact attempt.
+	// (default threshold) upgrade to poisoned. Uses "5xx server error" —
+	// deliberately NO known-retryable marker ("5xx" is not /5\d\d/, and
+	// "server error" alone matches nothing): the classifier returns transient
+	// via the generic 'error' fallthrough, then the repeat tracker upgrades it.
+	// auto=false to skip the compact attempt.
 	const prevAuto = process.env.MEGACOMPACT_AUTO;
 	const prevBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
 	process.env.MEGACOMPACT_AUTO = "false";
@@ -652,6 +654,204 @@ test("R3: repeated identical transient error text upgrades to poisoned-context a
 	}
 });
 
+// ---- R7 regression tests: network/throughput errors must NEVER upgrade to ----
+// ---- poisoned-context (2026-07-30 false-alarm incident) ----
+
+/** R7 helper: fire the same transient error text `count` times with turn_start
+ *  + elapsed backoff between turns so each turn's nudge can fire. */
+async function r7RepeatTurns(h: ReturnType<typeof harness>, text: string, count: number) {
+	for (let i = 0; i < count; i++) {
+		await s38TurnEnd(h, "error", text);
+		await h.fire("turn_start", { type: "turn_start", turnIndex: i + 2 }, h.ctx());
+		await new Promise((r) => setTimeout(r, 3));
+	}
+}
+
+/** R7 helper: shared assertions for "stays transient" — no poisoned upgrade,
+ *  no /clear advise, and the transient retry path actually ran. */
+function assertStaysTransient(h: ReturnType<typeof harness>, label: string) {
+	assert.ok(
+		!eventTypes(h.stateDir).includes("poisoned_context"),
+		`${label}: no poisoned_context event (network errors never upgrade)`,
+	);
+	assert.ok(
+		!h.sendUserMessages.some((m) => m.includes("/clear")),
+		`${label}: no /clear advise message`,
+	);
+	assert.ok(
+		eventTypes(h.stateDir).includes("error_retry"),
+		`${label}: transient retry path ran (error_retry event)`,
+	);
+}
+
+test("R7(a): repeated 'timed out' phrasing (2026-07-30 incident text) stays transient — no poisoned upgrade", async () => {
+	// The incident error text was "Request timed out or failed. Try again" —
+	// "timed out" (two words) does NOT match the old guard's /timeout/, so the
+	// 3rd repeat fired the /clear poisoned advise. Must stay transient.
+	const prevAuto = process.env.MEGACOMPACT_AUTO;
+	const prevBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	process.env.MEGACOMPACT_AUTO = "false";
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	try {
+		const h = harness();
+		await r7RepeatTurns(h, "Request timed out or failed. Try again", 3);
+		assertStaysTransient(h, "timed out x3");
+	} finally {
+		if (prevAuto === undefined) delete process.env.MEGACOMPACT_AUTO;
+		else process.env.MEGACOMPACT_AUTO = prevAuto;
+		if (prevBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = prevBackoff;
+	}
+});
+
+test("R7(b): repeated ETIMEDOUT errno stays transient", async () => {
+	// Node's timeout errno lowercases to "etimedout" — does NOT contain the
+	// substring "timeout". Slipped through the old guard.
+	const prevAuto = process.env.MEGACOMPACT_AUTO;
+	const prevBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	process.env.MEGACOMPACT_AUTO = "false";
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	try {
+		const h = harness();
+		await r7RepeatTurns(h, "connect ETIMEDOUT 142.250.80.46:443", 3);
+		assertStaysTransient(h, "ETIMEDOUT x3");
+	} finally {
+		if (prevAuto === undefined) delete process.env.MEGACOMPACT_AUTO;
+		else process.env.MEGACOMPACT_AUTO = prevAuto;
+		if (prevBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = prevBackoff;
+	}
+});
+
+test("R7(c): repeated 'socket hang up' stays transient", async () => {
+	// Node surfaces ECONNRESET as the message "socket hang up" (the errno lives
+	// in error.code, which extractErrorSignature never sees).
+	const prevAuto = process.env.MEGACOMPACT_AUTO;
+	const prevBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	process.env.MEGACOMPACT_AUTO = "false";
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	try {
+		const h = harness();
+		await r7RepeatTurns(h, "socket hang up", 3);
+		assertStaysTransient(h, "socket hang up x3");
+	} finally {
+		if (prevAuto === undefined) delete process.env.MEGACOMPACT_AUTO;
+		else process.env.MEGACOMPACT_AUTO = prevAuto;
+		if (prevBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = prevBackoff;
+	}
+});
+
+test("R7(d): repeated 429 rate-limit stays transient", async () => {
+	// /clear cannot fix a rate limit — the classifier explicitly keeps 429
+	// transient, so the repeat-upgrade must not override that verdict.
+	const prevAuto = process.env.MEGACOMPACT_AUTO;
+	const prevBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	process.env.MEGACOMPACT_AUTO = "false";
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	try {
+		const h = harness();
+		await r7RepeatTurns(h, "429 Too Many Requests: rate limit exceeded", 3);
+		assertStaysTransient(h, "429 x3");
+	} finally {
+		if (prevAuto === undefined) delete process.env.MEGACOMPACT_AUTO;
+		else process.env.MEGACOMPACT_AUTO = prevAuto;
+		if (prevBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = prevBackoff;
+	}
+});
+
+test("R7(e): 0-token 'timed out' turn is NOT poisoned on first occurrence", async () => {
+	// Deeper gap: with usage PRESENT at 0 tokens, the classifier's 0-token
+	// poisoned signal fires on turn ONE for "timed out" phrasing (the stopReason
+	// 'error' is in the text blob and no transient marker matched). The network
+	// markers must be checked before that signal so this returns transient.
+	const prevAuto = process.env.MEGACOMPACT_AUTO;
+	process.env.MEGACOMPACT_AUTO = "false";
+	try {
+		const h = harness();
+		await s38TurnEndUsage(h, "error", "Request timed out or failed. Try again", 0);
+		assert.ok(
+			!eventTypes(h.stateDir).includes("poisoned_context"),
+			"0-token timed out: no poisoned_context on first turn",
+		);
+		assert.ok(
+			!h.sendUserMessages.some((m) => m.includes("/clear")),
+			"0-token timed out: no /clear advise on first turn",
+		);
+	} finally {
+		if (prevAuto === undefined) delete process.env.MEGACOMPACT_AUTO;
+		else process.env.MEGACOMPACT_AUTO = prevAuto;
+	}
+});
+
+test("R7(f): repeated non-network transient still upgrades to poisoned-context (control)", async () => {
+	// True-positive control: an error with NO known-retryable marker that
+	// repeats identically must still upgrade (the R3 feature itself).
+	const prevAuto = process.env.MEGACOMPACT_AUTO;
+	const prevBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	process.env.MEGACOMPACT_AUTO = "false";
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	try {
+		const h = harness();
+		await r7RepeatTurns(h, "upstream rejected the request", 3);
+		assert.ok(
+			eventTypes(h.stateDir).includes("poisoned_context"),
+			"non-network repeat: poisoned_context event logged",
+		);
+		assert.ok(
+			h.sendUserMessages.some((m) => m.includes("/clear")),
+			"non-network repeat: /clear advise fired",
+		);
+	} finally {
+		if (prevAuto === undefined) delete process.env.MEGACOMPACT_AUTO;
+		else process.env.MEGACOMPACT_AUTO = prevAuto;
+		if (prevBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = prevBackoff;
+	}
+});
+
+test("R7(g): 'Request failed — please retry.' 0-token stays poisoned-context (2026-07-28 control)", async () => {
+	// The deterministic-rejection incident that motivated R3 must remain
+	// poisoned: the shared marker pattern must NOT match this text.
+	const prevAuto = process.env.MEGACOMPACT_AUTO;
+	process.env.MEGACOMPACT_AUTO = "false";
+	try {
+		const h = harness();
+		await s38TurnEndUsage(h, "error", "Request failed — please retry.", 0);
+		assert.ok(
+			eventTypes(h.stateDir).includes("poisoned_context"),
+			"deterministic rejection: poisoned_context event logged",
+		);
+		assert.ok(h.sendUserMessages.some((m) => m.includes("/clear")), "deterministic rejection: /clear advise fired");
+	} finally {
+		if (prevAuto === undefined) delete process.env.MEGACOMPACT_AUTO;
+		else process.env.MEGACOMPACT_AUTO = prevAuto;
+	}
+});
+
+test("R7 classifier: 0-token 'timed out' error → transient (not poisoned)", () => {
+	// Unit-level pin of the R7(e) gap.
+	assert.equal(
+		classifyErrorFn({
+			stopReason: "error",
+			content: "Request timed out or failed. Try again",
+			usage: { inputTokens: 0, outputTokens: 0 },
+		}),
+		"transient",
+	);
+});
+
+test("R7 classifier: bare network phrasings → transient", () => {
+	assert.equal(classifyErrorFn("socket hang up"), "transient");
+	assert.equal(classifyErrorFn("the operation timed out"), "transient");
+	assert.equal(classifyErrorFn("connect ETIMEDOUT 10.0.0.1:443"), "transient");
+});
+
+test("R7 classifier: 429/rate-limit → transient (control)", () => {
+	assert.equal(classifyErrorFn("429 Too Many Requests: rate limit exceeded"), "transient");
+});
+
 test("cleanup", async () => {
 	// PGlite WASM close can hang; race with a timeout to prevent 40-min hangs.
 	try {
@@ -661,8 +861,12 @@ test("cleanup", async () => {
 	// Force-exit: each harness() creates a MegaRuntime with an fs.watch
 	// game-state watcher that is never disposed (no session_shutdown in tests).
 	// Those handles keep the event loop alive indefinitely after all tests
-	// complete, so `node --test` (without --test-force-exit) would hang. The
-	// streaming reporter has already printed every test result by this point;
-	// process.exit(0) just forces the exit the watchers are preventing.
+	// complete, so `node --test` (without --test-force-exit) would hang.
+	// Drain stdout/stderr, then defer the exit: a bare process.exit() discards
+	// unflushed pipe buffers — observed 2026-07-30: when piped, the trailing
+	// tests' results and the run summary silently vanished from the report.
+	await new Promise((r) => process.stdout.write("", r));
+	await new Promise((r) => process.stderr.write("", r));
+	await new Promise((r) => setTimeout(r, 1500));
 	process.exit(0);
 });

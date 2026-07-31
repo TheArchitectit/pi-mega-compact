@@ -12,6 +12,28 @@
  * poisoned, choose transient (bounded by R1 dedup + R2 session cap).
  */
 
+/** R7: known-retryable transient markers — network/throughput failures that
+ *  retry can fix and /clear cannot. SINGLE SOURCE OF TRUTH: classifyError uses
+ *  this for its transient-marker stage, and the agent-handlers R3 repeat
+ *  upgrade guard uses it to keep these errors out of poisoned-context. Add new
+ *  transient phrasings HERE only.
+ *
+ *  Non-obvious alternatives:
+ *  - `time(?:d[\s-]?out|out)` covers "timeout", "timed out", "timed-out" —
+ *    "timed out" does NOT match /timeout/ (the 2026-07-30 incident phrasing).
+ *  - `etimedout` is Node's timeout errno lowercased — does NOT contain the
+ *    substring "timeout".
+ *  - `socket hang up` is Node's ECONNRESET *message*; the errno lives in
+ *    error.code, which extractErrorSignature never sees. */
+export const KNOWN_RETRYABLE_TRANSIENT_PATTERN =
+	/max(imum)? output token|rate[\s.-]?limit|429|too many requests|overloaded|5\d\d|internal server|bad gateway|service unavailable|network|time(?:d[\s-]?out|out)|etimedout|econnreset|econnrefused|epipe|eai_again|socket hang up|premature close|other side closed|connection (lost|refused|reset|aborted?)|stream (interrupted|closed|ended|failed)|disconnected/;
+
+/** R7: true when the error text carries a known-retryable transient marker.
+ *  Defensively lowercases so callers can pass raw or normalized text. */
+export function isKnownRetryableTransient(text: string): boolean {
+	return KNOWN_RETRYABLE_TRANSIENT_PATTERN.test(text.toLowerCase());
+}
+
 /** S38.2: classify a turn-end error/stop signal into a retry category.
  *
  * `length` is returned as null — S28 owns the max-output-token length stopReason
@@ -134,19 +156,14 @@ export function classifyError(message: unknown):
 	if (/too long|context window|maximum context length|context length exceeded|requires at least \d+ tokens|even after compaction|reduce the conversation|reduce your input/.test(s)) {
 		return 'context-overflow';
 	}
-	// --- transient (specific markers FIRST — these override poisoned signals) ---
-	// R3: network failures (timeout, ECONNRESET, 5xx, 429) MUST stay transient
-	// even when usage is 0 tokens, because they are retryable. The specific
-	// markers below return before any poisoned signal is evaluated.
-	if (/max(imum)? output token/.test(s)) return 'transient';
-	if (/rate[\s.-]?limit|429|too many requests/.test(s)) return 'transient';
-	if (/5\d\d|internal server|bad gateway|service unavailable/.test(s)) return 'transient';
-	// 'connection aborted' is a network failure (ECONNABORTED), NOT a user ESC
-	// (which is stopReason 'aborted', handled by the early-return above). Added
-	// so "Connection aborted by peer" stays transient under R3. ECONNRESET and
-	// common errno names are included so a bare 0-token 'ECONNRESET' turn is not
-	// misclassified as poisoned (R6: ECONNRESET → transient).
-	if (/network|timeout|econnreset|econnrefused|epipe|connection (lost|refused|reset|aborted)|stream (interrupted|closed|ended|failed)|disconnected/.test(s)) return 'transient';
+	// --- transient (known-retryable markers FIRST — these override poisoned signals) ---
+	// R3: network/throughput failures (timeout, ECONNRESET, 5xx, 429) MUST stay
+	// transient even when usage is 0 tokens, because they are retryable and
+	// /clear cannot fix them. 'connection aborted' is a network failure
+	// (ECONNABORTED), NOT a user ESC (stopReason 'aborted', early-return above).
+	// The marker set is shared with the agent-handlers R3 repeat-upgrade guard
+	// (isKnownRetryableTransient) so the two never drift.
+	if (isKnownRetryableTransient(s)) return 'transient';
 	// --- poisoned-context (R3: ORDER AFTER specific transient markers, BEFORE
 	// the generic 'error' transient fallthrough) ---
 	// A DETERMINISTIC request-rejection that retrying cannot fix. Re-submitting
