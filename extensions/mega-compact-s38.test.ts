@@ -106,8 +106,8 @@ function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
 	};
 }
 
-const { classifyError: classifyErrorFn } =
-	require("./mega-events.js") as { classifyError: typeof import("./mega-events.js").classifyError };
+const { classifyError: classifyErrorFn, extractErrorSignature: extractErrorSignatureFn } =
+	require("./mega-events.js") as { classifyError: typeof import("./mega-events.js").classifyError; extractErrorSignature: typeof import("./mega-events.js").extractErrorSignature };
 
 /** S38 helper: fire a turn_end with a given stopReason + optional text, using a
  *  low-pressure ctx so the durable-trim branch (ctx.compact) does NOT fire. */
@@ -447,10 +447,13 @@ test("S38.5: strict (default) defers ctx.compact() via setTimeout re-check", asy
 
 // ---- R3 classifier unit tests: poisoned-context signals ----
 
-test("R3 classifier: 0-token generic error (usage present, 0 tokens) → poisoned-context", () => {
-	// The 2026-07-28 incident: stopReason 'error' + usage 0 tokens. The turn
-	// never reached the model; retrying re-submits the same poisoned context.
-	assert.equal(classifyErrorFn({ stopReason: "error", usage: { inputTokens: 0, outputTokens: 0 } }), "poisoned-context");
+test("R9 classifier: bare 0-token generic error (usage present, 0 tokens) → transient (corroboration required)", () => {
+	// R9: The 2026-07-30 incidents proved that 0-token ≠ deterministic rejection
+	// when a router fronts the provider (the request never reached any model).
+	// Signal 3 now returns 'transient'; the repeat detector in agent-handlers.ts
+	// becomes the corroboration mechanism. A bare 0-token error that repeats
+	// ≥ poisonedContextRepeatThreshold (default 3) upgrades to poisoned.
+	assert.equal(classifyErrorFn({ stopReason: "error", usage: { inputTokens: 0, outputTokens: 0 } }), "transient");
 	// Bare stopReason 'error' with NO usage field stays transient (unknown tokens
 	// — conservative; preserves the pre-R3 mid-response/partial-content behavior).
 	assert.equal(classifyErrorFn({ stopReason: "error" }), "transient");
@@ -653,6 +656,16 @@ test("R3: repeated identical transient error text upgrades to poisoned-context a
 		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = prevBackoff;
 	}
 });
+
+test("R9: extractErrorSignature fallback — bare 0-token error -> 'bare-0-token-error'", () => {
+	// The repeat detector needs a non-empty signature to track bare 0-token errors.
+	assert.equal(extractErrorSignatureFn({ stopReason: "error", usage: { inputTokens: 0, outputTokens: 0 } }), "bare-0-token-error");
+	// Without usage, stopReason alone does NOT get the fallback (mid-response deaths stay out of repeat tracking).
+	assert.equal(extractErrorSignatureFn({ stopReason: "error" }), "");
+	// Normal text content is returned as-is.
+	assert.equal(extractErrorSignatureFn({ stopReason: "error", content: "x" }), "x");
+});
+
 
 // ---- R7 regression tests: network/throughput errors must NEVER upgrade to ----
 // ---- poisoned-context (2026-07-30 false-alarm incident) ----
@@ -946,6 +959,54 @@ test("R8(c): repeated 'All targets failed / socket closed' x3 stays transient", 
 		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = prevBackoff;
 	}
 });
+
+
+test("R9 handler: bare 0-token error turn x1 is transient (no poisoned, no advise)", async () => {
+	const h = harness();
+	const origBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	process.env.MEGACOMPACT_AUTO = "false";
+	try {
+		// Single bare 0-token error turn
+		await s38TurnEndUsage(h, "error", undefined, 0);
+		await h.fire("turn_start", { type: "turn_start", turnIndex: 2 }, h.ctx());
+		await new Promise((r) => setTimeout(r, 3));
+		// No poisoned_context event should be logged
+		assert.ok(!eventTypes(h.stateDir).includes("poisoned_context"), "bare 0-token single turn must not log poisoned_context");
+		// No /clear advise message
+		assert.equal(h.sendUserMessages.filter((m) => m.includes("/clear")).length, 0, "bare 0-token single turn must not /clear");
+		// An error_retry event should be emitted
+		assert.ok(eventTypes(h.stateDir).includes("error_retry"), "bare 0-token single turn must trigger error_retry");
+	} finally {
+		if (origBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = origBackoff;
+		delete process.env.MEGACOMPACT_AUTO;
+	}
+});
+
+test("R9 handler: bare 0-token error x3 upgrades to poisoned at threshold (corroborated)", async () => {
+	const h = harness();
+	const origBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	process.env.MEGACOMPACT_AUTO = "false";
+	try {
+		// Three consecutive bare 0-token error turns
+		for (let i = 0; i < 3; i++) {
+			await s38TurnEndUsage(h, "error", undefined, 0);
+			await h.fire("turn_start", { type: "turn_start", turnIndex: i + 2 }, h.ctx());
+			await new Promise((r) => setTimeout(r, 3));
+		}
+		// poisoned_context event should eventually be logged
+		assert.ok(eventTypes(h.stateDir).includes("poisoned_context"), "bare 0-token x3 must log poisoned_context");
+		// Exactly one /clear advise total
+		assert.equal(h.sendUserMessages.filter((m) => m.includes("/clear")).length, 1, "bare 0-token x3 must produce exactly one /clear advise");
+	} finally {
+		if (origBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = origBackoff;
+		delete process.env.MEGACOMPACT_AUTO;
+	}
+});
+
 
 test("cleanup", async () => {
 	// PGlite WASM close can hang; race with a timeout to prevent 40-min hangs.

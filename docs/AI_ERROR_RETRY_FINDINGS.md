@@ -563,8 +563,8 @@ the turn `poisoned-context` on the FIRST occurrence.
 
 ### Remaining gaps (queued)
 
-- **R9:** bare 0-token `error` with no informative text still poisons on turn 1
-  — should require repeat corroboration.
+- **R9 (done):** bare 0-token errors now corroborate via the repeat detector —
+  first turn transient, upgrade at threshold.
 - **R10:** no distinct "provider outage" UX — after retries exhaust, the user
   gets silence instead of a calm "provider flapping, no /clear needed" advisory.
 - **R11:** decisions don't log the raw error payload — every incident requires

@@ -215,8 +215,16 @@ export function classifyError(message: unknown):
 	// deaths / partial-content turns often omit usage). The transient markers
 	// above already returned, so reaching here with 'error' text and 0 tokens
 	// means the request was rejected before any model work.
+	//
+	// R9 (2026-07-30): returning 'transient' instead of 'poisoned-context'.
+	// A router fronting the provider can return 0-token errors on the FIRST
+	// turn even when the context is fine — the request never reached any model.
+	// The repeat detector in agent-handlers.ts is the corroboration mechanism:
+	// bare 0-token errors that repeat >= poisonedContextRepeatThreshold (default
+	// 3) upgrade to poisoned via the existing guard (the fallback signature
+	// "bare-0-token-error" has no retryable marker, so the upgrade fires).
 	if (usagePresent && totalTokens === 0 && /error/.test(s)) {
-		return 'poisoned-context';
+		return 'transient';
 	}
 	// --- transient (generic 'error' stopReason fallthrough) ---
 	// Reaches here for a generic stopReason 'error' with no specific marker and
@@ -253,13 +261,22 @@ export function errorRetryBackoffMs(count: number, baseMs = 5000): number {
  *  'error' for retryable turns) so two turns with the same error content share
  *  a signature. Empty string when there is no error text (e.g. a bare
  *  stopReason 'error' with no content) — the caller skips repeat detection in
- *  that case (the stateless 0-token signal handles bare errors). */
+ *  that case (the stateless 0-token signal handles bare errors).
+ *
+ *  R9: when the joined text is empty AND stopReason is 'error' AND usage is
+ *  present with 0 total tokens, returns the constant "bare-0-token-error" so
+ *  the repeat detector can corroborate bare 0-token errors (first turn is
+ *  transient; repeated occurrences upgrade to poisoned at threshold). Bare
+ *  'error' WITHOUT usage keeps returning '' (absent usage = unknown; mid-
+ *  response deaths stay out of repeat tracking). */
 export function extractErrorSignature(message: unknown): string {
 	if (typeof message === 'string') return message.toLowerCase().trim();
 	if (!message || typeof message !== 'object') return '';
 	const m = message as {
 		content?: unknown;
 		error?: unknown;
+		stopReason?: string;
+		usage?: { inputTokens?: number; outputTokens?: number };
 	};
 	const parts: string[] = [];
 	const c = m.content;
@@ -280,5 +297,15 @@ export function extractErrorSignature(message: unknown): string {
 			else parts.push(JSON.stringify(err));
 		}
 	}
-	return parts.join(' ').toLowerCase().trim();
+	const joined = parts.join(' ').toLowerCase().trim();
+	if (
+		joined === '' &&
+		m.stopReason === 'error' &&
+		m.usage &&
+		typeof m.usage === 'object' &&
+		(m.usage.inputTokens ?? 0) + (m.usage.outputTokens ?? 0) === 0
+	) {
+		return 'bare-0-token-error';
+	}
+	return joined;
 }
