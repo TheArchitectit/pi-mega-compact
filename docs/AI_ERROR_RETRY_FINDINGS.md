@@ -574,7 +574,10 @@ the turn `poisoned-context` on the FIRST occurrence.
   declined logs, and provider-outage advisories all carry `signal` + `rawText`
   (500-char cap). (Sprint R11, 2026-07-30.)
 - **R12:** alternating error texts reset the repeat counter — equivalent errors
-  with varied phrasing evade the threshold.
+  with varied phrasing evade the threshold. **DONE** — `extractErrorSignature`
+  now normalizes volatile tokens (IP:port, model/provider paths, hex ids, long
+  numbers, "after N attempts") before comparison. 3-digit status codes survive.
+  R9 bare-0-token fallback preserved. (Sprint R12, 2026-07-30.)
 
 ---
 

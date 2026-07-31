@@ -225,8 +225,25 @@ export function errorRetryBackoffMs(count: number, baseMs = 5000): number {
  *  transient; repeated occurrences upgrade to poisoned at threshold). Bare
  *  'error' WITHOUT usage keeps returning '' (absent usage = unknown; mid-
  *  response deaths stay out of repeat tracking). */
+/** R12: normalize volatile tokens in an already-lowercased error string so that
+ *  equivalent errors with varied model aliases, IPs, hex request-ids, retry
+ *  counts, and long numeric ids produce the same signature.  Order matters.
+ *  3-digit HTTP status codes (429/500/502/etc.) survive — the long-number rule
+ *  only covers 4+ digits.  Invariant: normalizeVolatileTokens never empties a
+ *  non-empty string (every regex replaces with a non-empty literal token). */
+function normalizeVolatileTokens(s: string): string {
+	let n = s;
+	n = n.replace(/\b\d{1,3}(\.\d{1,3}){3}(:\d+)?\b/g, '<ip>');             // 1. IP:port / bare IPv4
+	n = n.replace(/\b[\w-]+(\/[\w.:+-]+)+/g, '<model>');                     // 2. slash-separated paths
+	n = n.replace(/\b[0-9a-f]{8,}\b/g, '<hex>');                            // 3. hex ids (8+ chars)
+	n = n.replace(/\b\d{4,}\b/g, '<n>');                                    // 4. long numbers (4+ digits)
+	n = n.replace(/\bafter \d+ attempts?\b/g, 'after <n> attempts');          // 5. attempt phrasing
+	n = n.replace(/\s+/g, ' ').trim();                                       // 6. collapse whitespace
+	return n;
+}
+
 export function extractErrorSignature(message: unknown): string {
-	if (typeof message === 'string') return message.toLowerCase().trim();
+	if (typeof message === 'string') return normalizeVolatileTokens(message.toLowerCase().trim());
 	if (!message || typeof message !== 'object') return '';
 	const m = message as {
 		content?: unknown;
@@ -254,8 +271,9 @@ export function extractErrorSignature(message: unknown): string {
 		}
 	}
 	const joined = parts.join(' ').toLowerCase().trim();
+	const normalized = normalizeVolatileTokens(joined);
 	if (
-		joined === '' &&
+		normalized === '' &&
 		m.stopReason === 'error' &&
 		m.usage &&
 		typeof m.usage === 'object' &&
@@ -263,5 +281,5 @@ export function extractErrorSignature(message: unknown): string {
 	) {
 		return 'bare-0-token-error';
 	}
-	return joined;
+	return normalized;
 }
