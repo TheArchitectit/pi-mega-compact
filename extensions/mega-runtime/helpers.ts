@@ -67,6 +67,8 @@ export interface SessionRuntime {
 	errorTextRepeatCount: number; // consecutive count of identical error signatures
 	// R3b: one-per-session /clear advise message throttle.
 	poisonedAdviseSent: boolean; // true after the advise message fires once
+	// R10: provider-outage advisory throttle (one per flapping episode).
+	providerOutageAdvised: boolean; // true after the outage advise message fires once
 	// R3c: one guarded compact per error signature (avoids re-compacting the
 	// same poisoned region repeatedly).
 	poisonedCompactSignatures: Set<string>; // signatures already attempted a compact for

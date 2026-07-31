@@ -101,6 +101,7 @@ export class MegaRuntime {
 		lastErrorText: undefined,
 		errorTextRepeatCount: 0,
 		poisonedAdviseSent: false,
+		providerOutageAdvised: false,
 		poisonedCompactSignatures: new Set(),
 		poisonedCount: 0,
 	};
