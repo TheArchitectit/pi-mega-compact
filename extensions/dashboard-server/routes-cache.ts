@@ -24,6 +24,7 @@ export function handleProviderCache(
 	res: ServerResponse,
 	ctx: RouteContext,
 ): boolean {
+	if (!req.url?.startsWith("/api/provider-cache")) return false;
 	try {
 		const stateDir = ctx.stateDir;
 		// PREVENT-PI-004: loopback.

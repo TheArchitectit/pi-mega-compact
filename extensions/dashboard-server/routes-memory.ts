@@ -29,6 +29,7 @@ export function handleMemoryStatus(
 	res: ServerResponse,
 	ctx: RouteContext,
 ): boolean {
+	if (!req.url?.startsWith("/api/memory-status")) return false;
 	if (req.method !== "GET") {
 		// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
 		res.writeHead(405, { "Content-Type": "application/json" });

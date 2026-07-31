@@ -101,8 +101,8 @@ describe("classifyPrefixBreak (S53A)", () => {
 	});
 
 	it("confidence decreases as event approaches tolerance boundary", () => {
-		// 1999ms into a 2000ms tolerance
-		const result = classifyPrefixBreak(1999, {
+		// 100ms into a 2000ms tolerance → confidence ≈ 0.975 (near 1.0)
+		const result = classifyPrefixBreak(100, {
 			lastRecallAt: 0,
 			lastCompactAt: null,
 			lastInjectAt: null,
