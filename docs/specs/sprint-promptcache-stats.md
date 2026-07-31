@@ -844,3 +844,4 @@ from dashboard/game/wiki extras). No code change implied.
    sprint-numbered test files to behavior names, and rewrite S-code/PREVENT-PI-only comments into
    as-built descriptions (keep the codes where the scanner enforces them). Pure packaging/docs
    hygiene; no runtime behavior change.
+   As-built note: packaging excludes shipped (F5); test-file renames/comment rewrites descoped as churn-not-value.

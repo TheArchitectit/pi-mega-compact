@@ -28,7 +28,10 @@
     "extensions/dashboard-client/dist",
     "src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "!dist/**/*.test.js",
+    "!dist/**/*.test.js.map",
+    "!**/*.test.ts"
   ],
   "pi": {
     "extensions": [
