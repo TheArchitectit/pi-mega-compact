@@ -415,7 +415,20 @@ export function registerAgentHandlers(
 								config.poisonedContextRepeatThreshold &&
 							category === "transient"
 						) {
-							effectiveCategory = "poisoned-context";
+							// R3: upgrade only if the error is NOT a network/timeout failure.
+							// Network errors (timeout, ECONNRESET, 5xx, connection lost) that
+							// repeat are still retryable — the API is just flaky. Only upgrade
+							// transient → poisoned-context for NON-network errors that repeat
+							// identically, like the 2026-07-28 incident where the provider
+							// returned "Request failed — please retry." deterministically.
+							// The classifier already returns 'poisoned-context' for 0-token
+							// deterministic rejections; this upgrade only fires for errors
+							// that the classifier mapped to 'transient' conservatively.
+							const networkPattern =
+								/network|timeout|econnreset|econnrefused|epipe|connection (lost|refused|reset|aborted)|stream (interrupted|closed|ended|failed)|disconnected|5\d\d|internal server|bad gateway|service unavailable/;
+							if (!networkPattern.test(errSig)) {
+								effectiveCategory = "poisoned-context";
+							}
 						}
 					}
 				} else {

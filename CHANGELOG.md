@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.11.3 (2026-07-29) — Network Guard for Poisoned-Context Upgrade
+
+- **fix(error-retry): R3 transient→poisoned-context upgrade now skips network errors (`3fff20e`).** The repeat-detection logic upgraded `transient` → `poisoned-context` after `poisonedContextRepeatThreshold` (default 3) identical error signatures regardless of error type. An API timeout ×3 would trigger the `/clear or /new` poisoned-context message — a false positive. Fix: a `networkPattern` regex tests the error signature before upgrading; if it matches `timeout`, `ECONNRESET`, `5xx`, `connection lost`, etc., the category stays `transient` and follows the normal retry path. Non-network deterministic rejections (like the 2026-07-28 "Request failed — please retry." incident) still upgrade correctly. Docs updated in `AI_ERROR_RETRY_FINDINGS.md §7`. 880 passed / 1 pre-existing fail (zstd native addon).
+
+---
+
 ## v0.8.26 (2026-07-28) — Documentation Release
 
 - **docs: complete release notes for v0.8.25.** The RAPTOR promotion release shipped without CHANGELOG or RELEASE_NOTES entries — v0.8.26 publishes the complete notes and README/INDEX_MAP updates so the published package itself carries accurate documentation. No code changes.
