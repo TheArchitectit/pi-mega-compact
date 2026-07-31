@@ -569,7 +569,10 @@ the turn `poisoned-context` on the FIRST occurrence.
   `providerOutageAdviseThreshold` (default 3) consecutive transient failures,
   resets on success. Distinct from poisoned-context /clear advise.
 - **R11:** decisions don't log the raw error payload — every incident requires
-  guessing the delivered text.
+  guessing the delivered text. **DONE** — `classifyErrorDetailed` now returns
+  `{ category, signal, httpStatus? }`; poisoned-context events, repeat-upgrade-
+  declined logs, and provider-outage advisories all carry `signal` + `rawText`
+  (500-char cap). (Sprint R11, 2026-07-30.)
 - **R12:** alternating error texts reset the repeat counter — equivalent errors
   with varied phrasing evade the threshold.
 

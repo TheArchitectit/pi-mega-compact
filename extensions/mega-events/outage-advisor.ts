@@ -17,6 +17,12 @@ import type { MegaRuntime } from "../mega-runtime.js";
 import { safeSendUserMessage } from "./send-safe.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+/** R11: optional diagnostic detail passed from the classifier. */
+export interface OutageDetail {
+	signal?: string;
+	rawText?: string;
+}
+
 /**
  * Check the provider-outage advisory condition and fire once per episode.
  *
@@ -26,12 +32,15 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
  * @param effectiveCategory — must be "transient" for the advisory to fire.
  * @param runtime   — the live MegaRuntime (mutated on advisory fire).
  * @param pi        — pi ExtensionAPI for safeSendUserMessage.
+ * @param config    — providerOutageAdviseThreshold config.
+ * @param detail    — R11: optional signal + rawText for forensics.
  */
 export async function maybeSendProviderOutageAdvisory(
 	effectiveCategory: string,
 	runtime: MegaRuntime,
 	pi: ExtensionAPI,
 	config: { providerOutageAdviseThreshold: number },
+	detail?: OutageDetail,
 ): Promise<void> {
 	if (effectiveCategory !== "transient") return;
 	if (config.providerOutageAdviseThreshold <= 0) return;
@@ -45,12 +54,16 @@ export async function maybeSendProviderOutageAdvisory(
 		consecutiveErrors: runtime.rt.consecutiveErrors,
 		turnIndex: runtime.currentTurn,
 		sessionId: runtime.rt.sessionId,
+		...(detail?.signal !== undefined ? { signal: detail.signal } : {}),
+		...(detail?.rawText !== undefined ? { rawText: detail.rawText } : {}),
 	});
 
 	runtime.logger.info("provider-outage-advised", {
 		sessionId: runtime.rt.sessionId,
 		consecutiveErrors: runtime.rt.consecutiveErrors,
 		turnIndex: runtime.currentTurn,
+		...(detail?.signal !== undefined ? { signal: detail.signal } : {}),
+		...(detail?.rawText !== undefined ? { rawText: detail.rawText } : {}),
 	});
 
 	await safeSendUserMessage(

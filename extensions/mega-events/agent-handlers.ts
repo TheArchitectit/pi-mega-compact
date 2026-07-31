@@ -18,6 +18,7 @@ import { isMegaCache } from "../../src/game/scoring.js";
 import { resolveRepoRoot } from "../mega-config.js";
 import {
 	classifyError,
+	classifyErrorDetailed,
 	errorRetryBackoffMs,
 	extractErrorSignature,
 	isKnownRetryableTransient,
@@ -394,6 +395,7 @@ export function registerAgentHandlers(
 				// S28 handles; nothing for S38 to do here.
 			} else {
 				const category = classifyError(event.message);
+				const detail = classifyErrorDetailed(event.message);
 				// R3: stateful poisoned-context signal — repeated identical error text
 				// across consecutive turns. The classifier is stateless, so this
 				// upgrade happens here. A 'transient' (or 'poisoned-context') turn
@@ -431,6 +433,12 @@ export function registerAgentHandlers(
 							// (error-classifier.ts) so the two never drift.
 							if (!isKnownRetryableTransient(errSig)) {
 								effectiveCategory = "poisoned-context";
+							} else {
+								runtime.logger.info("repeat-upgrade-declined", {
+									sessionId: runtime.rt.sessionId,
+									signature: (errSig || '').slice(0, 500),
+									repeatCount: runtime.rt.errorTextRepeatCount,
+								});
 							}
 						}
 					}
@@ -544,18 +552,24 @@ export function registerAgentHandlers(
 					runtime.rt.consecutiveErrors++; // still counts toward the circuit breaker
 					runtime.rt.poisonedCount++; // R7: dashboard counter
 					const sig = errSig || "unknown";
-					// (a) dashboard + log
+					// (a) dashboard + log — R11: include signal + rawText for forensics
 					runtime.dashboard.event("poisoned_context", {
 						signature: sig,
 						repeatCount: runtime.rt.errorTextRepeatCount,
 						turnIndex: event.turnIndex,
 						sessionId: runtime.rt.sessionId,
+						signal: detail.signal,
+						rawText: (errSig || '').slice(0, 500),
+						...(detail.httpStatus !== undefined ? { httpStatus: detail.httpStatus } : {}),
 					});
 					runtime.logger.warn("poisoned-context", {
 						sessionId: runtime.rt.sessionId,
 						turnIndex: event.turnIndex,
 						signature: sig,
 						repeatCount: runtime.rt.errorTextRepeatCount,
+						signal: detail.signal,
+						rawText: (errSig || '').slice(0, 500),
+						...(detail.httpStatus !== undefined ? { httpStatus: detail.httpStatus } : {}),
 					});
 					// (b) one-per-session advise message (throttled by poisonedAdviseSent)
 					if (!runtime.rt.poisonedAdviseSent) {
@@ -614,6 +628,7 @@ export function registerAgentHandlers(
 					// R10: send calm "provider outage" advisory once per episode.
 					await maybeSendProviderOutageAdvisory(
 						effectiveCategory, runtime, pi, config,
+						{ signal: detail.signal, rawText: (errSig || '').slice(0, 500) },
 					);
 					if (runtime.rt.consecutiveErrors > config.maxConsecutiveErrors) {
 						runtime.dashboard.event("error_retry_circuit_open", {

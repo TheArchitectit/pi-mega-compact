@@ -44,6 +44,21 @@ function eventTypes(stateDir: string): string[] {
 		.filter((t): t is string => typeof t === "string");
 }
 
+/** R11: read events.log and return full JSON payloads for a given type. */
+function eventPayloads(stateDir: string, type: string): Record<string, unknown>[] {
+	const { readFileSync: rf, existsSync: ex } =
+		require("node:fs") as typeof import("node:fs");
+	const { join: j } = require("node:path") as typeof import("node:path");
+	const logPath = j(stateDir, "events.log");
+	if (!ex(logPath)) return [];
+	const content = rf(logPath, "utf-8").trim();
+	if (content.length === 0) return [];
+	return content
+		.split("\n")
+		.map((line) => { try { return JSON.parse(line); } catch { return undefined; } })
+		.filter((p): p is Record<string, unknown> => typeof p === "object" && p !== null && p.type === type);
+}
+
 /** Build a mock pi + ctx and load the extension into them. */
 function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
 	const stateDir = join(baseTmp, `run-${counter++}`);
@@ -106,8 +121,8 @@ function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = {}) {
 	};
 }
 
-const { classifyError: classifyErrorFn, extractErrorSignature: extractErrorSignatureFn } =
-	require("./mega-events.js") as { classifyError: typeof import("./mega-events.js").classifyError; extractErrorSignature: typeof import("./mega-events.js").extractErrorSignature };
+const { classifyError: classifyErrorFn, classifyErrorDetailed: classifyErrorDetailedFn, extractErrorSignature: extractErrorSignatureFn } =
+	require("./mega-events.js") as { classifyError: typeof import("./mega-events.js").classifyError; classifyErrorDetailed: typeof import("./mega-events.js").classifyErrorDetailed; extractErrorSignature: typeof import("./mega-events.js").extractErrorSignature };
 
 /** S38 helper: fire a turn_end with a given stopReason + optional text, using a
  *  low-pressure ctx so the durable-trim branch (ctx.compact) does NOT fire. */
@@ -1148,6 +1163,143 @@ test("R10: poisoned-context path does NOT fire the outage advisory", async () =>
 	}
 });
 
+
+// ── R11: diagnostic signal + rawText logging ──────────────────────────────
+
+test("R11 classifier: classifyErrorDetailed signal tags", () => {
+	// length → signal 'length-guard', category null
+	const len = classifyErrorDetailedFn({ stopReason: "length" });
+	assert.equal(len.signal, "length-guard");
+	assert.equal(len.category, null);
+
+	// aborted → 'cancelled'
+	const abort = classifyErrorDetailedFn({ stopReason: "aborted" });
+	assert.equal(abort.signal, "cancelled");
+	assert.equal(abort.category, "cancelled");
+
+	// stop → 'success'
+	assert.equal(classifyErrorDetailedFn({ stopReason: "stop" }).signal, "success");
+
+	// compaction-noop
+	const compact = classifyErrorDetailedFn("Error: Already compacted");
+	assert.equal(compact.signal, "compaction-noop");
+	assert.equal(compact.category, "compaction-noop");
+
+	// context-overflow
+	const overflow = classifyErrorDetailedFn("too long for this model");
+	assert.equal(overflow.signal, "context-overflow");
+	assert.equal(overflow.category, "context-overflow");
+
+	// transient-marker (text-matched)
+	const tm = classifyErrorDetailedFn("socket hang up");
+	assert.equal(tm.signal, "transient-marker");
+	assert.equal(tm.category, "transient");
+
+	// transient-status (HTTP status-matched) — use outer-level status + non-5xx-matching error text
+	// so extractHttpStatus finds it but the text doesn't contain "5xx" digits
+	const ts = classifyErrorDetailedFn({ stopReason: "error", error: { type: "upstream_error", message: "request aborted" }, status: 502 });
+	assert.equal(ts.signal, "transient-status");
+	assert.equal(ts.category, "transient");
+	assert.equal(ts.httpStatus, 502);
+
+	// permanent-status
+	const ps = classifyErrorDetailedFn({ stopReason: "error", error: { type: "auth_error", message: "session expired" }, status: 401 });
+	assert.equal(ps.signal, "permanent-status");
+	assert.equal(ps.category, "permanent");
+	assert.equal(ps.httpStatus, 401);
+
+	// poisoned-invalid-request (needs stopReason so sr is non-empty)
+	const pir = classifyErrorDetailedFn({ stopReason: "error", error: { type: "invalid_request_error", message: "bad request" } });
+	assert.equal(pir.signal, "poisoned-invalid-request");
+	assert.equal(pir.category, "poisoned-context");
+
+	// poisoned-request-failed (from R9/R3)
+	const prf = classifyErrorDetailedFn("Request failed — please retry.");
+	assert.equal(prf.signal, "poisoned-request-failed");
+	assert.equal(prf.category, "poisoned-context");
+
+	// bare-0-token (R9) — usage present with 0 tokens, stopReason error
+	const b0 = classifyErrorDetailedFn({ stopReason: "error", usage: { inputTokens: 0, outputTokens: 0 } });
+	assert.equal(b0.signal, "bare-0-token");
+	assert.equal(b0.category, "transient");
+
+	// generic-error
+	const ge = classifyErrorDetailedFn({ stopReason: "error", content: "something odd" });
+	assert.equal(ge.signal, "generic-error");
+	assert.equal(ge.category, "transient");
+
+	// permanent-auth
+	const pa = classifyErrorDetailedFn("unauthorized: invalid api key");
+	assert.equal(pa.signal, "permanent-auth");
+	assert.equal(pa.category, "permanent");
+
+	// unknown (plain string, no markers)
+	const unk = classifyErrorDetailedFn("some random text with no pattern");
+	assert.equal(unk.signal, "unknown");
+	assert.equal(unk.category, null);
+});
+
+test("R11: poisoned_context event carries signal + rawText", async () => {
+	const prevAuto = process.env.MEGACOMPACT_AUTO;
+	process.env.MEGACOMPACT_AUTO = "false";
+	try {
+		const h = harness();
+		await s38TurnEndUsage(h, "error", "Request failed — please retry.", 0);
+		const payloads = eventPayloads(h.stateDir, "poisoned_context");
+		assert.ok(payloads.length >= 1, "expected a poisoned_context event");
+		const last = payloads[payloads.length - 1];
+		assert.equal(last.signal, "poisoned-request-failed", "signal field present and correct");
+		assert.ok(
+			typeof last.rawText === "string" && (last.rawText as string).toLowerCase().includes("request failed"),
+			"rawText contains error text",
+		);
+	} finally {
+		if (prevAuto === undefined) delete process.env.MEGACOMPACT_AUTO;
+		else process.env.MEGACOMPACT_AUTO = prevAuto;
+	}
+});
+
+test("R11: provider outage advisory payload carries signal + rawText", async () => {
+	const origBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	const origSession = process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX;
+	const origRepeat = process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD;
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX = "999";
+	process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD = "999";
+	try {
+		const h = harness();
+		for (let i = 0; i < 3; i++) {
+			await s38TurnEnd(h, "error", "socket hang up");
+			await h.fire("turn_start", { type: "turn_start", turnIndex: i + 2 }, h.ctx());
+			await new Promise((r) => setTimeout(r, 3));
+		}
+		const payloads = eventPayloads(h.stateDir, "provider_outage_advised");
+		assert.ok(payloads.length >= 1, "expected provider_outage_advised event");
+		const last = payloads[payloads.length - 1];
+		assert.equal(last.signal, "transient-marker", "outage event carries signal");
+		assert.ok(
+			typeof last.rawText === "string" && (last.rawText as string).includes("socket hang up"),
+			"outage event carries rawText",
+		);
+	} finally {
+		if (origBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = origBackoff;
+		if (origSession === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX;
+		else process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX = origSession;
+		if (origRepeat === undefined) delete process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD;
+		else process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD = origRepeat;
+	}
+});
+
+test("R11: repeat-upgrade-declined signal is transient-marker for retryable marker", () => {
+	// The repeat-upgrade-declined log fires when isKnownRetryable(signature) is true
+	// but the count hasn't reached the threshold yet (decline path).  Since the
+	// test harness doesn't expose internal logger output, we unit-test the signal
+	// tag that the handler would log.
+	const detail = classifyErrorDetailedFn("Request timed out or failed. Try again");
+	assert.equal(detail.signal, "transient-marker", "repeat-guard text gets transient-marker signal");
+	assert.equal(detail.category, "transient");
+});
 
 test("cleanup", async () => {
 	// PGlite WASM close can hang; race with a timeout to prevent 40-min hangs.
