@@ -288,13 +288,42 @@ export async function searchAsync(
   }
 }
 
+/** Default cap for the WASM close (PGlite can stall ~40 min on teardown). */
+export const DEFAULT_CLOSE_TIMEOUT_MS = 5_000;
+
+function closeTimeoutMs(): number {
+  const raw = process.env.MEGACOMPACT_PGLITE_CLOSE_TIMEOUT_MS;
+  if (raw) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return DEFAULT_CLOSE_TIMEOUT_MS;
+}
+
+/**
+ * Race a promise against a timeout. If the inner promise never settles, the
+ * timer fires, resolves with `undefined`, and the caller proceeds. This mirrors
+ * `withOpenTimeout` (pgOpenGuard.ts) but is local to the close path.
+ */
+function withCloseTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<T | undefined> {
+  return Promise.race([
+    promise,
+    new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), timeoutMs)),
+  ]);
+}
+
 /** Close the index (test teardown / shutdown). Safe to call when unopened. */
 export async function closeVectorIndex(): Promise<void> {
   if (db) {
-    try {
-      await db.close();
-    } catch {
-      /* ignore */
+    const closePromise = db.close().catch(() => {});
+    const result = await withCloseTimeout(closePromise, closeTimeoutMs());
+    if (result === undefined) {
+      logWarn(
+        `close timed out after ${closeTimeoutMs()}ms (WASM teardown stalled; OS will reclaim)`,
+      );
     }
   }
   db = undefined;

@@ -22,6 +22,7 @@ import {
   searchAsync,
   closeVectorIndex,
   isVectorIndexDisabled,
+  DEFAULT_CLOSE_TIMEOUT_MS,
 } from "./vectorIndex.js";
 
 /** A 512-dim unit-ish vector with a single spike at `idx` (deterministic NN). */
@@ -134,6 +135,55 @@ test("kill-switch: MEGACOMPACT_PGLITE_DISABLED disables the index gracefully", a
   } finally {
     delete process.env.MEGACOMPACT_PGLITE_DISABLED;
     await closeVectorIndex();
+    rmSync(dir, { recursive: true, force: true });
+    delete process.env.MEGACOMPACT_VECTOR_INDEX_DIR;
+  }
+});
+
+test("closeVectorIndex resolves within timeout when db.close() stalls", async () => {
+  const dir = isolateIndexDir();
+  const shortTimeoutMs = 100;
+  const prevTimeout = process.env.MEGACOMPACT_PGLITE_CLOSE_TIMEOUT_MS;
+  process.env.MEGACOMPACT_PGLITE_CLOSE_TIMEOUT_MS = String(shortTimeoutMs);
+  try {
+    const pg = await initVectorIndex();
+    assert.ok(pg, "index should initialize before we break close");
+
+    // Verify the default constant is sane for production use.
+    assert.equal(DEFAULT_CLOSE_TIMEOUT_MS, 5_000, "default timeout is 5s");
+
+    // Monkey-patch db.close to simulate WASM teardown stall (never settles).
+    // We reach the module-internal `db` via the same globalPGlite() singleton
+    // used by all vectorIndex.ts functions.
+    const pglite = pg as unknown as { close: () => Promise<never> };
+    const origClose = pglite.close;
+    pglite.close = () => new Promise<never>(() => {
+      /* deliberately never settles — the wedge we protect against */
+    });
+
+    const t0 = Date.now();
+    await closeVectorIndex();
+    const elapsed = Date.now() - t0;
+
+    assert.ok(
+      elapsed < shortTimeoutMs * 5,
+      `closeVectorIndex returned in ${elapsed}ms (timeout ${shortTimeoutMs}ms) — must not hang`,
+    );
+    assert.equal(isVectorIndexDisabled(), false, "singleton reset after timeout");
+
+    // Restore so cleanup can proceed; assign a fresh closeable PGlite is
+    // impossible, so we re-init in a fresh dir to get a clean singleton.
+    pglite.close = origClose;
+  } finally {
+    process.env.MEGACOMPACT_PGLITE_CLOSE_TIMEOUT_MS =
+      prevTimeout !== undefined ? prevTimeout : "";
+    if (prevTimeout === undefined) delete process.env.MEGACOMPACT_PGLITE_CLOSE_TIMEOUT_MS;
+    delete process.env.MEGACOMPACT_VECTOR_INDEX_DIR;
+    // Re-init in a fresh dir so cleanup's closeVectorIndex() works.
+    const freshDir = isolateIndexDir();
+    try { await initVectorIndex(); } catch { /* best-effort */ }
+    await closeVectorIndex();
+    rmSync(freshDir, { recursive: true, force: true });
     rmSync(dir, { recursive: true, force: true });
     delete process.env.MEGACOMPACT_VECTOR_INDEX_DIR;
   }

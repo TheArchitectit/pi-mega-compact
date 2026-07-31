@@ -49,6 +49,81 @@ const POOL = Math.max(
 	Math.min(Number(process.env.MEGACOMPACT_TEST_POOL ?? os.cpus().length), 8),
 );
 
+// ── Stale-temp-dir sweeper ──────────────────────────────────────────────
+// Prefixes used by mkdtempSync in src/, extensions/, and scripts/ tests.
+// Keep in sync with the codebase; adding a new prefix here is sufficient.
+const TEST_TMP_PREFIXES = [
+	"mc-", "dash-", "dashboard-test-", "dbmaint-test-", "dbmirror-test-",
+	"drift-", "mega-events-test-", "mirror-test-", "cachehit-test-",
+	"turns-file-", "srv-active-", "srv-stale-", "index-active-",
+	"index-servers-",
+	// Bare "index-"/"srv-"/"rt-" prefixes are deliberately NOT swept: too
+	// generic — another tool's /tmp dirs could match. Only project-specific
+	// prefixes (verified against every mkdtempSync call in the repo) are swept.
+];
+
+const STALE_AGE_MS = 60 * 60 * 1000; // 60 minutes
+
+/** Remove test-created tmp dirs older than STALE_AGE_MS. */
+function sweepStaleTmpDirs() {
+	try {
+		const dir = tmpdir();
+		const entries = readdirSync(dir, { withFileTypes: true });
+		let swept = 0;
+		let freedMB = 0;
+		const now = Date.now();
+		for (const e of entries) {
+			if (!e.isDirectory()) continue;
+			const match = TEST_TMP_PREFIXES.some((p) => e.name.startsWith(p));
+			if (!match) continue;
+			let st;
+			try {
+				st = statSync(join(dir, e.name));
+			} catch {
+				continue;
+			}
+			const age = now - st.mtimeMs;
+			if (age < STALE_AGE_MS) continue;
+			try {
+				const sizeBefore = dirSizeMB(join(dir, e.name));
+				rmSync(join(dir, e.name), { recursive: true, force: true });
+				swept++;
+				freedMB += sizeBefore;
+			} catch {
+				// best-effort — skip dirs we cannot remove
+			}
+		}
+		if (swept > 0) {
+			console.error(`sweeper: swept ${swept} stale test dirs (~${Math.round(freedMB)} MB freed)`);
+		}
+	} catch {
+		// non-fatal: sweeper is best-effort, never break the runner
+	}
+}
+
+/** Rough recursive dir size in MB (fast, non-fatal). */
+function dirSizeMB(dirPath) {
+	let bytes = 0;
+	try {
+		const stack = [dirPath];
+		while (stack.length) {
+			const d = stack.pop();
+			const children = readdirSync(d, { withFileTypes: true });
+			for (const c of children) {
+				const p = join(d, c.name);
+				if (c.isDirectory()) {
+					stack.push(p);
+				} else {
+					try { bytes += statSync(p).size; } catch { /* skip */ }
+				}
+			}
+		}
+	} catch { /* non-fatal */ }
+	return bytes / (1024 * 1024);
+}
+
+sweepStaleTmpDirs();
+
 // Dashboard tests spawn real HTTP servers on a 10-port scan range. Two such
 // files running at once can collide on the same base port (EADDRINUSE), so they
 // run one-at-a-time. Keep this lane SERIAL and run it LAST (see main()).
@@ -126,11 +201,22 @@ function runOne(file) {
 		// passed its tests but hangs on exit is still reported as PASS.
 		let tapDone = false;
 		let graceTimer = null;
-		let resultCount = 0;
-		let lastResultAt = 0;
+		// startedCount / completedCount: track whether ALL subtests have finished.
+		// The silence timer only fires when startedCount === completedCount (every
+		// "# Subtest:" has a matching "ok/not ok"), preventing mid-test kills on
+		// slow tests (e.g. PGlite init >10s).
+		let startedCount = 0;
+		let completedCount = 0;
+		// lastOutputAt: ANY stdout/stderr data from the child.  Used by the silence
+		// timer to detect true hang-on-exit (no output at all for SILENCE_MS).
+		let lastOutputAt = Date.now();
 		const markTapDone = () => {
 			if (tapDone) return;
-			if (/^#\s+duration_ms/m.test(out) || /^1\.\.\d+/m.test(out)) {
+			// Only "# pass N" (node --test footer) signals that ALL subtests have
+			// completed and the process is about to exit.  Do NOT use the "1..N"
+			// TAP plan line — node's TAP reporter emits it early (after the first
+			// test), which would trigger premature kill of the child mid-suite.
+			if (/^# pass\s+\d+/m.test(out)) {
 				tapDone = true;
 				graceTimer = setTimeout(() => {
 					if (!child.killed) child.kill("SIGKILL");
@@ -141,23 +227,33 @@ function runOne(file) {
 			// TAP subtest lines may be indented (nested under a parent "ok N - file")
 			// depending on reporter/version — match with leading whitespace allowed.
 			if (/^\s*(ok|not ok)\s+\d+/m.test(s)) {
-				resultCount++;
-				lastResultAt = Date.now();
+				completedCount++;
+			}
+			// Track test starts: "# Subtest: ..." means a test is beginning.
+			if (/^# Subtest:/m.test(s)) {
+				startedCount++;
 			}
 		};
 		const silenceTimer = setInterval(() => {
-			if (tapDone || resultCount === 0 || child.killed) return;
-			if (Date.now() - lastResultAt > SILENCE_MS) child.kill("SIGKILL");
+			if (tapDone || child.killed) return;
+			// Only fire when every started test has completed AND no output for
+			// SILENCE_MS.  This catches hang-on-exit without killing slow tests.
+			if (startedCount > 0 && startedCount === completedCount &&
+				Date.now() - lastOutputAt > SILENCE_MS) {
+				child.kill("SIGKILL");
+			}
 		}, 1000);
 		child.stdout.on("data", (b) => {
 			const s = b.toString();
 			out += s;
+			lastOutputAt = Date.now();
 			markTapDone();
 			onResult(s);
 		});
 		child.stderr.on("data", (b) => {
 			const s = b.toString();
 			out += s;
+			lastOutputAt = Date.now();
 			markTapDone();
 			onResult(s);
 		});
@@ -166,7 +262,14 @@ function runOne(file) {
 			timedOut = true;
 			child.kill("SIGKILL");
 		}, HARD_CAP_MS);
-		child.on("close", (code) => {
+		// Wait for both stdout and stderr to drain before resolving.  Node's
+		// "close" event fires when the child exits, but the pipe buffers may not
+		// be fully flushed yet — causing the tail of TAP output (including
+		// "# pass N") to be lost and pass counts to drift between runs.
+		let stdoutEnded = false;
+		let stderrEnded = false;
+		const tryResolve = (code, force) => {
+			if (!force && (!stdoutEnded || !stderrEnded)) return;
 			clearTimeout(timer);
 			clearInterval(silenceTimer);
 			if (graceTimer) clearTimeout(graceTimer);
@@ -180,8 +283,15 @@ function runOne(file) {
 				out.match(/(\d+)\s+failing/))?.[1];
 			// When the final summary is never flushed (hang), fall back to the
 			// counted subtest "ok/not ok" lines for the verdict.
-			const okCount = (out.match(/^\s*ok\s+\d+/gm) || []).length;
-			const notOkCount = (out.match(/^\s*not ok\s+\d+/gm) || []).length;
+			// Count only top-level TAP lines (no leading whitespace) — nested
+			// subtests are indented and must not inflate the totals.
+			const okCount = (out.match(/^ok\s+\d+/gm) || []).length;
+			const notOkCount = (out.match(/^not ok\s+\d+/gm) || []).length;
+			// Debug: capture final output tail for files that undercount
+			if (false && !pass && okCount > 50) {
+				const last100lines = out.split('\n').slice(-100).join('\n');
+				process.stderr.write(`[debug ${relative(ROOT, file)}] pass=NO okCount=${okCount} last100lines=[${last100lines}]\n`);
+			}
 			// `code` is null when the child was killed by a signal (our hang guard
 			// SIGKILL). A file killed AFTER its TAP summary or after all subtests
 			// printed is "hang-on-exit": verdict comes from the TAP counts, not the
@@ -202,7 +312,27 @@ function runOne(file) {
 					.slice(0, 3)
 					.join("  "),
 			});
+		};
+		// After "close", wait up to 500ms for stdout/stderr to drain so we
+		// capture the full TAP output including "# pass N".  If streams are
+		// already drained, resolve immediately.
+		let closeCode = undefined;
+		let drainTimer;
+		const checkDrain = () => {
+			if (closeCode === undefined) return;
+			if (stdoutEnded && stderrEnded) {
+				clearTimeout(drainTimer);
+				tryResolve(closeCode, closeCode === null);
+			}
+		};
+		child.on("close", (code) => {
+			if (code === null) { tryResolve(code, true); return; }
+			closeCode = code;
+			drainTimer = setTimeout(() => tryResolve(code, true), 1000);
+			checkDrain();
 		});
+		child.stdout.on("end", () => { stdoutEnded = true; checkDrain(); });
+		child.stderr.on("end", () => { stderrEnded = true; checkDrain(); });
 	});
 }
 
