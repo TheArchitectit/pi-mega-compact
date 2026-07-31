@@ -1,11 +1,12 @@
 name: CI
 
-# Full gate for pi-mega-compact. Mirrors the per-sprint exit criteria:
+# Full gate for pi-mega-compact — mirrors scripts/deploy.sh.
 #   npm run build  (tsc)
-#   npm test         (build + node --test on dist/**/*.test.js)
-#   guardrails-scan (pi pattern scan)
+#   npm test       (build + isolated per-file node --test runner)
+#   npm run lint   (tsc --noEmit + guardrails-scan + semantic-scan)
 #   regression_check (Four-Laws / scope / secrets audit)
-# Runs on every push (incl. tags) and PR so the repo can never go red silently.
+#   schema-health-check (S49B gate)
+# Runs on every push and PR to master so the repo can never go red silently.
 
 on:
   push:
@@ -18,8 +19,8 @@ permissions:
   contents: read
 
 jobs:
-  build-and-test:
-    name: Build + Test + Guardrails
+  gate:
+    name: Build + Test + Lint + Guardrails
     runs-on: ubuntu-latest
 
     steps:
@@ -28,10 +29,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node
+      - name: Setup Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
 
       - name: Install dependencies
@@ -40,11 +41,14 @@ jobs:
       - name: Build (tsc)
         run: npm run build
 
-      - name: Lint (tsc --noEmit + guardrails-scan)
-        run: npm run lint
-
-      - name: Test (node --test)
+      - name: Test (isolated per-file node --test)
         run: npm test
 
-      - name: Guardrails regression audit
+      - name: Lint (tsc --noEmit + guardrails-scan + semantic-scan)
+        run: npm run lint
+
+      - name: Regression audit (Four-Laws / scope / secrets)
         run: python3 scripts/regression_check.py --all
+
+      - name: Schema health check (S49B)
+        run: node scripts/schema-health-check.mjs
