@@ -33,6 +33,8 @@ export default defineConfig({
 			"@contracts": fileURLToPath(
 				new URL("../dashboard-server/api-contracts", import.meta.url),
 			),
+			// Shared pricing module (computeCacheSavings, constants).
+			"@pricing": fileURLToPath(new URL("../../src/pricing.ts", import.meta.url)),
 		},
 	},
 });

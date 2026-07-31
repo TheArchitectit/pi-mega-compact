@@ -20,9 +20,10 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@contracts": ["../dashboard-server/api-contracts/index.ts"]
+      "@contracts": ["../dashboard-server/api-contracts/index.ts"],
+      "@pricing": ["../../src/pricing.ts"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "../../src/pricing.ts"],
   "exclude": ["node_modules", "dist"]
 }

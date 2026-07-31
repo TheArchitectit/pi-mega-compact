@@ -9,6 +9,7 @@
 import type React from "react";
 import { useMemo } from "react";
 import type { IndexesIndexRow } from "@contracts";
+import { computeCacheSavings } from "@pricing";
 
 export interface SavingsByModelTableProps {
 	repos: IndexesIndexRow[];
@@ -213,10 +214,7 @@ export function SavingsByModelTable({
 									</td>
 									<td className="num">
 										{g.cacheRead > 0
-											? `$${(
-													g.cacheRead * 0.9 * (g.inRates[0] || 0) -
-														g.cacheWrite * 0.25 * (g.inRates[0] || 0)
-												).toFixed(4)}`
+											? `$${computeCacheSavings(g.cacheRead, g.cacheWrite, g.inRates[0] || 0).netSaved.toFixed(4)}`
 											: "—"}
 									</td>
 									<td className="num">{when}</td>

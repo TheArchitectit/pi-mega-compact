@@ -1,13 +1,15 @@
 /**
  * dashboard-client/src/components/ActiveReposTable.tsx — Active repos table.
  *
- * 9 columns: Repo, Model, Tier, Context %, State, Compactions s/t,
- * Cache Hits s/t, Compact s/t, CacheHit s/t.
+ * Columns: Repo, Model, Tier, Context %, State, Compactions s/t,
+ * Cache Hits s/t, Cache Hit %, Cache Read, Cache Write, Est. Saved,
+ * Compact s/t (s), CacheHit s/t (s).
  * Data from fetchServers() via useApi with 10s polling.
  */
 
 import type React from "react";
 import type { ServerEntry } from "@contracts";
+import { fmtTokens } from "@/utils/format.ts";
 
 export interface ActiveReposTableProps {
 	servers: ServerEntry[];
@@ -32,6 +34,8 @@ const HEADERS = [
 	"Cache Hits (s/t)",
 	"Cache Hit %",
 	"Est. Saved",
+	"Cache Read",
+	"Cache Write",
 	"Compact s/t (s)",
 	"CacheHit s/t (s)",
 ] as const;
@@ -102,6 +106,16 @@ export function ActiveReposTable({
 									<td className="num">
 										{r.providerCache?.estimatedSaved != null
 											? `$${r.providerCache.estimatedSaved.toFixed(2)}`
+											: "—"}
+									</td>
+									<td className="num">
+										{r.providerCache?.cacheRead != null
+											? fmtTokens(r.providerCache.cacheRead)
+											: "—"}
+									</td>
+									<td className="num">
+										{r.providerCache?.cacheWrite != null
+											? fmtTokens(r.providerCache.cacheWrite)
 											: "—"}
 									</td>
 									<td className="num">

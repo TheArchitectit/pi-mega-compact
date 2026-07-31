@@ -14,6 +14,7 @@ import {
 	PERF_KINDS,
 	readProviderCacheLifetime,
 	readLatestCacheHitPct,
+	readProviderCacheForRepo,
 } from "./perf-samples.js";
 
 describe("perf-samples (v0.8.8)", () => {
@@ -165,5 +166,47 @@ describe("provider cache lifetime (A.4)", () => {
 		recordPerfSample(dir2, "cache_hit_pct", 20);
 		recordPerfSample(dir2, "cache_hit_pct", 80);
 		assert.equal(readLatestCacheHitPct(dir2), 80);
+	});
+
+	it("readProviderCacheForRepo aggregates correctly and ignores other dirs", () => {
+		const seededDir = mkdtempSync(join(tmpdir(), "mc-pcrepo-"));
+		const emptyDir = mkdtempSync(join(tmpdir(), "mc-pcrepo-empty-"));
+		try {
+			// Seed cache_hit_pct samples WITH meta (readProviderCacheForRepo
+			// derives avgHitPct from meta.cacheRead/cacheWrite/input, not value).
+			// Sample 1: 900 read / 50 write / 50 input → hit = 900/(900+50+50)*100 = 90%
+			recordPerfSample(seededDir, "cache_hit_pct", 90, {
+				cacheRead: 900,
+				cacheWrite: 50,
+				input: 50,
+			});
+			// Sample 2: 800 read / 100 write / 100 input → hit = 800/(800+100+100)*100 = 80%
+			recordPerfSample(seededDir, "cache_hit_pct", 80, {
+				cacheRead: 800,
+				cacheWrite: 100,
+				input: 100,
+			});
+
+			const result = readProviderCacheForRepo(seededDir);
+			// avgHitPct = (90 + 80) / 2 = 85
+			assert.ok(Math.abs(result.avgHitPct - 85) < 0.01, `avgHitPct ~85, got ${result.avgHitPct}`);
+			assert.equal(result.totalCacheRead, 1700, "900 + 800");
+			assert.equal(result.totalCacheWrite, 150, "50 + 100");
+			assert.equal(result.totalInput, 150, "50 + 100");
+			assert.equal(result.sampleCount, 2, "two samples seeded");
+
+			// Empty dir (different state dir = different SQLite DB) returns zeros
+			const empty = readProviderCacheForRepo(emptyDir);
+			assert.equal(empty.avgHitPct, 0);
+			assert.equal(empty.totalCacheRead, 0);
+			assert.equal(empty.totalCacheWrite, 0);
+			assert.equal(empty.totalInput, 0);
+			assert.equal(empty.sampleCount, 0);
+		} finally {
+			closeStore(seededDir);
+			closeStore(emptyDir);
+			rmSync(seededDir, { recursive: true, force: true });
+			rmSync(emptyDir, { recursive: true, force: true });
+		}
 	});
 });

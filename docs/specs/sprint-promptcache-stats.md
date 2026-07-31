@@ -748,6 +748,32 @@ Clients aggregate client-side from `IndexesIndexRow[]` (no new endpoint).
 
 ---
 
+### As-built notes (E, v0.11.4+)
+
+**Pricing constants (E.1):** `src/pricing.ts` stores the **discount** and **premium**
+fractions directly — `CACHE_READ_MULTIPLIER = 0.9` (90 % discount, i.e. pay 10 %
+of full price) and `CACHE_WRITE_MULTIPLIER = 0.25` (25 % premium). The spec draft
+wrote the raw multipliers (0.10 / 1.25); the arithmetic is byte-identical. The
+module exports `computeCacheSavings(cacheRead, cacheWrite, inputRate)` and
+`lookupModelInputRate(model)` (exact → prefix → `undefined`).
+
+**providerCache field names (E.2):** The API contract (`ServerEntry.providerCache`)
+uses `avgHitPct`, `cacheRead`, `cacheWrite`, `estimatedSaved` — not the spec
+draft's `hitPct` / `totalCacheRead` / `totalCacheWrite`. The dashboard reads
+these names as-is; `readProviderCacheForRepo` computes them from `meta`
+sub-keys (`cacheRead` / `cacheWrite` / `input`) inside `perf_samples` rows.
+
+**ActiveReposTable bonus column (E.2):** Beyond the spec's three columns
+(Hit %, Cache Read, Cache Write) the table gained a fourth **Est. Saved** column
+showing `computeCacheSavings` net-saved value with the same `@pricing` module
+the backend routes use.
+
+**SavingsByModelTable import (E.1):** `SavingsByModelTable.tsx` imports
+`computeCacheSavings` via the `@pricing` Vite/tsconfig alias — same barrel as
+`@contracts` — rather than duplicating the discount/premium constants inline.
+
+---
+
 ## Risks and Mitigations
 
 ### R1: json_extract portability
