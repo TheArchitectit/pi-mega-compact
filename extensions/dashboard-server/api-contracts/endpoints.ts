@@ -586,15 +586,21 @@ export const ENDPOINTS = {
 	schemaHealth: {
 		method: "GET",
 		path: "/api/maintenance/schema-health",
-		description: "SCHEMA_VERSION, PRAGMA integrity_check, FK check, and per-column audit.",
+		description:
+			"SCHEMA_VERSION, PRAGMA integrity_check, FK check, and per-column audit.",
 	} as const satisfies EndpointDef<"GET", undefined, SchemaHealthResponse>,
 
 	/** POST /api/maintenance/action — Trigger a maintenance action. */
 	maintenanceAction: {
 		method: "POST",
 		path: "/api/maintenance/action",
-		description: "Run vacuum, checkpoint, reindex, fts5-rebuild, reconcile-dedup, prune, or integrity-check.",
-	} as const satisfies EndpointDef<"POST", MaintenanceAction, MaintenanceActionResult>,
+		description:
+			"Run vacuum, checkpoint, reindex, fts5-rebuild, reconcile-dedup, prune, or integrity-check.",
+	} as const satisfies EndpointDef<
+		"POST",
+		MaintenanceAction,
+		MaintenanceActionResult
+	>,
 
 	// ─── Provider Cache (Sprint A.2) ─────────────────────────────────
 
@@ -605,5 +611,4 @@ export const ENDPOINTS = {
 		description:
 			"Lifetime provider prompt cache hit-rate aggregates + dollar savings estimate.",
 	} as const satisfies EndpointDef<"GET", undefined, ProviderCacheResponse>,
-
 } as const;

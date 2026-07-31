@@ -39,7 +39,7 @@ export const MODEL_INPUT_RATES: Record<string, number> = {
 	"gemini-2.0-flash": 0.1e-6,
 	"deepseek-chat": 0.14e-6,
 	"deepseek-reasoner": 0.55e-6,
-	"codestral": 0.3e-6,
+	codestral: 0.3e-6,
 	"mistral-large": 2e-6,
 	"llama-3.1-405b": 1.33e-6,
 	"llama-3.1-70b": 0.8e-6,

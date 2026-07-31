@@ -120,9 +120,9 @@ export function SavingsByModelTable({
 	return (
 		<div className="savings-by-model">
 			<p className="legend-note">
-				How much context &amp; cost mega-compact has reclaimed, grouped by
-				the model you were running. Compression ratio reflects
-				workload/content, not model quality.
+				How much context &amp; cost mega-compact has reclaimed, grouped by the
+				model you were running. Compression ratio reflects workload/content, not
+				model quality.
 			</p>
 			<div className="table-scroll">
 				<table className="savings-table">
@@ -157,10 +157,16 @@ export function SavingsByModelTable({
 								Out $/tok
 							</th>
 							<th className="num">$ Saved</th>
-							<th className="num" title="Provider prompt-cache hit rate (reads / reads+writes+tokens_in)">
+							<th
+								className="num"
+								title="Provider prompt-cache hit rate (reads / reads+writes+tokens_in)"
+							>
 								Cache Hit %
 							</th>
-							<th className="num" title="Estimated provider prompt-cache savings (read tokens * 0.9 * inputRate − write tokens * 0.25 * inputRate)">
+							<th
+								className="num"
+								title="Estimated provider prompt-cache savings (read tokens * 0.9 * inputRate − write tokens * 0.25 * inputRate)"
+							>
 								Cache $ Saved
 							</th>
 							<th className="num">Last Used</th>
@@ -176,67 +182,44 @@ export function SavingsByModelTable({
 						)}
 						{groups.map((g) => {
 							const freed = (g.tokensIn || 0) - (g.tokensOut || 0);
-							const usd =
-								g.usd > 0 ? `$${g.usd.toFixed(4)}` : "\u2014";
+							const usd = g.usd > 0 ? `$${g.usd.toFixed(4)}` : "\u2014";
 							const when = g.lastAt
 								? new Date(g.lastAt).toLocaleString()
 								: "\u2014";
 							const reas =
-								g.reasoning == null
-									? "\u2014"
-									: g.reasoning
-										? "yes"
-										: "no";
+								g.reasoning == null ? "\u2014" : g.reasoning ? "yes" : "no";
 							return (
 								<tr key={g.model}>
 									<td className="repo-model">{g.model}</td>
 									<td>{g.provider}</td>
-									<td className="num">
-										{g.tokensIn.toLocaleString()}
-									</td>
-									<td className="num">
-										{g.tokensOut.toLocaleString()}
-									</td>
-									<td className="num">
-										{freed.toLocaleString()}
-									</td>
-									<td className="num">
-										{collapseNum(g.ctxWindows)}
-									</td>
-									<td className="num">
-										{collapseNum(g.maxTokens)}
-									</td>
+									<td className="num">{g.tokensIn.toLocaleString()}</td>
+									<td className="num">{g.tokensOut.toLocaleString()}</td>
+									<td className="num">{freed.toLocaleString()}</td>
+									<td className="num">{collapseNum(g.ctxWindows)}</td>
+									<td className="num">{collapseNum(g.maxTokens)}</td>
 									<td className="num">{reas}</td>
+									<td className="num">{g.sessions.toLocaleString()}</td>
+									<td className="num">{g.checkpoints.toLocaleString()}</td>
+									<td className="num">{collapseRate(g.inRates)}</td>
+									<td className="num">{collapseRate(g.outRates)}</td>
+									<td className="num">{usd}</td>
 									<td className="num">
-										{g.sessions.toLocaleString()}
+										{g.cacheRead > 0
+											? `${(
+													(g.cacheRead * 100) /
+														(g.cacheRead + g.cacheWrite + g.tokensIn || 1)
+												).toFixed(1)}%`
+											: "—"}
 									</td>
 									<td className="num">
-										{g.checkpoints.toLocaleString()}
+										{g.cacheRead > 0
+											? `$${(
+													g.cacheRead * 0.9 * (g.inRates[0] || 0) -
+														g.cacheWrite * 0.25 * (g.inRates[0] || 0)
+												).toFixed(4)}`
+											: "—"}
 									</td>
-									<td className="num">
-										{collapseRate(g.inRates)}
-									</td>
-									<td className="num">
-										{collapseRate(g.outRates)}
-									</td>
-								<td className="num">{usd}</td>
-								<td className="num">
-									{g.cacheRead > 0
-										? `${(
-												(g.cacheRead * 100) /
-												(g.cacheRead + g.cacheWrite + g.tokensIn || 1)
-											).toFixed(1)}%`
-										: "—"}
-								</td>
-								<td className="num">
-									{g.cacheRead > 0
-										? `$${(
-												g.cacheRead * 0.9 * (g.inRates[0] || 0) -
-												g.cacheWrite * 0.25 * (g.inRates[0] || 0)
-											).toFixed(4)}`
-										: "—"}
-								</td>
-								<td className="num">{when}</td>
+									<td className="num">{when}</td>
 								</tr>
 							);
 						})}
@@ -244,10 +227,10 @@ export function SavingsByModelTable({
 				</table>
 			</div>
 			<p className="legend-note">
-				Tokens In = Σ original region tokens dropped by compaction. Tokens
-				Out = Σ compacted summary tokens still retained in context. Freed =
-				Tokens In − Tokens Out (net context reclaimed). Ctx Window / Max Out
-				/ Reas. come from the latest captured model snapshot for each repo.
+				Tokens In = Σ original region tokens dropped by compaction. Tokens Out =
+				Σ compacted summary tokens still retained in context. Freed = Tokens In
+				− Tokens Out (net context reclaimed). Ctx Window / Max Out / Reas. come
+				from the latest captured model snapshot for each repo.
 			</p>
 		</div>
 	);

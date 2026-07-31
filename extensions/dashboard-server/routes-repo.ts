@@ -13,7 +13,10 @@ import { ACTIVE_WINDOW_SEC } from "./types.js";
 import type { RouteContext } from "./routes-core.js";
 import type { LiveSnapshot } from "./types.js";
 import { readProviderCacheForRepo } from "../../src/store/sqlite/perf-samples.js";
-import { computeCacheSavings, lookupModelInputRate } from "../../src/pricing.js";
+import {
+	computeCacheSavings,
+	lookupModelInputRate,
+} from "../../src/pricing.js";
 import { latestModelSnapshot } from "../../src/store/sqlite/model-snapshots.js";
 
 // ---------------------------------------------------------------------------
@@ -154,43 +157,42 @@ export function handleRepoIndex(
 					try {
 						const p = join(r.stateDir, "dashboard.json");
 						if (existsSync(p)) {
-							const snap = JSON.parse(
-								readFileSync(p, "utf-8"),
-							) as LiveSnapshot;
+							const snap = JSON.parse(readFileSync(p, "utf-8")) as LiveSnapshot;
 							out.tier = snap.tier ?? null;
 							out.contextPct =
 								snap.context && snap.context.percent != null
 									? snap.context.percent
 									: null;
 							out.state = (snap.session && snap.session.state) || null;
-						out.cacheHits = snap.cacheHits ?? null;
-						out.compacts = snap.compacts ?? null;
-						out.timeSaved = snap.timeSaved ?? null;
-						out.updatedAt = snap.updatedAt ?? null;
-						// Provider cache per-repo lifetime (E.2)
-						try {
-							const pc = readProviderCacheForRepo(r.stateDir);
-							// Price from model snapshot if available
-							const modelSnap = latestModelSnapshot(r.stateDir);
-							const inputRate = modelSnap
-								? modelSnap.inputRate
-								: lookupModelInputRate(r.modelName ?? "") ?? 0;
-							const savings = computeCacheSavings(
-								pc.totalCacheRead,
-								pc.totalCacheWrite,
-								inputRate,
-							);
-							out.providerCache = {
-								avgHitPct: pc.avgHitPct,
-								cacheRead: pc.totalCacheRead,
-								cacheWrite: pc.totalCacheWrite,
-								totalInput: pc.totalInput,
-								sampleCount: pc.sampleCount,
-								estimatedSaved: savings.netSaved > 0 ? savings.netSaved : null,
-							};
-						} catch {
-							/* best-effort — repo may not have perf_samples */
-						}
+							out.cacheHits = snap.cacheHits ?? null;
+							out.compacts = snap.compacts ?? null;
+							out.timeSaved = snap.timeSaved ?? null;
+							out.updatedAt = snap.updatedAt ?? null;
+							// Provider cache per-repo lifetime (E.2)
+							try {
+								const pc = readProviderCacheForRepo(r.stateDir);
+								// Price from model snapshot if available
+								const modelSnap = latestModelSnapshot(r.stateDir);
+								const inputRate = modelSnap
+									? modelSnap.inputRate
+									: (lookupModelInputRate(r.modelName ?? "") ?? 0);
+								const savings = computeCacheSavings(
+									pc.totalCacheRead,
+									pc.totalCacheWrite,
+									inputRate,
+								);
+								out.providerCache = {
+									avgHitPct: pc.avgHitPct,
+									cacheRead: pc.totalCacheRead,
+									cacheWrite: pc.totalCacheWrite,
+									totalInput: pc.totalInput,
+									sampleCount: pc.sampleCount,
+									estimatedSaved:
+										savings.netSaved > 0 ? savings.netSaved : null,
+								};
+							} catch {
+								/* best-effort — repo may not have perf_samples */
+							}
 						}
 					} catch {
 						/* best-effort */
@@ -199,9 +201,7 @@ export function handleRepoIndex(
 				})
 				.sort((a, b) => (b.lastSeen as number) - (a.lastSeen as number));
 			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(
-				JSON.stringify({ updatedAt: new Date().toISOString(), servers }),
-			);
+			res.end(JSON.stringify({ updatedAt: new Date().toISOString(), servers }));
 		} catch {
 			res.writeHead(500, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ error: "servers_unavailable" }));

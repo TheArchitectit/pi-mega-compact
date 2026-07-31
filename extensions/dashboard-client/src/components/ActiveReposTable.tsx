@@ -42,19 +42,16 @@ export function ActiveReposTable({
 	return (
 		<div className="active-repos-section">
 			<p className="legend-note">
-				Repos seen within the last 30 minutes, with their per-repo
-				cache-hit, compaction, and time-saved (est.) totals pulled live
-				from each repo&apos;s dashboard.json.
+				Repos seen within the last 30 minutes, with their per-repo cache-hit,
+				compaction, and time-saved (est.) totals pulled live from each
+				repo&apos;s dashboard.json.
 			</p>
 			<div className="table-scroll">
 				<table className="active-repos-table">
 					<thead>
 						<tr>
 							{HEADERS.map((h, i) => (
-								<th
-									key={h}
-									className={i >= 3 && i !== 4 ? "num" : undefined}
-								>
+								<th key={h} className={i >= 3 && i !== 4 ? "num" : undefined}>
 									{h}
 								</th>
 							))}
@@ -82,9 +79,7 @@ export function ActiveReposTable({
 							};
 							return (
 								<tr key={r.repoRoot}>
-									<td title={r.repoRoot}>
-										{r.displayName || r.repoRoot}
-									</td>
+									<td title={r.repoRoot}>{r.displayName || r.repoRoot}</td>
 									<td>{r.model ?? "\u2014"}</td>
 									<td>{r.tier ?? "\u2014"}</td>
 									<td className="num">
