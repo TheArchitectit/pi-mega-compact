@@ -27,6 +27,7 @@ import type {
 	TurnRecallEntry,
 	TurnStoreOptions,
 } from "./types.js";
+import { DuplicateTurnError } from "./types.js";
 
 /** Factory function — backend test files provide the concrete constructor. */
 export type StoreFactory = (options: TurnStoreOptions) => TurnStore;
@@ -558,5 +559,37 @@ export function runComplianceSuite(
 			assert.equal(typeof admin.restore, "function");
 			assert.equal(typeof admin.clear, "function");
 		});
-	});
+				// ── Duplicate turn detection ────────────────────────
+
+			describe("DuplicateTurnError", () => {
+				it("throws DuplicateTurnError (not a raw error / not silent) on duplicate (conversationId, turnIndex)", () => {
+					const first: TurnEntry = {
+						conversationId: "conv_dupcheck",
+						sessionId: "sess_dup",
+						turnIndex: 99,
+						role: "user",
+						endedAt: Date.now(),
+					};
+					const writer = store.asWriter();
+					writer.appendTurn(first);
+					const duplicate: TurnEntry = {
+						conversationId: "conv_dupcheck",
+						sessionId: "sess_dup",
+						turnIndex: 99,
+						role: "user",
+						endedAt: Date.now(),
+					};
+					const err = assert.throws(
+						() => writer.appendTurn(duplicate),
+						(e) => e instanceof DuplicateTurnError,
+					) as unknown as DuplicateTurnError | undefined;
+					// Verify typed fields
+					if (err && typeof err === "object" && "conversationId" in err) {
+						assert.equal(err.conversationId, "conv_dupcheck");
+						assert.equal(err.turnIndex, 99);
+					}
+				});
+			});
+
+});
 }

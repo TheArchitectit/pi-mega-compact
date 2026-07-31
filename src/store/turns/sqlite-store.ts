@@ -33,6 +33,7 @@ import type {
 	ConversationStats,
 	TurnStoreOptions,
 } from "./types.js";
+import { DuplicateTurnError } from "./types.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
@@ -237,23 +238,34 @@ export class SqliteTurnStore implements TurnStore {
 	appendTurn(entry: TurnEntry): TurnId {
 		const sid = normalizeSessionId(entry.sessionId);
 		this.persistSessionConv(sid, entry.conversationId);
-		this.db
-			.prepare(
-				`INSERT INTO turns (conversation_id, session_id, turn_index, role, ended_at,
+		try {
+			this.db
+				.prepare(
+					`INSERT INTO turns (conversation_id, session_id, turn_index, role, ended_at,
                                    ctx_tokens, ctx_percent, pressure_band, model)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			)
-			.run(
-				entry.conversationId,
-				sid,
-				entry.turnIndex,
-				entry.role,
-				entry.endedAt,
-				entry.ctxTokens ?? null,
-				entry.ctxPercent ?? null,
-				entry.pressureBand ?? null,
-				entry.model ?? null,
-			);
+				)
+				.run(
+					entry.conversationId,
+					sid,
+					entry.turnIndex,
+					entry.role,
+					entry.endedAt,
+					entry.ctxTokens ?? null,
+					entry.ctxPercent ?? null,
+					entry.pressureBand ?? null,
+					entry.model ?? null,
+				);
+		} catch (e) {
+			if (
+				e instanceof Error &&
+				e.message.includes("UNIQUE constraint") &&
+				(e as { code?: string }).code === "ERR_SQLITE_ERROR"
+			) {
+				throw new DuplicateTurnError(entry.conversationId, entry.turnIndex);
+			}
+			throw e;
+		}
 		const row = this.db
 			.prepare(
 				"SELECT id FROM turns WHERE conversation_id = ? AND turn_index = ?",

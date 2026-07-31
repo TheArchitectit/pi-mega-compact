@@ -15,6 +15,8 @@ import type { IndexesIndexRow, IndexesSummaryResponse } from "./multi-repo.js";
 import type { GameStateResponse } from "./game.js";
 import type { SseEvent } from "./index.js";
 import type { ProviderCacheResponse } from "./provider-cache.js";
+import type { MemoryStatusResponse } from "./memory.js";
+import type { SetupStatusResponse, SetupDetectResponse } from "./setup.js";
 import type {
 	TurnsResponse,
 	ConversationTurnsResponse,
@@ -611,4 +613,30 @@ export const ENDPOINTS = {
 		description:
 			"Lifetime provider prompt cache hit-rate aggregates + dollar savings estimate.",
 	} as const satisfies EndpointDef<"GET", undefined, ProviderCacheResponse>,
+
+	// ─── Memory Effectiveness (S53B) ───────────────────────────────────────
+
+	/** GET /api/memory-status — Memory store aggregate statistics. */
+	memoryStatus: {
+		method: "GET",
+		path: "/api/memory-status",
+		description:
+			"Memory store statistics: total count, 30-day window, top-N stable memories, avg recall score.",
+	} as const satisfies EndpointDef<"GET", undefined, MemoryStatusResponse>,
+
+	/** GET /api/setup-status — Current embedder configuration. */
+	setupStatus: {
+		method: "GET",
+		path: "/api/setup-status",
+		description:
+			"Current embedder configuration (which embedder is active, embedding URL, cache, MiniLM flag).",
+	} as const satisfies EndpointDef<"GET", undefined, SetupStatusResponse>,
+
+	/** GET /api/setup-detect — Detect available local embedder backends. */
+	setupDetect: {
+		method: "GET",
+		path: "/api/setup-detect",
+		description:
+			"Best-effort detection of local embedder backends (ollama, llama.cpp, ONNX) available on the machine.",
+	} as const satisfies EndpointDef<"GET", undefined, SetupDetectResponse>,
 } as const;

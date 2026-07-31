@@ -16,6 +16,27 @@
 
 // ─── Domain types ───────────────────────────────────────────────────
 
+/**
+ * Thrown when appendTurn is called with a (conversationId, turnIndex) pair
+ * that already exists. Both backends must throw this in lieu of a raw
+ * SQLite error (SqliteTurnStore) or silent success (InMemoryTurnStore).
+ */
+export class DuplicateTurnError extends Error {
+	/** The conversation that already has this turn index. */
+	readonly conversationId: ConversationId;
+	/** The duplicate turn index. */
+	readonly turnIndex: number;
+
+	constructor(conversationId: ConversationId, turnIndex: number) {
+		super(
+			`Duplicate turn: conversation "${conversationId}" already has turnIndex ${turnIndex}`,
+		);
+		this.name = "DuplicateTurnError";
+		this.conversationId = conversationId;
+		this.turnIndex = turnIndex;
+	}
+}
+
 /** Unique turn identifier (string to stay backend-agnostic). */
 export type TurnId = string;
 

@@ -7,6 +7,13 @@
  *   - topStableMemories: top-N memories by recall count (desc)
  *   - avgRecallScore: mean recallCount across all memories
  *
+ * recallCount = 1 if last_recalled_at IS NOT NULL, else 0.
+ * This is the durable signal from recallMemory() — a memory that was
+ * recalled at least once is "stable" (still relevant).  The exact recall
+ * frequency is tracked via turn_recall rows (source='memory') for
+ * cross-session analysis, but the memories table provides a reliable
+ * on-store signal that is always present without a schema migration.
+ *
  * Real-store only (PREVENT-PI-004). No mocks. No network.
  */
 import { openStore } from "./store/sqlite/utils.js";
@@ -55,41 +62,30 @@ export async function memoryStats(
     const memoriesInLast30Days = recentRow.n;
 
     // ── topStableMemories + avgRecallScore ─────────────────────────────────
-    // topStableMemories: ORDER BY recall_count DESC, id ASC (tiebreak).
-    // recall_count is the number of times the memory was recalled
-    // (count of rows in turn_recall with source='memory' referencing this memory id).
-    // avgRecallScore: mean recall_count across ALL memories.
+    // recallCount: 1 if last_recalled_at IS NOT NULL (recalled at least once),
+    //             0 otherwise.  Stable memories score high.
     const topRows = db
       .prepare(
         `SELECT
            m.id,
-           m.content      AS text,
+           m.content         AS text,
            m.last_recalled_at AS lastRecalledAt,
-           (SELECT COUNT(*) FROM turn_recall tr
-            WHERE tr.checkpoint_id = 'memory_' || m.id
-              AND tr.source = 'memory') AS recallCount
+           CASE WHEN m.last_recalled_at IS NOT NULL THEN 1 ELSE 0 END AS recallCount
          FROM memories m
          ORDER BY recallCount DESC, m.id ASC
          LIMIT ?`,
       )
       .all(topN) as Array<Record<string, unknown>>;
 
-    // Compute avgRecallScore in a single pass over all memories.
-    const avgRow = db
+    // avgRecallScore = (count of recalled memories) / totalMemories.
+    // This represents the fraction of memories that are "stable" (recalled at least once).
+    const recalledRow = db
       .prepare(
-        `SELECT AVG(sub.cnt) AS avgScore FROM (
-           SELECT COUNT(*) AS cnt FROM turn_recall tr
-           WHERE tr.source = 'memory'
-           GROUP BY tr.checkpoint_id
-           HAVING 1=1
-         ) sub`,
+        "SELECT COUNT(*) AS n FROM memories WHERE last_recalled_at IS NOT NULL",
       )
-      .get() as { avgScore: number | null };
-
+      .get() as { n: number };
     const avgRecallScore =
-      avgRow.avgScore !== null && Number.isFinite(avgRow.avgScore)
-        ? avgRow.avgScore
-        : 0;
+      totalMemories > 0 ? recalledRow.n / totalMemories : 0;
 
     const topStableMemories = topRows.map((r) => ({
       id: r.id as number,

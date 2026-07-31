@@ -100,9 +100,9 @@ describe("handleMemoryStatus", () => {
 			detectCrossRepoDrift: mockDriftReport,
 		});
 		const req = makeReq("POST");
-		const { res, statusCode } = makeRes();
-		handleMemoryStatus(req, res, ctx);
-		assert.strictEqual(statusCode, 405, "POST must return 405");
+		const resObj = makeRes();
+		handleMemoryStatus(req, resObj.res, ctx);
+		assert.strictEqual(resObj.statusCode, 405, "POST must return 405");
 	});
 
 	it("GET response body is valid JSON with required fields", async () => {

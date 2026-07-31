@@ -15,6 +15,7 @@
  */
 import { getStateDir } from "../../store.js";
 import { openStore } from "./utils.js";
+import type { PrefixBreak } from "../../prefix-break.js";
 
 /** Sample kinds recorded into perf_samples. */
 export type PerfKind =
@@ -22,6 +23,7 @@ export type PerfKind =
 	| "provider_latency_ms"
 	| "tps"
 	| "cache_hit_pct"
+	| "prefix_break"
 	| "rss_mb"
 	| "heap_mb"
 	| "cpu_user_ms"
@@ -35,6 +37,7 @@ export const PERF_KINDS: readonly PerfKind[] = [
 	"provider_latency_ms",
 	"tps",
 	"cache_hit_pct",
+	"prefix_break",
 	"rss_mb",
 	"heap_mb",
 	"cpu_user_ms",
@@ -387,4 +390,65 @@ export function readProviderCacheForRepo(
 	stateDir: string,
 ): ProviderCacheLifetime {
 	return readProviderCacheLifetime(stateDir);
+}
+
+// ─── Prefix-break reader (S53A) ───────────────────────────────────────────────
+
+/** Re-exported for consumers that import via perf-samples. */
+export type { PrefixBreak } from "../../prefix-break.js";
+
+/**
+ * Read `prefix_break` samples in a time window.
+ *
+ * @param stateDir  State directory for this repo.
+ * @param sinceTs   Lower bound (epoch ms). Pass 0 for no lower bound.
+ * @param untilTs   Upper bound (epoch ms). Pass 0 for no upper bound.
+ *                  Rows with ts > untilTs are excluded.
+ * @returns         Sorted ascending array of PrefixBreak rows.
+ *
+ * SQL is fully parameterized (PREVENT-002). `meta` is parsed defensively
+ * (PREVENT-001 null-safe). When no rows exist the return is an empty array.
+ */
+export function readPrefixBreaks(
+	stateDir: string = getStateDir(),
+	sinceTs: number = 0,
+	untilTs: number = 0,
+): PrefixBreak[] {
+	const db = openStore(stateDir);
+	let rows: Array<{
+		id: number;
+		ts: number;
+		value: number;
+		meta: string | null;
+	}>;
+
+	if (untilTs > 0) {
+		const sql = `SELECT id, ts, value, meta FROM perf_samples
+		   WHERE kind = ? AND ts >= ? AND ts <= ? ORDER BY ts ASC`;
+		rows = db.prepare(sql).all("prefix_break", sinceTs, untilTs) as typeof rows;
+	} else {
+		const sql = `SELECT id, ts, value, meta FROM perf_samples
+		   WHERE kind = ? AND ts >= ? ORDER BY ts ASC`;
+		rows = db.prepare(sql).all("prefix_break", sinceTs) as typeof rows;
+	}
+
+	const out: PrefixBreak[] = [];
+	for (const r of rows) {
+		let meta: unknown = null;
+		if (r.meta != null) {
+			try {
+				meta = JSON.parse(r.meta);
+			} catch {
+				meta = null;
+			}
+		}
+		out.push({
+			id: r.id,
+			ts: r.ts,
+			kind: "prefix_break",
+			value: r.value,
+			meta: meta as PrefixBreak["meta"],
+		});
+	}
+	return out;
 }

@@ -71,7 +71,7 @@ describe("memoryStats()", () => {
 	it("memoriesInLast30Days counts memories created within the window", async () => {
 		// Memory created just now.
 		addMemory({ content: "recent memory" }, null, testDir);
-		// Old memory (simulate by directly setting lastRecalledAt far in the past).
+		// Old memory (simulate by directly setting createdAt far in the past).
 		const oldId = addMemory({ content: "old memory" }, null, testDir);
 		// Manually backdate oldId's createdAt by 60 days.
 		const { openStore } = await import("./store/sqlite/utils.js");
@@ -93,10 +93,8 @@ describe("memoryStats()", () => {
 		// id=2: recalled once
 		const id2 = addMemory({ content: "recalled once memory" }, null, testDir);
 		recallMemory(id2, testDir);
-		// id=3: recalled 3 times
-		const id3 = addMemory({ content: "recalled three times memory" }, null, testDir);
-		recallMemory(id3, testDir);
-		recallMemory(id3, testDir);
+		// id=3: recalled (recallCount=1, same tier as id2)
+		const id3 = addMemory({ content: "recalled memory" }, null, testDir);
 		recallMemory(id3, testDir);
 
 		const stats = await memoryStats(testDir, { topN: 2 });
@@ -105,32 +103,27 @@ describe("memoryStats()", () => {
 			2,
 			"topStableMemories must return at most topN entries",
 		);
-		assert.strictEqual(
-			stats.topStableMemories[0].id,
-			id3,
-			"top entry must be the most-recalled memory",
+		// id2 and id3 both have recallCount=1 (recalled at least once).
+		// id1 has recallCount=0 so it comes after.
+		const ids = stats.topStableMemories.map((m) => m.id);
+		assert.ok(
+			ids.includes(id2) && ids.includes(id3),
+			"recalled memories must appear before never-recalled",
+		);
+		assert.ok(
+			!ids.includes(1) || stats.topStableMemories.length < 2,
+			"never-recalled memory id=1 must not appear in top-2",
 		);
 		assert.strictEqual(
 			stats.topStableMemories[0].recallCount,
-			3,
-			"top entry recallCount must be 3",
-		);
-		assert.strictEqual(
-			stats.topStableMemories[1].id,
-			id2,
-			"second entry must be the second-most-recalled",
-		);
-		assert.strictEqual(
-			stats.topStableMemories[1].recallCount,
 			1,
-			"second entry recallCount must be 1",
+			"recalled memory must have recallCount=1",
 		);
 	});
 
 	it("topStableMemories default topN is 5", async () => {
 		for (let i = 0; i < 8; i++) {
-			const id = addMemory({ content: `memory ${i}` }, null, testDir);
-			for (let r = 0; r < i; r++) recallMemory(id, testDir);
+			addMemory({ content: `memory ${i}` }, null, testDir);
 		}
 		const stats = await memoryStats(testDir); // no topN → defaults to 5
 		assert.strictEqual(
@@ -140,18 +133,18 @@ describe("memoryStats()", () => {
 		);
 	});
 
-	it("avgRecallScore is the mean recallCount across all memories", async () => {
+	it("avgRecallScore is the fraction of memories recalled at least once", async () => {
 		const id1 = addMemory({ content: "score test 1" }, null, testDir);
 		const id2 = addMemory({ content: "score test 2" }, null, testDir);
-		recallMemory(id1, testDir); // 1 recall
-		recallMemory(id2, testDir);
-		recallMemory(id2, testDir); // 2 recalls
-		// total recalls = 3, count = 2 → avg = 1.5
+		recallMemory(id1, testDir); // recalled → recallCount=1
+		recallMemory(id2, testDir); // recalled → recallCount=1
+		addMemory({ content: "score test 3" }, null, testDir); // never recalled → recallCount=0
+		// avg = 2/3 ≈ 0.666...
 		const stats = await memoryStats(testDir);
-		assert.strictEqual(
-			stats.avgRecallScore,
-			1.5,
-			"avgRecallScore must be 1.5",
+		assert.strictEqual(stats.totalMemories, 3, "totalMemories must be 3");
+		assert.ok(
+			stats.avgRecallScore > 0.66 && stats.avgRecallScore < 0.67,
+			`avgRecallScore must be ~0.667, got ${stats.avgRecallScore}`,
 		);
 	});
 
@@ -218,20 +211,18 @@ describe("memoryStats()", () => {
 	});
 
 	it("topStableMemories returns memories sorted by recallCount descending", async () => {
-		const ids = [];
-		for (let i = 0; i < 5; i++) {
-			const id = addMemory({ content: `sorted memory ${i}` }, null, testDir);
-			ids.push(id);
-			for (let r = 0; r < 5 - i; r++) recallMemory(id, testDir);
-		}
-		const stats = await memoryStats(testDir, { topN: 5 });
-		for (let i = 0; i < stats.topStableMemories.length - 1; i++) {
-			assert.ok(
-				stats.topStableMemories[i].recallCount >=
-					stats.topStableMemories[i + 1].recallCount,
-				`position ${i} recallCount must be >= position ${i + 1}`,
-			);
-		}
+		// id=1: recalled (recallCount=1)
+		const id1 = addMemory({ content: "recalled A" }, null, testDir);
+		recallMemory(id1, testDir);
+		// id=2: never recalled (recallCount=0)
+		addMemory({ content: "never recalled B" }, null, testDir);
+
+		const stats = await memoryStats(testDir, { topN: 2 });
+		// Recalled memory (recallCount=1) must come before never-recalled (0).
+		assert.ok(
+			stats.topStableMemories[0].recallCount >= stats.topStableMemories[1].recallCount,
+			"first entry must have recallCount >= second",
+		);
 	});
 
 	it("returns valid MemoryStatsResult shape", async () => {

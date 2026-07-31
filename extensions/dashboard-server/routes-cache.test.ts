@@ -99,6 +99,15 @@ interface ProviderCacheResponse {
 	} | null;
 	updatedAt: string;
 	windowMinutes?: number | null;
+	prefixBreaks: Array<{
+		id: number;
+		ts: number;
+		cause: string;
+		confidence: number;
+		prevHitPct: number;
+		currHitPct: number;
+		breakAt: number;
+	}>;
 }
 
 describe("/api/provider-cache", () => {
@@ -423,5 +432,142 @@ test("GET 200 — byModel in lifetime and windowed (F4)", async () => {
 		const body2 = (await res2.json()) as ProviderCacheResponse;
 		assert.equal(body2.windowMinutes, 30);
 		assert.equal(body2.cache.byModel.length, 2, "windowed also has 2 models");
+	});
+});
+
+// ─── S53A: ?since=&until= and prefixBreaks ───────────────────────────────────
+
+test("GET 200 — prefixBreaks: empty array when no prefix_break rows", async () => {
+	const dir = freshDir("dash-pb-empty-");
+	recordPerfSample(dir, "cache_hit_pct", 50, { cacheRead: 100, input: 100 });
+	await withServer("19463", dir, async (port) => {
+		const res = await fetch(`http://localhost:${port}/api/provider-cache`);
+		assert.equal(res.status, 200);
+		const body = (await res.json()) as ProviderCacheResponse;
+		assert.ok(Array.isArray(body.prefixBreaks), "prefixBreaks is an array");
+		assert.equal(body.prefixBreaks.length, 0, "no prefix_break rows → empty array");
+	});
+});
+
+test("GET 200 — prefixBreaks: returned when prefix_break rows exist", async () => {
+	const dir = freshDir("dash-pb-read-");
+	const now = Date.now();
+	const db = openStore(dir);
+	// Seed one cache_hit_pct row (required so lifetime is not empty)
+	db.prepare(
+		`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+	).run(now - 5000, "cache_hit_pct", 80, JSON.stringify({ cacheRead: 80, cacheWrite: 10, input: 10 }));
+	// Seed two prefix_break rows
+	db.prepare(
+		`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+	).run(now - 5000, "prefix_break", 0, JSON.stringify({
+		cause: "compaction",
+		confidence: 0.95,
+		prevHitPct: 80,
+		currHitPct: 10,
+		breakAt: now - 5000,
+	}));
+	db.prepare(
+		`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+	).run(now - 1000, "prefix_break", 0, JSON.stringify({
+		cause: "recall",
+		confidence: 1.0,
+		prevHitPct: 60,
+		currHitPct: 5,
+		breakAt: now - 1000,
+	}));
+
+	await withServer("19464", dir, async (port) => {
+		const res = await fetch(`http://localhost:${port}/api/provider-cache`);
+		assert.equal(res.status, 200);
+		const body = (await res.json()) as ProviderCacheResponse;
+		assert.equal(body.prefixBreaks.length, 2, "two prefix_break rows");
+		// Sorted ascending by ts
+		assert.equal(body.prefixBreaks[0].cause, "compaction");
+		assert.equal(body.prefixBreaks[0].confidence, 0.95);
+		assert.equal(body.prefixBreaks[0].prevHitPct, 80);
+		assert.equal(body.prefixBreaks[0].currHitPct, 10);
+		assert.equal(body.prefixBreaks[1].cause, "recall");
+		assert.equal(body.prefixBreaks[1].confidence, 1.0);
+		assert.equal(body.prefixBreaks[1].prevHitPct, 60);
+		assert.equal(body.prefixBreaks[1].currHitPct, 5);
+		assert.equal(typeof body.prefixBreaks[0].id, "number");
+		assert.equal(typeof body.prefixBreaks[0].ts, "number");
+		assert.equal(typeof body.prefixBreaks[0].breakAt, "number");
+	});
+});
+
+test("GET 200 — ?since=&until= filters prefixBreaks by time window", async () => {
+	const dir = freshDir("dash-pb-win-");
+	const now = Date.now();
+	const db = openStore(dir);
+	// One cache_hit_pct row
+	db.prepare(
+		`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+	).run(now - 5000, "cache_hit_pct", 80, JSON.stringify({ cacheRead: 80, cacheWrite: 10, input: 10 }));
+	// Old prefix_break (outside window)
+	db.prepare(
+		`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+	).run(now - 120_000, "prefix_break", 0, JSON.stringify({
+		cause: "recall", confidence: 1.0, prevHitPct: 80, currHitPct: 5, breakAt: now - 120_000,
+	}));
+	// Recent prefix_break (inside window)
+	db.prepare(
+		`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+	).run(now - 10_000, "prefix_break", 0, JSON.stringify({
+		cause: "compaction", confidence: 0.9, prevHitPct: 70, currHitPct: 3, breakAt: now - 10_000,
+	}));
+
+	await withServer("19465", dir, async (port) => {
+		// 1-minute window should only include the recent prefix_break
+		const since = now - 60_000;
+		const res = await fetch(`http://localhost:${port}/api/provider-cache?since=${since}&until=${now}`);
+		assert.equal(res.status, 200);
+		const body = (await res.json()) as ProviderCacheResponse;
+		assert.equal(body.prefixBreaks.length, 1, "only the recent prefix_break in window");
+		assert.equal(body.prefixBreaks[0].cause, "compaction");
+	});
+});
+
+test("GET 200 — ?since= with no until → no upper bound", async () => {
+	const dir = freshDir("dash-pb-since-");
+	const now = Date.now();
+	const db = openStore(dir);
+	db.prepare(
+		`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+	).run(now - 5000, "cache_hit_pct", 80, JSON.stringify({ cacheRead: 80, cacheWrite: 10, input: 10 }));
+	// Old prefix_break
+	db.prepare(
+		`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+	).run(now - 300_000, "prefix_break", 0, JSON.stringify({
+		cause: "recall", confidence: 1.0, prevHitPct: 80, currHitPct: 5, breakAt: now - 300_000,
+	}));
+	// Recent prefix_break
+	db.prepare(
+		`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+	).run(now - 5000, "prefix_break", 0, JSON.stringify({
+		cause: "inject", confidence: 0.8, prevHitPct: 60, currHitPct: 4, breakAt: now - 5000,
+	}));
+
+	await withServer("19466", dir, async (port) => {
+		const since = now - 60_000;
+		const res = await fetch(`http://localhost:${port}/api/provider-cache?since=${since}`);
+		assert.equal(res.status, 200);
+		const body = (await res.json()) as ProviderCacheResponse;
+		assert.equal(body.prefixBreaks.length, 1, "only recent prefix_break with since-only");
+		assert.equal(body.prefixBreaks[0].cause, "inject");
+	});
+});
+
+test("GET 200 — invalid since/until fall back to lifetime (prefixBreaks empty)", async () => {
+	const dir = freshDir("dash-pb-bad-");
+	recordPerfSample(dir, "cache_hit_pct", 50, { cacheRead: 100, input: 100 });
+	await withServer("19467", dir, async (port) => {
+		const res = await fetch(`http://localhost:${port}/api/provider-cache?since=abc&until=xyz`);
+		assert.equal(res.status, 200);
+		const body = (await res.json()) as ProviderCacheResponse;
+		// Invalid since=abc → treated as 0 (no lower bound), lifetime scope
+		// Invalid until=xyz → treated as 0 (no upper bound)
+		assert.ok(Array.isArray(body.prefixBreaks));
 	});
 });

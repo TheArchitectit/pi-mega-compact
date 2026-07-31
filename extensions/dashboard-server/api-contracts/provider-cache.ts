@@ -41,10 +41,27 @@ export interface ProviderCacheResponse {
 	readonly updatedAt: string;
 	/** When non-null, the response is scoped to the last N minutes. */
 	readonly windowMinutes?: number | null;
+	/** Classified prefix-break events in the queried window (S53A). */
+	readonly prefixBreaks: PrefixBreak[];
 }
 
 /** Query parameters for GET /api/provider-cache. */
 export interface ProviderCacheQuery {
 	/** Optional trailing-window minutes. When absent → lifetime. */
 	minutes?: number;
+	/** Optional lower-bound epoch ms (alternative to minutes). */
+	since?: number;
+	/** Optional upper-bound epoch ms. */
+	until?: number;
+}
+
+/** A single classified prefix-break event (S53A). */
+export interface PrefixBreak {
+	readonly id: number;
+	readonly ts: number;
+	readonly cause: "recall" | "compaction" | "inject" | "other";
+	readonly confidence: number;
+	readonly prevHitPct: number;
+	readonly currHitPct: number;
+	readonly breakAt: number;
 }

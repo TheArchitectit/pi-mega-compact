@@ -20,3 +20,5 @@ export { handleTopics } from "./routes-topics.js";
 export { handleTurns } from "./routes-turns.js";
 export { handleMaintenance } from "./routes-maintenance.js";
 export { handleProviderCache } from "./routes-cache.js";
+export { handleMemoryStatus } from "./routes-memory.js";
+export { handleSetupStatus, handleSetupDetect } from "./routes-setup.js";

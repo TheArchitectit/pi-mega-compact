@@ -40,6 +40,8 @@ import type {
 	MaintenanceAction,
 	MaintenanceActionResult,
 	ProviderCacheResponse,
+	SetupStatusResponse,
+	SetupDetectResponse,
 } from "@contracts";
 
 /** Error thrown when a dashboard API response is not 2xx. */
@@ -272,4 +274,16 @@ export function postMaintenanceAction(
 		ENDPOINTS.maintenanceAction.path,
 		action,
 	);
+}
+
+// ─── Setup wizard (P0b) ────────────────────────────────────────────────────
+
+/** GET /api/setup-status — current embedder configuration. */
+export function fetchSetupStatus(): Promise<SetupStatusResponse> {
+	return getJson<SetupStatusResponse>(ENDPOINTS.setupStatus.path);
+}
+
+/** GET /api/setup-detect — detect available local embedder backends. */
+export function fetchSetupDetect(): Promise<SetupDetectResponse> {
+	return getJson<SetupDetectResponse>(ENDPOINTS.setupDetect.path);
 }

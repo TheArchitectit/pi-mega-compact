@@ -8,7 +8,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import type {
+import { DuplicateTurnError, type
 	TurnStore,
 	TurnReader,
 	TurnWriter,
@@ -198,6 +198,15 @@ export class InMemoryTurnStore implements TurnStore {
 	// ── TurnWriter ──────────────────────────────────────────────
 
 	appendTurn(entry: TurnEntry): TurnId {
+		// Check for duplicate (conversationId, turnIndex)
+		for (const [, row] of this.turns) {
+			if (
+				row.entry.conversationId === entry.conversationId &&
+				row.entry.turnIndex === entry.turnIndex
+			) {
+				throw new DuplicateTurnError(entry.conversationId, entry.turnIndex);
+			}
+		}
 		const id = allocId();
 		const sid = normalizeSessionId(entry.sessionId);
 		const normalized = { ...entry, sessionId: sid };

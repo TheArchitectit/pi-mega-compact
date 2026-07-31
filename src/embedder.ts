@@ -59,21 +59,62 @@ function fnv1a(str: string): number {
  * Default embedder: character 3-gram bag-of-counts, hashed into a fixed-dim
  * vector, L2-normalized. Captures local lexical/structure overlap well enough
  * for checkpoint relevance ranking.
+ *
+ * S53B: includes a 256-entry (configurable) FIFO cache keyed by FNV-1a(text).
+ * Each cache entry holds a DEFENSIVE COPY of the embedding to prevent mutation
+ * from corrupting stored vectors. Set MEGACOMPACT_EMBED_CACHE=0 to disable.
  */
 export class TrigramEmbedder implements Embedder {
   readonly dim: number;
   private readonly seed: number;
+  /** @type {Map<string, Vector>} */
+  private readonly _cache: Map<string, Vector>;
+  private readonly _cacheSize: number;
+  private _hits = 0;
+  private _misses = 0;
 
   constructor(dim = 512, seed = 0x9e3779b9) {
     this.dim = dim;
     this.seed = seed >>> 0;
+    const cap = Number(process.env.MEGACOMPACT_EMBED_CACHE ?? "256");
+    this._cacheSize = cap > 0 ? Math.floor(cap) : 0;
+    this._cache = new Map();
+  }
+
+  /** Cache statistics — always { hits: 0, misses: 0 } when cache is disabled. */
+  getEmbedCacheStats(): { hits: number; misses: number } {
+    return { hits: this._hits, misses: this._misses };
   }
 
   embed(text: string): Vector {
+    if (this._cacheSize === 0) {
+      return this._embedRaw(text);
+    }
+    const key = fnv1a(text).toString(36);
+    const cached = this._cache.get(key);
+    if (cached !== undefined) {
+      this._hits++;
+      // Defensive copy: caller mutating the returned vector must not corrupt cache.
+      return cached.slice() as Vector;
+    }
+    this._misses++;
+    const vec = this._embedRaw(text);
+    // Store a defensive copy (slice) so caller mutation cannot corrupt stored value.
+    this._cache.set(key, vec.slice() as Vector);
+    // FIFO eviction: remove the oldest entry when at capacity.
+    if (this._cache.size > this._cacheSize) {
+      // Map insertion order is guaranteed — first key is the oldest.
+      const firstKey = this._cache.keys().next().value;
+      if (firstKey !== undefined) this._cache.delete(firstKey);
+    }
+    return vec;
+  }
+
+  /** Raw embed computation (no cache logic). Public so tests can bypass cache. */
+  _embedRaw(text: string): Vector {
     const vec = new Array<number>(this.dim).fill(0);
     const norm = text.toLowerCase().replace(/\s+/g, " ");
     if (norm.length === 0) return l2Normalize(vec);
-    // Whole-string + word + char-trigram signals.
     vec[fnv1a(norm) % this.dim] += 1;
     for (const word of norm.split(" ")) {
       if (word.length === 0) continue;
@@ -84,7 +125,6 @@ export class TrigramEmbedder implements Embedder {
         vec[idx] += 1;
       }
     }
-    // Edge: very short tokens still get a slot.
     if (norm.length < 3) vec[fnv1a(norm) % this.dim] += 1;
     return l2Normalize(vec);
   }

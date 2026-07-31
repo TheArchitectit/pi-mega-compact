@@ -203,3 +203,9 @@ export type {
 	PruneTurnsResponse,
 	TopicMemoriesResponse,
 } from "./turns.js";
+
+// S53B — memory effectiveness stats
+export type { MemoryStatusResponse, MemoryStatsTopMemory } from "./memory.js";
+
+// Setup wizard — embedder configuration + backend detection
+export type { SetupStatusResponse, SetupDetectResponse, DetectResult, OllamaDetectResult } from "./setup.js";

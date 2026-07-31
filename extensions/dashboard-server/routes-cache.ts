@@ -3,7 +3,7 @@
  *
  * GET /api/provider-cache — Lifetime provider prompt cache hit-rate aggregates
  * plus dollar savings estimate (priced from latest model snapshot).
- * Accepts optional ?minutes=N to scope to a trailing window.
+ * Accepts optional ?minutes=N, ?since=<epoch-ms>, ?until=<epoch-ms> (S53A).
  *
  * Guardrails: PREVENT-PI-004 (loopback-only), PREVENT-001 (null-safe JSON parse),
  * PREVENT-002 (parameterized SQL). Loopback-only localhost dashboard endpoint.
@@ -38,8 +38,10 @@ export function handleProviderCache(
 			return true;
 		}
 
-		// Parse optional ?minutes=N from the query string.
+		// Parse query params: ?minutes=N | ?since=&until= (mutually exclusive).
 		let windowMinutes: number | null = null;
+		let sinceTs = 0;
+		let untilTs = 0;
 		if (req.url) {
 			const qIdx = req.url.indexOf("?");
 			if (qIdx !== -1) {
@@ -51,7 +53,52 @@ export function handleProviderCache(
 						windowMinutes = n;
 					}
 				}
+				// S53A: ?since=&until= epoch-ms timestamps.
+				const s = params.get("since");
+				const u = params.get("until");
+				if (s != null) {
+					const sn = Number(s);
+					if (Number.isFinite(sn) && sn >= 0) sinceTs = sn;
+				}
+				if (u != null) {
+					const un = Number(u);
+					if (Number.isFinite(un) && un > 0) untilTs = un;
+				}
 			}
+		}
+
+		// S53A: read prefix_break samples in the same window as the aggregates.
+		// Import lazily to avoid a circular dependency in the test harness.
+		let prefixBreaks: Array<{
+			id: number;
+			ts: number;
+			cause: "recall" | "compaction" | "inject" | "other";
+			confidence: number;
+			prevHitPct: number;
+			currHitPct: number;
+			breakAt: number;
+		}> = [];
+		try {
+			// guardrails-allow PREVENT-PI-004: local SQLite read (loopback dashboard)
+			const { readPrefixBreaks } = pfReq(
+				"../../src/store/sqlite/perf-samples.js",
+			) as typeof import("../../src/store/sqlite/perf-samples.js");
+			// When ?since=&until= is used, pass those directly; otherwise derive
+			// from windowMinutes or 0 (no bounds = lifetime).
+			const pSince = sinceTs > 0 ? sinceTs : (windowMinutes != null ? Date.now() - windowMinutes * 60_000 : 0);
+			const pUntil = untilTs > 0 ? untilTs : (windowMinutes != null ? Date.now() : 0);
+			const rows = readPrefixBreaks(stateDir, pSince, pUntil);
+			prefixBreaks = rows.map((r) => ({
+				id: r.id,
+				ts: r.ts,
+				cause: r.meta.cause,
+				confidence: r.meta.confidence,
+				prevHitPct: r.meta.prevHitPct,
+				currHitPct: r.meta.currHitPct,
+				breakAt: r.meta.breakAt,
+			}));
+		} catch {
+			/* prefix-break read unavailable — response still returns empty array */
 		}
 
 		try {
@@ -114,6 +161,7 @@ export function handleProviderCache(
 				} | null;
 				updatedAt: string;
 				windowMinutes?: number | null;
+				prefixBreaks: typeof prefixBreaks;
 			} = {
 				cache: {
 					avgHitPct: lifetime.avgHitPct,
@@ -128,6 +176,7 @@ export function handleProviderCache(
 				savings,
 				updatedAt: new Date().toISOString(),
 				windowMinutes,
+				prefixBreaks,
 			};
 			// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
 			res.writeHead(200, { "Content-Type": "application/json" });

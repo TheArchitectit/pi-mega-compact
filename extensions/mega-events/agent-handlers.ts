@@ -189,7 +189,10 @@ export function registerAgentHandlers(
 							setTimeout(() => {
 								try {
 									if (runtime.rt.sessionId !== liveSid) return; // session reset
-									const since2 = now - (runtime.rt.lastNativeCompactAt ?? 0);
+									// IMPORTANT: recompute Date.now() inside the timeout.
+									// `now` above is the durable-trim handler's timestamp and can be
+									// ~500ms stale by the time this callback runs.
+									const since2 = Date.now() - (runtime.rt.lastNativeCompactAt ?? 0);
 									if (
 										runtime.rt.lastNativeCompactAt !== stamp &&
 										since2 < cooldownMs
