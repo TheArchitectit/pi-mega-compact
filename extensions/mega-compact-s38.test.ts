@@ -852,6 +852,101 @@ test("R7 classifier: 429/rate-limit → transient (control)", () => {
 	assert.equal(classifyErrorFn("429 Too Many Requests: rate limit exceeded"), "transient");
 });
 
+// ---- R8 regression tests: router-wrapped infra errors (2026-07-30 incident #2) ----
+// pi's console "Error: 500:" prefix is NOT part of the delivered message body,
+// so router phrasings ("All targets failed", "No healthy target selected",
+// "Too many concurrent requests") matched NO marker and the 0-token signal
+// poisoned the session on the FIRST turn.
+
+/** The exact error bodies from the 2026-07-30 incident (GLM router flapping). */
+const R8_NO_HEALTHY_TARGET =
+	'{"message":"No healthy target selected for alias \'hf:zai-org/GLM-4.7\'","type":"api_error"}';
+const R8_SOCKET_CLOSED =
+	"All targets failed: modal/zai-org/GLM-5.1-FP8. Last error: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()"; // guardrails-allow PREVENT-PI-004: verbatim 2026-07-30 incident error text (string fixture, not a network call)
+const R8_TOO_MANY_CONCURRENT =
+	'All targets failed: modal/zai-org/GLM-5.1-FP8. Last error: {"error": "Too many concurrent requests for this model"}';
+
+test("R8 classifier: router phrasings → transient, even at 0 tokens", () => {
+	for (const text of [R8_NO_HEALTHY_TARGET, R8_SOCKET_CLOSED, R8_TOO_MANY_CONCURRENT]) {
+		assert.equal(
+			classifyErrorFn({ stopReason: "error", content: text, usage: { inputTokens: 0, outputTokens: 0 } }),
+			"transient",
+			`0-token router error must be transient: ${text.slice(0, 60)}`,
+		);
+	}
+});
+
+test("R8 classifier: structured status field wins over phrasing", () => {
+	// 5xx → transient even with zero recognizable text.
+	assert.equal(
+		classifyErrorFn({ stopReason: "error", error: { status: 502, message: "???" }, usage: { inputTokens: 0, outputTokens: 0 } }),
+		"transient",
+	);
+	// 429 structured → transient.
+	assert.equal(
+		classifyErrorFn({ stopReason: "error", error: { statusCode: 429, message: "???" }, usage: { inputTokens: 0, outputTokens: 0 } }),
+		"transient",
+	);
+	// 401 → permanent (not transient, not poisoned).
+	assert.equal(
+		classifyErrorFn({ stopReason: "error", error: { status: 401, message: "???" } }),
+		"permanent",
+	);
+	// 400 with deterministic-rejection text → still poisoned (text rules 4xx).
+	assert.equal(
+		classifyErrorFn({ stopReason: "error", error: { status: 400, message: "orphaned tool result: tooluse ids mismatch" }, usage: { inputTokens: 0, outputTokens: 0 } }),
+		"poisoned-context",
+	);
+});
+
+test("R8(a): 0-token 'No healthy target' turn is NOT poisoned on first occurrence", async () => {
+	const prevAuto = process.env.MEGACOMPACT_AUTO;
+	process.env.MEGACOMPACT_AUTO = "false";
+	try {
+		const h = harness();
+		await s38TurnEndUsage(h, "error", R8_NO_HEALTHY_TARGET, 0);
+		assert.ok(!eventTypes(h.stateDir).includes("poisoned_context"), "no poisoned_context on first turn");
+		assert.ok(!h.sendUserMessages.some((m) => m.includes("/clear")), "no /clear advise");
+	} finally {
+		if (prevAuto === undefined) delete process.env.MEGACOMPACT_AUTO;
+		else process.env.MEGACOMPACT_AUTO = prevAuto;
+	}
+});
+
+test("R8(b): repeated 'No healthy target' x3 stays transient", async () => {
+	const prevAuto = process.env.MEGACOMPACT_AUTO;
+	const prevBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	process.env.MEGACOMPACT_AUTO = "false";
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	try {
+		const h = harness();
+		await r7RepeatTurns(h, R8_NO_HEALTHY_TARGET, 3);
+		assertStaysTransient(h, "no-healthy-target x3");
+	} finally {
+		if (prevAuto === undefined) delete process.env.MEGACOMPACT_AUTO;
+		else process.env.MEGACOMPACT_AUTO = prevAuto;
+		if (prevBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = prevBackoff;
+	}
+});
+
+test("R8(c): repeated 'All targets failed / socket closed' x3 stays transient", async () => {
+	const prevAuto = process.env.MEGACOMPACT_AUTO;
+	const prevBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	process.env.MEGACOMPACT_AUTO = "false";
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	try {
+		const h = harness();
+		await r7RepeatTurns(h, R8_SOCKET_CLOSED, 3);
+		assertStaysTransient(h, "all-targets-failed x3");
+	} finally {
+		if (prevAuto === undefined) delete process.env.MEGACOMPACT_AUTO;
+		else process.env.MEGACOMPACT_AUTO = prevAuto;
+		if (prevBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = prevBackoff;
+	}
+});
+
 test("cleanup", async () => {
 	// PGlite WASM close can hang; race with a timeout to prevent 40-min hangs.
 	try {

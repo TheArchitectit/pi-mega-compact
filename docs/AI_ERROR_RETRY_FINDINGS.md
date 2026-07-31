@@ -520,7 +520,61 @@ additive second gate below the threshold check — not a replacement.
 
 ---
 
-## 8. References
+## 8. R8: Router-Wrapped Infra Errors (2026-07-30, second incident)
+
+### Incident
+
+Same day, same false alarm — different phrasing. A flapping model router
+produced:
+
+> `{"message":"No healthy target selected for alias 'hf:zai-org/GLM-4.7'","type":"api_error"}`
+> `All targets failed: modal/zai-org/GLM-5.1-FP8. Last error: The socket connection was closed unexpectedly. …`
+> `All targets failed: … Last error: {"error": "Too many concurrent requests for this model"}`
+
+and the poisoned-context advise fired again.
+
+### Root Cause
+
+pi's console `Error: 500:` / `Error: 429:` prefix is **not part of the message
+body the extension receives** — so `5\d\d` and `429` in the pattern never
+matched. The router's own phrasings ("all targets failed", "no healthy target
+selected", "too many concurrent requests", "socket connection was closed
+unexpectedly") matched nothing either, and the 0-token signal then classified
+the turn `poisoned-context` on the FIRST occurrence.
+
+### Fix (R8)
+
+1. `KNOWN_RETRYABLE_TRANSIENT_PATTERN` extended: `all targets failed`,
+   `no healthy target`, `too many concurrent`, `fetch failed`, `socket`
+   (broadened from `socket hang up`), `closed unexpectedly`,
+   `connection … was closed`.
+2. `classifyError` now extracts a structured HTTP status from the message/error
+   object (`status` / `statusCode` / numeric `code`, 100–599) and trusts it
+   over phrasing: `429`/`5xx` → `transient`, `401`/`403` → `permanent`. The
+   check sits after context-overflow (400 "too long" must keep winning) and
+   before the poisoned signals.
+
+### Evidence
+
+- Regression tests (red-first): R8 classifier units (3 exact incident texts at
+  0 tokens, structured-status matrix) + R8(a)–(c) handler-level (first-turn and
+  ×3-repeat stay transient). `mega-compact-s38.test.js`: 63 pass / 0 fail.
+- Full suite: 0 failures across 89 files; lint + guardrails + regression clean.
+
+### Remaining gaps (queued)
+
+- **R9:** bare 0-token `error` with no informative text still poisons on turn 1
+  — should require repeat corroboration.
+- **R10:** no distinct "provider outage" UX — after retries exhaust, the user
+  gets silence instead of a calm "provider flapping, no /clear needed" advisory.
+- **R11:** decisions don't log the raw error payload — every incident requires
+  guessing the delivered text.
+- **R12:** alternating error texts reset the repeat counter — equivalent errors
+  with varied phrasing evade the threshold.
+
+---
+
+## 9. References
 
 - Sprint Spec: `docs/specs/s38-error-retry.md`
 - Commit: `ca1ba60360c8a5e0927bc9864a54e185027fadc7`

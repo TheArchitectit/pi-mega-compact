@@ -24,14 +24,28 @@
  *  - `etimedout` is Node's timeout errno lowercased — does NOT contain the
  *    substring "timeout".
  *  - `socket hang up` is Node's ECONNRESET *message*; the errno lives in
- *    error.code, which extractErrorSignature never sees. */
+ *    error.code, which extractErrorSignature never sees.
+ *  - router phrasings (all targets failed / no healthy target / too many
+ *    concurrent) -- pi's status prefix is console-only (2026-07-30 incident). */
 export const KNOWN_RETRYABLE_TRANSIENT_PATTERN =
-	/max(imum)? output token|rate[\s.-]?limit|429|too many requests|overloaded|5\d\d|internal server|bad gateway|service unavailable|network|time(?:d[\s-]?out|out)|etimedout|econnreset|econnrefused|epipe|eai_again|socket hang up|premature close|other side closed|connection (lost|refused|reset|aborted?)|stream (interrupted|closed|ended|failed)|disconnected/;
+	/max(imum)? output token|rate[\s.-]?limit|429|too many requests|too many concurrent|overloaded|5\d\d|internal server|bad gateway|service unavailable|all targets failed|no healthy target|fetch failed|network|time(?:d[\s-]?out|out)|etimedout|econnreset|econnrefused|epipe|eai_again|socket|closed unexpectedly|premature close|other side closed|connection (lost|refused|reset|aborted?|was closed)|stream (interrupted|closed|ended|failed)|disconnected/;
 
 /** R7: true when the error text carries a known-retryable transient marker.
  *  Defensively lowercases so callers can pass raw or normalized text. */
 export function isKnownRetryableTransient(text: string): boolean {
 	return KNOWN_RETRYABLE_TRANSIENT_PATTERN.test(text.toLowerCase());
+}
+
+/** R8: best-effort extraction of HTTP status from pi AgentMessage shapes. */
+function extractHttpStatus(m: Record<string, unknown>): number | undefined {
+	for (const outer of [m.error, m] as Array<Record<string, unknown> | undefined>) {
+		if (!outer || typeof outer !== 'object') continue;
+		for (const key of ['status', 'statusCode', 'code']) {
+			const v = (outer as Record<string, unknown>)[key];
+			if (typeof v === 'number' && v >= 100 && v <= 599) return v;
+		}
+	}
+	return undefined;
 }
 
 /** S38.2: classify a turn-end error/stop signal into a retry category.
@@ -60,6 +74,7 @@ export function classifyError(message: unknown):
 	// omit usage while still being transient (preserves all pre-R3 tests).
 	let usagePresent = false;
 	let totalTokens = 0;
+	let httpStatus: number | undefined;
 	if (typeof message === 'string') {
 		text = message;
 	} else if (message && typeof message === 'object') {
@@ -86,6 +101,7 @@ export function classifyError(message: unknown):
 				(typeof u.inputTokens === 'number' ? u.inputTokens : 0) +
 				(typeof u.outputTokens === 'number' ? u.outputTokens : 0);
 		}
+		httpStatus = extractHttpStatus(m as Record<string, unknown>);
 		const parts: string[] = [];
 		if (sr) parts.push(sr);
 		const c = m.content;
@@ -164,6 +180,10 @@ export function classifyError(message: unknown):
 	// The marker set is shared with the agent-handlers R3 repeat-upgrade guard
 	// (isKnownRetryableTransient) so the two never drift.
 	if (isKnownRetryableTransient(s)) return 'transient';
+	// R8: structured status wins over phrasing when present -- pi's console
+	// "Error: 500:" prefix is not part of the delivered text (2026-07-30).
+	if (httpStatus === 429 || (httpStatus !== undefined && httpStatus >= 500)) return 'transient';
+	if (httpStatus === 401 || httpStatus === 403) return 'permanent';
 	// --- poisoned-context (R3: ORDER AFTER specific transient markers, BEFORE
 	// the generic 'error' transient fallthrough) ---
 	// A DETERMINISTIC request-rejection that retrying cannot fix. Re-submitting
