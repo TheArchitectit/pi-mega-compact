@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import {
+	openStore,
 	recordPerfSample,
 	recordModelSnapshot,
 } from "../../src/store/sqlite.js";
@@ -88,6 +89,7 @@ interface ProviderCacheResponse {
 		inputRate: number;
 	} | null;
 	updatedAt: string;
+	windowMinutes?: number | null;
 }
 
 describe("/api/provider-cache", () => {
@@ -297,6 +299,59 @@ describe("/api/provider-cache", () => {
 			assert.equal(res.status, 200);
 			const body = (await res.json()) as ProviderCacheResponse;
 			assert.equal(body.savings, null);
+		});
+	});
+
+	test("GET 200 — windowMinutes: null when no minutes param", async () => {
+		const dir = freshDir("dash-pcwin-none-");
+		recordPerfSample(dir, "cache_hit_pct", 50, {
+			cacheRead: 100,
+			cacheWrite: 20,
+			input: 500,
+		});
+		await withServer("19459", dir, async (port) => {
+			const res = await fetch(`http://localhost:${port}/api/provider-cache`);
+			assert.equal(res.status, 200);
+			const body = (await res.json()) as ProviderCacheResponse;
+			assert.equal(body.windowMinutes, null);
+		});
+	});
+
+	test("GET 200 — ?minutes=30 filters to recent samples only", async () => {
+		const dir = freshDir("dash-pcwin30-");
+		const now = Date.now();
+		const oldTs = now - 120_000; // 2 min ago, outside 1-min window
+		const recentTs = now - 10_000; // 10 sec ago, inside 1-min window
+		const db = openStore(dir);
+		db.prepare(
+			`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+		).run(oldTs, "cache_hit_pct", 50, JSON.stringify({ cacheRead: 100, cacheWrite: 100, input: 800 }));
+		db.prepare(
+			`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+		).run(recentTs, "cache_hit_pct", 80, JSON.stringify({ cacheRead: 800, cacheWrite: 100, input: 100 }));
+		await withServer("19460", dir, async (port) => {
+			const res = await fetch(`http://localhost:${port}/api/provider-cache?minutes=1`);
+			assert.equal(res.status, 200);
+			const body = (await res.json()) as ProviderCacheResponse;
+			assert.equal(body.windowMinutes, 1);
+			assert.equal(body.cache.turnCount, 1, "only the recent sample");
+			assert.equal(body.cache.totalCacheRead, 800);
+		});
+	});
+
+	test("GET 200 — ?minutes=abc falls back to lifetime, windowMinutes null", async () => {
+		const dir = freshDir("dash-pcwin-bad-");
+		recordPerfSample(dir, "cache_hit_pct", 50, {
+			cacheRead: 100,
+			cacheWrite: 20,
+			input: 500,
+		});
+		await withServer("19461", dir, async (port) => {
+			const res = await fetch(`http://localhost:${port}/api/provider-cache?minutes=abc`);
+			assert.equal(res.status, 200);
+			const body = (await res.json()) as ProviderCacheResponse;
+			assert.equal(body.windowMinutes, null);
+			assert.equal(body.cache.turnCount, 1);
 		});
 	});
 });

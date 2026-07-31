@@ -27,4 +27,6 @@ export interface ProviderCacheResponse {
 	};
 	readonly savings: ProviderCacheSavings | null;
 	readonly updatedAt: string;
+	/** When non-null, the response is scoped to the last N minutes. */
+	readonly windowMinutes?: number | null;
 }

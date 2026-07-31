@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
-import { closeStore } from "./utils.js";
+import { closeStore, openStore } from "./utils.js";
 import {
 	recordPerfSample,
 	readPerfSamples,
@@ -15,6 +15,7 @@ import {
 	readProviderCacheLifetime,
 	readLatestCacheHitPct,
 	readProviderCacheForRepo,
+	readProviderCacheWindow,
 } from "./perf-samples.js";
 
 describe("perf-samples (v0.8.8)", () => {
@@ -207,6 +208,55 @@ describe("provider cache lifetime (A.4)", () => {
 			closeStore(emptyDir);
 			rmSync(seededDir, { recursive: true, force: true });
 			rmSync(emptyDir, { recursive: true, force: true });
+		}
+	});
+
+	it("readProviderCacheWindow: only recent samples when window excludes old", () => {
+		const wDir = mkdtempSync(join(tmpdir(), "mc-pcwin-"));
+		try {
+			const now = Date.now();
+			const oldTs = now - 120_000; // 2 min ago
+			const recentTs = now - 10_000; // 10 sec ago
+			const db = openStore(wDir);
+			// seed old sample (outside 1-minute window)
+			db.prepare(
+				`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+			).run(oldTs, "cache_hit_pct", 50, JSON.stringify({ cacheRead: 100, cacheWrite: 100, input: 800 }));
+			// seed recent sample (inside 1-minute window)
+			db.prepare(
+				`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+			).run(recentTs, "cache_hit_pct", 80, JSON.stringify({ cacheRead: 800, cacheWrite: 100, input: 100 }));
+
+			const lifetime = readProviderCacheLifetime(wDir);
+			assert.equal(lifetime.sampleCount, 2, "lifetime sees both samples");
+
+			const windowed = readProviderCacheWindow(wDir, 1); // 1-minute window
+			assert.equal(windowed.sampleCount, 1, "windowed sees only the recent sample");
+			assert.equal(windowed.totalCacheRead, 800);
+			assert.equal(windowed.totalCacheWrite, 100);
+			assert.equal(windowed.totalInput, 100);
+			assert.ok(windowed.firstSampleAt != null);
+			assert.ok(windowed.latestSampleAt != null);
+		} finally {
+			closeStore(wDir);
+			rmSync(wDir, { recursive: true, force: true });
+		}
+	});
+
+	it("readProviderCacheWindow: empty window returns zeros", () => {
+		const eDir = mkdtempSync(join(tmpdir(), "mc-pcwin2-"));
+		try {
+			const result = readProviderCacheWindow(eDir, 30);
+			assert.equal(result.sampleCount, 0);
+			assert.equal(result.avgHitPct, 0);
+			assert.equal(result.totalCacheRead, 0);
+			assert.equal(result.totalCacheWrite, 0);
+			assert.equal(result.totalInput, 0);
+			assert.equal(result.firstSampleAt, null);
+			assert.equal(result.latestSampleAt, null);
+		} finally {
+			closeStore(eDir);
+			rmSync(eDir, { recursive: true, force: true });
 		}
 	});
 });

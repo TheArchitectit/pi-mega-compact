@@ -140,27 +140,14 @@ export interface ProviderCacheLifetime {
 }
 
 /**
- * Read lifetime provider prompt cache aggregates from `perf_samples`.
- *
- * Aggregates `cache_creation_input_tokens` / `cache_read_input_tokens` from
- * the `meta` JSON column of `cache_hit_pct` samples (`json_extract`,
- * available in node:sqlite ≥22.13 / SQLite ≥3.38). Returns a zeroed
- * `ProviderCacheLifetime` when no samples exist (never undefined).
+ * Aggregate `cache_hit_pct` rows (ts + parsed meta) into a
+ * `ProviderCacheLifetime`. Shared by the lifetime and window readers so both
+ * use the identical aggregation formula. `meta` is parsed defensively
+ * (PREVENT-001 null-safe). Rows must be ascending by ts.
  */
-export function readProviderCacheLifetime(
-	stateDir: string = getStateDir(),
+function aggregateCacheRows(
+	rows: Array<{ ts: number; meta: string | null }>,
 ): ProviderCacheLifetime {
-	const db = openStore(stateDir);
-	const rows = db
-		.prepare(
-			`SELECT ts, meta FROM perf_samples
-       WHERE kind = ?
-       ORDER BY ts ASC`,
-		)
-		.all("cache_hit_pct") as Array<{
-		ts: number;
-		meta: string | null;
-	}>;
 	if (rows.length === 0) {
 		return {
 			sampleCount: 0,
@@ -220,6 +207,56 @@ export function readProviderCacheLifetime(
 		firstSampleAt: new Date(rows[0].ts).toISOString(),
 		latestSampleAt: new Date(rows[rows.length - 1].ts).toISOString(),
 	};
+}
+
+/**
+ * Read lifetime provider prompt cache aggregates from `perf_samples`.
+ *
+ * Aggregates `cache_creation_input_tokens` / `cache_read_input_tokens` from
+ * the `meta` JSON column of `cache_hit_pct` samples (`json_extract`,
+ * available in node:sqlite ≥22.13 / SQLite ≥3.38). Returns a zeroed
+ * `ProviderCacheLifetime` when no samples exist (never undefined).
+ */
+export function readProviderCacheLifetime(
+	stateDir: string = getStateDir(),
+): ProviderCacheLifetime {
+	const db = openStore(stateDir);
+	const rows = db
+		.prepare(
+			`SELECT ts, meta FROM perf_samples
+       WHERE kind = ?
+       ORDER BY ts ASC`,
+		)
+		.all("cache_hit_pct") as Array<{
+		ts: number;
+		meta: string | null;
+	}>;
+	return aggregateCacheRows(rows);
+}
+
+/**
+ * Read provider prompt cache aggregates over a trailing window of `minutes`
+ * (samples with ts >= now - minutes*60_000). Same aggregate shape as
+ * `readProviderCacheLifetime`; the existing lifetime reader is untouched.
+ * Returns a zeroed `ProviderCacheLifetime` when no samples fall in the window.
+ */
+export function readProviderCacheWindow(
+	stateDir: string = getStateDir(),
+	minutes: number,
+): ProviderCacheLifetime {
+	const db = openStore(stateDir);
+	const sinceTs = Date.now() - minutes * 60_000;
+	const rows = db
+		.prepare(
+			`SELECT ts, meta FROM perf_samples
+       WHERE kind = ? AND ts >= ?
+       ORDER BY ts ASC`,
+		)
+		.all("cache_hit_pct", sinceTs) as Array<{
+		ts: number;
+		meta: string | null;
+	}>;
+	return aggregateCacheRows(rows);
 }
 
 /**
