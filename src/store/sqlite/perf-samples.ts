@@ -137,6 +137,58 @@ export interface ProviderCacheLifetime {
 	firstSampleAt: string | null;
 	/** ISO timestamp of the most recent sample, or null if no samples. */
 	latestSampleAt: string | null;
+	/**
+	 * Per-model breakdown of aggregates (F4). Samples without a model tag are
+	 * omitted from this array (they remain in the flat totals above).
+	 */
+	byModel: ProviderCacheModelAgg[];
+}
+
+/** Per-model provider cache aggregate (F4). */
+export interface ProviderCacheModelAgg {
+	/** Model label (modelName || modelId from meta, or null for untagged). */
+	model: string;
+	/** Average hit rate for this model (0-100). */
+	hitPct: number;
+	/** Sum of cache-read tokens for this model. */
+	totalCacheRead: number;
+	/** Sum of cache-write tokens for this model. */
+	totalCacheWrite: number;
+	/** Number of samples for this model. */
+	sampleCount: number;
+}
+
+/**
+ * Extract a model label from parsed meta (modelName or modelId), or null.
+ */
+function extractModelLabel(
+	meta: Record<string, unknown>,
+): string | null {
+	if (typeof meta.modelName === "string" && meta.modelName.length > 0)
+		return meta.modelName;
+	if (typeof meta.modelId === "string" && meta.modelId.length > 0)
+		return meta.modelId;
+	return null;
+}
+
+/**
+ * Build sorted byModel array from the model aggregation map.
+ */
+function byModelFromMap(
+	map: Map<string, { sumCr: number; sumCw: number; sumInp: number; sumHitPct: number; hitCount: number; samples: number }>,
+): ProviderCacheModelAgg[] {
+	const out: ProviderCacheModelAgg[] = [];
+	for (const [model, m] of map) {
+		out.push({
+			model,
+			hitPct: m.hitCount > 0 ? m.sumHitPct / m.hitCount : 0,
+			totalCacheRead: m.sumCr,
+			totalCacheWrite: m.sumCw,
+			sampleCount: m.samples,
+		});
+	}
+	out.sort((a, b) => b.sampleCount - a.sampleCount);
+	return out;
 }
 
 /**
@@ -157,6 +209,7 @@ function aggregateCacheRows(
 			totalInput: 0,
 			firstSampleAt: null,
 			latestSampleAt: null,
+			byModel: [],
 		};
 	}
 	let totalCacheRead = 0;
@@ -164,6 +217,17 @@ function aggregateCacheRows(
 	let totalInput = 0;
 	let sumHitPct = 0;
 	let hitPctCount = 0;
+	const modelMap = new Map<
+		string,
+		{
+			sumCr: number;
+			sumCw: number;
+			sumInp: number;
+			sumHitPct: number;
+			hitCount: number;
+			samples: number;
+		}
+	>();
 	for (const r of rows) {
 		if (r.meta != null) {
 			let meta: Record<string, unknown> | null = null;
@@ -195,6 +259,31 @@ function aggregateCacheRows(
 					sumHitPct += (cr / denom) * 100;
 					hitPctCount++;
 				}
+				// Per-model grouping (F4)
+				const modelLabel = extractModelLabel(meta);
+				if (modelLabel != null) {
+					let m = modelMap.get(modelLabel);
+					if (!m) {
+						m = {
+							sumCr: 0,
+							sumCw: 0,
+							sumInp: 0,
+							sumHitPct: 0,
+							hitCount: 0,
+							samples: 0,
+						};
+						modelMap.set(modelLabel, m);
+					}
+					m.sumCr += cr;
+					m.sumCw += cw;
+					m.sumInp += inp;
+					m.samples++;
+					if (denom > 0) {
+						m.sumHitPct += (cr / denom) * 100;
+						m.hitCount++;
+					}
+				}
+				// Untagged samples are omitted from byModel
 			}
 		}
 	}
@@ -206,6 +295,7 @@ function aggregateCacheRows(
 		totalInput,
 		firstSampleAt: new Date(rows[0].ts).toISOString(),
 		latestSampleAt: new Date(rows[rows.length - 1].ts).toISOString(),
+		byModel: byModelFromMap(modelMap),
 	};
 }
 
@@ -214,7 +304,7 @@ function aggregateCacheRows(
  *
  * Aggregates `cache_creation_input_tokens` / `cache_read_input_tokens` from
  * the `meta` JSON column of `cache_hit_pct` samples (`json_extract`,
- * available in node:sqlite ≥22.13 / SQLite ≥3.38). Returns a zeroed
+ * available in node:sqlite >=22.13 / SQLite >=3.38). Returns a zeroed
  * `ProviderCacheLifetime` when no samples exist (never undefined).
  */
 export function readProviderCacheLifetime(
@@ -224,8 +314,8 @@ export function readProviderCacheLifetime(
 	const rows = db
 		.prepare(
 			`SELECT ts, meta FROM perf_samples
-       WHERE kind = ?
-       ORDER BY ts ASC`,
+	       WHERE kind = ?
+	       ORDER BY ts ASC`,
 		)
 		.all("cache_hit_pct") as Array<{
 		ts: number;
@@ -249,8 +339,8 @@ export function readProviderCacheWindow(
 	const rows = db
 		.prepare(
 			`SELECT ts, meta FROM perf_samples
-       WHERE kind = ? AND ts >= ?
-       ORDER BY ts ASC`,
+	       WHERE kind = ? AND ts >= ?
+	       ORDER BY ts ASC`,
 		)
 		.all("cache_hit_pct", sinceTs) as Array<{
 		ts: number;
@@ -258,6 +348,8 @@ export function readProviderCacheWindow(
 	}>;
 	return aggregateCacheRows(rows);
 }
+
+// ... keep every function below unchanged ...
 
 /**
  * Read the most recent `cache_hit_pct` value from `perf_samples`.
@@ -273,9 +365,9 @@ export function readLatestCacheHitPct(
 	const row = db
 		.prepare(
 			`SELECT value FROM perf_samples
-       WHERE kind = ?
-       ORDER BY ts DESC, id DESC
-       LIMIT 1`,
+	       WHERE kind = ?
+	       ORDER BY ts DESC, id DESC
+	       LIMIT 1`,
 		)
 		.get("cache_hit_pct") as { value: number } | undefined;
 	if (!row || typeof row.value !== "number" || !Number.isFinite(row.value))

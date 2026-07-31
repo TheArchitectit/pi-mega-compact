@@ -64,6 +64,7 @@ export default function CacheTab(): React.ReactElement {
 					modelLabel={providerCache.savings?.model ?? null}
 					firstTurnAt={providerCache.cache.firstTurnAt}
 					latestTurnAt={providerCache.cache.latestTurnAt}
+									byModel={providerCache.cache.byModel ?? []}
 				/>
 			) : null}
 

@@ -16,6 +16,19 @@ import {
 	fmtDate,
 	fmtRelativeTime,
 } from "../utils/format";
+import { lookupModelInputRate } from "@pricing";
+
+// ---------------------------------------------------------------------------
+// Per-model breakdown type (mirrors the API contract).
+// ---------------------------------------------------------------------------
+
+export interface ByModelEntry {
+	model: string;
+	hitPct: number;
+	totalCacheRead: number;
+	totalCacheWrite: number;
+	sampleCount: number;
+}
 
 // ---------------------------------------------------------------------------
 // Flattened props — destructured from ProviderCacheResponse in CacheTab.
@@ -44,6 +57,8 @@ export interface ProviderCacheCardProps {
 	firstTurnAt: string | null;
 	/** ISO timestamp of latest recorded turn. */
 	latestTurnAt: string | null;
+	/** Per-model breakdown (F4). */
+	byModel: ByModelEntry[];
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +151,47 @@ export function ProviderCacheCard(
 				label="Last Updated"
 				value={fmtRelativeTime(props.latestTurnAt)}
 			/>
+
+			{/* --- Per-model breakdown (F4) --- */}
+			{props.byModel.length > 0 && (
+				<>
+					<div className="ov-stat-section-label">Per Model</div>
+					{props.byModel.map((m) => {
+						const rate = lookupModelInputRate(m.model);
+						const cr =
+							rate != null ? (m.totalCacheRead / 1_000_000) * rate : null;
+						const cw =
+							rate != null ? (m.totalCacheWrite / 1_000_000) * rate : null;
+						return (
+							<div key={m.model} className="ov-stat-group">
+								<StatRow label="Model" value={m.model} />
+								<StatRow
+									label="Hit Rate"
+									value={`${m.hitPct.toFixed(1)}%`}
+									className={hitPctClass(m.hitPct)}
+								/>
+								<StatRow
+									label="Cache Read"
+									value={fmtTokens(m.totalCacheRead)}
+								/>
+								<StatRow
+									label="Cache Write"
+									value={fmtTokens(m.totalCacheWrite)}
+								/>
+								<StatRow label="Samples" value={String(m.sampleCount)} />
+								<StatRow
+									label="$ Saved (reads)"
+									value={cr != null ? fmtDollars(cr) : "\u2014"}
+								/>
+								<StatRow
+									label="Write Investment"
+									value={cw != null ? fmtDollars(cw) : "\u2014"}
+								/>
+							</div>
+						);
+					})}
+				</>
+			)}
 		</div>
 	);
 }

@@ -259,4 +259,124 @@ describe("provider cache lifetime (A.4)", () => {
 			rmSync(eDir, { recursive: true, force: true });
 		}
 	});
+
+	// -----------------------------------------------------------------------
+	// F4: Per-model breakdown
+	// -----------------------------------------------------------------------
+
+	it("byModel: groups correctly for 2+ models + untagged rows", () => {
+		const mDir = mkdtempSync(join(tmpdir(), "mc-f4bm-"));
+		try {
+			// Model A: 2 samples
+			// 900 read / 50 write / 50 input → hitPct = 90
+			recordPerfSample(mDir, "cache_hit_pct", 90, {
+				cacheRead: 900, cacheWrite: 50, input: 50,
+				modelName: "Claude Sonnet 4",
+			});
+			// 800 read / 100 write / 100 input → hitPct = 80
+			recordPerfSample(mDir, "cache_hit_pct", 80, {
+				cacheRead: 800, cacheWrite: 100, input: 100,
+				modelName: "Claude Sonnet 4",
+			});
+
+			// Model B: 1 sample
+			// 500 read / 200 write / 300 input → hitPct = 50
+			recordPerfSample(mDir, "cache_hit_pct", 50, {
+				cacheRead: 500, cacheWrite: 200, input: 300,
+				modelName: "GPT-4o",
+			});
+
+			// Untagged: 1 sample (no modelName/modelId)
+			recordPerfSample(mDir, "cache_hit_pct", 60, {
+				cacheRead: 100, cacheWrite: 50, input: 50,
+			});
+
+			const r = readProviderCacheLifetime(mDir);
+
+			// Flat totals include all 4 samples
+			assert.equal(r.sampleCount, 4);
+			assert.equal(r.totalCacheRead, 2300, "900+800+500+100");
+			assert.equal(r.totalCacheWrite, 400, "50+100+200+50");
+			assert.equal(r.totalInput, 500, "50+100+300+50");
+
+			// byModel: 2 entries, sorted by sampleCount desc → Claude Sonnet 4 first
+			assert.equal(r.byModel.length, 2, "two models, untagged omitted");
+
+			// Claude Sonnet 4: 2 samples, sumCr=1700, sumCw=150, avgHitPct=(90+80)/2=85
+			{
+				const m = r.byModel[0];
+				assert.equal(m.model, "Claude Sonnet 4");
+				assert.equal(m.sampleCount, 2);
+				assert.equal(m.totalCacheRead, 1700);
+				assert.equal(m.totalCacheWrite, 150);
+				assert.ok(Math.abs(m.hitPct - 85) < 0.01);
+			}
+
+			// GPT-4o: 1 sample, sumCr=500, sumCw=200, hitPct=50
+			{
+				const m = r.byModel[1];
+				assert.equal(m.model, "GPT-4o");
+				assert.equal(m.sampleCount, 1);
+				assert.equal(m.totalCacheRead, 500);
+				assert.equal(m.totalCacheWrite, 200);
+				assert.ok(Math.abs(m.hitPct - 50) < 0.01);
+			}
+		} finally {
+			closeStore(mDir);
+			rmSync(mDir, { recursive: true, force: true });
+		}
+	});
+
+	it("byModel: windowed + grouped combination", () => {
+		const wDir = mkdtempSync(join(tmpdir(), "mc-f4wg-"));
+		try {
+			const now = Date.now();
+			const oldTs = now - 120_000; // 2 min ago (outside 1-min window)
+			const recentTs = now - 10_000; // 10 sec ago (inside 1-min window)
+
+			const db = openStore(wDir);
+			// Old sample — Model A
+			db.prepare(
+				`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+			).run(oldTs, "cache_hit_pct", 90, JSON.stringify({
+				cacheRead: 900, cacheWrite: 50, input: 50,
+				modelName: "claude",
+			}));
+			// Recent sample — Model A
+			db.prepare(
+				`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+			).run(recentTs, "cache_hit_pct", 80, JSON.stringify({
+				cacheRead: 800, cacheWrite: 100, input: 100,
+				modelName: "claude",
+			}));
+			// Recent sample — Model B
+			db.prepare(
+				`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+			).run(recentTs, "cache_hit_pct", 50, JSON.stringify({
+				cacheRead: 500, cacheWrite: 200, input: 300,
+				modelName: "gpt4",
+			}));
+
+			// Lifetime: 3 samples, 2 models at oldTs+recentTs
+			const lifetime = readProviderCacheLifetime(wDir);
+			assert.equal(lifetime.sampleCount, 3);
+			assert.equal(lifetime.byModel.length, 2);
+
+			// Windowed (1 min): only 2 recent samples, 2 models
+			const windowed = readProviderCacheWindow(wDir, 1);
+			assert.equal(windowed.sampleCount, 2);
+			assert.equal(windowed.totalCacheRead, 1300, "800+500");
+			assert.equal(windowed.byModel.length, 2, "both models in window");
+
+			// claude in window: 1 sample, 800 read / 100 write / 100 input
+			const claude = windowed.byModel.find((m) => m.model === "claude")!;
+			assert.ok(claude != null);
+			assert.equal(claude.sampleCount, 1);
+			assert.equal(claude.totalCacheRead, 800);
+			assert.equal(claude.hitPct, 80);
+		} finally {
+			closeStore(wDir);
+			rmSync(wDir, { recursive: true, force: true });
+		}
+	});
 });

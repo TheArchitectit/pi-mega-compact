@@ -73,7 +73,13 @@ export function registerPerfHandler(
 						runtime.currentStateDir,
 						"cache_hit_pct",
 						hitPct,
-						{ input: u.input, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite },
+						{
+							input: u.input,
+							cacheRead: u.cacheRead,
+							cacheWrite: u.cacheWrite,
+							modelName: runtime.currentModel?.modelName,
+							modelId: runtime.currentModel?.modelId,
+						},
 					);
 			}
 		}

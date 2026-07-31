@@ -147,6 +147,7 @@ export type {
 export type {
 	ProviderCacheSavings,
 	ProviderCacheResponse,
+	ProviderCacheByModel,
 } from "./provider-cache.js";
 
 export { ENDPOINTS } from "./endpoints.js";

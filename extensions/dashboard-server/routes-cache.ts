@@ -97,6 +97,13 @@ export function handleProviderCache(
 					totalInput: number;
 					firstTurnAt: string | null;
 					latestTurnAt: string | null;
+					byModel: Array<{
+						model: string;
+						hitPct: number;
+						totalCacheRead: number;
+						totalCacheWrite: number;
+						sampleCount: number;
+					}>;
 				};
 				savings: {
 					cacheReadSaved: number;
@@ -116,6 +123,7 @@ export function handleProviderCache(
 					totalInput: lifetime.totalInput,
 					firstTurnAt: lifetime.firstSampleAt,
 					latestTurnAt: lifetime.latestSampleAt,
+					byModel: lifetime.byModel,
 				},
 				savings,
 				updatedAt: new Date().toISOString(),

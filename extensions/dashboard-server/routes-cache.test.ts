@@ -71,6 +71,14 @@ async function withServer<T>(
 	}
 }
 
+interface ProviderCacheByModel {
+	model: string;
+	hitPct: number;
+	totalCacheRead: number;
+	totalCacheWrite: number;
+	sampleCount: number;
+}
+
 interface ProviderCacheResponse {
 	cache: {
 		avgHitPct: number;
@@ -80,6 +88,7 @@ interface ProviderCacheResponse {
 		totalInput: number;
 		firstTurnAt: string | null;
 		latestTurnAt: string | null;
+		byModel: ProviderCacheByModel[];
 	};
 	savings: {
 		cacheReadSaved: number;
@@ -353,5 +362,66 @@ describe("/api/provider-cache", () => {
 			assert.equal(body.windowMinutes, null);
 			assert.equal(body.cache.turnCount, 1);
 		});
+	});
+});
+test("GET 200 — byModel in lifetime and windowed (F4)", async () => {
+	const dir = freshDir("dash-f4bm-");
+	const now = Date.now();
+	const db = openStore(dir);
+
+	// Model A: 2 samples
+	db.prepare(
+		`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+	).run(now - 120_000, "cache_hit_pct", 90, JSON.stringify({
+		cacheRead: 900, cacheWrite: 50, input: 50,
+		modelName: "Sonnet Model",
+	}));
+	db.prepare(
+		`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+	).run(now - 10_000, "cache_hit_pct", 80, JSON.stringify({
+		cacheRead: 800, cacheWrite: 100, input: 100,
+		modelName: "Sonnet Model",
+	}));
+
+	// Model B: 1 sample
+	db.prepare(
+		`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+	).run(now - 5_000, "cache_hit_pct", 50, JSON.stringify({
+		cacheRead: 500, cacheWrite: 200, input: 300,
+		modelName: "GPT Model",
+	}));
+
+	// Untagged: 1 sample
+	db.prepare(
+		`INSERT INTO perf_samples (ts, kind, value, meta) VALUES (?, ?, ?, ?)`,
+	).run(now, "cache_hit_pct", 60, JSON.stringify({
+		cacheRead: 100, cacheWrite: 50, input: 50,
+	}));
+
+	await withServer("19462", dir, async (port) => {
+		// Lifetime
+		const res1 = await fetch(`http://localhost:${port}/api/provider-cache`);
+		assert.equal(res1.status, 200);
+		const body1 = (await res1.json()) as ProviderCacheResponse;
+		assert.equal(body1.cache.turnCount, 4, "4 samples total");
+		assert.ok(Array.isArray(body1.cache.byModel), "byModel is array");
+		assert.equal(body1.cache.byModel.length, 2, "2 models; untagged omitted");
+
+		const sonnet = body1.cache.byModel.find((m: ProviderCacheByModel) => m.model === "Sonnet Model")!;
+		assert.ok(sonnet, "Sonnet Model present");
+		assert.equal(sonnet.sampleCount, 2);
+		assert.equal(sonnet.totalCacheRead, 1700);
+
+		const gpt = body1.cache.byModel.find((m: ProviderCacheByModel) => m.model === "GPT Model")!;
+		assert.ok(gpt, "GPT Model present");
+		assert.equal(gpt.sampleCount, 1);
+		assert.equal(gpt.totalCacheRead, 500);
+
+		// Windowed (30 min): should include all 4 (all within 30 min)
+		const res2 = await fetch(`http://localhost:${port}/api/provider-cache?minutes=30`);
+		assert.equal(res2.status, 200);
+		const body2 = (await res2.json()) as ProviderCacheResponse;
+		assert.equal(body2.windowMinutes, 30);
+		assert.equal(body2.cache.byModel.length, 2, "windowed also has 2 models");
 	});
 });
