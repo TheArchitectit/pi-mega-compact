@@ -23,6 +23,7 @@ import {
 	isKnownRetryableTransient,
 } from "./error-classifier.js";
 import { safeSendUserMessage } from "./send-safe.js";
+import { maybeSendProviderOutageAdvisory } from "./outage-advisor.js";
 import { vectorStats } from "../../src/vectorStore.js";
 
 /** Register agent/turn tracking event handlers. */
@@ -445,6 +446,9 @@ export function registerAgentHandlers(
 					runtime.rt.consecutiveErrors = 0; // S38.6: circuit-breaker reset on success
 					// R4: a successful assistant turn consumes any queued nudge.
 					runtime.rt.retryNudgePending = false;
+					// R10: reset outage advisory so a recovered-then-flapping
+					// provider re-advises once per episode.
+					runtime.rt.providerOutageAdvised = false;
 				} else if (effectiveCategory === "compaction-noop") {
 					// (4) pi race / manual compact catch — NOT retryable. The compaction
 					// already succeeded via pi's native path; retrying would race again
@@ -607,6 +611,10 @@ export function registerAgentHandlers(
 					}
 					// S38.6: circuit-breaker — stop retrying after too many consecutive errors.
 					runtime.rt.consecutiveErrors++;
+					// R10: send calm "provider outage" advisory once per episode.
+					await maybeSendProviderOutageAdvisory(
+						effectiveCategory, runtime, pi, config,
+					);
 					if (runtime.rt.consecutiveErrors > config.maxConsecutiveErrors) {
 						runtime.dashboard.event("error_retry_circuit_open", {
 							consecutive: runtime.rt.consecutiveErrors,

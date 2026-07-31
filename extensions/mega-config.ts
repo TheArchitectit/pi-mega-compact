@@ -107,6 +107,10 @@ export interface MegaConfig {
 	 *  classification is upgraded to 'poisoned-context' (the stateful repeat
 	 *  signal). Default 3. Raise to make the upgrade less aggressive. */
 	poisonedContextRepeatThreshold: number;
+	/** R10: consecutive transient errors at which a calm "provider outage"
+	 *  advisory is sent to the user (distinct from the poisoned /clear advise).
+	 *  Default 3. `0` disables the advisory entirely. */
+	providerOutageAdviseThreshold: number;
 	/** S29: override the auto-compact fire point for tiered configs, as a
 	 *  fraction of the context window (e.g. 0.85). null = inherit the tier's
 	 *  tierPct (default; preserves existing fire points). The context-handler
@@ -296,6 +300,10 @@ export function loadConfig(): MegaConfig {
 		errorRetrySessionMax: envFlag("MEGACOMPACT_ERROR_RETRY_SESSION_MAX", 3),
 		poisonedContextRepeatThreshold: envFlag(
 			"MEGACOMPACT_POISONED_REPEAT_THRESHOLD",
+			3,
+		),
+		providerOutageAdviseThreshold: envFlag(
+			"MEGACOMPACT_PROVIDER_OUTAGE_THRESHOLD",
 			3,
 		),
 		autoPctTrigger,

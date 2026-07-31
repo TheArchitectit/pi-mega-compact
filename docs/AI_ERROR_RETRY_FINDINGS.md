@@ -565,8 +565,9 @@ the turn `poisoned-context` on the FIRST occurrence.
 
 - **R9 (done):** bare 0-token errors now corroborate via the repeat detector —
   first turn transient, upgrade at threshold.
-- **R10:** no distinct "provider outage" UX — after retries exhaust, the user
-  gets silence instead of a calm "provider flapping, no /clear needed" advisory.
+- **R10 (done):** provider-outage advisory now fires once per episode after
+  `providerOutageAdviseThreshold` (default 3) consecutive transient failures,
+  resets on success. Distinct from poisoned-context /clear advise.
 - **R11:** decisions don't log the raw error payload — every incident requires
   guessing the delivered text.
 - **R12:** alternating error texts reset the repeat counter — equivalent errors

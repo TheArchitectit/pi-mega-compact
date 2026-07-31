@@ -318,14 +318,22 @@ test("S38: R1 burst of immediate transient errors fires 1 nudge (dedup), rest su
 	// the queued nudge (deliverAs:'followUp') has not been consumed by a new
 	// agent turn. errorRetryCount still advances for each error turn, so the
 	// per-burst max + circuit breaker still bound the burst.
-	const h = harness();
-	for (let i = 0; i < 5; i++) await s38TurnEnd(h, "error", `internal server error ${i}`);
-	assert.equal(h.sendUserMessages.length, 1, "R1 dedup: 1 nudge in burst (rest suppressed)");
-	// The 6th turn reaches count=6 > max=5 → exhausted (count advances even for dedup'd turns).
-	await s38TurnEnd(h, "error", "internal server error 5");
-	assert.equal(h.sendUserMessages.length, 1, "exhausted: still 1 nudge (no 6th)");
-	assert.ok(eventTypes(h.stateDir).includes("error_retry_exhausted"), "exhausted event logged on max+1");
-	assert.ok(eventTypes(h.stateDir).includes("error_retry_dedup_skip"), "dedup_skip events logged for suppressed turns");
+	// R10: disable outage advisory so this test isolates nudge dedup only.
+	const prevOutage = process.env.MEGACOMPACT_PROVIDER_OUTAGE_THRESHOLD;
+	process.env.MEGACOMPACT_PROVIDER_OUTAGE_THRESHOLD = "0";
+	try {
+		const h = harness();
+		for (let i = 0; i < 5; i++) await s38TurnEnd(h, "error", `internal server error ${i}`);
+		assert.equal(h.sendUserMessages.length, 1, "R1 dedup: 1 nudge in burst (rest suppressed)");
+		// The 6th turn reaches count=6 > max=5 → exhausted (count advances even for dedup'd turns).
+		await s38TurnEnd(h, "error", "internal server error 5");
+		assert.equal(h.sendUserMessages.length, 1, "exhausted: still 1 nudge (no 6th)");
+		assert.ok(eventTypes(h.stateDir).includes("error_retry_exhausted"), "exhausted event logged on max+1");
+		assert.ok(eventTypes(h.stateDir).includes("error_retry_dedup_skip"), "dedup_skip events logged for suppressed turns");
+	} finally {
+		if (prevOutage === undefined) delete process.env.MEGACOMPACT_PROVIDER_OUTAGE_THRESHOLD;
+		else process.env.MEGACOMPACT_PROVIDER_OUTAGE_THRESHOLD = prevOutage;
+	}
 });
 
 test("S38: retry fires 1x for permanent errors then stops", async () => {
@@ -514,8 +522,11 @@ test("R6(a): 10 consecutive identical 0-token transient failures produce at most
 	// exercises the SESSION CAP, not the repeat signal.
 	const prevBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
 	const prevRepeat = process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD;
+	const prevOutage = process.env.MEGACOMPACT_PROVIDER_OUTAGE_THRESHOLD;
 	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
 	process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD = "999";
+	// R10: disable the outage advisory so this test isolates the session cap only.
+	process.env.MEGACOMPACT_PROVIDER_OUTAGE_THRESHOLD = "0";
 	try {
 		const h = harness();
 		for (let i = 0; i < 10; i++) {
@@ -531,6 +542,8 @@ test("R6(a): 10 consecutive identical 0-token transient failures produce at most
 		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = prevBackoff;
 		if (prevRepeat === undefined) delete process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD;
 		else process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD = prevRepeat;
+		if (prevOutage === undefined) delete process.env.MEGACOMPACT_PROVIDER_OUTAGE_THRESHOLD;
+		else process.env.MEGACOMPACT_PROVIDER_OUTAGE_THRESHOLD = prevOutage;
 	}
 });
 
@@ -565,9 +578,12 @@ test("R6(c): transient burst retries with backoff gating — second immediate nu
 	const prevBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
 	const prevSession = process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX;
 	const prevRepeat = process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD;
+	const prevOutage = process.env.MEGACOMPACT_PROVIDER_OUTAGE_THRESHOLD;
 	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
 	process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX = "999"; // don't let session cap bind
 	process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD = "999"; // don't let repeat upgrade bind
+	// R10: disable the outage advisory so this test isolates backoff gating only.
+	process.env.MEGACOMPACT_PROVIDER_OUTAGE_THRESHOLD = "0";
 	try {
 		const h = harness();
 		// Turn 1: transient → nudge 1 fires (pending=true, backoff=1ms).
@@ -589,6 +605,8 @@ test("R6(c): transient burst retries with backoff gating — second immediate nu
 		else process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX = prevSession;
 		if (prevRepeat === undefined) delete process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD;
 		else process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD = prevRepeat;
+		if (prevOutage === undefined) delete process.env.MEGACOMPACT_PROVIDER_OUTAGE_THRESHOLD;
+		else process.env.MEGACOMPACT_PROVIDER_OUTAGE_THRESHOLD = prevOutage;
 	}
 });
 
@@ -1004,6 +1022,129 @@ test("R9 handler: bare 0-token error x3 upgrades to poisoned at threshold (corro
 		if (origBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
 		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = origBackoff;
 		delete process.env.MEGACOMPACT_AUTO;
+	}
+});
+
+
+// ---- R10 tests: provider outage advisory (2026-07-30) ----
+
+test("R10: 3 consecutive transient failures fire one provider-outage advisory (no /clear)", async () => {
+	const origBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	const origSession = process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX;
+	const origRepeat = process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD;
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX = "999";
+	process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD = "999";
+	try {
+		const h = harness();
+		for (let i = 0; i < 3; i++) {
+			await s38TurnEnd(h, "error", "socket hang up");
+			await h.fire("turn_start", { type: "turn_start", turnIndex: i + 2 }, h.ctx());
+			await new Promise((r) => setTimeout(r, 3));
+		}
+		const providerMessages = h.sendUserMessages.filter((m) => m.includes("provider is having issues"));
+		assert.equal(providerMessages.length, 1, "exactly one provider-outage advisory");
+		const clearMessages = h.sendUserMessages.filter((m) => m.includes("/clear"));
+		assert.equal(clearMessages.length, 0, "no /clear in outage advisory");
+		assert.ok(eventTypes(h.stateDir).includes("error_retry"), "error_retry events present");
+	} finally {
+		if (origBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = origBackoff;
+		if (origSession === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX;
+		else process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX = origSession;
+		if (origRepeat === undefined) delete process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD;
+		else process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD = origRepeat;
+	}
+});
+
+test("R10: advisory fires once per outage episode", async () => {
+	const origBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	const origSession = process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX;
+	const origRepeat = process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD;
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX = "999";
+	process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD = "999";
+	try {
+		const h = harness();
+		// Episode 1: 5 consecutive transient failures → 1 advisory at consecutiveErrors=3.
+		for (let i = 0; i < 5; i++) {
+			await s38TurnEnd(h, "error", "socket hang up");
+			await h.fire("turn_start", { type: "turn_start", turnIndex: i + 2 }, h.ctx());
+			await new Promise((r) => setTimeout(r, 3));
+		}
+		assert.equal(h.sendUserMessages.filter((m) => m.includes("provider is having issues")).length, 1, "episode 1: 1 advisory after 5 transient turns");
+
+		// Success turn: resets consecutiveErrors + providerOutageAdvised.
+		await s38TurnEnd(h, "stop");
+		await h.fire("turn_start", { type: "turn_start", turnIndex: 8 }, h.ctx());
+		await new Promise((r) => setTimeout(r, 3));
+
+		// Episode 2: 3 more transient failures → second advisory.
+		for (let i = 0; i < 3; i++) {
+			await s38TurnEnd(h, "error", "socket hang up");
+			await h.fire("turn_start", { type: "turn_start", turnIndex: 9 + i }, h.ctx());
+			await new Promise((r) => setTimeout(r, 3));
+		}
+		assert.equal(h.sendUserMessages.filter((m) => m.includes("provider is having issues")).length, 2, "episode 2: exactly 2 advisories total");
+	} finally {
+		if (origBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = origBackoff;
+		if (origSession === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX;
+		else process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX = origSession;
+		if (origRepeat === undefined) delete process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD;
+		else process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD = origRepeat;
+	}
+});
+
+test("R10: MEGACOMPACT_PROVIDER_OUTAGE_THRESHOLD=0 disables the advisory", async () => {
+	const origBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	const origSession = process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX;
+	const origRepeat = process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD;
+	const origThreshold = process.env.MEGACOMPACT_PROVIDER_OUTAGE_THRESHOLD;
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX = "999";
+	process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD = "999";
+	process.env.MEGACOMPACT_PROVIDER_OUTAGE_THRESHOLD = "0";
+	try {
+		const h = harness();
+		for (let i = 0; i < 5; i++) {
+			await s38TurnEnd(h, "error", "socket hang up");
+			await h.fire("turn_start", { type: "turn_start", turnIndex: i + 2 }, h.ctx());
+			await new Promise((r) => setTimeout(r, 3));
+		}
+		const providerMessages = h.sendUserMessages.filter((m) => m.includes("provider is having issues"));
+		assert.equal(providerMessages.length, 0, "threshold=0: zero advisory messages");
+	} finally {
+		if (origBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = origBackoff;
+		if (origSession === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX;
+		else process.env.MEGACOMPACT_ERROR_RETRY_SESSION_MAX = origSession;
+		if (origRepeat === undefined) delete process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD;
+		else process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD = origRepeat;
+		if (origThreshold === undefined) delete process.env.MEGACOMPACT_PROVIDER_OUTAGE_THRESHOLD;
+		else process.env.MEGACOMPACT_PROVIDER_OUTAGE_THRESHOLD = origThreshold;
+	}
+});
+
+test("R10: poisoned-context path does NOT fire the outage advisory", async () => {
+	// Single "Request failed — please retry." 0-token turn: poisoned on turn 1
+	// (auto=false to skip the compact attempt).
+	const origBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	const origAuto = process.env.MEGACOMPACT_AUTO;
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	process.env.MEGACOMPACT_AUTO = "false";
+	try {
+		const h = harness();
+		await s38TurnEndUsage(h, "error", "Request failed — please retry.", 0);
+		// /clear advise should fire.
+		assert.ok(h.sendUserMessages.some((m) => m.includes("/clear")), "poisoned: /clear advise fires");
+		// No provider-outage advisory.
+		assert.equal(h.sendUserMessages.filter((m) => m.includes("provider is having issues")).length, 0, "poisoned path: no outage advisory");
+	} finally {
+		if (origBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = origBackoff;
+		if (origAuto === undefined) delete process.env.MEGACOMPACT_AUTO;
+		else process.env.MEGACOMPACT_AUTO = origAuto;
 	}
 });
 
