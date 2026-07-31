@@ -13,7 +13,10 @@ import {
 } from "../src/store/sqlite.js";
 import { appendMirrorMessages } from "./mega-events/mirror-append.js";
 import { readHwm, dropHwm } from "./mega-events/context-hwm.js";
+import { stagedForTail, withRecallTail } from "./mega-events/recall-tail.js";
 import { epochIdFor } from "../src/mirror/epoch.js";
+import type { MegaConfig } from "./mega-config.js";
+import type { MegaRuntime } from "./mega-runtime.js";
 
 function makeTmp(): string {
 	return mkdtempSync(join(tmpdir(), "mega-events-test-"));
@@ -318,5 +321,137 @@ describe("mega-events: HWM incremental mirror append", () => {
 		// HWM re-established
 		const hwm = readHwm(db, sessionId);
 		assert.equal(hwm!.lastSeq, 2, "HWM re-established");
+	});
+});
+
+// ---- S53: Recall Tail Injection ----
+// Unit tests for stagedForTail / withRecallTail. The context-handler and
+// turn_end wiring are exercised via the s38 handler harness where a full pi
+// mock exists; here we pin the helper's invariants directly.
+
+/** Minimal MegaRuntime stub exposing only the fields recall-tail touches. */
+function runtimeStub(over: Partial<{
+	pendingRecallBlock: string | undefined;
+	pendingMemoryRecallBlock: string | undefined;
+	perfTurnStart: number;
+}> = {}): MegaRuntime {
+	return {
+		pendingRecallBlock: over.pendingRecallBlock,
+		pendingMemoryRecallBlock: over.pendingMemoryRecallBlock,
+		perfTurnStart: over.perfTurnStart ?? 0,
+		rt: { recallInjectedThisTurn: false, lastCompactAt: 0 },
+	} as unknown as MegaRuntime;
+}
+
+const cfgOn = { recallTailInject: true } as MegaConfig;
+const cfgOff = { recallTailInject: false } as MegaConfig;
+
+describe("S53 recall-tail: stagedForTail", () => {
+	it("T: staged when a recall block is pending and flag ON", () => {
+		assert.equal(stagedForTail(runtimeStub({ pendingRecallBlock: "r" }), cfgOn), true);
+	});
+	it("T: staged when a memory block is pending and flag ON", () => {
+		assert.equal(stagedForTail(runtimeStub({ pendingMemoryRecallBlock: "m" }), cfgOn), true);
+	});
+	it("T: NOT staged when nothing pending", () => {
+		assert.equal(stagedForTail(runtimeStub(), cfgOn), false);
+	});
+	it("T: NOT staged when flag OFF even if blocks pending", () => {
+		assert.equal(stagedForTail(runtimeStub({ pendingRecallBlock: "r" }), cfgOff), false);
+	});
+});
+
+describe("S53 recall-tail: withRecallTail", () => {
+	it("T1: appends a single user-role tail with composed cp+mem block", () => {
+		const rt = runtimeStub({ pendingRecallBlock: "cp", pendingMemoryRecallBlock: "mem" });
+		const out = withRecallTail([msg("a")], rt, cfgOn);
+		assert.equal(out.length, 2, "one tail appended");
+		assert.equal(out[1].role, "user", "tail is user-role (PREVENT-PI-003)");
+		assert.equal((out[1] as { content: unknown }).content, "cp\n\nmem", "composed block");
+		assert.equal(rt.rt.recallInjectedThisTurn, true, "flag set on inject");
+	});
+
+	it("T2: prefix preservation — shared prefix length unchanged, only tail differs", () => {
+		const priorTurn = [msg("a"), msg("b")];
+		const rt = runtimeStub({ pendingRecallBlock: "recall" });
+		const out = withRecallTail(priorTurn, rt, cfgOn);
+		assert.equal(out.length, 3);
+		assert.deepEqual(out.slice(0, 2), priorTurn, "prefix messages byte-identical");
+		assert.equal((out[2] as { content: unknown }).content, "recall");
+	});
+
+	it("T3: pin across tool loop — two calls same turn produce byte-identical tail (stable timestamp)", () => {
+		const rt = runtimeStub({ pendingRecallBlock: "r", perfTurnStart: 12345 });
+		const out1 = withRecallTail([msg("a")], rt, cfgOn);
+		const out2 = withRecallTail([msg("a"), msg("b")], rt, cfgOn);
+		const ts1 = (out1[1] as { timestamp: number }).timestamp;
+		const ts2 = (out2[2] as { timestamp: number }).timestamp;
+		assert.equal(ts1, ts2, "tail timestamp stable within the turn");
+		assert.equal((out1[1] as { content: unknown }).content, (out2[2] as { content: unknown }).content, "tail content identical");
+	});
+
+	it("T5: flag OFF returns messages unchanged (byte-identical pre-sprint parity)", () => {
+		const rt = runtimeStub({ pendingRecallBlock: "r" });
+		const in_ = [msg("a"), msg("b")];
+		const out = withRecallTail(in_, rt, cfgOff);
+		assert.equal(out, in_, "flag OFF: same array reference returned");
+		assert.equal(rt.rt.recallInjectedThisTurn, false, "flag OFF: inject flag never set");
+	});
+
+	it("T8: nothing staged returns messages unchanged and does not set inject flag", () => {
+		const rt = runtimeStub();
+		const in_ = [msg("a")];
+		const out = withRecallTail(in_, rt, cfgOn);
+		assert.equal(out, in_, "no-op when nothing staged");
+		assert.equal(rt.rt.recallInjectedThisTurn, false);
+	});
+
+	it("T10: non-fatal — a throw inside the helper returns messages unchanged", () => {
+		// Force a throw by making pendingRecallBlock's toString throw via a
+		// getter. The try/catch must swallow it and return the input unchanged.
+		const rt = {
+			pendingRecallBlock: { toString: () => { throw new Error("boom"); } } as unknown as string,
+			pendingMemoryRecallBlock: undefined,
+			perfTurnStart: 0,
+			rt: { recallInjectedThisTurn: false, lastCompactAt: 0 },
+		} as unknown as MegaRuntime;
+		const in_ = [msg("a")];
+		const out = withRecallTail(in_, rt, cfgOn);
+		assert.equal(out, in_, "non-fatal: input returned on throw");
+	});
+
+	it("T: tool-pair safety — appended after a toolResult cannot split a pair", () => {
+		// A transcript ending in a toolResult is a complete prefix; the tail
+		// lands after it, so no toolCall/toolResult pair is split.
+		const toolResult = { role: "user", content: [{ type: "toolResult", id: "t1" }] } as any;
+		const rt = runtimeStub({ pendingRecallBlock: "r" });
+		const out = withRecallTail([msg("q"), toolResult], rt, cfgOn);
+		assert.equal(out.length, 3);
+		assert.deepEqual(out[1], toolResult, "toolResult position unchanged");
+		assert.equal(out[2].role, "user", "tail appended after the toolResult");
+	});
+});
+
+describe("S53 recall-tail: mirror exclusion", () => {
+	it("T9: injected tail message does NOT appear in raw_transcript", () => {
+		// withRecallTail only touches the VIEW array; appendMirrorMessages runs
+		// on the real transcript separately. Verify the helper's output, when
+		// fed through the mirror, does not double-count the tail.
+		const dir = mkdtempSync(join(tmpdir(), "mega-events-test-s53-"));
+		try {
+			const db = openStore(dir);
+			const realTranscript = [msg("a"), msg("b")];
+			appendMirrorMessages(db, realTranscript, "s53-sess", epochIdFor("s53-sess"), undefined);
+			assert.equal(countRawTranscript(db), 2, "real transcript mirrored");
+			// Now simulate the view augmentation — the tail is NOT in the real transcript.
+			const rt = runtimeStub({ pendingRecallBlock: "recall-block" });
+			const view = withRecallTail(realTranscript, rt, cfgOn);
+			assert.equal(view.length, 3, "view has the tail");
+			// Re-running the mirror on the REAL transcript (not the view) adds nothing.
+			appendMirrorMessages(db, realTranscript, "s53-sess", epochIdFor("s53-sess"), undefined);
+			assert.equal(countRawTranscript(db), 2, "tail never reached raw_transcript (PREVENT-PI: view-only)");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });

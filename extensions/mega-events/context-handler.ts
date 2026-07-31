@@ -36,6 +36,7 @@ import {
 	type MegaConfig,
 } from "../mega-config.js";
 import { appendMirrorMessages } from "./mirror-append.js";
+import { stagedForTail, withRecallTail } from "./recall-tail.js";
 
 /** Register the context event handler (live-trim auto-trigger). */
 export function registerContextHandler(
@@ -61,6 +62,16 @@ export function registerContextHandler(
 		const usage = ctx.getContextUsage();
 		const pct = usage?.percent;
 		const messages = event.messages;
+		// S53: helper to inject the staged recall/memory block as a user-role
+		// tail message at any view-return point. Returns undefined when nothing
+		// is staged (or the flag is OFF) so the caller falls through to its
+		// normal return. The F3 mirror append (above the gates) runs on the
+		// REAL transcript before any view is built, so the injected tail never
+		// reaches raw_transcript (PREVENT-PI: append-only, view-only).
+		const tailResult = (msgs?: readonly AgentMessage[]) => {
+			if (!stagedForTail(runtime, config)) return undefined;
+			return { messages: withRecallTail(msgs ?? messages, runtime, config) };
+		};
 		// Always track context for the dashboard/widget, even when auto is off.
 		// (v0.8 regression: !config.auto gate sat above this, leaving ctx stats
 		// null -> widget '?% / ?/?' when auto disabled. Track first, THEN gate.)
@@ -83,7 +94,11 @@ export function registerContextHandler(
 		runtime.lastCtxPercent = pct ?? null;
 		runtime.lastCtxWindow = usage?.contextWindow ?? 0;
 		runtime.snapshot(ctx);
-		if (!config.auto) return;
+		if (!config.auto) {
+			const tailed = tailResult();
+			if (tailed) return tailed;
+			return;
+		}
 
 		const view = viewForFallback ?? runtime.engineView(messages);
 
@@ -127,18 +142,18 @@ export function registerContextHandler(
 			// custom tier OR tiered-but-pct-unavailable → token gate (S27 fallback).
 			if (currentTokens < runtime.effectiveThreshold) {
 				runtime.diagCtxFastGate++;
-				return;
+				return tailResult() ?? undefined;
 			}
 			const check = autoCompactCheck(currentTokens, runtime.effectiveThreshold); // SERVER-STYLE CONFIRM (local)
 			if (!check.shouldCompact) {
 				runtime.diagCtxNoCompact++;
-				return;
+				return tailResult() ?? undefined;
 			}
 			gatePassed = true;
 		}
 		if (!gatePassed) {
 			runtime.diagCtxFastGate++;
-			return;
+			return tailResult() ?? undefined;
 		}
 
 		// D.2: Replay MUST be exempt from debounce — replay is free (no compute,
@@ -171,9 +186,8 @@ export function registerContextHandler(
 				runtime.snapshot(ctx);
 				// v0.8.7: shallow-copy the cached summary so pi's transformContext can't
 				// mutate the shared reference across replays (audit P3).
-				return {
-					messages: [{ ...runtime.trimCache.summaryAgentMsg }, ...recent],
-				};
+				const replayView = [{ ...runtime.trimCache.summaryAgentMsg }, ...recent];
+				return tailResult(replayView) ?? { messages: replayView };
 			}
 			// else: context grew enough → fall through to re-compact (cache is stale)
 		}
@@ -183,7 +197,7 @@ export function registerContextHandler(
 		const now = Date.now();
 		if (now < runtime.debounceUntil) {
 			runtime.diagCtxDebounce++;
-			return;
+			return tailResult() ?? undefined;
 		}
 		runtime.debounceUntil = now + 2000;
 
@@ -212,11 +226,10 @@ export function registerContextHandler(
 				runtime.diagLiveTrimFires++;
 				runtime.diagLiveTrimReplays++;
 				runtime.snapshot(ctx);
-				return {
-					messages: [{ ...runtime.trimCache.summaryAgentMsg }, ...recent],
-				};
+				const skipView = [{ ...runtime.trimCache.summaryAgentMsg }, ...recent];
+				return tailResult(skipView) ?? { messages: skipView };
 			}
-			return;
+			return tailResult() ?? undefined;
 		}
 
 		// S27 DB-mirror: write checkpoint_epoch with deterministic nonce.
@@ -382,7 +395,7 @@ export function registerContextHandler(
 					viewLen: view.length,
 					anchorUserMessages,
 				});
-				return; // unsafe / below anchor floor — no trim this call
+				return tailResult() ?? undefined; // unsafe / below anchor floor — no trim this call
 			}
 			const summaryMsg = liveTrimSummaryMessage({
 				compactedFrom: ran.result.compactedFrom,
@@ -437,10 +450,10 @@ export function registerContextHandler(
 				ctxPct: pct,
 				ctxTokens: usage?.tokens ?? null,
 			});
-			return { messages: [summaryAgentMsg, ...recent] };
+			return tailResult([summaryAgentMsg, ...recent]) ?? { messages: [summaryAgentMsg, ...recent] };
 		} catch {
 			runtime.diagCtxThrown++;
-			return; // non-fatal: no trim this call; the next context event retries
+			return tailResult() ?? undefined; // non-fatal: no trim this call; the next context event retries
 		}
 	});
 }

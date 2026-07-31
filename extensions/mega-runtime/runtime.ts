@@ -103,6 +103,8 @@ export class MegaRuntime {
 		poisonedAdviseSent: false,
 		providerOutageAdvised: false,
 		poisonedCompactSignatures: new Set(),
+		// S53: tracks whether withRecallTail injected this turn (consumed at turn_end).
+		recallInjectedThisTurn: false,
 		poisonedCount: 0,
 	};
 	// v0.8.6 cache-stability: the cached live-trim view for the current

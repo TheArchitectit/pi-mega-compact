@@ -70,6 +70,7 @@ export function resetRuntimeImpl(
 		poisonedAdviseSent: false,
 		providerOutageAdvised: false,
 		poisonedCompactSignatures: new Set(),
+		recallInjectedThisTurn: false,
 		poisonedCount: 0,
 	};
 	self.trimCache = null; // v0.8.6: never replay a stale trim into a new session

@@ -267,6 +267,16 @@ export function registerAgentHandlers(
 		runtime.dashboard.event("turn_end", { turnIndex: event.turnIndex });
 		runtime.snapshot(ctx);
 
+		// S53: consume staged recall blocks ONLY if they were actually injected
+		// into a view this turn. If no context event fired (edge: turn ended
+		// before any LLM call), recallInjectedThisTurn stays false and the blocks
+		// remain staged for the next turn's first context event.
+		if (config.recallTailInject && runtime.rt.recallInjectedThisTurn) {
+			runtime.pendingRecallBlock = undefined;
+			runtime.pendingMemoryRecallBlock = undefined;
+			runtime.rt.recallInjectedThisTurn = false;
+		}
+
 		// S43 (per-turn tracking): record one turn row with the cached metrics so
 		// the turn layer is queryable + forkable. Best-effort + non-fatal: a write
 		// failure never breaks the agent loop.

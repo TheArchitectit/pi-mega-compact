@@ -72,6 +72,8 @@ export interface SessionRuntime {
 	// R3c: one guarded compact per error signature (avoids re-compacting the
 	// same poisoned region repeatedly).
 	poisonedCompactSignatures: Set<string>; // signatures already attempted a compact for
+	// S53: recall tail injection state — tracks whether a tail was injected this turn.
+	recallInjectedThisTurn: boolean;
 	// R7: poisoned-context event counter for the dashboard.
 	poisonedCount: number;
 }

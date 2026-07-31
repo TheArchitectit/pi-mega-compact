@@ -160,6 +160,10 @@ export interface MegaConfig {
 	 *  a hit whose summary is ≥ dedupSim similar to a live message — "dedupe on
 	 *  inline/read" so we never re-inject context already resident. */
 	windowDedupe: boolean;
+	/** S53: Recall Tail Injection — inject staged recall block as a user message at
+	 *  the tail of the view when auto is OFF AND no trim action is needed. Default ON
+	 *  (true). When false, restores the pre-sprint systemPrompt prepend behavior. */
+	recallTailInject: boolean;
 	debug: boolean;
 	/** Master reconciliation: TUI shutdown widget (MEGACOMPACT_TUI_WIDGET=0 to disable). */
 	tuiWidget: boolean;
@@ -322,6 +326,7 @@ export function loadConfig(): MegaConfig {
 		memoryReviewInterval: envFlag("MEGACOMPACT_MEMORY_REVIEW_INTERVAL", 10),
 		recallMaxTokens: envFlag("MEGACOMPACT_RECALL_MAX_TOKENS", 1500),
 		windowDedupe: envBool("MEGACOMPACT_WINDOW_DEDUPE", true),
+		recallTailInject: envBool("MEGACOMPACT_RECALL_TAIL_INJECT", true),
 		tuiWidget: envBool("MEGACOMPACT_TUI_WIDGET", true),
 		// D.1: env-overridable recompact delta (minimum context growth % before
 		// re-compacting instead of replaying the cached live trim). Default 50.

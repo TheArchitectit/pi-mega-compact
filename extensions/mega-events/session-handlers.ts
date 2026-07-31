@@ -169,13 +169,20 @@ export function registerSessionHandlers(
 		} catch {
 			/* non-fatal: intent polling never breaks the agent loop */
 		}
-		const cpBlock = runtime.pendingRecallBlock;
-		const memBlock = runtime.pendingMemoryRecallBlock;
-		if (!cpBlock && !memBlock) return;
-		runtime.pendingRecallBlock = undefined;
-		runtime.pendingMemoryRecallBlock = undefined;
-		const composed = [cpBlock, memBlock].filter(Boolean).join("\n\n");
-		return { systemPrompt: `${event.systemPrompt}\n\n${composed}` };
+		// S53: when recallTailInject is ON, the staged blocks are injected as a
+		// user-role tail message by the context handler (recall-tail.ts), NOT
+		// here. This prepend path is the legacy behavior (flag OFF = byte-
+		// identical pre-sprint). captureModel + rewind-intent consumption above
+		// stay unconditional regardless of the flag.
+		if (!config.recallTailInject) {
+			const cpBlock = runtime.pendingRecallBlock;
+			const memBlock = runtime.pendingMemoryRecallBlock;
+			if (!cpBlock && !memBlock) return;
+			runtime.pendingRecallBlock = undefined;
+			runtime.pendingMemoryRecallBlock = undefined;
+			const composed = [cpBlock, memBlock].filter(Boolean).join("\n\n");
+			return { systemPrompt: `${event.systemPrompt}\n\n${composed}` };
+		}
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {

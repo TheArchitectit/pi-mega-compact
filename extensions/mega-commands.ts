@@ -79,7 +79,7 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
       runtime.setStatus(ctx, `mega-compact: recalled ${r.toInject.length} chkpt${crossRepo ? " (cross-repo)" : ""}`);
       ctx.ui.notify(
         `[mega-compact] recall staged ${r.toInject.length} checkpoint(s) for "${query}"${crossRepo ? " (cross-repo)" : ""}:\n${list}\n` +
-          `(injected at the next turn via system prompt)`,
+          `(injected at the tail of the next turn's context)`,
       );
      } catch (e) {
        ctx.ui.notify(`[mega-compact] /mega-recall failed: ${String(e)}`);
