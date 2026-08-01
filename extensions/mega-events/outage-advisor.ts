@@ -39,7 +39,7 @@ export async function maybeSendProviderOutageAdvisory(
 	effectiveCategory: string,
 	runtime: MegaRuntime,
 	pi: ExtensionAPI,
-	config: { providerOutageAdviseThreshold: number },
+	config: { providerOutageAdviseThreshold: number; advisoryChannel?: boolean },
 	detail?: OutageDetail,
 ): Promise<void> {
 	if (effectiveCategory !== "transient") return;
@@ -66,8 +66,14 @@ export async function maybeSendProviderOutageAdvisory(
 		...(detail?.rawText !== undefined ? { rawText: detail.rawText } : {}),
 	});
 
-	await safeSendUserMessage(
-		pi,
-		`[mega-compact] the provider is having issues (${runtime.rt.consecutiveErrors} consecutive failures — timeouts/5xx/rate-limits). Retries are bounded and continue automatically; your context is fine — do NOT clear or reset it. Work resumes as soon as the provider recovers.`,
-	);
+	// Advisory is dashboard-only (events tab + log). No user-visible message —
+	// injecting into the conversation scares users and triggers false-positive
+	// re-classification of the resulting turn (2026-07-31 incident).
+	if (!config.advisoryChannel) {
+		// Legacy path (flag OFF): user-role message injection.
+		await safeSendUserMessage(
+			pi,
+			`[mega-compact] the provider is having issues (${runtime.rt.consecutiveErrors} consecutive failures — timeouts/5xx/rate-limits). Retries are bounded and continue automatically; your context is fine — do NOT clear or reset it. Work resumes as soon as the provider recovers.`,
+		);
+	}
 }

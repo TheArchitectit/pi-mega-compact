@@ -584,9 +584,12 @@ export function registerAgentHandlers(
 						rawText: (errSig || '').slice(0, 500),
 						...(detail.httpStatus !== undefined ? { httpStatus: detail.httpStatus } : {}),
 					});
-					// (b) one-per-session advise message (throttled by poisonedAdviseSent)
-					if (!runtime.rt.poisonedAdviseSent) {
-						runtime.rt.poisonedAdviseSent = true;
+					// (b) throttle flag: set unconditionally so the advise fires at
+					// most once per session regardless of channel.
+					runtime.rt.poisonedAdviseSent = true;
+					// Legacy flag-OFF path: user-role advise message.
+					// Default ON (advisoryChannel=true): dashboard-only, no user message.
+					if (!config.advisoryChannel) {
 						// PREVENT-PI-003: user-role sendUserMessage only.
 						await safeSendUserMessage(
 							pi,

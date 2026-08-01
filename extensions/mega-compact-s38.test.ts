@@ -184,11 +184,11 @@ test("S38: classifyError returns null for 'length' stopReason (S28 guard)", () =
 	assert.equal(classifyErrorFn({ stopReason: "length" }), null);
 });
 
-test("S38: classifyError returns 'transient' for mid-response errors with no stopReason", () => {
-	assert.equal(classifyErrorFn({}), "transient");
-	assert.equal(classifyErrorFn({ content: [] }), "transient");
-	assert.equal(classifyErrorFn({ stopReason: undefined }), "transient");
-	assert.equal(classifyErrorFn({ stopReason: "" }), "transient");
+test("S38: classifyError returns null for missing stopReason without corroborating error/0-tokens", () => {
+	assert.equal(classifyErrorFn({}), null);
+	assert.equal(classifyErrorFn({ content: [] }), null);
+	assert.equal(classifyErrorFn({ stopReason: undefined }), null);
+	assert.equal(classifyErrorFn({ stopReason: "" }), null);
 });
 
 test("S38: classifyError returns 'transient' for error objects with message field", () => {
@@ -198,22 +198,40 @@ test("S38: classifyError returns 'transient' for error objects with message fiel
 	assert.equal(classifyErrorFn({ error: "Connection lost" }), "transient");
 });
 
-test("S38: classifyError returns 'transient' for mid-response stream failures in content", () => {
-	assert.equal(classifyErrorFn({ content: [{ type: "text", text: "Processing... Error: connection reset" }] }), "transient");
+test("S38: classifyError returns null for content with error text but no error field (not corroborated)", () => {
+	// "Error: connection reset" is in the content text, not in a message.error field.
+	// Without an error field or 0-token usage, missing stopReason is not stream death.
+	assert.equal(classifyErrorFn({ content: [{ type: "text", text: "Processing... Error: connection reset" }] }), null);
 	assert.equal(classifyErrorFn({ content: [{ type: "text", text: "Here is the answer..." }], stopReason: "error" }), "transient");
 });
 
-test("S38: classifyError returns 'transient' for partial content with NO stopReason (stream died after emitting text)", () => {
-	// The mid-response disconnect case: provider streamed partial content then
-	// died without a stopReason. MUST be transient (retryable), NOT null.
-	assert.equal(classifyErrorFn({ role: "assistant", content: [{ type: "text", text: "partial response..." }], stopReason: undefined }), "transient");
-	assert.equal(classifyErrorFn({ role: "assistant", content: [{ type: "text", text: "Here is the start of the answer" }] }), "transient");
-	assert.equal(classifyErrorFn({ role: "assistant", content: "partial response..." }), "transient");
+test("S38: classifyError returns null for partial content with NO stopReason and no error", () => {
+	// Without an error field or 0-token usage, partial content without stopReason
+	// is not classified as stream death — it may be a normal completion from a
+	// runtime that omits stopReason.
+	assert.equal(classifyErrorFn({ role: "assistant", content: [{ type: "text", text: "partial response..." }], stopReason: undefined }), null);
+	assert.equal(classifyErrorFn({ role: "assistant", content: [{ type: "text", text: "Here is the start of the answer" }] }), null);
+	assert.equal(classifyErrorFn({ role: "assistant", content: "partial response..." }), null);
 });
 
-test("S38: classifyError returns null for success stopReasons even with empty content", () => {
-	assert.equal(classifyErrorFn({ stopReason: "stop", content: [] }), null);
-	assert.equal(classifyErrorFn({ stopReason: "tool_use", content: [] }), null);
+test("S38: classifyError returns 'transient' for missing stopReason + error field (corroborated)", () => {
+	assert.equal(classifyErrorFn({ stopReason: undefined, error: { message: "stream crashed" } }), "transient");
+	assert.equal(classifyErrorFn({ stopReason: "", error: "stream error" }), "transient");
+});
+
+test("S38: classifyError returns 'transient' for missing stopReason + 0-token usage (corroborated)", () => {
+	assert.equal(classifyErrorFn({ stopReason: undefined, usage: { inputTokens: 0, outputTokens: 0 } }), "transient");
+	assert.equal(classifyErrorFn({ stopReason: "", usage: { inputTokens: 0, outputTokens: 0 } }), "transient");
+});
+
+test("S38: classifyError returns null for normal completion stopReasons from multi-agent runtimes", () => {
+	assert.equal(classifyErrorFn({ stopReason: "endTurn" }), null);
+	assert.equal(classifyErrorFn({ stopReason: "end_turn" }), null);
+	assert.equal(classifyErrorFn({ stopReason: "maxTokens" }), null);
+	assert.equal(classifyErrorFn({ stopReason: "max_tokens" }), null);
+	assert.equal(classifyErrorFn({ stopReason: "complete" }), null);
+	assert.equal(classifyErrorFn({ stopReason: "finished" }), null);
+	assert.equal(classifyErrorFn({ stopReason: "done" }), null);
 });
 
 test("S38: classifyError returns 'compaction-noop' for 'Already compacted' text", () => {
@@ -403,12 +421,12 @@ test("S38: MEGACOMPACT_AUTO_RETRY_TRANSIENT_MAX=0 disables transient retries cle
 	}
 });
 
-test("S38: retry fires for mid-response errors (no stopReason — stream died silently)", async () => {
+test("S38: no retry for missing stopReason without error/0-token usage", async () => {
+	// Missing stopReason alone is not sufficient — must have error or 0-token.
 	const h = harness();
 	const lowCtx = h.ctx({ isIdle: () => true, hasPendingMessages: () => false, getContextUsage: () => ({ tokens: 100, contextWindow: 200000, percent: 0 }) });
 	await h.fire("turn_end", { type: "turn_end", turnIndex: 1, message: { role: "assistant" } }, lowCtx);
-	assert.equal(h.sendUserMessages.length, 1, "mid-response silent failure: 1 retry nudge fired");
-	assert.ok(eventTypes(h.stateDir).includes("error_retry"), "error_retry event logged for mid-response failure");
+	assert.equal(h.sendUserMessages.length, 0, "no retry nudge for missing stopReason without error/0-token");
 });
 
 test("S38: retry fires for error objects with message field", async () => {
@@ -418,15 +436,15 @@ test("S38: retry fires for error objects with message field", async () => {
 	assert.equal(h.sendUserMessages.length, 1, "error object with message: 1 retry nudge fired");
 });
 
-test("S38: retry fires for partial content with no stopReason (disconnect after emitting text)", async () => {
+test("S38: retry fires for partial content with no stopReason BUT an error field (corroborated)", async () => {
 	// The post-resume disconnect case: provider streamed partial content then
-	// died mid-stream with NO stopReason. Must fire a retry nudge.
+	// died mid-stream with NO stopReason. Corroborated by the error field.
 	const h = harness();
 	const lowCtx = h.ctx({ isIdle: () => true, hasPendingMessages: () => false, getContextUsage: () => ({ tokens: 100, contextWindow: 200000, percent: 0 }) });
 	await h.fire("turn_end", {
 		type: "turn_end",
 		turnIndex: 1,
-		message: { role: "assistant", content: [{ type: "text", text: "Here is the start of the answer" }], stopReason: undefined },
+		message: { role: "assistant", content: [{ type: "text", text: "Here is the start of the answer" }], stopReason: undefined, error: { message: "connection reset" } },
 	}, lowCtx);
 	assert.equal(h.sendUserMessages.length, 1, "partial-content mid-response failure: 1 retry nudge fired");
 	assert.ok(eventTypes(h.stateDir).includes("error_retry"), "error_retry event logged for partial-content failure");
@@ -572,16 +590,12 @@ test("R6(b): poisoned-context fires zero retry nudges and exactly one advise mes
 		const h = harness();
 		// 0-token generic "request failed" (no transient marker) → poisoned.
 		await s38TurnEndUsage(h, "error", "Request failed — please retry.", 0);
-		assert.equal(h.sendUserMessages.length, 1, "poisoned: exactly one advise message");
-		assert.ok(
-			h.sendUserMessages[0].includes("/clear") || h.sendUserMessages[0].includes("/new"),
-			"advise mentions /clear or /new",
-		);
+		assert.equal(h.sendUserMessages.filter((m) => m.includes("/clear")).length, 0, "poisoned: no /clear user message (dashboard-only)");
 		assert.ok(eventTypes(h.stateDir).includes("poisoned_context"), "poisoned_context event logged");
 		assert.ok(!eventTypes(h.stateDir).includes("error_retry"), "poisoned: zero retry nudges (no error_retry event)");
 		// Second poisoned turn: advise throttled to one per session.
 		await s38TurnEndUsage(h, "error", "Request failed — please retry.", 0);
-		assert.equal(h.sendUserMessages.length, 1, "poisoned: advise throttled (one per session)");
+		assert.equal(h.sendUserMessages.filter((m) => m.includes("/clear")).length, 0, "poisoned: no /clear user message (dashboard-only throttled)");
 		assert.ok(eventTypes(h.stateDir).filter((t) => t === "poisoned_context").length >= 2, "poisoned_context logged each turn");
 	} finally {
 		if (prevAuto === undefined) delete process.env.MEGACOMPACT_AUTO;
@@ -681,7 +695,7 @@ test("R3: repeated identical transient error text upgrades to poisoned-context a
 		// Turn 3: repeatCount=3 ≥ threshold → upgraded to poisoned. No nudge, advise fires.
 		await s38TurnEnd(h, "error", "5xx server error");
 		assert.ok(eventTypes(h.stateDir).includes("poisoned_context"), "repeat threshold reached: poisoned_context event logged");
-		assert.ok(h.sendUserMessages.some((m) => m.includes("/clear") || m.includes("/new")), "repeat threshold: advise message fired");
+		assert.ok(!h.sendUserMessages.some((m) => m.includes("/clear") || m.includes("/new")), "repeat threshold: no /clear user message (dashboard-only)");
 	} finally {
 		if (prevAuto === undefined) delete process.env.MEGACOMPACT_AUTO;
 		else process.env.MEGACOMPACT_AUTO = prevAuto;
@@ -846,8 +860,8 @@ test("R7(f): repeated non-network transient still upgrades to poisoned-context (
 			"non-network repeat: poisoned_context event logged",
 		);
 		assert.ok(
-			h.sendUserMessages.some((m) => m.includes("/clear")),
-			"non-network repeat: /clear advise fired",
+			!h.sendUserMessages.some((m) => m.includes("/clear")),
+			"non-network repeat: no /clear user message (dashboard-only)",
 		);
 	} finally {
 		if (prevAuto === undefined) delete process.env.MEGACOMPACT_AUTO;
@@ -869,7 +883,7 @@ test("R7(g): 'Request failed — please retry.' 0-token stays poisoned-context (
 			eventTypes(h.stateDir).includes("poisoned_context"),
 			"deterministic rejection: poisoned_context event logged",
 		);
-		assert.ok(h.sendUserMessages.some((m) => m.includes("/clear")), "deterministic rejection: /clear advise fired");
+		assert.ok(!h.sendUserMessages.some((m) => m.includes("/clear")), "deterministic rejection: no /clear user message (dashboard-only)");
 	} finally {
 		if (prevAuto === undefined) delete process.env.MEGACOMPACT_AUTO;
 		else process.env.MEGACOMPACT_AUTO = prevAuto;
@@ -1031,8 +1045,8 @@ test("R9 handler: bare 0-token error x3 upgrades to poisoned at threshold (corro
 		}
 		// poisoned_context event should eventually be logged
 		assert.ok(eventTypes(h.stateDir).includes("poisoned_context"), "bare 0-token x3 must log poisoned_context");
-		// Exactly one /clear advise total
-		assert.equal(h.sendUserMessages.filter((m) => m.includes("/clear")).length, 1, "bare 0-token x3 must produce exactly one /clear advise");
+		// R13: dashboard-only default — no user message, but poisoned event fires.
+		assert.equal(h.sendUserMessages.filter((m) => m.includes("/clear")).length, 0, "bare 0-token x3: no /clear user message (dashboard-only default)");
 	} finally {
 		if (origBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
 		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = origBackoff;
@@ -1057,8 +1071,10 @@ test("R10: 3 consecutive transient failures fire one provider-outage advisory (n
 			await h.fire("turn_start", { type: "turn_start", turnIndex: i + 2 }, h.ctx());
 			await new Promise((r) => setTimeout(r, 3));
 		}
+		// R13: default advisoryChannel=true → dashboard-only, no user message.
 		const providerMessages = h.sendUserMessages.filter((m) => m.includes("provider is having issues"));
-		assert.equal(providerMessages.length, 1, "exactly one provider-outage advisory");
+		assert.equal(providerMessages.length, 0, "no provider-outage user message (dashboard-only default)");
+		assert.ok(eventTypes(h.stateDir).includes("provider_outage_advised"), "provider_outage_advised dashboard event logged");
 		const clearMessages = h.sendUserMessages.filter((m) => m.includes("/clear"));
 		assert.equal(clearMessages.length, 0, "no /clear in outage advisory");
 		assert.ok(eventTypes(h.stateDir).includes("error_retry"), "error_retry events present");
@@ -1087,7 +1103,9 @@ test("R10: advisory fires once per outage episode", async () => {
 			await h.fire("turn_start", { type: "turn_start", turnIndex: i + 2 }, h.ctx());
 			await new Promise((r) => setTimeout(r, 3));
 		}
-		assert.equal(h.sendUserMessages.filter((m) => m.includes("provider is having issues")).length, 1, "episode 1: 1 advisory after 5 transient turns");
+		// R13: default advisoryChannel=true → dashboard-only, no user message.
+		assert.equal(h.sendUserMessages.filter((m) => m.includes("provider is having issues")).length, 0, "episode 1: no user message (dashboard-only default)");
+		assert.equal(eventTypes(h.stateDir).filter((t) => t === "provider_outage_advised").length, 1, "episode 1: 1 dashboard event");
 
 		// Success turn: resets consecutiveErrors + providerOutageAdvised.
 		await s38TurnEnd(h, "stop");
@@ -1100,7 +1118,8 @@ test("R10: advisory fires once per outage episode", async () => {
 			await h.fire("turn_start", { type: "turn_start", turnIndex: 9 + i }, h.ctx());
 			await new Promise((r) => setTimeout(r, 3));
 		}
-		assert.equal(h.sendUserMessages.filter((m) => m.includes("provider is having issues")).length, 2, "episode 2: exactly 2 advisories total");
+		assert.equal(h.sendUserMessages.filter((m) => m.includes("provider is having issues")).length, 0, "episode 2: no user message (dashboard-only default)");
+		assert.equal(eventTypes(h.stateDir).filter((t) => t === "provider_outage_advised").length, 2, "episode 2: 2 dashboard events total");
 	} finally {
 		if (origBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
 		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = origBackoff;
@@ -1152,7 +1171,7 @@ test("R10: poisoned-context path does NOT fire the outage advisory", async () =>
 		const h = harness();
 		await s38TurnEndUsage(h, "error", "Request failed — please retry.", 0);
 		// /clear advise should fire.
-		assert.ok(h.sendUserMessages.some((m) => m.includes("/clear")), "poisoned: /clear advise fires");
+		assert.ok(!h.sendUserMessages.some((m) => m.includes("/clear")), "poisoned: /clear advise fires");
 		// No provider-outage advisory.
 		assert.equal(h.sendUserMessages.filter((m) => m.includes("provider is having issues")).length, 0, "poisoned path: no outage advisory");
 	} finally {
@@ -1372,7 +1391,8 @@ test("R12: alternating-but-equivalent marker-less errors upgrade at threshold", 
 		await h.fire("turn_start", { type: "turn_start", turnIndex: 4 }, h.ctx());
 		await new Promise((r) => setTimeout(r, 3));
 		assert.ok(eventTypes(h.stateDir).includes("poisoned_context"), "equivalent alternating errors must upgrade to poisoned at threshold");
-		assert.equal(h.sendUserMessages.filter((m) => m.includes("/clear")).length, 1, "exactly one /clear advise");
+		// R13: default advisoryChannel=true → dashboard-only, no /clear user message.
+		assert.equal(h.sendUserMessages.filter((m) => m.includes("/clear")).length, 0, "no /clear user message (dashboard-only default)");
 	} finally {
 		if (origBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
 		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = origBackoff;

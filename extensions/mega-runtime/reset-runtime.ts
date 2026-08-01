@@ -75,6 +75,7 @@ export function resetRuntimeImpl(
 		poisonedCompactSignatures: new Set(),
 		recallInjectedThisTurn: false,
 		poisonedCount: 0,
+		extensionInitiatedTurn: false,
 	};
 	self.trimCache = null; // v0.8.6: never replay a stale trim into a new session
 	self.statusKey = undefined;

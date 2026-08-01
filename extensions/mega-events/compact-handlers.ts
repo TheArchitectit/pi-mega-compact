@@ -69,6 +69,7 @@ async function nudgeResume(pi: ExtensionAPI, runtime: MegaRuntime): Promise<void
 		const now = Date.now();
 		if (now >= runtime.resumeNudgeUntil) {
 			runtime.resumeNudgeUntil = now + 30_000;
+			runtime.rt.extensionInitiatedTurn = true; // R13: suppress self-classification
 			await safeSendUserMessage(
 				pi,
 				"[mega-compact] continue from the compacted context above.",

@@ -81,6 +81,11 @@ export interface SessionRuntime {
 	recallInjectedThisTurn: boolean;
 	// R7: poisoned-context event counter for the dashboard.
 	poisonedCount: number;
+	// R13: set when the extension sends a nudge (error-retry, resume, compact)
+	// that will trigger the next turn. The turn_end handler checks this flag and
+	// skips error classification for extension-initiated turns — prevents the
+	// feedback loop where our own nudges get misclassified as errors.
+	extensionInitiatedTurn: boolean;
 }
 
 // ── ownVersion ─────────────────────────────────────────────────────────────

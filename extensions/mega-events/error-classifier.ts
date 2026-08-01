@@ -102,7 +102,7 @@ export function classifyErrorDetailed(message: unknown): ClassifyErrorDetail {
 		const sr = typeof m.stopReason === 'string' ? m.stopReason : '';
 		if (sr === 'length') return { category: null, signal: 'length-guard' };
 		if (sr === 'aborted') return { category: 'cancelled', signal: 'cancelled' };
-		if (sr === 'stop' || sr === 'toolUse' || sr === 'tool_use') return { category: null, signal: 'success' };
+		if (/^(stop|tool_?use|end_?turn|max_?tokens|complete|finished|done)$/i.test(sr)) return { category: null, signal: 'success' };
 		const usage = m.usage;
 		usagePresent = usage != null && typeof usage === 'object';
 		if (usagePresent) {
@@ -133,9 +133,20 @@ export function classifyErrorDetailed(message: unknown): ClassifyErrorDetail {
 			}
 		}
 		if (!sr) {
-			const r: ClassifyErrorDetail = { category: 'transient', signal: 'stream-death-no-stopreason' };
-			if (httpStatus !== undefined) r.httpStatus = httpStatus;
-			return r;
+			// A missing stopReason alone is not sufficient evidence of stream death.
+			// Require at least one corroborating signal: an error field, or 0 total tokens
+			// (indicating the stream died before producing anything). A normal completion
+			// from a runtime that omits stopReason has content and tokens — not an error.
+			const hasError = (m.error != null && m.error !== undefined && m.error !== '') ||
+				(typeof (m as { errorMessage?: unknown }).errorMessage === 'string' && (m as { errorMessage?: string }).errorMessage !== '');
+			if (hasError || (usagePresent && totalTokens === 0)) {
+				const r: ClassifyErrorDetail = { category: 'transient', signal: 'stream-death-no-stopreason' };
+				if (httpStatus !== undefined) r.httpStatus = httpStatus;
+				return r;
+			}
+			// No stopReason, no error field, tokens present — likely a normal completion
+			// from a runtime that omits stopReason (pi-crew, etc.). Not an error.
+			return { category: null, signal: 'success' };
 		}
 		text = parts.join(' ');
 	}

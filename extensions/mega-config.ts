@@ -111,6 +111,10 @@ export interface MegaConfig {
 	 *  advisory is sent to the user (distinct from the poisoned /clear advise).
 	 *  Default 3. `0` disables the advisory entirely. */
 	providerOutageAdviseThreshold: number;
+	/** R13: when true (default), poisoned-context and provider-outage advisories
+	 *  are dashboard-only (events tab + log) — no user-visible message injection.
+	 *  When false, the legacy sendUserMessage path runs (byte-identical pre-R13). */
+	advisoryChannel: boolean;
 	/** S29: override the auto-compact fire point for tiered configs, as a
 	 *  fraction of the context window (e.g. 0.85). null = inherit the tier's
 	 *  tierPct (default; preserves existing fire points). The context-handler
@@ -310,6 +314,7 @@ export function loadConfig(): MegaConfig {
 			"MEGACOMPACT_PROVIDER_OUTAGE_THRESHOLD",
 			3,
 		),
+		advisoryChannel: envBool("MEGACOMPACT_ADVISORY_CHANNEL", true),
 		autoPctTrigger,
 		autoInlineK: envFlag("MEGACOMPACT_AUTO_INLINE_K", 3),
 		dedupSim: Number(process.env.MEGACOMPACT_DEDUP_SIM ?? "0.9"),

@@ -109,6 +109,7 @@ export class MegaRuntime {
 		// S53: tracks whether withRecallTail injected this turn (consumed at turn_end).
 		recallInjectedThisTurn: false,
 		poisonedCount: 0,
+		extensionInitiatedTurn: false,
 	};
 	// v0.8.6 cache-stability: the cached live-trim view for the current
 	// compaction epoch. Set after a fresh runCompact + computeLiveTrimCut, and
