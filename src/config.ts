@@ -102,3 +102,29 @@ export function memoryReviewCadence(band: PressureBand, baseInterval: number): n
     default: return base;
   }
 }
+
+// ---------------------------------------------------------------------------
+// S57 RAG Suite feature flags — each maps to MEGACOMPACT_* env var, default OFF
+// ---------------------------------------------------------------------------
+
+function ragFlag(name: string): boolean {
+  const v = process.env[name];
+  if (v === undefined) return false;
+  return v === "true" || v === "1";
+}
+
+/** B1: Query reformulation (keyword expansion via embedding neighbors). */
+export const RAG_QUERY_REFORMULATION = (): boolean =>
+  ragFlag("MEGACOMPACT_QUERY_REFORMULATION");
+
+/** B2: Tiered recall router (L0 cache → L1 FTS5 → L2 HNSW). */
+export const RAG_TIERED_ROUTER = (): boolean =>
+  ragFlag("MEGACOMPACT_TIERED_ROUTER");
+
+/** B3: Recall quality metrics (precision/recall scoring + logging). */
+export const RAG_RECALL_METRICS = (): boolean =>
+  ragFlag("MEGACOMPACT_RECALL_METRICS");
+
+/** B4: Memory graph traversal (dashboard-oriented). */
+export const RAG_MEMORY_GRAPH = (): boolean =>
+  ragFlag("MEGACOMPACT_MEMORY_GRAPH");

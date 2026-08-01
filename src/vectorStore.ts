@@ -176,6 +176,8 @@ export class VectorStore {
 		result: "deduped" | "new" | "mark_only",
 		reason: string | undefined,
 		latencyMs: number,
+		similarityScore?: number,
+		matchedId?: string,
 	): void {
 		if (!this.eventsPath) return;
 		logDecision(this.eventsPath, {
@@ -184,6 +186,8 @@ export class VectorStore {
 			result,
 			reason,
 			latencyMs: Math.round(latencyMs * 100) / 100,
+			similarityScore,
+			matchedId,
 		});
 	}
 
@@ -241,7 +245,7 @@ export class VectorStore {
 						deduped: true,
 						reason: "contentHash",
 					};
-					this.record("L0", "deduped", "contentHash", Date.now() - t0);
+					this.record("L0", "deduped", "contentHash", Date.now() - t0, 1, contentMatch.checkpointId);
 					onTier?.({ tier: "L0", status: "deduped", detail: "contentHash" });
 					return r;
 				}
@@ -263,7 +267,7 @@ export class VectorStore {
 						deduped: true,
 						reason: "regionHash",
 					};
-					this.record("L0", "deduped", "regionHash", Date.now() - t0);
+					this.record("L0", "deduped", "regionHash", Date.now() - t0, 1, regionMatch.checkpointId);
 					onTier?.({ tier: "L0", status: "deduped", detail: "regionHash" });
 					return r;
 				}
@@ -291,7 +295,7 @@ export class VectorStore {
 						deduped: true,
 						reason: "summaryHash",
 					};
-					this.record("L0", "deduped", "summaryHash", Date.now() - t0);
+					this.record("L0", "deduped", "summaryHash", Date.now() - t0, 1, summaryMatch.checkpointId);
 					onTier?.({ tier: "L0", status: "deduped", detail: "summaryHash" });
 					return r;
 				}
@@ -312,7 +316,7 @@ export class VectorStore {
 				upsertCheckpoint(l1, this.stateDir);
 				bumpDedupStats(true, this.stateDir);
 				const r = { checkpoint: l1, deduped: true, reason: "l1MinHash" };
-				this.record("L1", "deduped", "l1MinHash", Date.now() - t0);
+				this.record("L1", "deduped", "l1MinHash", Date.now() - t0, 1, l1.checkpointId);
 				onTier?.({ tier: "L1", status: "deduped", detail: "l1MinHash" });
 				return r;
 			}
@@ -357,7 +361,7 @@ export class VectorStore {
 						deduped: true,
 						reason: "contentSimilarity",
 					};
-					this.record("L2", "deduped", "contentSimilarity", Date.now() - t0);
+					this.record("L2", "deduped", "contentSimilarity", Date.now() - t0, nearest.sim, nearest.checkpoint.checkpointId);
 					onTier?.({
 						tier: "L2",
 						status: "deduped",

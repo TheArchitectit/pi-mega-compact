@@ -24,6 +24,10 @@ export interface DedupDecisionEvent {
   latencyMs: number;
   /** True when this dedup was later found to be a false positive. */
   falsePositive?: boolean;
+  /** Cosine similarity score (L2 semantic tier) or 1 for exact match (L0/L1). */
+  similarityScore?: number;
+  /** Checkpoint ID of the matched entry. */
+  matchedId?: string;
 }
 
 export interface DedupMetrics {
@@ -168,4 +172,35 @@ export function defaultMetricsPath(stateDir: string = STATE_DIR_DEFAULT): string
 /** Default events-log path alongside the state dir. */
 export function defaultEventsPath(stateDir: string = STATE_DIR_DEFAULT): string {
   return join(stateDir, "events.log");
+}
+
+// ---------------------------------------------------------------------------
+// S45 CRAG quality metrics event
+// ---------------------------------------------------------------------------
+
+export interface RecallQualityEvent {
+  ts: number;
+  sessionId: string;
+  tier: "CRAG";
+  score: number;
+  breakdown: { relevance: number; coverage: number; diversity: number; specificity: number };
+  expanded: boolean;
+  reRetrieved: boolean;
+  uncalibrated: boolean;
+  weights: { relevance: number; coverage: number; diversity: number; specificity: number };
+  note?: string;
+  error?: string;
+}
+
+/**
+ * Append a RecallQualityEvent to events.log (best-effort, non-fatal).
+ * Follows the same append-one-JSON-line pattern as logDecision.
+ */
+export function logRecallQuality(path: string, ev: RecallQualityEvent): void {
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    appendFileSync(path, JSON.stringify(ev) + "\n", "utf-8");
+  } catch {
+    /* best-effort — never break the extension */
+  }
 }
