@@ -580,7 +580,7 @@ test("R6(a): 10 consecutive identical 0-token transient failures produce at most
 	}
 });
 
-test("R6(b): poisoned-context fires zero retry nudges and exactly one advise message", async () => {
+test("R6(b): poisoned-context fires zero retry nudges (dashboard-only advisory)", async () => {
 	// auto=false so the guarded compact attempt (R3c) is skipped — this test
 	// focuses on the advise + no-retry behavior. The compact path is the same
 	// race-guarded deferred mechanism already covered by the context-overflow tests.
@@ -1171,7 +1171,7 @@ test("R10: poisoned-context path does NOT fire the outage advisory", async () =>
 		const h = harness();
 		await s38TurnEndUsage(h, "error", "Request failed — please retry.", 0);
 		// /clear advise should fire.
-		assert.ok(!h.sendUserMessages.some((m) => m.includes("/clear")), "poisoned: /clear advise fires");
+		assert.ok(!h.sendUserMessages.some((m) => m.includes("/clear")), "poisoned: no /clear user message (dashboard-only)");
 		// No provider-outage advisory.
 		assert.equal(h.sendUserMessages.filter((m) => m.includes("provider is having issues")).length, 0, "poisoned path: no outage advisory");
 	} finally {
@@ -1425,6 +1425,39 @@ test("R12: genuinely different marker-less errors do NOT merge", async () => {
 		assert.ok(!eventTypes(h.stateDir).includes("poisoned_context"), "truly different errors must NOT trigger poisoned_context");
 		assert.equal(h.sendUserMessages.filter((m) => m.includes("/clear")).length, 0, "no /clear for non-repeating errors");
 	} finally {
+		if (origBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = origBackoff;
+		if (origRepeat === undefined) delete process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD;
+		else process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD = origRepeat;
+		delete process.env.MEGACOMPACT_AUTO;
+	}
+});
+
+test("R13: legacy advisoryChannel=false sends /clear advise as user message", async () => {
+	const origChannel = process.env.MEGACOMPACT_ADVISORY_CHANNEL;
+	const origBackoff = process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
+	const origRepeat = process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD;
+	process.env.MEGACOMPACT_ADVISORY_CHANNEL = "false";
+	process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = "1";
+	process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD = "3";
+	process.env.MEGACOMPACT_AUTO = "false";
+	try {
+		const h = harness();
+		// Fire 3 identical non-network error turns to trigger poisoned upgrade
+		await s38TurnEnd(h, "error", "upstream rejected the request");
+		await h.fire("turn_start", { type: "turn_start", turnIndex: 2 }, h.ctx());
+		await new Promise((r) => setTimeout(r, 3));
+		await s38TurnEnd(h, "error", "upstream rejected the request");
+		await h.fire("turn_start", { type: "turn_start", turnIndex: 3 }, h.ctx());
+		await new Promise((r) => setTimeout(r, 3));
+		await s38TurnEnd(h, "error", "upstream rejected the request");
+		await h.fire("turn_start", { type: "turn_start", turnIndex: 4 }, h.ctx());
+		await new Promise((r) => setTimeout(r, 3));
+		assert.ok(eventTypes(h.stateDir).includes("poisoned_context"), "poisoned_context event fires");
+		assert.ok(h.sendUserMessages.some((m) => m.includes("/clear")), "legacy path: /clear advise sent as user message");
+	} finally {
+		if (origChannel === undefined) delete process.env.MEGACOMPACT_ADVISORY_CHANNEL;
+		else process.env.MEGACOMPACT_ADVISORY_CHANNEL = origChannel;
 		if (origBackoff === undefined) delete process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS;
 		else process.env.MEGACOMPACT_ERROR_RETRY_BACKOFF_MS = origBackoff;
 		if (origRepeat === undefined) delete process.env.MEGACOMPACT_POISONED_REPEAT_THRESHOLD;
