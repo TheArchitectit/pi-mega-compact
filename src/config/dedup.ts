@@ -66,6 +66,7 @@ export interface DedupConfigShape {
   RAPTOR_MULTILEVEL_ENABLED: boolean;
   RAPTOR_LEVEL_WEIGHTS: number[]; // per-level weights, index 0 = leaves (uncalibrated)
   RAPTOR_LEAF_EXPANSION: boolean;
+  RAPTOR_INCREMENTAL: boolean;
   RAPTOR_MAX_LEAF_EXPANSION: number; // uncalibrated
   RAPTOR_FRESHNESS_HOURS: number; // S42D: skip rebuild when tree is fresh (uncalibrated)
   /** S25 Phase-2: inject top-level RAPTOR summary nodes (root + level-1
@@ -109,6 +110,7 @@ export function loadDedupConfig(): DedupConfigShape {
     RAPTOR_MULTILEVEL_ENABLED: envBool("MEGACOMPACT_RAPTOR_MULTILEVEL", true),
     RAPTOR_LEVEL_WEIGHTS: envNumArray("MEGACOMPACT_RAPTOR_LEVEL_WEIGHTS", [1.0, 0.9, 0.8, 0.7, 0.5]),
     RAPTOR_LEAF_EXPANSION: envBool("MEGACOMPACT_RAPTOR_LEAF_EXPANSION", true),
+    RAPTOR_INCREMENTAL: envBool("MEGACOMPACT_RAPTOR_INCREMENTAL", true),
     RAPTOR_MAX_LEAF_EXPANSION: envNum("MEGACOMPACT_RAPTOR_MAX_LEAF_EXP", 10),
     RAPTOR_FRESHNESS_HOURS: envNum("MEGACOMPACT_RAPTOR_FRESHNESS_HOURS", 4),
     RAPTOR_INJECT_SUMMARIES: envBool("MEGACOMPACT_RAPTOR_INJECT_SUMMARIES", true),

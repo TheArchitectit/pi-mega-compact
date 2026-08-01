@@ -13,10 +13,12 @@
 import type { Embedder } from "../../embedder.js";
 import { defaultEmbedder } from "../../embedder.js";
 import { buildRaptorTree, type Leaf, type RaptorTree } from "./tree.js";
+import { incrementRaptorTree } from "./incremental.js";
 import { stagedExpansion } from "./retrieval.js";
 import { Logger } from "../../log.js";
 import { saveRaptorTree, listRaptorNodes } from "../../store/sqlite.js";
 import { insertBuildHistory, computeCoherenceScore } from "./buildHistory.js";
+import { loadDedupConfig } from "../../config/dedup.js";
 
 /** Shadow mode is on by default; set RAPTOR_SHADOW_MODE=false to serve live. */
 export function isShadowMode(): boolean {
@@ -51,15 +53,38 @@ export function runRaptor(
   const embedder = opts.embedder ?? defaultEmbedder();
   const logger = opts.logger;
   const startedAt = opts.builtAt ?? Date.now();
+  const builtAt = startedAt;
   try {
-    const tree = buildRaptorTree(leaves, {
-      embedder,
-      budgetMs: opts.budgetMs,
-      clustersPerLevel: opts.clustersPerLevel,
-      consistencyThreshold: opts.consistencyThreshold,
-    });
-    const builtAt = opts.builtAt ?? Date.now();
-    saveRaptorTree(opts.sessionId, tree, builtAt, opts.stateDir);
+    // Try incremental update first when the flag is ON (Sprint 26, #7).
+    // The incremental path reads the existing tree, diffs by leaf id, and
+    // inserts only new leaves into the nearest clusters. Falls back to a full
+    // rebuild when the tree is missing, corrupted, or >50% of nodes are new.
+    const cfg = loadDedupConfig();
+    let tree: RaptorTree | null = null;
+    if (cfg.RAPTOR_INCREMENTAL) {
+      tree = incrementRaptorTree(leaves, leaves, {
+        embedder,
+        stateDir: opts.stateDir,
+        sessionId: opts.sessionId,
+        budgetMs: opts.budgetMs,
+        clustersPerLevel: opts.clustersPerLevel,
+        consistencyThreshold: opts.consistencyThreshold,
+        logger,
+        builtAt,
+      });
+    }
+
+    // Fall back to full rebuild when incremental returned null (not attempted,
+    // tree missing, ratio exceeded, or internal error).
+    if (!tree) {
+      tree = buildRaptorTree(leaves, {
+        embedder,
+        budgetMs: opts.budgetMs,
+        clustersPerLevel: opts.clustersPerLevel,
+        consistencyThreshold: opts.consistencyThreshold,
+      });
+      saveRaptorTree(opts.sessionId, tree, builtAt, opts.stateDir);
+    }
     logger?.info("raptor_build", {
       sessionId: opts.sessionId,
       nodes: tree.nodes.size,

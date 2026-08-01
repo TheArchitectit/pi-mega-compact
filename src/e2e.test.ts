@@ -77,7 +77,7 @@ test("1. Full compaction pipeline: SUPERSEDE → COLLAPSE → CLUSTER", () => {
   // user questions, and assistant responses with tool calls.
   const messages: EngineMessage[] = [
     msg("user", "read src/server.ts to understand the current setup"),
-    msg("assistant", "Reading src/server.ts", "Read", "src/server.ts", "const server = createServer(...)"),
+    msg("assistant", "Reading src/server.ts", "Read", "src/server.ts", "const server = createServer(...)"), // guardrails-allow PREVENT-PI-004: test fixture string containing example code in quotes (not real net call)
     msg("user", "the server has a memory leak, let's fix it"),
     msg("assistant", "I see the leak in src/server.ts:42 — the event listeners are not cleaned up", "Edit"),
     msg("user", "edit src/server.ts to remove the listeners on cleanup"),

@@ -24,7 +24,7 @@ export interface ClusterSummary {
 function ollamaEndpoint(): { url: string; model: string } | null {
   const model = process.env.MEGACOMPACT_RAPTOR_MODEL;
   if (!model) return null;
-  const base = process.env.MEGACOMPACT_RAPTOR_URL ?? "http://127.0.0.1:11434";
+  const base = process.env.MEGACOMPACT_RAPTOR_URL ?? "http://127.0.0.1:11434"; // guardrails-allow PREVENT-PI-004: loopback-only Ollama endpoint for local RAPTOR summarization
   // Guard: only loopback is permitted (remote Ollama would violate PREVENT-PI-004).
   if (!/^https?:\/\/(localhost|127\.0\.0\.1)([:/]|$)/.test(base)) {
     throw new Error(

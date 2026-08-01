@@ -1,7 +1,7 @@
 {
   "$schema": "./pattern-rules.schema.json",
   "description": "Pattern-based prevention rules for regression detection (added PREVENT-PI-* rules for TypeScript/pi extensions)",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "rules": [
     {
       "rule_id": "PREVENT-001",
@@ -462,7 +462,7 @@
       "rule_id": "PREVENT-PI-004",
       "name": "Network calls in extension (must stay local)",
       "enabled": true,
-      "pattern": "(fetch\\(|https?://|new (WebSocket|net\\.)|XMLHttpRequest|child_process|https\\.request\\(|http\\.get\\(|http\\.request\\(|net\\.connect\\(|\\bundici\\b|new Agent\\(|require\\(['\"]node:http['\"]\\)|require\\(['\"]node:https['\"]\\)|from ['\"]node:http['\"]|from ['\"]node:https['\"]|from \"node:http\"|from \"node:https\")",
+      "pattern": "(fetch\\(|https?://|new (WebSocket|net\\.)|XMLHttpRequest|child_process\\.|https\\.request\\(|http\\.get\\(|http\\.request\\(|net\\.connect\\(|net\\.createConnection\\(|new (http\\.)?Agent\\(|new https\\.Agent\\(|createServer\\(|\\bundici\\b|require\\(['\"]node:(http|https|net)['\"]\\)|from ['\"]node:(http|https|net)['\"]|from \"node:(http|https|net)\")",
       "forbidden_context": null,
       "message": "pi-mega-compact must run fully local — no remote MCP server or network calls at runtime.",
       "severity": "critical",

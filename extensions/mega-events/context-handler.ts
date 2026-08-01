@@ -293,7 +293,7 @@ export function registerContextHandler(
 				runtime.trimCache.checkpointId === runtime.rt.lastCheckpointId &&
 				runtime.trimCache.cut <= messages.length
 			) {
-				const recent = messages.slice(runtime.trimCache.cut); // guardrails-allow PREVENT-PI-002
+				const recent = messages.slice(runtime.trimCache.cut); // guardrails-allow PREVENT-PI-002: cached `cut` was sanitized by computeLiveTrimCut (src/boundary.ts); replayed verbatim, transcript only grows within an epoch.
 				runtime.diagLiveTrimFires++;
 				runtime.diagLiveTrimReplays++;
 				runtime.snapshot(ctx);

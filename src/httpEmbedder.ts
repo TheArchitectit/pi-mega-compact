@@ -28,7 +28,7 @@
 import type { Embedder, Vector } from "./embedder.js";
 import { l2Normalize } from "./embedder.js";
 import { spawnSync } from "node:child_process"; // guardrails-allow PREVENT-PI-004: localhost-only user-spawned embedding server (BYO backend, never remote)
-import { isIP } from "node:net";
+import { isIP } from "node:net"; // guardrails-allow PREVENT-PI-004: localhost-only loopback address validation in BYO embedding server
 
 export interface HttpEmbedderOptions {
   url: string;
