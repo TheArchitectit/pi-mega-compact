@@ -535,6 +535,11 @@ test("session_before_compact supplies a fallback summary when nothing to summari
 });
 
 test("resume auto-inline stages recall into the system prompt", async () => {
+	// S53: recall-tail injection (default ON) moved the prepend from
+	// before_agent_start to the context handler (user-role tail). This test
+	// exercises the LEGACY prepend path, so disable the flag.
+	const prevTail = process.env.MEGACOMPACT_RECALL_TAIL_INJECT;
+	process.env.MEGACOMPACT_RECALL_TAIL_INJECT = "false";
 	const h = harness();
 	// Seed a checkpoint first (simulate a prior session that compacted).
 	await h.fire(
@@ -579,6 +584,8 @@ test("resume auto-inline stages recall into the system prompt", async () => {
 		res.systemPrompt.includes("Recalled context"),
 		"recalled block injected into system prompt",
 	);
+	if (prevTail === undefined) delete process.env.MEGACOMPACT_RECALL_TAIL_INJECT;
+	else process.env.MEGACOMPACT_RECALL_TAIL_INJECT = prevTail;
 });
 
 test("/recall-context reports and stages the top checkpoint", async () => {
