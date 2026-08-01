@@ -936,8 +936,8 @@ test.skip("/dashboard skips server spawn when already running", async () => {
 	const h = harness();
 	const confirms: boolean[] = [];
 	const livPort = 29320; // inside the harness's private scan range (29320–29329)
-	const { createServer } = await import("node:http");
-	const server = createServer((_req, res) => {
+	const { createServer } = await import("node:http"); // guardrails-allow PREVENT-PI-004: test-only loopback server for dashboard probe test
+	const server = createServer((_req, res) => { // guardrails-allow PREVENT-PI-004: test-only loopback server for dashboard probe test
 		res.writeHead(200, { "Content-Type": "application/json" });
 		res.end(
 			JSON.stringify({

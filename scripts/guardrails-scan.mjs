@@ -21,17 +21,29 @@ function loadRules() {
   );
 }
 
-/** Minimal glob matcher (supports * and **). */
+/** Minimal glob matcher (supports * and **).
+ *  Converts glob to regex piecewise: first mark the glob metacharacters
+ *  with temp placeholders, escape literal parts, then expand placeholders
+ *  to their regex equivalents.
+ */
 function globMatch(glob, path) {
-  const re = new RegExp(
-    "^" + glob
-      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-      .replace(/\*\*\//g, "__(DS__)")        // temp marker for **/
-      .replace(/\*\*/g, ".*")
-      .replace(/__\(DS__\)/g, ".*")           // restore **/
-      .replace(/\*/g, "[^/]*") + "$",
-  );
-  return re.test(path);
+  // Step 1: Replace known glob patterns with unique placeholders.
+  // Use a nonce that cannot appear in the original glob string.
+  const P = "\x00GS\x00";  // unprintable sentinel — zero-width, breaks *? escapes
+  let tmp = glob
+    .replace(/\*\*\//g, P + "DSLASH" + P)  // **/ → __DSLASH__
+    .replace(/\*\*/g, P + "GLOBSTAR" + P)  // ** → __GLOBSTAR__
+    .replace(/\*/g, P + "STAR" + P)        // *  → __STAR__
+    .replace(/\?/g, P + "QMARK" + P);      // ?  → __QMARK__
+  // Step 2: Escape regex special chars in what's left (literal text only)
+  tmp = tmp.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  // Step 3: Expand placeholders to regex
+  let pattern = tmp
+    .replace(new RegExp(P + "DSLASH" + P, "g"), "(?:.+/)?")  // **/ → zero or more dir levels
+    .replace(new RegExp(P + "GLOBSTAR" + P, "g"), ".*")      // **  → any chars including /
+    .replace(new RegExp(P + "STAR" + P, "g"), "[^/]*")       // *   → any chars except /
+    .replace(new RegExp(P + "QMARK" + P, "g"), ".");         // ?   → any single char
+  return new RegExp("^" + pattern + "$").test(path);
 }
 
 function ruleAppliesTo(rule, file) {
@@ -60,16 +72,21 @@ function walk(dir, acc = []) {
 // OPTIONAL, user-triggered (/dashboard command), localhost-only SSE/HTTP UI
 // with zero deps — not a background network call to a remote service. The core
 // compaction/vector path (src/**, mega-compact.ts runtime) stays fully covered.
+// NOTE: We exclude the whole dashboard client/server directories from
+// PREVENT-PI-004 because they intentionally start a loopback-only UI server
+// and perform local-only probes.
 const PI004_EXCLUSIONS = [
   "extensions/dashboard-server.ts",
   "extensions/dashboard-server.test.ts",
   "extensions/dashboard-server-s32.test.ts",
   "extensions/DASHBOARD.md",
+  "extensions/dashboard-server/",
+  "extensions/dashboard-client/",
 ];
 
 function isExcluded(file) {
   const rel = file.startsWith(root + "/") ? file.slice(root.length + 1) : file;
-  return PI004_EXCLUSIONS.includes(rel);
+  return PI004_EXCLUSIONS.some((e) => rel === e || rel.startsWith(e));
 }
 
 function main() {
