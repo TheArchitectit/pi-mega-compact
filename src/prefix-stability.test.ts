@@ -10,15 +10,17 @@
  *   (c) SEPARATION+STRIPING  — cache-optimized prompt with Layer 2 stripes.
  *
  * Scenario:
- *   A conversation where the user asks the same kind of question each turn
- *   ("continue" / "next step") but the TOOL RESULTS change (different data
- *   returned each time). This is the common real pattern: the user/assistant
- *   conversation is stable, but tool results are volatile.
+ *   Rolling window of 3 live turns. As the window advances, old turns drop
+ *   out and new turns enter. The user/assistant text is **stable** across
+ *   turns (same greeting and acknowledgment each time), but **tool results
+ *   are volatile** (different data each call).
  *
- *   In mode (a), changing tool results are interleaved with the conversation,
- *   so they break the prefix early. In mode (b), tool messages are moved to
- *   the tail, so the user/assistant conversation stays contiguous and stable.
- *   In mode (c), cache stripes add even more stable front-loaded content.
+ *   In mode (a), tool results are interleaved with user/assistant messages.
+ *   When a tool result moves into/out-of the window, the interleaving
+ *   changes and breaks the prefix early. In mode (b), tool messages are at
+ *   the tail — user/assistant messages stay contiguous and stable across
+ *   the window shift. In mode (c), cache stripes add front-loaded stable
+ *   content.
  *
  * Asserts:
  *   - (b) stable prefix >= (a) stable prefix (separation never hurts).
@@ -84,58 +86,70 @@ describe("prefix-stability benchmark (PLAN_V2)", () => {
   const store = createStore();
   setDefaultStore(store);
 
-  // Build a session with 4 compacted turns + 10 measured turns.
-  // Each turn: user("continue") + assistant("ok") + tool("call") + tool("result").
-  // The user text is STABLE (same across turns).
-  // The tool result text is VOLATILE (different each turn).
-  // This matches the real pattern where separation helps.
+  // Each turn has 4 messages:
+  //   user("continue") — STABLE (same text every turn)
+  //   assistant("ok")  — STABLE (same text every turn)
+  //   tool("<call>")   — STABLE (same tool call every turn)
+  //   tool("<result>") — VOLATILE (different data each turn)
+  //
+  // The rolling window keeps the last N turns. As the window advances:
+  //   - Oldest turn drops out (its tool result disappears)
+  //   - Newest turn enters (its tool result is new)
+  //
+  // Mode A: the volatile tool results are interspersed with the stable
+  //   user/assistant pairs. When the window shifts, the leading messages
+  //   differ early because a tool result's position shifts.
+  //
+  // Mode B: all tool results are at the tail. The user/assistant pairs
+  //   stay at the front, and since they're stable, the prefix survives
+  //   the window shift.
 
-  const COMPACTED = 4;
-  const MEASURED = 10;
+  const COMPACTED = 4; // number of turns that get checkpointed
+  const WINDOW_SIZE = 3; // turns kept in the live window
+  const MEASURED = 12; // how many turns we measure
   const MSG_PER_TURN = 4;
 
-  // Stable user message — repeats across turns
-  const STABLE_USER = "continue with the next step";
-  // Stable assistant message — repeats across turns
-  const STABLE_ASST = "ok, working on it";
-  const STABLE_TOOL_CALL = "step";
+  const U_TEXT = "continue with the next step";
+  const A_TEXT = "working on it, here's the analysis";
+  const T_CALL = "execute_step";
 
   function buildTurn(t: number): EngineMessage[] {
-    // Tool result changes each turn (volatile content)
-    const toolResult = `{ "step": ${t}, "status": "complete", "data": ${t * 100} }`;
+    // Tool result is VOLATILE — different text each turn
+    const tResult = `{ step:${t}, status:"done", data:result_${t} }`;
     return [
-      msg("user", STABLE_USER),
-      msg("assistant", STABLE_ASST),
-      msg("tool", STABLE_TOOL_CALL),
-      msg("tool", toolResult),
+      msg("user", U_TEXT),
+      msg("assistant", A_TEXT),
+      msg("tool", T_CALL),
+      msg("tool", tResult),
     ];
   }
 
-  const allMessages: EngineMessage[] = [];
-  for (let t = 0; t < COMPACTED + MEASURED; t++) {
-    allMessages.push(...buildTurn(t));
+  // Full session messages
+  const fullMessages: EngineMessage[] = [];
+  for (let t = 0; t < COMPACTED + MEASURED + WINDOW_SIZE; t++) {
+    fullMessages.push(...buildTurn(t));
   }
 
   // ── 1. Setup: compact the first COMPACTED turns ──────────────────────────
 
   test("setup: compact session to produce checkpoints", () => {
-    const limit1 = 2 * MSG_PER_TURN; // compact turns 0-1
+    // Two rounds of compaction
+    const limit1 = Math.floor(COMPACTED / 2) * MSG_PER_TURN;
     let result = compactSession({
       sessionId: SESS,
-      messages: allMessages.slice(0, limit1),
+      messages: fullMessages.slice(0, limit1),
       keepFrom: limit1,
-      keyDecisions: ["Initial setup"],
+      keyDecisions: ["Batch 1 complete"],
       nextSteps: ["Continue"],
     });
     assert.ok(result.checkpointId, `first compactSession produced checkpointId`);
 
-    // Compact turns 2-3
     const limit2 = COMPACTED * MSG_PER_TURN;
     result = compactSession({
       sessionId: SESS,
-      messages: allMessages.slice(0, limit2),
+      messages: fullMessages.slice(0, limit2),
       keepFrom: limit2,
-      keyDecisions: ["More setup"],
+      keyDecisions: ["Batch 2 complete"],
       nextSteps: ["Continue more"],
     });
     assert.ok(result.checkpointId, `second compactSession produced checkpointId`);
@@ -154,56 +168,72 @@ describe("prefix-stability benchmark (PLAN_V2)", () => {
   test("measure prefix stability — all three modes", () => {
     const cm = store.stateDir;
 
-    // Build the prompt for each measured turn.
-    // The prompt = checkpoint summaries (from context_chunks) + latest turn.
-    // Each successive turn ADDS one more turn of live messages.
-    //
-    // Key: the stable user/assistant messages repeat, so after separation the
-    // leading messages are byte-identical across turns — only the growing
-    // tool tail changes.
-    //
-    // In this setup, each turn's prompt appends a new turn at the end.
-    // Turn 0 prompt: [context] + [live turn 0]
-    // Turn 1 prompt: [context] + [live turn 0] + [live turn 1]
-    // ...
-    // The stable prefix = everything from the previous turn's prompt
-    // (since we only append, never mutate).
-    //
-    // But this would make ALL modes equal (100% prefix). To make the
-    // benchmark meaningful, we need the tool results to be at different
-    // positions depending on the mode:
-    //
-    // Mode A (interleaved):
-    //   Turn 0: [context] + [u, a, t, t]
-    //   Turn 1: [context] + [u, a, t, t, u, a, t, t]
-    //   Prefix = context + [u, a, t, t] = 4 + context_len
-    //
-    // Mode B (separated):
-    //   Turn 0: [context] + [u, a] + [t, t]
-    //   Turn 1: [context] + [u, a, u, a] + [t, t, t, t]
-    //   Prefix = context + [u, a, u, a] = non-tool messages from previous turn
-    //
-    // The prefix is LONGER in mode B because the tool messages are at the tail
-    // and don't interleave with the appended user+assistant messages!
-
+    // Load context messages from checkpoints
     const contextMessages = loadContextMessages(cm, SESS);
 
+    /**
+     * Build the prompt for a turn index.
+     *
+     * Prompt = [checkpoint summaries] + [live window of recent turns]
+     *
+     * The live window is a FIXED-SIZE window: turns [measuredIdx .. measuredIdx + WINDOW_SIZE).
+     * As measuredIdx advances, the window slides: the oldest turn drops, the newest
+     * turn enters.
+     *
+     * In mode A (interleaved), the window's messages look like:
+     *   u, a, t_call, t_result, u, a, t_call, t_result, u, a, t_call, t_result
+     *
+     * When the window slides by 1 turn (4 messages), the ALIGNMENT changes:
+     *   Old window: u0, a0, t0_call, t0_res, u1, a1, t1_call, t1_res, u2, a2, t2_call, t2_res
+     *   New window: u1, a1, t1_call, t1_res, u2, a2, t2_call, t2_res, u3, a3, t3_call, t3_res
+     *
+     * Compare: first diff is at position 0 because the context is the same but
+     * the first LIVE message changed from u0 to u1. That gives 0 prefix for the
+     * live part.
+     *
+     * Wait — no, the first message is actually the checkpoint context. So the
+     * prefix is context.length, not 0. But context is the same between turns,
+     * and the live window changes completely (oldest drops, newest enters).
+     *
+     * Actually wait. The issue is more subtle. With a 3-turn window shifting
+     * by 1 turn, 2 of the 3 turns overlap between consecutive prompts:
+     *   Turn N: turns [N, N+1, N+2]
+     *   Turn N+1: turns [N+1, N+2, N+3]
+     * The overlap is 2 turns = 8 messages. In mode A, these 8 messages are
+     * byte-identical (same user/assistant/tool content). But the ALIGNMENT is
+     * wrong: turn N+1 in the new prompt is at position 0 of the live window,
+     * while in the old prompt it was at position 4.
+     *
+     * So stable prefix = context.length (the overlapping turns don't contribute
+     * because their *positions* in the array differ, even though their *content*
+     * is identical).
+     *
+     * In mode B (separated), the tool messages are at the tail:
+     *   Turn N: u0,a0,u1,a1,u2,a2,  t_call0,t_res0,t_call1,t_res1,t_call2,t_res2
+     *   Turn N+1: u1,a1,u2,a2,u3,a3,  t_call1,t_res1,t_call2,t_res2,t_call3,t_res3
+     *
+     * The overlap is: u1,a1,u2,a2 = 4 messages. These ARE at the same position
+     * (after context, they start at position context.length). So stable prefix =
+     * context.length + 4 = context.length + overlapping_user_assistant_pairs * 2.
+     *
+     * In mode C (striped), the stripe is at the front and stable, so even more
+     * prefix stability.
+     */
+
     function buildPrompt(measuredIdx: number): EngineMessage[] {
-      // Live window: all turns from COMPACTED to COMPACTED + measuredIdx (inclusive)
       const liveMessages: EngineMessage[] = [];
-      for (let t = 0; t <= measuredIdx; t++) {
-        liveMessages.push(...buildTurn(COMPACTED + t));
+      for (let t = measuredIdx; t < measuredIdx + WINDOW_SIZE; t++) {
+        liveMessages.push(...buildTurn(t));
       }
       return [...contextMessages, ...liveMessages];
     }
 
-    // Build all turn prompts
     const turnPrompts: EngineMessage[][] = [];
     for (let m = 0; m < MEASURED; m++) {
       turnPrompts.push(buildPrompt(m));
     }
 
-    // ── Mode A: flag OFF (no transformation) ──────────────────────────────
+    // ── Mode A: flag OFF ─────────────────────────────────────────────────
     const aPrefixes: number[] = [];
     const aTotals: number[] = [];
     for (let t = 1; t < turnPrompts.length; t++) {
@@ -211,7 +241,7 @@ describe("prefix-stability benchmark (PLAN_V2)", () => {
       aTotals.push(turnPrompts[t].length);
     }
 
-    // ── Mode B: MESSAGE_SEPARATION (tool messages to tail) ────────────────
+    // ── Mode B: MESSAGE_SEPARATION ──────────────────────────────────────
     const bTurnPrompts = turnPrompts.map(separateMessages);
     const bPrefixes: number[] = [];
     const bTotals: number[] = [];
@@ -220,7 +250,7 @@ describe("prefix-stability benchmark (PLAN_V2)", () => {
       bTotals.push(bTurnPrompts[t].length);
     }
 
-    // ── Mode C: SEPARATION + STRIPING ─────────────────────────────────────
+    // ── Mode C: SEPARATION + STRIPING ───────────────────────────────────
     const cTurnPrompts = turnPrompts.map((msgs) => stripingMessages(msgs, cm));
     const cPrefixes: number[] = [];
     const cTotals: number[] = [];
@@ -229,7 +259,7 @@ describe("prefix-stability benchmark (PLAN_V2)", () => {
       cTotals.push(cTurnPrompts[t].length);
     }
 
-    // ── Log summary table ─────────────────────────────────────────────────
+    // ── Log summary table ───────────────────────────────────────────────
     console.log("\n  ┌──────────────────────────────┬────────────┬────────────┬────────┐");
     console.log("  │ Mode                         │ Avg prefix │ Avg total  │ Ratio  │");
     console.log("  ├──────────────────────────────┼────────────┼────────────┼────────┤");
@@ -238,7 +268,6 @@ describe("prefix-stability benchmark (PLAN_V2)", () => {
     logRow("(c) SEPARATION+STRIPING", cPrefixes, cTotals);
     console.log("  └──────────────────────────────┴────────────┴────────────┴────────┘");
 
-    // ── Detailed per-pair log ─────────────────────────────────────────────
     console.log("\n  Per-pair prefix lengths:");
     for (let i = 0; i < aPrefixes.length; i++) {
       console.log(
@@ -248,29 +277,25 @@ describe("prefix-stability benchmark (PLAN_V2)", () => {
       );
     }
 
-    // ── Assertions ────────────────────────────────────────────────────────
-    // This is a MEASUREMENT benchmark, not a pass/fail gate. The actual cache
-    // win depends on the provider's caching semantics (Anthropic caches the
-    // leading prefix; tool-result placement at the tail helps when the tail
-    // changes but the prefix doesn't). On small synthetic fixtures separation
-    // can REDUCE the measured prefix (reordering shifts the stable boundary),
-    // which is a real finding, not a bug. Assert only that the benchmark RAN
-    // and produced finite numbers — the logged table is the value.
-    const aAvg = aPrefixes.reduce((s, v) => s + v, 0) / Math.max(aPrefixes.length, 1);
-    const bAvg = bPrefixes.reduce((s, v) => s + v, 0) / Math.max(bPrefixes.length, 1);
-    const cAvg = cPrefixes.reduce((s, v) => s + v, 0) / Math.max(cPrefixes.length, 1);
-    assert.ok(Number.isFinite(aAvg), `baseline avg prefix must be finite (got ${aAvg})`);
-    assert.ok(Number.isFinite(bAvg), `separation avg prefix must be finite (got ${bAvg})`);
-    assert.ok(Number.isFinite(cAvg), `striping avg prefix must be finite (got ${cAvg})`);
+    // ── Assertions ──────────────────────────────────────────────────────
+    for (let i = 0; i < bPrefixes.length; i++) {
+      assert.ok(
+        bPrefixes[i] >= aPrefixes[i],
+        `Pair ${i + 1}: separation (${bPrefixes[i]}) < baseline (${aPrefixes[i]})`,
+      );
+    }
+    for (let i = 0; i < cPrefixes.length; i++) {
+      assert.ok(
+        cPrefixes[i] >= bPrefixes[i],
+        `Pair ${i + 1}: striping (${cPrefixes[i]}) < separation (${bPrefixes[i]})`,
+      );
+    }
 
-    // Summary
     const aBetter = bPrefixes.filter((v, i) => v > aPrefixes[i]).length;
     const cBetter = cPrefixes.filter((v, i) => v > bPrefixes[i]).length;
-    const cEq = cPrefixes.filter((v, i) => v === bPrefixes[i]).length;
     console.log(
       `\n  Summary: separation beats baseline in ${aBetter}/${aPrefixes.length} pairs. ` +
-      `Striping beats separation in ${cBetter}/${cPrefixes.length}, ` +
-      `equal in ${cEq}/${cPrefixes.length}.`,
+      `Striping beats separation in ${cBetter}/${cPrefixes.length} pairs.`,
     );
   });
 });
@@ -278,25 +303,24 @@ describe("prefix-stability benchmark (PLAN_V2)", () => {
 // ── Helper functions ──────────────────────────────────────────────────────────
 
 /** Load checkpoint summaries from the store as user messages. */
-function loadContextMessages(stateDir: string, _sessionId: string): EngineMessage[] {
+function loadContextMessages(stateDir: string, sessionId: string): EngineMessage[] {
   try {
     const db = openStore(stateDir);
     const rows = db
       .prepare("SELECT summary FROM context_chunks WHERE session_id = ? ORDER BY timestamp")
-      .all(_sessionId) as { summary: string }[];
+      .all(sessionId) as { summary: string }[];
     db.close();
     if (rows.length > 0 && rows[0].summary) {
       return rows.map((r) => msg("user", r.summary));
     }
   } catch {
-    // Fall through to fallback
+    // Fall through
   }
   return [msg("user", "Project planning session.")];
 }
 
 /**
  * Mode (b): move tool messages to the tail.
- * The core of buildSeparatedPrompt's effect on prefix stability.
  */
 function separateMessages(msgs: readonly EngineMessage[]): EngineMessage[] {
   const core: EngineMessage[] = [];
@@ -313,8 +337,7 @@ function separateMessages(msgs: readonly EngineMessage[]): EngineMessage[] {
 
 /**
  * Mode (c): separation + cache stripe insertion.
- * Reads from cache_stripes table. If no stripes exist, falls back to
- * mode (b) behavior.
+ * Falls back to mode (b) when no stripes exist.
  */
 function stripingMessages(msgs: readonly EngineMessage[], stateDir: string): EngineMessage[] {
   const core: EngineMessage[] = [];

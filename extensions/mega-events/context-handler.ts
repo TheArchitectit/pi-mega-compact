@@ -535,6 +535,13 @@ export function registerContextHandler(
 				compactedFrom: ran.result.compactedFrom,
 				summary: ran.result.summary,
 				anchorUserMessages,
+				// CRITICAL-OVER ESCAPE HATCH: when context is at/over ~90% of the
+				// window, relief takes priority over the anchor floor. Without this,
+				// computeLiveTrimCut bails to null (can't satisfy the floor) and the
+				// model is fed a raw overflow that errors every turn — the
+				// "Already compacted" + overflow death-spiral (2026-08-01 incident).
+				// A thin anchor is recoverable; an overflowed session is not.
+				criticalOver: (pct ?? 0) >= 90,
 			});
 			if (cut === null) {
 				runtime.diagCtxCutNull++;
@@ -543,6 +550,7 @@ export function registerContextHandler(
 					compactedFrom: ran.result.compactedFrom,
 					viewLen: view.length,
 					anchorUserMessages,
+					criticalOver: (pct ?? 0) >= 90,
 				});
 				return tailResult() ?? undefined; // unsafe / below anchor floor — no trim this call
 			}

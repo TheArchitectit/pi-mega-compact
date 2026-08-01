@@ -25,6 +25,13 @@ export interface BuildLiveTrimViewOpts {
   summary: string;
   /** Min recent user messages to keep as the anchor (PREVENT-PI-001). */
   anchorUserMessages: number;
+  /** CRITICAL-OVER ESCAPE HATCH: when true, context is over ~90% of the window
+   *  and relief takes priority over the anchor floor. computeLiveTrimCut returns
+   *  the boundary-safe cut even if it keeps fewer than `anchorUserMessages` user
+   *  messages, rather than bailing to null (which would feed the model a raw
+   *  overflow). A compacted session with a thin anchor is recoverable; an
+   *  overflowed session that errors every turn is not. Default false. */
+  criticalOver?: boolean;
 }
 
 /**
@@ -68,9 +75,17 @@ export function computeLiveTrimCut(view: EngineMessage[], opts: BuildLiveTrimVie
     if (cut > 1) {
       const finalRecent = view.slice(cut);
       if (finalRecent.filter((m) => m.role === "user").length < opts.anchorUserMessages) {
+        // CRITICAL-OVER ESCAPE HATCH: when context is critically over the window,
+        // return the boundary-safe cut even though it's below the anchor floor.
+        // Bailing to null here would feed the model the raw overflow and trap the
+        // session in an unrecoverable error loop ("Already compacted" + overflow).
+        // A thin anchor is recoverable; an overflowed session is not.
+        if (opts.criticalOver && cut > 0) return cut;
         return null; // cannot satisfy the floor without dropping too much — retry next call
       }
     } else {
+      // Same escape hatch for the cut > 1 false branch.
+      if (opts.criticalOver && cut > 0) return cut;
       return null;
     }
   }

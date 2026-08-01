@@ -176,9 +176,20 @@ export function registerAgentHandlers(
 					// context-handler.ts:258-287 so both call sites stay in sync.
 					const cooldownMs = config.raceGuardStrict ? 30_000 : 10_000;
 					const sinceCompact = now - (runtime.rt.lastNativeCompactAt ?? 0);
+					// CRITICAL-OVER ESCAPE HATCH: when context is critically over the
+					// window (>= 90%), force the durable ctx.compact() even if
+					// piCompactWouldNoop says it would no-op ("Already compacted").
+					// Without this, the on-disk transcript never truncates and the
+					// session stays overflowed on every resume — the "Already
+					// compacted" + overflow death-spiral (2026-08-01 incident). The
+					// cooldown still applies (we don't spam compact), but the no-op
+					// gate is bypassed when critical. pi's ctx.compact() may throw
+					// "Already compacted" in the truly-no-op case — wrapped in
+					// try/catch so the throw is non-fatal.
+					const criticalOver = (runtime.lastCtxPercent ?? 0) >= 90;
 					if (sinceCompact < cooldownMs) {
 						runtime.diagAgentEndDurableSkipRecent++;
-					} else if (!piCompactWouldNoop(ctx)) {
+					} else if (criticalOver || !piCompactWouldNoop(ctx)) {
 						runtime.debounceUntil = now + 2000;
 						runtime.diagAgentEndDurable++;
 						runtime.logger.info("agent-end-durable-trigger", {
@@ -195,6 +206,7 @@ export function registerAgentHandlers(
 							// would re-check before it lands.
 							const stamp = runtime.rt.lastNativeCompactAt;
 							const liveSid = runtime.rt.sessionId;
+							const liveCritical = criticalOver;
 							setTimeout(() => {
 								try {
 									if (runtime.rt.sessionId !== liveSid) return; // session reset
@@ -207,16 +219,22 @@ export function registerAgentHandlers(
 										since2 < cooldownMs
 									)
 										return;
-									if (piCompactWouldNoop(ctx)) return;
+									// CRITICAL-OVER ESCAPE HATCH: bypass the no-op gate when
+									// critical (captured at handler time) so the durable trim fires.
+									if (!liveCritical && piCompactWouldNoop(ctx)) return;
 									ctx.compact({
 										customInstructions: undefined,
-									}); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; deferred + re-validated.
+									}); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; deferred + re-validated. May throw "Already compacted" when the escape hatch forces it — caught below.
 								} catch {
-									/* non-fatal */
+									/* non-fatal: "Already compacted" throws are expected when the critical-over hatch forces a no-op compact */
 								}
 							}, 500);
 						} else {
-							ctx.compact({ customInstructions: undefined }); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; agent settled so no in-flight abort. Race-guarded by lastNativeCompactAt cooldown above (ctx.compact returns void → throw is surfaced by pi as compaction_end; the cooldown prevents the call entirely).
+							try {
+								ctx.compact({ customInstructions: undefined }); // guardrails-allow PREVENT-PI-004: local ctx.compact() — no network; agent settled so no in-flight abort. May throw "Already compacted" when the critical-over escape hatch forces it — caught.
+							} catch {
+								/* non-fatal */
+							}
 						}
 						didDurableTrim = true;
 					}
