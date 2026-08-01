@@ -154,6 +154,27 @@ fi
 echo "[deploy] pushing commits + tags (git push --follow-tags)"
 git push --follow-tags
 
+# --- 8b. push the lightweight tag explicitly + create GitHub release with notes -
+# Known friction: `--follow-tags` only pushes ANNOTATED tags; this script creates
+# a lightweight tag, so push it explicitly. Then create a GitHub release with
+# auto-generated notes (the commit log since the previous tag) for tracking.
+git push origin "$TAG" 2>/dev/null || true
+PREV_TAG=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
+if [ -n "$PREV_TAG" ]; then
+  RELEASE_NOTES=$(git log --pretty=format:"- %s" "$PREV_TAG..$TAG" 2>/dev/null | grep -vE "^- chore\(release\)|^- chore: (sync|clean|rebuild)" | head -15)
+else
+  RELEASE_NOTES=$(git log --pretty=format:"- %s" "$TAG" 2>/dev/null | head -15)
+fi
+if command -v gh >/dev/null 2>&1; then
+  echo "[deploy] creating GitHub release $TAG with notes"
+  gh release create "$TAG" --target "$(git rev-list -n 1 "$TAG")" \
+    --title "v$NEW_VERSION" \
+    --notes "$(printf '## What changed\n\n%s\n\n**Install:** \`pi update --extensions\`' "$RELEASE_NOTES")" \
+    2>/dev/null || echo "[deploy] WARN: gh release create failed (gh not authenticated or release exists) — skipping"
+else
+  echo "[deploy] WARN: gh CLI not installed — skipping GitHub release creation. Tag $TAG is pushed."
+fi
+
 # --- 9. post-publish device instructions -------------------------------------
 echo
 echo "============================================================"
