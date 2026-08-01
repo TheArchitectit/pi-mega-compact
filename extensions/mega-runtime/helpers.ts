@@ -42,6 +42,8 @@ export interface SessionRuntime {
 	lastInjectAt: number | null; // last tail injection this session
 	// S53A: previous cache_hit_pct for drop detection.
 	_prevCacheHitPct: number | null;
+	// A3: rolling cache health score (0-1) cached between turns for trend detection.
+	_lastCacheHealthScore: number | undefined;
 	lastNativeCompactAt: number | null; // COMPACT-DEDUP FIX: wall-clock ms of the last NATIVE pi compaction (session_compact event) — used by the agent_end/legacy race guard to skip a redundant ctx.compact() that would throw "Already compacted".
 	// S25: live dashboard counters (reset on session_start, mirrored to SQLite).
 	compactCount: number; // compactions performed this session-instance

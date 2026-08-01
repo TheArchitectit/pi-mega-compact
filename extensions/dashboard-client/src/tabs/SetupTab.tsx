@@ -10,8 +10,8 @@
 
 import type React from "react";
 import { useState, useEffect, useCallback } from "react";
-import type { SetupStatusResponse, SetupDetectResponse } from "@contracts";
-import { fetchSetupStatus, fetchSetupDetect } from "../api/client";
+import type { SetupStatusResponse, SetupDetectResponse, SetupConfigureResponse } from "@contracts";
+import { fetchSetupStatus, fetchSetupDetect, configureEmbedder } from "../api/client";
 
 // ---------------------------------------------------------------------------
 // Style constants
@@ -90,6 +90,25 @@ export default function SetupTab(): React.ReactElement {
 	const [statusError, setStatusError] = useState<string | null>(null);
 	const [detectError, setDetectError] = useState<string | null>(null);
 	const [runningDetect, setRunningDetect] = useState(false);
+	const [configuring, setConfiguring] = useState<string | null>(null);
+	const [configResult, setConfigResult] = useState<SetupConfigureResponse | null>(null);
+	const [configError, setConfigError] = useState<string | null>(null);
+
+	const applyEmbedder = useCallback((embedder: "ollama" | "llama" | "trigram") => {
+		setConfiguring(embedder);
+		setConfigError(null);
+		setConfigResult(null);
+		configureEmbedder({ embedder })
+			.then((r) => {
+				setConfigResult(r);
+				setConfiguring(null);
+				loadStatus();
+			})
+			.catch((e: unknown) => {
+				setConfigError(e instanceof Error ? e.message : String(e));
+				setConfiguring(null);
+			});
+	}, [loadStatus]);
 
 	const loadStatus = useCallback(() => {
 		fetchSetupStatus()
@@ -319,6 +338,50 @@ export default function SetupTab(): React.ReactElement {
 						Or run <code>/megasetup</code> in the chat for an interactive wizard.
 					</span>
 				</div>
+
+				{/* Configure buttons — appear after detection runs */}
+				{detect && (
+					<div style={{ marginTop: "1rem", paddingTop: "0.75rem", borderTop: "1px solid #2a2a4e" }}>
+						<div style={{ fontSize: "0.9rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+							Configure
+						</div>
+						<div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+							<button
+								style={{ ...styles.button, opacity: detect.ollama?.installed ? 1 : 0.4 }}
+								onClick={() => applyEmbedder("ollama")}
+								disabled={!detect.ollama?.installed || configuring !== null}
+							>
+								{configuring === "ollama" ? "Writing..." : "Use Ollama"}
+							</button>
+							<button
+								style={{ ...styles.button, opacity: detect.llamaCpp?.installed ? 1 : 0.4 }}
+								onClick={() => applyEmbedder("llama")}
+								disabled={!detect.llamaCpp?.installed || configuring !== null}
+							>
+								{configuring === "llama" ? "Writing..." : "Use llama.cpp"}
+							</button>
+							<button
+								style={{ ...styles.button, background: "#444" }}
+								onClick={() => applyEmbedder("trigram")}
+								disabled={configuring !== null}
+							>
+								{configuring === "trigram" ? "Writing..." : "Use Trigram (default)"}
+							</button>
+						</div>
+						{configResult && (
+							<div style={styles.warning}>
+								{configResult.alreadyActive
+									? "Already active — no restart needed."
+									: `Configured ${configResult.embedder}. Restart pi to activate (config written to ${configResult.envPath}).`}
+							</div>
+						)}
+						{configError && (
+							<p style={{ color: "#f44336", fontSize: "0.85rem", marginTop: "0.5rem" }}>
+								Configure error: {configError}
+							</p>
+						)}
+					</div>
+				)}
 			</div>
 
 			{/* Help Section */}

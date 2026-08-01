@@ -90,6 +90,7 @@ export class MegaRuntime {
 		lastRecallAt: null,
 		lastInjectAt: null,
 		_prevCacheHitPct: null,
+		_lastCacheHealthScore: undefined,
 		lastNativeCompactAt: null,
 		compactCount: 0,
 		recallInjections: 0,

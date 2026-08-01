@@ -307,6 +307,9 @@ export function handlePerf(
 					avg: avg(get("cache_hit_pct")),
 					latest: latest(get("cache_hit_pct")),
 					n: get("cache_hit_pct").length,
+					samples: rows
+						.filter((r) => r.kind === "cache_hit_pct")
+						.map((r) => ({ pct: r.value, ts: r.ts })),
 				},
 				db_recompute_ms: {
 					p50: pct(get("db_recompute_ms"), 50),

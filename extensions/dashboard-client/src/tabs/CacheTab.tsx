@@ -1,22 +1,36 @@
 /**
- * dashboard-client/src/tabs/CacheTab.tsx — Cache tab (B.3).
+ * dashboard-client/src/tabs/CacheTab.tsx -- Cache tab (B.3 + A3).
  *
- * Two sections, each with its own header:
- *   1. Provider Prompt Cache  → ProviderCacheCard  (/api/provider-cache)
- *   2. Mega-Compact Dedup Cache → CacheHitsCard + TimeSavedCard  (/api/snapshot)
+ * Sections:
+ *   1. Provider Prompt Cache    -> ProviderCacheCard        (/api/provider-cache)
+ *   2. Cache Stripe Distribution -> StripeDistributionCard  (/api/cache-stripes)
+ *   3. Cache Hit-Rate Trend     -> CacheHitRateTrendCard    (/api/perf)
+ *   4. Mega-Compact Dedup Cache -> CacheHitsCard + TimeSavedCard  (/api/snapshot)
  *
- * Both fetch at 5s polling (same interval). Loading / error shown per-section
- * only when its own fetch fails; the other section keeps rendering.
+ * Each section fetches independently; failures in one do not affect others.
+ * 5s polling on provider cache and activity snapshot; 15s on stripes + trend.
  */
 
 import type React from "react";
 import { useCallback } from "react";
-import type { SnapshotResponse, ProviderCacheResponse } from "@contracts";
+import type {
+	SnapshotResponse,
+	ProviderCacheResponse,
+	CacheStripesResponse,
+	PerfResponse,
+} from "@contracts";
 import { useApi } from "../hooks/useApi";
-import { fetchSnapshot, fetchProviderCache } from "../api/client";
+import {
+	fetchSnapshot,
+	fetchProviderCache,
+	fetchCacheStripes,
+	fetchPerf,
+} from "../api/client";
 import { CacheHitsCard } from "../components/CacheHitsCard";
 import { TimeSavedCard } from "../components/TimeSavedCard";
 import { ProviderCacheCard } from "../components/ProviderCacheCard";
+import { StripeDistributionCard } from "../components/StripeDistributionCard";
+import { CacheHitRateTrendCard } from "../components/CacheHitRateTrendCard";
 
 export default function CacheTab(): React.ReactElement {
 	/* --- Provider prompt cache (5s poll) --- */
@@ -27,6 +41,26 @@ export default function CacheTab(): React.ReactElement {
 	} = useApi<ProviderCacheResponse>(
 		useCallback(() => fetchProviderCache(), []),
 		{ pollInterval: 5000 },
+	);
+
+	/* --- Cache stripe distribution (15s poll) --- */
+	const {
+		data: stripes,
+		loading: stripesLoading,
+		error: stripesError,
+	} = useApi<CacheStripesResponse>(
+		useCallback(() => fetchCacheStripes(), []),
+		{ pollInterval: 15000 },
+	);
+
+	/* --- Cache hit-rate trend from perf samples (15s poll) --- */
+	const {
+		data: perf,
+		loading: perfLoading,
+		error: perfError,
+	} = useApi<PerfResponse>(
+		useCallback(() => fetchPerf({ minutes: 30 }), []),
+		{ pollInterval: 15000 },
 	);
 
 	/* --- Dedup cache snapshot (5s poll) --- */
@@ -42,11 +76,11 @@ export default function CacheTab(): React.ReactElement {
 	return (
 		<div className="cache-tab">
 			{/* ==============================================================
-			    Section 1 — Provider Prompt Cache
+			    Section 1 -- Provider Prompt Cache
 			    ============================================================== */}
 			<h2>Provider Prompt Cache</h2>
 			{pcLoading ? (
-				<p className="tab-stub">Loading…</p>
+				<p className="tab-stub">Loading...</p>
 			) : pcError ? (
 				<p className="tab-stub">
 					Provider cache unavailable: {pcError.message}
@@ -64,16 +98,44 @@ export default function CacheTab(): React.ReactElement {
 					modelLabel={providerCache.savings?.model ?? null}
 					firstTurnAt={providerCache.cache.firstTurnAt}
 					latestTurnAt={providerCache.cache.latestTurnAt}
-									byModel={providerCache.cache.byModel ?? []}
+					byModel={providerCache.cache.byModel ?? []}
 				/>
 			) : null}
 
 			{/* ==============================================================
-			    Section 2 — Mega-Compact Dedup Cache
+			    Section 2 -- Cache Stripe Distribution
+			    ============================================================== */}
+			<h2>Cache Stripe Distribution</h2>
+			{stripesLoading ? (
+				<p className="tab-stub">Loading...</p>
+			) : stripesError ? (
+				<p className="tab-stub">
+					Cache stripe data unavailable: {stripesError.message}
+				</p>
+			) : stripes ? (
+				<StripeDistributionCard data={stripes} />
+			) : null}
+
+			{/* ==============================================================
+			    Section 3 -- Cache Hit-Rate Trend
+			    ============================================================== */}
+			<h2>Cache Hit-Rate Trend</h2>
+			{perfLoading ? (
+				<p className="tab-stub">Loading...</p>
+			) : perfError ? (
+				<p className="tab-stub">
+					Hit-rate trend unavailable: {perfError.message}
+				</p>
+			) : perf ? (
+				<CacheHitRateTrendCard perf={perf} />
+			) : null}
+
+			{/* ==============================================================
+			    Section 4 -- Mega-Compact Dedup Cache
 			    ============================================================== */}
 			<h2>Mega-Compact Dedup Cache</h2>
 			{snapLoading ? (
-				<p className="tab-stub">Loading…</p>
+				<p className="tab-stub">Loading...</p>
 			) : snapError ? (
 				<p className="tab-stub">Snapshot unavailable: {snapError.message}</p>
 			) : (

@@ -29,7 +29,8 @@ export type PerfKind =
 	| "cpu_user_ms"
 	| "cpu_sys_ms"
 	| "db_recompute_ms"
-	| "disk_write_ms";
+	| "disk_write_ms"
+	| "cache_health";
 
 /** Allow-list of valid perf sample kinds (mirrors the table's domain). */
 export const PERF_KINDS: readonly PerfKind[] = [
@@ -44,6 +45,7 @@ export const PERF_KINDS: readonly PerfKind[] = [
 	"cpu_sys_ms",
 	"db_recompute_ms",
 	"disk_write_ms",
+	"cache_health",
 ];
 
 /** A single perf sample row (as stored + returned). */

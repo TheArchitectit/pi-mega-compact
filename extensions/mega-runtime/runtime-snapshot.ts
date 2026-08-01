@@ -267,6 +267,7 @@ export function snapshotImpl(
 			armed,
 			modelSnap,
 			providerCachePct,
+			perTurnCacheHitPct: self.rt._prevCacheHitPct ?? undefined,
 		});
 		self.widgetData = _snapResult.widgetData;
 		// S33: consume the flare after copying it into widgetData so it fires

@@ -106,6 +106,11 @@ export interface SnapshotInput {
 	} | null;
 
 	lastActivityAt: number;
+
+	/** A3: per-turn cache hit percentage (most recent turn's ratio, separate
+	 *  from providerCachePct which is the running average). Optional — when null
+	 *  the cache-hit line is omitted from the widget. */
+	perTurnCacheHitPct?: number;
 }
 
 export interface SnapshotResult {
@@ -220,6 +225,7 @@ export function computeMegaSnapshot(p: SnapshotInput): SnapshotResult {
 		cachePct,
 		megaCacheFlare: p.megaCacheFlare,
 		megaCacheFlarePct: p.megaCacheFlarePct,
+		perTurnCacheHitPct: p.perTurnCacheHitPct ?? cachePct,
 		levelUpFlare: p.levelUpFlare,
 		achievementFlare: p.achievementFlare,
 		achievementFlareTitles: p.achievementFlareTitles,

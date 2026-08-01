@@ -168,9 +168,21 @@ export interface MegaConfig {
 	 *  the tail of the view when auto is OFF AND no trim action is needed. Default ON
 	 *  (true). When false, restores the pre-sprint systemPrompt prepend behavior. */
 	recallTailInject: boolean;
+	/** A1 PLAN_V2 Phase 2: Message Separation — isolate user/assistant turns
+	 *  from volatile tool results so the prompt-cache prefix stays stable.
+	 *  Default OFF (flag-OFF = byte-identical pre-sprint). */
+	messageSeparation: boolean;
 	debug: boolean;
 	/** Master reconciliation: TUI shutdown widget (MEGACOMPACT_TUI_WIDGET=0 to disable). */
 	tuiWidget: boolean;
+	/** S57 B1: Query reformulation via embedding-neighbor keyword expansion. */
+	ragQueryReformulation: boolean;
+	/** S57 B2: Tiered recall router (L0 cache -> L1 FTS5 -> L2). */
+	ragTieredRouter: boolean;
+	/** S57 B3: Recall quality metrics (precision/recall scoring + logging). */
+	ragRecallMetrics: boolean;
+	/** S57 B4: Memory graph traversal (dashboard-oriented). */
+	ragMemoryGraph: boolean;
 }
 
 function envFlag(name: string, fallback: number): number {
@@ -332,7 +344,12 @@ export function loadConfig(): MegaConfig {
 		recallMaxTokens: envFlag("MEGACOMPACT_RECALL_MAX_TOKENS", 1500),
 		windowDedupe: envBool("MEGACOMPACT_WINDOW_DEDUPE", true),
 		recallTailInject: envBool("MEGACOMPACT_RECALL_TAIL_INJECT", true),
+		messageSeparation: envBool("MEGACOMPACT_MESSAGE_SEPARATION", false),
 		tuiWidget: envBool("MEGACOMPACT_TUI_WIDGET", true),
+		ragQueryReformulation: envBool("MEGACOMPACT_QUERY_REFORMULATION", false),
+		ragTieredRouter: envBool("MEGACOMPACT_TIERED_ROUTER", false),
+		ragRecallMetrics: envBool("MEGACOMPACT_RECALL_METRICS", false),
+		ragMemoryGraph: envBool("MEGACOMPACT_MEMORY_GRAPH", false),
 		// D.1: env-overridable recompact delta (minimum context growth % before
 		// re-compacting instead of replaying the cached live trim). Default 50.
 		recompactPctDelta: envFlag("MEGACOMPACT_RECOMPACT_PCT_DELTA", 50),

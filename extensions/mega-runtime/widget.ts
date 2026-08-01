@@ -131,6 +131,11 @@ export function buildWidgetLines(
 		`${C.gray}mem${C.reset} ${wd.embedderName} · ${wd.chk} chunks · ${C.blue}comp ${wd.compStr}${C.reset}`,
 		`${C.gray}drift${C.reset} ${wd.driftStatus === "ok" ? C.green : C.amber}${wd.driftStatus}${C.reset}`,
 		`${C.gray}compact${C.reset} ${sinceCompactStr(wd.sinceCompact)}`,
+		...(wd.perTurnCacheHitPct != null
+			? [
+					`${C.gray}cache hit${C.reset} this turn ${C.green}${Math.round(wd.perTurnCacheHitPct)}%${C.reset}`,
+				]
+			: []),
 	].join(sep);
 	// Wrap to terminal width and pad each line
 	const wrapped = wrapLine(content, width - 2, panelBg); // 2-char indent

@@ -208,4 +208,19 @@ export type {
 export type { MemoryStatusResponse, MemoryStatsTopMemory } from "./memory.js";
 
 // Setup wizard — embedder configuration + backend detection
-export type { SetupStatusResponse, SetupDetectResponse, DetectResult, OllamaDetectResult } from "./setup.js";
+export type { SetupStatusResponse, SetupDetectResponse, SetupConfigureRequest, SetupConfigureResponse, DetectResult, OllamaDetectResult } from "./setup.js";
+
+// S46 — memory graph (visual memory map)
+export type {
+	MemoryMapResponse,
+	MemoryMapNode,
+	MemoryMapEdgeEntry,
+	MemoryMapQuery,
+} from "./memory-map.js";
+
+// A3 — cache stripe distribution + health
+export type {
+	StripeBucket,
+	CacheHealthScore,
+	CacheStripesResponse,
+} from "./cache-stripes.js";

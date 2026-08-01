@@ -40,8 +40,11 @@ import type {
 	MaintenanceAction,
 	MaintenanceActionResult,
 	ProviderCacheResponse,
+	CacheStripesResponse,
 	SetupStatusResponse,
 	SetupDetectResponse,
+	SetupConfigureRequest,
+	SetupConfigureResponse,
 } from "@contracts";
 
 /** Error thrown when a dashboard API response is not 2xx. */
@@ -198,6 +201,11 @@ export function fetchProviderCache(): Promise<ProviderCacheResponse> {
 	return getJson<ProviderCacheResponse>(ENDPOINTS.providerCache.path);
 }
 
+/** Cache stripe distribution + health score (A3). */
+export function fetchCacheStripes(): Promise<CacheStripesResponse> {
+	return getJson<CacheStripesResponse>(ENDPOINTS.cacheStripes.path);
+}
+
 // ── S52: turn-by-turn memory tracking + recall + rewind ───────────────
 
 export function fetchTurns(): Promise<TurnsResponse> {
@@ -286,4 +294,11 @@ export function fetchSetupStatus(): Promise<SetupStatusResponse> {
 /** GET /api/setup-detect — detect available local embedder backends. */
 export function fetchSetupDetect(): Promise<SetupDetectResponse> {
 	return getJson<SetupDetectResponse>(ENDPOINTS.setupDetect.path);
+}
+
+/** POST /api/setup-configure — write embedder config to .mega-compact.env. */
+export function configureEmbedder(
+	body: SetupConfigureRequest,
+): Promise<SetupConfigureResponse> {
+	return postJson<SetupConfigureResponse>(ENDPOINTS.setupConfigure.path, body);
 }

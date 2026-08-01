@@ -11,11 +11,15 @@
 
 import { spawnSync } from "node:child_process"; // guardrails-allow PREVENT-PI-004: local subprocess detection only
 import { createRequire } from "node:module";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
 import type {
 	SetupStatusResponse,
 	SetupDetectResponse,
+	SetupConfigureRequest,
+	SetupConfigureResponse,
 	DetectResult,
 	OllamaDetectResult,
 } from "./api-contracts/setup.js";
@@ -177,5 +181,113 @@ export function handleSetupDetect(
 	// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
 	res.writeHead(200, { "Content-Type": "application/json" });
 	res.end(JSON.stringify(body));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// handleSetupConfigure — POST "/api/setup-configure"
+// ---------------------------------------------------------------------------
+
+const OLLAMA_DEFAULT_URL = "http://localhost:11434/api/embeddings"; // guardrails-allow PREVENT-PI-004: localhost-only config string, not a runtime fetch
+const LLAMA_DEFAULT_URL = "http://localhost:8080/v1/embeddings"; // guardrails-allow PREVENT-PI-004: localhost-only config string, not a runtime fetch
+
+function readJsonBody(
+	req: IncomingMessage,
+	cb: (
+		result:
+			| { ok: true; value: Record<string, unknown> }
+			| { ok: false; error: string },
+	) => void,
+): void {
+	let body = "";
+	let tooBig = false;
+	req.on("data", (chunk: Buffer) => {
+		if (body.length > 65536) { tooBig = true; return; }
+		body += chunk.toString();
+	});
+	req.on("end", () => {
+		if (tooBig) return cb({ ok: false, error: "body_too_large" });
+		try {
+			const v = body ? JSON.parse(body) : {}; // PREVENT-001: parsed value type-checked below
+			if (typeof v !== "object" || v === null || Array.isArray(v)) {
+				return cb({ ok: false, error: "invalid_object" });
+			}
+			cb({ ok: true, value: v as Record<string, unknown> });
+		} catch {
+			cb({ ok: false, error: "invalid_json" });
+		}
+	});
+	req.on("error", () => cb({ ok: false, error: "read_error" }));
+}
+
+export function handleSetupConfigure(
+	req: IncomingMessage,
+	res: ServerResponse,
+	ctx: RouteContext,
+): boolean {
+	if (req.url !== "/api/setup-configure") return false;
+	if (req.method !== "POST") {
+		// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
+		res.writeHead(405, { "Content-Type": "application/json" });
+		res.end(JSON.stringify({ error: "method_not_allowed" }));
+		return true;
+	}
+	readJsonBody(req, (parsed) => {
+		if (!parsed.ok) {
+			// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: parsed.error }));
+			return;
+		}
+		const body = parsed.value as unknown as SetupConfigureRequest;
+		const embedder = body.embedder;
+		if (embedder !== "ollama" && embedder !== "llama" && embedder !== "trigram") {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: "invalid_embedder" }));
+			return;
+		}
+		const url = body.url;
+		let resolvedUrl: string | null;
+		if (embedder === "ollama") resolvedUrl = typeof url === "string" && url ? url : OLLAMA_DEFAULT_URL;
+		else if (embedder === "llama") resolvedUrl = typeof url === "string" && url ? url : LLAMA_DEFAULT_URL;
+		else resolvedUrl = null;
+
+		// Write .mega-compact.env to the state dir (loaded by env-loader at next startup).
+		const stateDir = ctx.stateDir;
+		const envPath = join(stateDir, ".mega-compact.env");
+		const lines: string[] = [
+			"# Mega-Compact Embedder Configuration",
+			`# Configured via dashboard Setup tab at ${new Date().toISOString()}`,
+		];
+		if (resolvedUrl) {
+			lines.push(`export MEGACOMPACT_EMBEDDING_URL="${resolvedUrl}"`);
+		} else {
+			lines.push("# trigram: built-in embedder, no URL needed");
+			lines.push("# unset MEGACOMPACT_EMBEDDING_URL (commented to override any shell-set value)");
+			lines.push("# export MEGACOMPACT_EMBEDDING_URL=");
+		}
+		lines.push("");
+		try {
+			mkdirSync(stateDir, { recursive: true });
+			writeFileSync(envPath, lines.join("\n"), "utf-8");
+		} catch (e) {
+			res.writeHead(500, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: `write_failed: ${e instanceof Error ? e.message : String(e)}` }));
+			return;
+		}
+		// Detect if the new config matches what's already active (no restart needed).
+		const currentUrl = process.env["MEGACOMPACT_EMBEDDING_URL"];
+		const alreadyActive = (resolvedUrl === null && !currentUrl) || (resolvedUrl !== null && currentUrl === resolvedUrl);
+		const resp: SetupConfigureResponse = {
+			embedder,
+			url: resolvedUrl,
+			envPath,
+			restartRequired: !alreadyActive,
+			alreadyActive,
+		};
+		// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
+		res.writeHead(200, { "Content-Type": "application/json" });
+		res.end(JSON.stringify(resp));
+	});
 	return true;
 }

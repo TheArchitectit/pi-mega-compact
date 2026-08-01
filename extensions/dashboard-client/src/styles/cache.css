@@ -1,0 +1,167 @@
+/**
+ * dashboard-client/src/styles/cache.css — Cache tab styles (B.3 + A3).
+ *
+ * Stripe distribution bars, sparkline trend chart, health badge, and
+ * per-cache-section layout. All colors use CSS variables from base.css.
+ */
+
+/* ─── Stripe Distribution Card ─────────────────────────────────────────── */
+
+.ov-stripe-health-summary {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+	margin-bottom: 12px;
+	font-size: clamp(11px, 0.85vw, 14px);
+	flex-wrap: wrap;
+}
+
+.ov-stripe-health-badge {
+	display: inline-block;
+	padding: 2px 10px;
+	border-radius: 10px;
+	background: var(--panel);
+	border: 1px solid var(--border);
+	font-weight: 600;
+	text-transform: capitalize;
+}
+
+.ov-text-green  { color: var(--ok); }
+.ov-text-yellow { color: var(--warn); }
+.ov-text-orange { color: #d4761e; }
+.ov-text-red    { color: var(--err); }
+.ov-text-gray   { color: var(--muted); }
+
+.ov-stripe-health-score,
+.ov-stripe-churn,
+.ov-stripe-total {
+	color: var(--muted);
+}
+
+/* Bar chart rows */
+.ov-stripe-bars {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.ov-stripe-row {
+	display: grid;
+	grid-template-columns: 80px 1fr 40px 48px;
+	align-items: center;
+	gap: 8px;
+	font-size: clamp(11px, 0.8vw, 13px);
+}
+
+.ov-stripe-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text);
+}
+
+.ov-bar-track {
+	height: 18px;
+	background: var(--bg);
+	border-radius: 4px;
+	overflow: hidden;
+	position: relative;
+}
+
+.ov-bar-fill {
+	height: 100%;
+	border-radius: 4px;
+	transition: width 0.5s ease;
+	min-width: 2px;
+}
+
+.ov-bar-green  { background: var(--ok); }
+.ov-bar-blue   { background: var(--accent); }
+.ov-bar-teal   { background: #3d9cb0; }
+.ov-bar-yellow  { background: var(--warn); }
+.ov-bar-gray    { background: var(--muted); }
+.ov-bar-red     { background: var(--err); }
+.ov-bar-orange  { background: #d4761e; }
+
+.ov-bar-latest {
+	box-shadow: 0 0 6px rgba(255, 255, 255, 0.5);
+}
+
+.ov-stripe-count {
+	text-align: right;
+	color: var(--text);
+	font-variant-numeric: tabular-nums;
+}
+
+.ov-stripe-stability {
+	color: var(--muted);
+	font-size: clamp(10px, 0.75vw, 12px);
+}
+
+.ov-stripe-footer {
+	margin-top: 10px;
+	font-size: clamp(10px, 0.75vw, 12px);
+	color: var(--muted);
+	display: flex;
+	gap: 8px;
+}
+
+/* ─── Hit-Rate Trend Card ──────────────────────────────────────────────── */
+
+.ov-perf-summary {
+	display: flex;
+	gap: 14px;
+	align-items: center;
+	margin-bottom: 10px;
+	font-size: clamp(11px, 0.85vw, 14px);
+	flex-wrap: wrap;
+}
+
+.ov-perf-stat strong {
+	font-variant-numeric: tabular-nums;
+}
+
+/* Sparkline bars */
+.ov-sparkline {
+	display: flex;
+	align-items: flex-end;
+	gap: 3px;
+	height: 60px;
+	padding: 4px 2px;
+	margin-bottom: 6px;
+}
+
+.ov-sparkline-bar {
+	flex: 1;
+	min-width: 4px;
+	border-radius: 2px 2px 0 0;
+	transition: height 0.4s ease;
+}
+
+.ov-empty-state {
+	font-size: clamp(11px, 0.8vw, 13px);
+	color: var(--muted);
+	padding: 16px 0;
+	text-align: center;
+}
+
+.ov-card-footer {
+	font-size: clamp(10px, 0.75vw, 12px);
+	color: var(--muted);
+	margin-top: 4px;
+}
+
+/* ─── Overrides for card container ─────────────────────────────────────── */
+
+.ov-card {
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: clamp(8px, 1.5vw, 16px);
+}
+
+.ov-card-title {
+	margin: 0 0 10px;
+	font-size: clamp(13px, 0.9vw, 15px);
+	font-weight: 600;
+}

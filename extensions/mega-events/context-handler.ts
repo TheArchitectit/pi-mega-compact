@@ -37,6 +37,7 @@ import {
 } from "../mega-config.js";
 import { appendMirrorMessages } from "./mirror-append.js";
 import { stagedForTail, withRecallTail } from "./recall-tail.js";
+import { buildSeparatedPrompt } from "./separated-prompt.js";
 
 /** Register the context event handler (live-trim auto-trigger). */
 export function registerContextHandler(
@@ -69,8 +70,15 @@ export function registerContextHandler(
 		// REAL transcript before any view is built, so the injected tail never
 		// reaches raw_transcript (PREVENT-PI: append-only, view-only).
 		const tailResult = (msgs?: readonly AgentMessage[]) => {
-			if (!stagedForTail(runtime, config)) return undefined;
-			return { messages: withRecallTail(msgs ?? messages, runtime, config) };
+			const base = msgs ?? messages;
+			if (!stagedForTail(runtime, config) && !config.messageSeparation) return undefined;
+			let result: AgentMessage[] = stagedForTail(runtime, config)
+				? withRecallTail(base, runtime, config)
+				: (base as AgentMessage[]);
+			if (config.messageSeparation) {
+				result = buildSeparatedPrompt(result);
+			}
+			return { messages: result };
 		};
 		// Always track context for the dashboard/widget, even when auto is off.
 		// (v0.8 regression: !config.auto gate sat above this, leaving ctx stats

@@ -30,6 +30,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { closeVectorIndex } from "../src/store/vectorIndex.js";
 import { closeMemoryIndex } from "../src/store/memoryIndex.js";
 import { loadConfig } from "./mega-config.js";
+import { loadMegaEnv } from "./mega-runtime/env-loader.js";
 import { MegaRuntime } from "./mega-runtime.js";
 import { registerEventHandlers } from "./mega-events.js";
 import { registerCommands } from "./mega-commands.js";
@@ -41,6 +42,10 @@ import { registerMetricsCommands } from "./mega-metrics-cmds.js";
 import { registerTopicsCommands } from "./mega-topics-cmds.js";
 
 export default function (pi: ExtensionAPI) {
+	// Load .mega-compact.env (written by /mega-setup + dashboard Setup tab) BEFORE
+	// config resolution so the wizard's choices take effect. Shell env wins over
+	// the file (see env-loader.ts). Non-fatal: missing/malformed file is a no-op.
+	loadMegaEnv(loadConfig().stateDir);
 	const config = loadConfig();
 	// S38.9: preflight env validation — check for obviously invalid values at startup.
 	// Non-fatal: log warnings and fall back to defaults.

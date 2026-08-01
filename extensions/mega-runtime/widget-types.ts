@@ -77,4 +77,7 @@ export interface WidgetData {
 		startedAt: number;
 		durationMs: number;
 	} | null;
+	/** A3: per-turn cache hit percentage (most recent turn's hit/miss ratio,
+	 *  0–100). Separate from cachePct (running average) for trend visibility. */
+	perTurnCacheHitPct?: number;
 }

@@ -21,4 +21,6 @@ export { handleTurns } from "./routes-turns.js";
 export { handleMaintenance } from "./routes-maintenance.js";
 export { handleProviderCache } from "./routes-cache.js";
 export { handleMemoryStatus } from "./routes-memory.js";
-export { handleSetupStatus, handleSetupDetect } from "./routes-setup.js";
+export { handleSetupStatus, handleSetupDetect, handleSetupConfigure } from "./routes-setup.js";
+export { handleMemoryMap } from "./routes-memory-map.js";
+export { handleCacheStripes } from "./routes-cache.js";

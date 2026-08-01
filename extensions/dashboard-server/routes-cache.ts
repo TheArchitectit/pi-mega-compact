@@ -197,3 +197,38 @@ export function handleProviderCache(
 		return false;
 	}
 }
+// ---------------------------------------------------------------------------
+// handleCacheStripes — "GET /api/cache-stripes"
+// ---------------------------------------------------------------------------
+
+export function handleCacheStripes(
+	req: IncomingMessage,
+	res: ServerResponse,
+	ctx: RouteContext,
+): boolean {
+	if (!req.url?.startsWith("/api/cache-stripes")) return false;
+	if (req.method !== "GET") {
+		res.writeHead(405, { "Content-Type": "application/json" });
+		res.end(JSON.stringify({ error: "method_not_allowed" }));
+		return true;
+	}
+	try {
+		const stateDir = ctx.stateDir;
+		const pfReq = createRequire(import.meta.url);
+		const { readCacheStripes } = pfReq(
+			"../../src/store/sqlite/cache-stripes.js",
+		) as typeof import("../../src/store/sqlite/cache-stripes.js");
+		const result = readCacheStripes(stateDir);
+		res.writeHead(200, { "Content-Type": "application/json" });
+		res.end(JSON.stringify(result));
+	} catch (e) {
+		res.writeHead(500, { "Content-Type": "application/json" });
+		res.end(
+			JSON.stringify({
+				error: "cache_stripes_unavailable",
+				detail: String(e),
+			}),
+		);
+	}
+	return true;
+}

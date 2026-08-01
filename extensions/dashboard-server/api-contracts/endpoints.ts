@@ -16,7 +16,7 @@ import type { GameStateResponse } from "./game.js";
 import type { SseEvent } from "./index.js";
 import type { ProviderCacheResponse } from "./provider-cache.js";
 import type { MemoryStatusResponse } from "./memory.js";
-import type { SetupStatusResponse, SetupDetectResponse } from "./setup.js";
+import type { SetupStatusResponse, SetupDetectResponse, SetupConfigureRequest, SetupConfigureResponse } from "./setup.js";
 import type {
 	TurnsResponse,
 	ConversationTurnsResponse,
@@ -35,6 +35,8 @@ import type {
 	MaintenanceAction,
 	SchemaHealthResponse,
 } from "./maintenance.js";
+
+import type { CacheStripesResponse } from "./cache-stripes.js";
 
 import type {
 	GameScoreRow,
@@ -300,6 +302,14 @@ export interface PerfLatest {
 	readonly n: number;
 }
 
+/** A single cache hit rate sample with timestamp. */
+export interface CacheHitSample {
+	/** Cache hit percentage (0–100). */
+	readonly pct: number;
+	/** Epoch ms timestamp of the sample. */
+	readonly ts: number;
+}
+
 /** Average + latest statistics for cache hit percentage. */
 export interface PerfCacheHit {
 	/** Average cache hit percentage (0–100). */
@@ -308,6 +318,8 @@ export interface PerfCacheHit {
 	readonly latest: number;
 	/** Number of samples in the window. */
 	readonly n: number;
+	/** Raw cache hit samples with timestamps for time-series charting. */
+	readonly samples: CacheHitSample[];
 }
 
 /** Diagnostic counters from the live dashboard snapshot. */
@@ -614,6 +626,16 @@ export const ENDPOINTS = {
 			"Lifetime provider prompt cache hit-rate aggregates + dollar savings estimate.",
 	} as const satisfies EndpointDef<"GET", undefined, ProviderCacheResponse>,
 
+
+		// ─── A3 Cache Stripes (PLAN_V2 Phase 4) ───────────────────────────
+
+		/** GET /api/cache-stripes — Per-stripe distribution + health score. */
+		cacheStripes: {
+			method: "GET",
+			path: "/api/cache-stripes",
+			description:
+				"Per-stripe distribution counts, average stability scores, and composite cache health.",
+		} as const satisfies EndpointDef<"GET", undefined, CacheStripesResponse>,
 	// ─── Memory Effectiveness (S53B) ───────────────────────────────────────
 
 	/** GET /api/memory-status — Memory store aggregate statistics. */
@@ -639,4 +661,12 @@ export const ENDPOINTS = {
 		description:
 			"Best-effort detection of local embedder backends (ollama, llama.cpp, ONNX) available on the machine.",
 	} as const satisfies EndpointDef<"GET", undefined, SetupDetectResponse>,
+
+	/** POST /api/setup-configure — Write embedder config to .mega-compact.env. */
+	setupConfigure: {
+		method: "POST",
+		path: "/api/setup-configure",
+		description:
+			"Write the chosen embedder configuration to .mega-compact.env (loaded at next startup). Returns whether a restart is required.",
+	} as const satisfies EndpointDef<"POST", SetupConfigureRequest, SetupConfigureResponse>,
 } as const;

@@ -27,6 +27,7 @@ const SessionsTab = React.lazy(() => import("./tabs/SessionsTab"));
 const TopicsTab = React.lazy(() => import("./tabs/TopicsTab"));
 const TurnsTab = React.lazy(() => import("./tabs/TurnsTab"));
 const MaintenanceTab = React.lazy(() => import("./tabs/MaintenanceTab"));
+const MemoryMapTab = React.lazy(() => import("./tabs/MemoryMapTab"));
 
 export type TabId =
 	| "overview"
@@ -41,23 +42,32 @@ export type TabId =
 	| "sessions"
 	| "topics"
 	| "turns"
-	| "maintenance";
+	| "maintenance"
+	| "memory-map";
 
-const TABS: Array<{ id: TabId; label: string }> = [
+type TabDef = { id: TabId; label: string };
+
+const PRIMARY_TABS: TabDef[] = [
 	{ id: "overview", label: "Overview" },
+	{ id: "cache", label: "Cache" },
+	{ id: "sessions", label: "Sessions" },
+	{ id: "turns", label: "Turns" },
+];
+
+const ADVANCED_TABS: TabDef[] = [
 	{ id: "repos", label: "Repos" },
 	{ id: "events", label: "Events" },
 	{ id: "config", label: "Config" },
 	{ id: "setup", label: "Setup" },
 	{ id: "metrics", label: "Metrics" },
-	{ id: "cache", label: "Cache" },
 	{ id: "game", label: "Game" },
 	{ id: "achievements", label: "Achievements" },
-	{ id: "sessions", label: "Sessions" },
 	{ id: "topics", label: "Topics" },
-	{ id: "turns", label: "Turns" },
 	{ id: "maintenance", label: "Maintenance" },
+	{ id: "memory-map", label: "Memory Map" },
 ];
+
+const advancedTabIds = new Set<TabId>(ADVANCED_TABS.map((t) => t.id));
 
 export default function App(): React.ReactElement {
 	const [activeTab, setActiveTab] = useState<TabId>("overview");
@@ -86,7 +96,13 @@ export default function App(): React.ReactElement {
 						{version && <span className="version-pill">{version}</span>}
 					</h1>
 				</header>
-				<TabBar tabs={TABS} active={activeTab} onTabChange={setActiveTab} />
+				<TabBar
+					primaryTabs={PRIMARY_TABS}
+					advancedTabs={ADVANCED_TABS}
+					advancedTabIds={advancedTabIds}
+					active={activeTab}
+					onTabChange={setActiveTab}
+				/>
 				<main className="dashboard-content">
 					<React.Suspense fallback={<LoadingSpinner />}>
 						{activeTab === "overview" && (
@@ -106,8 +122,8 @@ export default function App(): React.ReactElement {
 						{activeTab === "achievements" && <AchievementsTab />}
 						{activeTab === "sessions" && <SessionsTab />}
 						{activeTab === "topics" && <TopicsTab />}
-						{activeTab === "turns" && <TurnsTab />}
-					{activeTab === "maintenance" && <MaintenanceTab />}
+						{activeTab === "maintenance" && <MaintenanceTab />}
+						{activeTab === "memory-map" && <MemoryMapTab />}
 					</React.Suspense>
 				</main>
 			</div>

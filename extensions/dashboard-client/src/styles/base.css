@@ -93,6 +93,36 @@ body {
 	color: var(--text);
 }
 
+/* Advanced toggle — visually same as a tab button but toggles open/closed */
+.tab-bar .advanced-toggle {
+	background: none;
+	border: none;
+	color: var(--muted);
+	padding: 8px 14px;
+	cursor: pointer;
+	font-size: clamp(12px, 0.85vw, 14px);
+	border-bottom: 2px solid transparent;
+	white-space: nowrap;
+	margin-left: 6px;
+}
+.tab-bar .advanced-toggle:hover {
+	color: var(--text);
+}
+.tab-bar .advanced-toggle[aria-expanded="true"] {
+	color: var(--text);
+	border-bottom-color: var(--border);
+}
+
+/* Wrapper for the advanced-tab row — appears underneath on a fresh line */
+.tab-bar .advanced-tabs {
+	display: flex;
+	gap: 4px;
+	flex-basis: 100%;
+	border-top: 1px dashed var(--border);
+	padding-top: 6px;
+	margin-top: -1px;
+}
+
 .dashboard-content {
 	min-height: 400px;
 }

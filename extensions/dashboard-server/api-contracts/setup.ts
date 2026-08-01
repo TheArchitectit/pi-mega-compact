@@ -56,3 +56,25 @@ export interface SetupDetectResponse {
   /** Error message if detection itself failed, or null. */
   readonly error: string | null;
 }
+
+/** Request body for POST /api/setup-configure. */
+export interface SetupConfigureRequest {
+  /** Which embedder to configure. "trigram" clears the URL (uses built-in). */
+  readonly embedder: "ollama" | "llama" | "trigram";
+  /** Optional override URL (for non-default Ollama ports or llama.cpp). */
+  readonly url?: string;
+}
+
+/** Response for POST /api/setup-configure. */
+export interface SetupConfigureResponse {
+  /** The embedder that was configured. */
+  readonly embedder: string;
+  /** The URL that was written (null for trigram). */
+  readonly url: string | null;
+  /** Path to the .mega-compact.env file that was written. */
+  readonly envPath: string;
+  /** Whether the user needs to restart pi to activate. */
+  readonly restartRequired: boolean;
+  /** The already-active embedder, if the new config matches (no restart needed). */
+  readonly alreadyActive: boolean;
+}
