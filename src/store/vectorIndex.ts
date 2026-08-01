@@ -230,13 +230,21 @@ export async function upsertEmbedding(
     const pg = await initVectorIndex();
     if (!pg) return;
     const lit = toVectorLiteral(embedding);
-    await pg.query(
-      `INSERT INTO vector_index (repo_id, session_id, checkpoint_id, embedding)
-       VALUES ($1, $2, $3, $4::vector)
-       ON CONFLICT (repo_id, session_id, checkpoint_id)
-       DO UPDATE SET embedding = EXCLUDED.embedding;`,
-      [repoId, sessionId, checkpointId, lit],
+    const upserted = await withOpenTimeout(
+      pg.query(
+        `INSERT INTO vector_index (repo_id, session_id, checkpoint_id, embedding)
+         VALUES ($1, $2, $3, $4::vector)
+         ON CONFLICT (repo_id, session_id, checkpoint_id)
+         DO UPDATE SET embedding = EXCLUDED.embedding;`,
+        [repoId, sessionId, checkpointId, lit],
+      ),
+      (reason) => {
+        disabled = true;
+        logWarn(`upsert query timed out after ${queryTimeoutMs()}ms: ${reason}`);
+      },
+      queryTimeoutMs(),
     );
+    if (upserted === undefined) return; // timed out — non-fatal
   } catch (err) {
     disabled = true;
     logWarn(`upsert failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -274,7 +282,15 @@ export async function searchAsync(
       params.push(repoId);
     }
     sql += " ORDER BY embedding <=> $1::vector LIMIT $2";
-    const res = await pg.query(sql, params);
+    const res = await withOpenTimeout(
+      pg.query(sql, params),
+      (reason) => {
+        disabled = true;
+        logWarn(`search query timed out after ${queryTimeoutMs()}ms: ${reason}`);
+      },
+      queryTimeoutMs(),
+    );
+    if (!res) return []; // query timed out — degrade to empty (non-fatal)
     return res.rows.map((r: any) => ({
       repoId: r.repo_id as string,
       sessionId: r.session_id as string,
@@ -298,6 +314,21 @@ function closeTimeoutMs(): number {
     if (Number.isFinite(n) && n > 0) return n;
   }
   return DEFAULT_CLOSE_TIMEOUT_MS;
+}
+
+/** Default cap for a PGlite search query. A WASM query that never resolves would
+ *  otherwise hang the calling turn (and node --test) forever — the catch below
+ *  only handles thrown errors, not a stalled promise. 0 disables the guard
+ *  (preserve original unbounded behavior). Mirrors the open/close timeouts. */
+export const DEFAULT_QUERY_TIMEOUT_MS = 10_000;
+
+function queryTimeoutMs(): number {
+  const raw = process.env.MEGACOMPACT_PGLITE_QUERY_TIMEOUT_MS;
+  if (raw !== undefined) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+  return DEFAULT_QUERY_TIMEOUT_MS;
 }
 
 /**

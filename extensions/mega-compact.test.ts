@@ -26,6 +26,13 @@ const baseTmp = mkdtempSync(join(tmpdir(), "mc-ext-"));
 // Isolate the machine-wide repo index so test runs (which call bindRepo ->
 // upsertRepoRegistry) never pollute the developer's real ~/.mega-compact-index.
 process.env.MEGACOMPACT_INDEX_DIR = join(baseTmp, "index");
+// This end-to-end extension test drives the compact/recall flow through the
+// synchronous node:sqlite store (the authoritative path). The redundant PGlite
+// HNSW cross-repo index is additive and exercised in its own dedicated test
+// (store/vectorIndex.test.ts); starting the WASM worker here only risks the
+// teardown stall that hangs node --test on some machines. Disable it for this
+// suite — the extension behavior under test is identical with it off.
+process.env.MEGACOMPACT_PGLITE_DISABLED = "1";
 let counter = 0;
 
 /** Build a mock pi + ctx and load the extension into them. */
@@ -1279,22 +1286,24 @@ test("S28: non-length stopReasons do not arm the length-stop flag (no length_sto
 			{ type: "agent_end", messages: [] },
 			lowPressureCtx,
 		);
-		// tool_use is success (0 nudges); error/aborted are transient under S38 (1 each).
-		if (stopReason === "tool_use") {
+		// tool_use is success (0 nudges); error is transient under S38 (1 retry);
+		// aborted is classified as 'cancelled' (no retry — logged as
+		// error_retry_cancelled, see agent-handlers.ts).
+		if (stopReason === "tool_use" || stopReason === "aborted") {
 			assert.equal(
 				h.sendUserMessages.length - before,
 				0,
-				"tool_use (success): no nudge",
+				`${stopReason} (success/cancelled): no retry nudge`,
 			);
 		} else {
 			transientRetries += h.sendUserMessages.length - before;
 		}
 	}
-	// error + aborted each produced one S38 transient retry nudge (2 total).
+	// Only 'error' produces one S38 transient retry nudge (aborted is cancelled).
 	assert.equal(
 		transientRetries,
-		2,
-		"S38 owns error/aborted: 1 transient retry each",
+		1,
+		"S38 owns error: 1 transient retry (aborted is cancelled, not retried)",
 	);
 	assert.ok(
 		!eventTypes(h.stateDir).includes("length_stop"),

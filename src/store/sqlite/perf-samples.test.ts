@@ -59,8 +59,8 @@ describe("perf-samples (v0.8.8)", () => {
 		assert.equal(after, before);
 	});
 
-	it("PERF_KINDS lists the 11 instrumentation kinds", () => {
-		assert.equal(PERF_KINDS.length, 11);
+	it("PERF_KINDS lists the 12 instrumentation kinds", () => {
+		assert.equal(PERF_KINDS.length, 12);
 		assert.ok(PERF_KINDS.includes("db_recompute_ms"));
 		assert.ok(PERF_KINDS.includes("cache_hit_pct"));
 		assert.ok(PERF_KINDS.includes("prefix_break"));
