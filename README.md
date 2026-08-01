@@ -6,15 +6,19 @@ A local context compressor for the [pi coding agent](https://github.com/earendil
 
 - **Auto-compaction** — the store watches context pressure and compacts quietly in the background. You'll notice when a long session just stays long while the token gauge rests comfortably far from the ceiling.
 - **Two-layer compaction** — every LLM call sees a live trim of the context window, and every trim is checkpointed to SQLite so a crash or a `/clear` never loses the work.
-- **Semantic dedup, three layers deep** — exact hash → MinHash/LSH → cosine over trigram embeddings. You rarely notice it; that's the point.
-- **RAPTOR memory hierarchy** — decisions you made an hour ago don't scroll off; they get packed up as hierarchical checkpoints and re-inlined the moment your next session asks for them. Multi-level retrieval (leaves + summary clusters) is on by default and tunes itself off the build history.
+- **Semantic dedup, three layers deep** — exact hash (L0) -> MinHash/LSH (L1) -> cosine over trigram embeddings (L2). The dedup audit log records per-tier decisions with similarity scores for tuning.
+- **RAPTOR memory hierarchy** — decisions you made an hour ago don't scroll off; they get packed up as hierarchical checkpoints and re-inlined the moment your next session asks for them. Multi-level retrieval (leaves + summary clusters) is on by default. Since v0.11.10, RAPTOR tree updates are incremental (no full rebuild) — enabled by default.
 - **Per-turn tracking + rewind.** Every turn, checkpoint, and recall hit lands as a row in an isolated `turns.db` — `turns`, `turn_recall`, `conversation_forks`. The dashboard **Turns tab** shows turn-by-turn memory: context pressure, the compact epoch that superseded each turn, and the exact checkpoints recalled into it. A **fork** action branches a conversation at any turn (carrying its recall set); a **rewind** action queues an intent the host consumes at the next `before_agent_start`. The `TurnStore` is contract-first (capability-gated reader/writer/admin views) so the same spine backs the dashboard, the TUI, or an API gateway.
-- **Cross-repo recall** — doors I close in one repo don't reopen when I move to another. A decision stored while hacking repo A is a recall hit the next time I'm in repo B.
-- **Durable memory** — every ten turns the store auto-reviews and safe-keeps decisions, facts, and preferences as first-class RAG memories, so long-running projects remember what mattered.
+- **Cross-repo recall** — doors you close in one repo don't reopen when you move to another. A decision stored while hacking repo A is a recall hit the next time you're in repo B.
+- **Durable memory** — on a cadence the store auto-reviews and safe-keeps decisions, facts, and preferences as first-class RAG memories, so long-running projects remember what mattered.
+- **Prompt-cache optimization** — message separation + cache striping (default OFF, opt-in). Targets 82-90% cache hit rate by structuring context around provider cache boundaries. Enables with `MEGACOMPACT_MESSAGE_SEPARATION` and `MEGACOMPACT_CACHE_STRIPING`.
+- **RAG suite** — query reformulation (TF-IDF + RRF), tiered routing (L0 cache -> L1 FTS5 -> L2 PGlite), and recall-quality metrics (CRAG). All default OFF, opt-in via flags `MEGACOMPACT_QUERY_REFORMULATION`, `MEGACOMPACT_TIERED_ROUTER`, `MEGACOMPACT_RECALL_METRICS`.
+- **Stacked memory graph** — the dashboard shows memory composition over time from 3 content sources (turns, durable memories, wiki) with a 9-gate validation system and a graph-health indicator. Per-model provider cache breakdown in the Cache tab.
+- **Debug bundle** — Maintenance tab in the dashboard has a **Gather Debug Logs** button that collects events, config, and store state into a shareable archive for bug reports.
 - **Fully local** — node:sqlite + trigram embeddings by default. Bring your own localhost embedder (ONNX, Ollama, TEI) for better semantic matches. Zero calls off your machine except the optional, localhost-only dashboard.
 - **Team-run aware** — fine-grained durable trim fires at agent settle during sub-agent runs, so long multi-agent work doesn't just collapse at the end.
-- **Multi-pi dashboard** — one dashboard tab per active pi process with the context stack, per-repo stats, and a live SSE feed across all of them. The React SPA now has lazy-loaded tabs: Overview, Repos, Events, Config, Metrics, Cache, Game, Achievements, Sessions, Topics (wiki), and Turns (per-turn memory + recall + rewind).
-- **Auto-categorizing wiki.** Every ten compactions, the store clusters your real memory embeddings (k-means) and labels each cluster with its most discriminative terms (TF-IDF) — no LLM, no Ollama, fully local. The dashboard **Wiki tab** browses topics, searches by label or term, and drills down into the member memories of each cluster.
+- **Multi-pi dashboard** — one dashboard tab per active pi process with the context stack, per-repo stats, and a live SSE feed across all of them. The React SPA has lazy-loaded tabs: Overview, Repos, Events, Config, Metrics, Cache, Game, Achievements, Sessions, Topics (wiki), Turns (per-turn memory + recall + rewind), and Maintenance (debug bundle).
+- **Auto-categorizing wiki.** Every 3 compactions (seeds from turns before that), the store clusters your real memory embeddings (k-means) and labels each cluster with its most discriminative terms (TF-IDF) — no LLM, no Ollama, fully local. The dashboard **Wiki tab** browses topics, searches by label or term, and drills down into the member memories of each cluster.
 
 ## Install
 
@@ -22,7 +26,7 @@ A local context compressor for the [pi coding agent](https://github.com/earendil
 pi install npm:pi-mega-compact
 ```
 
-That's it. `pi update --extensions` pulls updates going forward.
+That's it. **`pi update --extensions`** pulls updates going forward. npm is the only distribution path — never use `.tgz` tarballs or symlinks for shipping.
 
 <details>
 <summary>From source (development)</summary>
@@ -48,6 +52,7 @@ Key commands:
 - `/mega-recall [query]` — semantic search the store, `--cross-repo` for all repos
 - `/mega-memory save|list|search|forget` — manage durable memories
 - `/mega-dashboard` — start the localhost dashboard
+- `/mega-setup` — embedding wizard: detects Ollama/llama.cpp, suggests upgrades when recall quality is low
 
 Full command reference: [`docs/COMMANDS.md`](docs/COMMANDS.md)
 
@@ -62,7 +67,15 @@ Set env vars before starting pi. Defaults are in `src/config/dedup.ts`.
 | `MEGACOMPACT_DEDUP_SIM` | `0.90` | Cosine threshold for near-dup collapse |
 | `MEGACOMPACT_CROSSREPO_ENABLED` | `true` | Cross-repo recall on resume |
 | `MEGACOMPACT_EMBEDDING_URL` | _(unset)_ | BYO localhost embedder endpoint |
-| `MEGACOMPACT_TUI_WIDGET` | `true` | Render the above-editor panel. Set to `0` to suppress it — useful when pi runs inside an editor terminal (e.g. Neovim `:terminal`) where you drive scrollback yourself and the panel's repaints fight it. Compaction is unaffected. |
+| `MEGACOMPACT_TUI_WIDGET` | `true` | Render the above-editor panel |
+| `MEGACOMPACT_MESSAGE_SEPARATION` | `false` | Opt-in: separate messages at provider cache boundaries |
+| `MEGACOMPACT_CACHE_STRIPING` | `false` | Opt-in: stripe cache stripes across conversation |
+| `MEGACOMPACT_QUERY_REFORMULATION` | `false` | Opt-in: TF-IDF + RRF query reformulation |
+| `MEGACOMPACT_TIERED_ROUTER` | `false` | Opt-in: L0->L1->L2 recall routing |
+| `MEGACOMPACT_RECALL_METRICS` | `false` | Opt-in: CRAG recall quality metrics |
+| `MEGACOMPACT_MEMORY_GRAPH_SEED_TURNS` | `true` | Seed memory graph from turns (default ON) |
+| `MEGACOMPACT_WIKI_SEED_FROM_TURNS` | `true` | Seed wiki from turns (default ON) |
+| `MEGACOMPACT_RAPTOR_INCREMENTAL` | `true` | Incremental RAPTOR updates (default ON) |
 
 Full config reference: [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)
 
@@ -70,11 +83,11 @@ Full config reference: [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)
 
 ```
 extensions/    Pi entry points (mega-compact, mega-trim, dashboard)
-src/engine.ts  Trident pipeline (supersede → collapse → cluster)
+src/engine.ts  Trident pipeline (supersede -> collapse -> cluster)
 src/vectorStore.ts   Local vector DB (add/search/dedupe)
 src/compact.ts       Summarize / merge / auto-compact
 src/memory.ts        Durable memories + auto-review
-src/store/sqlite.ts   node:sqlite store (Node ≥22.13)
+src/store/sqlite.ts   node:sqlite store (Node >=22.13)
 src/store/vectorIndex.ts  PGlite/HNSW cross-repo index
 ```
 
@@ -84,11 +97,21 @@ Detailed architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
 ```bash
 npm run build     # TypeScript compile
-npm test          # Build + 769 tests
+npm test          # Build + 1112 tests
 npm run lint      # Type check + guardrails scan
 ```
 
 Testing guide: [`TESTER_GUIDE.md`](TESTER_GUIDE.md)
+
+## Tester requests
+
+These areas benefit from real-world usage data. The automated test suite covers correctness, but tuning requires diverse sessions.
+
+- **Cosine threshold validation** — the 0.90 dedup threshold may need adjustment per content type (try 0.93 for code, 0.87 for prose). Run with `MEGACOMPACT_DEDUP_SIM` set to different values and report false positives via the debug bundle (Maintenance -> Gather Debug Logs). The dedup audit log (events.log) records `similarityScore` + `matchedId` per decision.
+- **Cross-repo recall quality** — enable cross-repo recall and report the relevance-vs-noise ratio from real multi-repo sessions. The Turns tab shows recall hits per turn.
+- **Dedup layer audit** — is MinHash/LSH (L1) catching enough over exact-hash (L0) + cosine (L2) to justify the complexity? If L1 catches <5% additional in your sessions, we may simplify to 2-layer. The dedup audit log has per-tier decisions.
+- **Compaction death-spiral** — v0.11.9 fixed an "Already compacted" loop that made sessions unrecoverable (critical-over escape hatch forces a trim + durable compact at >=90% context). If you see this recur, report it immediately with the debug bundle.
+- **Share debug bundles** — when reporting any issue, first gather from Maintenance -> Gather Debug Logs and include the archive.
 
 ## Troubleshooting
 
@@ -107,7 +130,7 @@ npm install --install-strategy=linked
 
 ### node:sqlite not found / experimental flag required
 
-pi-mega-compact requires Node ≥22.13 for the built-in `node:sqlite` module. If you're on an older version or your Node build doesn't include it by default:
+pi-mega-compact requires Node >=22.13 for the built-in `node:sqlite` module. If you're on an older version or your Node build doesn't include it by default:
 
 ```bash
 export NODE_OPTIONS="--experimental-sqlite"
@@ -120,7 +143,7 @@ Add the export to your shell profile (`.bashrc`, `.zshrc`, etc.) to make it perm
 
 BSD 3-Clause
 
-## ☕ Support
+## Support
 
 If this project helped you, consider buying me a coffee:
 
