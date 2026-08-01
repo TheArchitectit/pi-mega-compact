@@ -172,6 +172,9 @@ export interface MegaConfig {
 	 *  from volatile tool results so the prompt-cache prefix stays stable.
 	 *  Default OFF (flag-OFF = byte-identical pre-sprint). */
 	messageSeparation: boolean;
+	/** P3: Cache-aware striping (PLAN_V2 Phase 3). Inserts stability-ordered
+	 *  cache stripes between summaries and thread. Default OFF. */
+	cacheStriping: boolean;
 	debug: boolean;
 	/** Master reconciliation: TUI shutdown widget (MEGACOMPACT_TUI_WIDGET=0 to disable). */
 	tuiWidget: boolean;
@@ -357,6 +360,7 @@ export function loadConfig(): MegaConfig {
 		windowDedupe: envBool("MEGACOMPACT_WINDOW_DEDUPE", true),
 		recallTailInject: envBool("MEGACOMPACT_RECALL_TAIL_INJECT", true),
 		messageSeparation: envBool("MEGACOMPACT_MESSAGE_SEPARATION", false),
+			cacheStriping: envBool("MEGACOMPACT_CACHE_STRIPING", false),
 		tuiWidget: envBool("MEGACOMPACT_TUI_WIDGET", true),
 		ragQueryReformulation: envBool("MEGACOMPACT_QUERY_REFORMULATION", false),
 		ragTieredRouter: envBool("MEGACOMPACT_TIERED_ROUTER", false),

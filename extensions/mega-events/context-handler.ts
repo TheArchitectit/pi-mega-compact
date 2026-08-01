@@ -39,7 +39,21 @@ import {
 } from "../mega-config.js";
 import { appendMirrorMessages } from "./mirror-append.js";
 import { stagedForTail, withRecallTail } from "./recall-tail.js";
-import { buildSeparatedPrompt } from "./separated-prompt.js";
+import { buildSeparatedPrompt, buildCacheOptimizedPrompt } from "./separated-prompt.js";
+
+/** Best-effort text extraction from an AgentMessage for analytics/logging.
+ *  AgentMessage is a discriminated union; .content exists only on some
+ *  variants (user/assistant/toolResult/custom). Narrow by role, never assume. */
+function messageContentText(m: AgentMessage): string {
+	const c = (m as { content?: unknown }).content;
+	if (typeof c === "string") return c;
+	if (Array.isArray(c)) {
+		return c
+			.map((b) => (b && typeof b === "object" && "text" in b ? String((b as { text?: string }).text ?? "") : ""))
+			.join(" ");
+	}
+	return "";
+}
 
 /** Register the context event handler (live-trim auto-trigger). */
 export function registerContextHandler(
@@ -73,12 +87,32 @@ export function registerContextHandler(
 		// reaches raw_transcript (PREVENT-PI: append-only, view-only).
 		const tailResult = (msgs?: readonly AgentMessage[]) => {
 			const base = msgs ?? messages;
-			if (!stagedForTail(runtime, config) && !config.messageSeparation) return undefined;
+			if (!stagedForTail(runtime, config) && !config.messageSeparation && !config.cacheStriping) return undefined;
 			let result: AgentMessage[] = stagedForTail(runtime, config)
 				? withRecallTail(base, runtime, config)
 				: (base as AgentMessage[]);
-			if (config.messageSeparation) {
+			if (config.cacheStriping) {
+				result = buildCacheOptimizedPrompt(result);
+			} else if (config.messageSeparation) {
 				result = buildSeparatedPrompt(result);
+			}
+			// P2.5: log prefix stability (fire-and-forget, non-fatal).
+			// tailResult is sync, so use .then().catch() on the dynamic import.
+			if (result.length > 1) {
+				import("../../src/cache-stripe-impl.js").then(({ computeStabilityScore }) => {
+					const stableScore = computeStabilityScore(
+						{ content: messageContentText(result[0] ?? result[0]), chunkId: "prefix", accessCount: 0, lastAccessedAt: 0 },
+						result.slice(0, 2).map((m) => ({ content: messageContentText(m), chunkId: "prefix", accessCount: 0, lastAccessedAt: 0 })),
+					);
+					runtime.logger.info("prefix_stability", {
+						stableScore: Number.isFinite(stableScore) ? stableScore : 0,
+						prefixMessages: result.length,
+						separation: config.messageSeparation ? "v2" : "off",
+						striping: config.cacheStriping ? "v3" : "off",
+					});
+				}).catch(() => {
+					// Non-fatal: stability logging is best-effort.
+				});
 			}
 			return { messages: result };
 		};
@@ -129,6 +163,33 @@ export function registerContextHandler(
 						epochIdFor(runtime.rt.sessionId),
 						runtime.currentTurn,
 					);
+					// P2.2: populate conversation_thread + tool_results tables for
+					// prompt-cache analytics and durable separation. The live-array
+					// separation (buildSeparatedPrompt / buildCacheOptimizedPrompt in
+					// tailResult above) is sufficient for the prompt-construction path;
+					// these DB writes persist the split for post-hoc analysis, dashboard
+					// queries, and future readers. Non-fatal — failure here never breaks
+					// the agent loop (PREVENT-PI-004: zero network, local SQLite only).
+					{
+						const sid = runtime.rt.sessionId;
+						const turn = runtime.currentTurn;
+						const now = Date.now();
+						const threadStmt = db.prepare(
+							"INSERT OR IGNORE INTO conversation_thread (conversation_id, role, content, turn_index, timestamp) VALUES (?, ?, ?, ?, ?)",
+						);
+						const toolStmt = db.prepare(
+							"INSERT OR IGNORE INTO tool_results (conversation_id, role, content, turn_index, timestamp) VALUES (?, ?, ?, ?, ?)",
+						);
+						for (const m of messages) {
+							const role = m.role;
+							const content = messageContentText(m);
+							if (role === "user" || role === "assistant") {
+								threadStmt.run(sid, role, content, turn, now);
+							} else if (role === "toolResult" || role === "bashExecution") {
+								toolStmt.run(sid, role, content, turn, now);
+							}
+						}
+					}
 				} catch (e) {
 					runtime.logger.warn("db-mirror-append-fail", { error: String(e) });
 				}

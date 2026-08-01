@@ -11,8 +11,7 @@
  * 5s polling on provider cache and activity snapshot; 15s on stripes + trend.
  */
 
-import type React from "react";
-import { useCallback } from "react";
+import { useState, useCallback } from "react";
 import type {
 	SnapshotResponse,
 	ProviderCacheResponse,
@@ -33,6 +32,7 @@ import { StripeDistributionCard } from "../components/StripeDistributionCard";
 import { CacheHitRateTrendCard } from "../components/CacheHitRateTrendCard";
 
 export default function CacheTab(): React.ReactElement {
+	const [infoExpanded, setInfoExpanded] = useState(false);
 	/* --- Provider prompt cache (5s poll) --- */
 	const {
 		data: providerCache,
@@ -75,6 +75,33 @@ export default function CacheTab(): React.ReactElement {
 
 	return (
 		<div className="cache-tab">
+			<div className="card-section">
+				<button
+					type="button"
+					className="info-toggle"
+					onClick={() => setInfoExpanded(!infoExpanded)}
+				>
+					{infoExpanded ? "Hide Guidance" : "Show Cache-Friendly Prompt Ordering Guidance"}
+				</button>
+				{infoExpanded && (
+					<div className="info-panel">
+						<h3>Cache-Friendly Prompt Ordering</h3>
+						<ul>
+							<li>Keep system prompts and stable context at the top of your conversation — the provider caches the leading prefix.</li>
+							<li>Tool results and volatile content are automatically moved to the tail by message separation (<code>MEGACOMPACT_MESSAGE_SEPARATION</code>) so they don't invalidate the cache prefix.</li>
+							<li>Cache striping (<code>MEGACOMPACT_CACHE_STRIPING</code>) further orders stable context by a stability score so the most durable chunks lead.</li>
+							<li>Avoid inserting new instructions mid-conversation — prepend them instead.</li>
+						</ul>
+						{snapshot && (
+							<div className="cache-status-indicator">
+								<strong>Status:</strong>{" "}
+								{snapshot.config.messageSeparation ? "Separation Enabled" : "Separation Disabled (Check env)"} |{" "}
+								{snapshot.config.cacheStriping ? "Striping Enabled" : "Striping Disabled (Check env)"}
+							</div>
+						)}
+					</div>
+				)}
+			</div>
 			{/* ==============================================================
 			    Section 1 -- Provider Prompt Cache
 			    ============================================================== */}

@@ -225,7 +225,7 @@ export function computeMegaSnapshot(p: SnapshotInput): SnapshotResult {
 		cachePct,
 		megaCacheFlare: p.megaCacheFlare,
 		megaCacheFlarePct: p.megaCacheFlarePct,
-		perTurnCacheHitPct: p.perTurnCacheHitPct ?? cachePct,
+		perTurnCacheHitPct: p.perTurnCacheHitPct,
 		levelUpFlare: p.levelUpFlare,
 		achievementFlare: p.achievementFlare,
 		achievementFlareTitles: p.achievementFlareTitles,

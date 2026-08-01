@@ -26,6 +26,15 @@ import {
 import { safeSendUserMessage } from "./send-safe.js";
 import { maybeSendProviderOutageAdvisory } from "./outage-advisor.js";
 import { vectorStats } from "../../src/vectorStore.js";
+import { defaultEmbedder } from "../../src/embedder.js";
+import {
+	storeTopicEmbedding,
+	loadTopicEmbedding,
+	detectTopicShift,
+} from "./separated-prompt.js";
+import {
+	refreshStripeAssignments as writeStripeAssignments,
+} from "../../src/cache-stripe-impl.js";
 
 /** Register agent/turn tracking event handlers. */
 export function registerAgentHandlers(
@@ -776,6 +785,62 @@ export function registerAgentHandlers(
 			}
 		} catch {
 			/* non-fatal: a classifier/retry failure never breaks the agent loop */
+		}
+
+		// P3.5: topic-shift stripe refresh. When MEGACOMPACT_CACHE_STRIPING is ON,
+		// embed the current turn, detect topic shift vs. the previous turn, and
+		// refresh cache stripe assignments when shifted (or first turn). Best-effort:
+		// failures log + continue, never break the agent loop.
+		if (config.cacheStriping) {
+			try {
+				const stateDir = runtime.currentStateDir;
+				const sessionId = runtime.rt.sessionId;
+				const currentTurn = event.turnIndex;
+				const embedder = defaultEmbedder();
+
+				// (a) Extract text from the assistant's response for topic embedding.
+				let textToEmbed = "";
+				const msg = event.message;
+				if (msg.role === "assistant" && Array.isArray(msg.content)) {
+					for (const part of msg.content) {
+						if ("text" in part && typeof part.text === "string") {
+							textToEmbed += part.text + " ";
+						}
+					}
+				}
+				textToEmbed = textToEmbed.trim() || `turn-${currentTurn}`;
+				const embedding = new Float32Array(embedder.embed(textToEmbed));
+				storeTopicEmbedding(stateDir, sessionId, currentTurn, embedding);
+
+				// (b) Load previous turn's embedding and detect topic shift.
+				const prevEmb = currentTurn > 0
+					? loadTopicEmbedding(stateDir, sessionId, currentTurn - 1)
+					: null;
+				const shifted = currentTurn === 0 || detectTopicShift(embedding, prevEmb);
+
+				// (c) If shifted (or first turn), refresh stripe assignments (WRITE path).
+				let chunkCount = 0;
+				if (shifted) {
+					chunkCount = writeStripeAssignments(
+						stateDir,
+						undefined,
+						embedder,
+						(detail) => runtime.logger.info("stripe_refresh_detail", {
+							detail,
+							turnIndex: currentTurn,
+						}),
+					);
+				}
+
+				// (d) Log the refresh outcome.
+				runtime.logger.info("stripe_refresh", {
+					turnIndex: currentTurn,
+					shifted,
+					chunkCount,
+				});
+			} catch {
+				/* non-fatal: stripe refresh never breaks the agent loop */
+			}
 		}
 	});
 }
