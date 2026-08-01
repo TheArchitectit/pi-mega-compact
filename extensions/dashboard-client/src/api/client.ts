@@ -39,6 +39,7 @@ import type {
 	SchemaHealthResponse,
 	MaintenanceAction,
 	MaintenanceActionResult,
+	DebugBundleResponse,
 	ProviderCacheResponse,
 	CacheStripesResponse,
 	SetupStatusResponse,
@@ -282,6 +283,10 @@ export function postMaintenanceAction(
 		ENDPOINTS.maintenanceAction.path,
 		action,
 	);
+}
+
+export function fetchDebugBundle(): Promise<DebugBundleResponse> {
+	return postJson<DebugBundleResponse>("/api/maintenance/gather-debug", {});
 }
 
 // ─── Setup wizard (P0b) ────────────────────────────────────────────────────

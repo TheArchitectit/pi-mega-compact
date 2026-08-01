@@ -13,6 +13,7 @@
 
 import { createRequire } from "node:module";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { sendGatherDebug } from "./gather-debug.js";
 
 import type { RouteContext } from "./routes-core.js";
 
@@ -74,6 +75,12 @@ export function handleMaintenance(
 	// ── POST /api/maintenance/action ──────────────────────────────────
 	if (method === "POST" && url === "/api/maintenance/action") {
 		handleMaintenanceAction(req, res, ctx);
+		return true;
+	}
+
+	// ── POST /api/maintenance/gather-debug ──────────────────────────
+	if (method === "POST" && url === "/api/maintenance/gather-debug") {
+		sendGatherDebug(res, ctx);
 		return true;
 	}
 

@@ -82,3 +82,16 @@ export type MaintenanceAction =
 	| { action: "reconcile-dedup" }
 	| { action: "prune"; daysOld: number }
 	| { action: "integrity-check" };
+
+/** Debug bundle for gathering diagnostic info. */
+export interface DebugBundleResponse {
+	builtAt: number;
+	version: string;
+	stateDir: string;
+	config: Record<string, string>;
+	schemaHealth: SchemaHealthResponse | { error: string };
+	storeStats: DbStatsResponse | { error: string };
+	dashboardSnapshot: unknown | { error: string };
+	recentEvents: unknown[];
+	criticalEvents: unknown[];
+}

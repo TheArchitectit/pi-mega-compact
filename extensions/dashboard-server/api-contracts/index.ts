@@ -186,6 +186,7 @@ export type {
 	SchemaHealthRow,
 	SchemaHealthResponse,
 	MaintenanceAction,
+	DebugBundleResponse,
 } from "./maintenance.js";
 
 // S52 — turn-by-turn memory tracking + recall + rewind
