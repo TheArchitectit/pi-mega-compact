@@ -28,6 +28,21 @@ import { rehydrateRaptorTree, isShadowMode } from "./dedup/raptor/index.js";
 import { maxCheckpointTimestamp } from "./store/sqlite.js";
 import { normalizeSessionId } from "./store.js";
 
+// ---------------------------------------------------------------------------
+// S57 RAG suite feature flags + module imports. Each flag defaults OFF — the
+// flag-OFF path below is byte-identical to the pre-S57 recall path (recallQuery
+// === opts.query, the single searchRecall call), so the helpers are only reached
+// when their flag is ON. Wiring is additive; the proven v0.11.5 behavior is the
+// default.
+// ---------------------------------------------------------------------------
+import { RAG_QUERY_REFORMULATION, RAG_TIERED_ROUTER, RAG_RECALL_METRICS } from "./config.js";
+import { reformulateQuery, isVagueQuery } from "./queryReformulation.js";
+import type { CorpusStats, EmbedderLike, NeighborScanner } from "./queryReformulation.js";
+import { VAGUE_MIN_WORDS, VAGUE_VERY_SHORT_WORDS } from "./queryReformulation/cache.js";
+import { getTieredRouter } from "./tieredRouter.js";
+import { computeRecallMetrics } from "./recallMetrics.js";
+import { Logger } from "./log.js";
+
 export type RecallSource = "resume" | "command" | "sentinel";
 
 export interface RecallInjectOptions {
@@ -133,6 +148,135 @@ export function formatRaptorBlock(
 	);
 }
 
+// ---------------------------------------------------------------------------
+// S57 RAG suite helpers (B1/B2/B3). Each is only called when its feature flag
+// is ON; flag-OFF never reaches them. All degrade non-fatally to the standard
+// path on any error.
+// ---------------------------------------------------------------------------
+
+/**
+ * B1: If the query is vague, reformulate it via embedding-neighbor TF-IDF
+ * expansion. Returns the original query when reformulation is not supported
+ * or the query is already specific. Non-fatal: any error → original query.
+ */
+function reformulateRecallQuery(
+	query: string,
+	store: VectorStore,
+	sessionId: string,
+): string {
+	try {
+		if (
+			!isVagueQuery(query, {
+				vagueMinWords: VAGUE_MIN_WORDS,
+				vagueVeryShortWords: VAGUE_VERY_SHORT_WORDS,
+			})
+		)
+			return query;
+		// Pre-compute neighbor candidates once. reformulateQuery embeds the query
+		// and calls `scan` internally; we return these pre-computed neighbors (same
+		// query) so the store needs no by-embedding lookup.
+		const { hits } = searchRecall(
+			{ sessionId, query, limit: 10, skipInjected: false },
+			store,
+		);
+		if (hits.length < 2) return query; // too few neighbors for TF-IDF
+		const neighbors = hits.map((h) => ({
+			id: h.checkpoint.checkpointId,
+			score: h.score,
+		}));
+		const textById = new Map<string, string>();
+		for (const h of hits) textById.set(h.checkpoint.checkpointId, h.checkpoint.summary);
+		const scan: NeighborScanner = () => neighbors;
+		const corpus: CorpusStats = {
+			totalDocs: neighbors.length,
+			docFreq: (term: string) => {
+				let df = 0;
+				for (const text of textById.values()) {
+					if (text.toLowerCase().includes(term.toLowerCase())) df++;
+				}
+				return Math.max(df, 1);
+			},
+		};
+		const neighborTexts = (ids: string[]) =>
+			ids.map((id) => ({ id, text: textById.get(id) ?? "" }));
+		const { result } = reformulateQuery(
+			query,
+			defaultEmbedder() as unknown as EmbedderLike,
+			scan,
+			corpus,
+			neighborTexts,
+		);
+		return result.expanded.length > query.length ? result.expanded : query;
+	} catch {
+		return query; // non-fatal: fall back to original query
+	}
+}
+
+/**
+ * B2: Synchronous tiered recall. The TieredRouter.route() is async, so the
+ * sync path can only peek the L0 in-memory cache; on miss it falls through to
+ * the standard sync vector scan. The router's L1/L2 value is realized on the
+ * async path (recallAndInlineAsync). Non-fatal.
+ */
+function runTieredRecall(
+	query: string,
+	sessionId: string,
+	limit: number,
+	skip: boolean,
+	store: VectorStore,
+): { newHits: SearchHit[]; tier: string } {
+	try {
+		const router = getTieredRouter();
+		if (!router) {
+			const result = searchRecall(
+				{ sessionId, query, limit, skipInjected: skip },
+				store,
+			);
+			return { newHits: result.newHits, tier: "off" };
+		}
+		// Peek the L0 in-memory cache synchronously; fall through on miss.
+		const cached = router.peekCache(sessionId, query, limit);
+		if (cached && cached.length > 0) return { newHits: cached, tier: "L0-cache" };
+		const result = searchRecall(
+			{ sessionId, query, limit, skipInjected: skip },
+			store,
+		);
+		return { newHits: result.newHits, tier: "sync-fallback" };
+	} catch {
+		const result = searchRecall(
+			{ sessionId, query, limit, skipInjected: skip },
+			store,
+		);
+		return { newHits: result.newHits, tier: "fallback-error" };
+	}
+}
+
+/**
+ * B3: Compute recall-quality metrics on the injected hits and log them.
+ * Only called when RAG_RECALL_METRICS() is ON. Non-fatal.
+ */
+function scoreAndLogRecallMetrics(query: string, toInject: SearchHit[]): void {
+	try {
+		const logger = new Logger({ path: "recall" });
+		const metrics = computeRecallMetrics(query, toInject);
+		logger.info("recall_metrics", {
+			hitCount: toInject.length,
+			score: metrics.score,
+			pass: metrics.pass,
+		});
+		if (!metrics.pass && toInject.length > 0) {
+			logger.info("recall_metrics_low_quality", {
+				score: metrics.score,
+				relevance: metrics.breakdown.relevance,
+				coverage: metrics.breakdown.coverage,
+				diversity: metrics.breakdown.diversity,
+			});
+		}
+	} catch {
+		/* non-fatal: metrics never break recall */
+	}
+}
+
 /**
  * Run the unified recall+dudupe+prepare-inject pipeline. Does NOT touch pi;
  * it records injections via `markInjected` so the next call dedupes. The
@@ -189,10 +333,24 @@ export function recallAndInline(
 	// F4: thread skipInjected through to searchRecall instead of hardcoding false
 	// and re-implementing the filter here. newHits is already deduped when skip
 	// is true (default); equals hits when skip is false (openclaw command path).
-	const { newHits } = searchRecall(
-		{ sessionId: opts.sessionId, query: opts.query, limit, skipInjected: skip },
-		store,
-	);
+	//
+	// S57 B1: optionally expand a vague query via TF-IDF neighbor terms.
+	// S57 B2: optionally route via the TieredRouter's sync L0 cache peek.
+	// Both flags default OFF — recallQuery === opts.query and the single
+	// searchRecall call reproduce the pre-S57 byte-identical path.
+	const recallQuery = RAG_QUERY_REFORMULATION()
+		? reformulateRecallQuery(opts.query, store, opts.sessionId)
+		: opts.query;
+	let newHits: SearchHit[];
+	if (RAG_TIERED_ROUTER()) {
+		newHits = runTieredRecall(recallQuery, opts.sessionId, limit, skip, store).newHits;
+	} else {
+		const result = searchRecall(
+			{ sessionId: opts.sessionId, query: recallQuery, limit, skipInjected: skip },
+			store,
+		);
+		newHits = result.newHits;
+	}
 
 	// F1: hoist one embedder instance for inline dedupe (matches the async path).
 	// defaultEmbedder() is deterministic but creating it per hit wastes allocations.
@@ -227,6 +385,12 @@ export function recallAndInline(
 		blockTokens += partTokens;
 		vectorMarkInjected(store, opts.sessionId, h.checkpoint.checkpointId);
 	}
+
+	// S57 B3: optionally score + log recall quality metrics (flag-OFF: skipped,
+	// byte-identical). Scores the injected hits against the ORIGINAL query so the
+	// metric measures whether the (possibly expanded) search results stay
+	// relevant to what the user actually asked.
+	if (RAG_RECALL_METRICS()) scoreAndLogRecallMetrics(opts.query, toInject);
 
 	// F3: format once — one preamble, correct [1..n] numbering.
 	const recallBlock = toInject.length > 0 ? formatRecallBlock(toInject) : "";
