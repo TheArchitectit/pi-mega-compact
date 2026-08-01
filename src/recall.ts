@@ -257,7 +257,7 @@ function runTieredRecall(
  */
 function scoreAndLogRecallMetrics(query: string, toInject: SearchHit[]): void {
 	try {
-		const logger = new Logger({ path: "recall" });
+		const logger = new Logger();
 		const metrics = computeRecallMetrics(query, toInject);
 		logger.info("recall_metrics", {
 			hitCount: toInject.length,
