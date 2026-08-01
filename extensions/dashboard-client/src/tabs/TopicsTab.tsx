@@ -63,7 +63,7 @@ export default function TopicsTab(): React.ReactElement {
 			<div className="tab-stub">
 				<h3>Wiki</h3>
 				<p>
-					No topics yet. Topics are auto-generated after every 10th compaction
+					No topics yet. Topics are auto-generated after every 3rd compaction
 					from real memory embeddings (k-means + TF-IDF).
 				</p>
 				<p>Check back after a few more compaction cycles.</p>

@@ -70,6 +70,27 @@ export default function ReposTab(): React.ReactElement {
 	const repos = indexData.repos;
 	const servers = serversData?.servers ?? [];
 
+	if (repos.length === 0) {
+		return (
+			<div className="repos-tab">
+				<SummaryTiles
+					totalRepos={0}
+					totalCheckpoints={0}
+					totalTokensSaved={0}
+					compressedOriginalBytes={0}
+				/>
+				<div className="tab-stub">
+					<h3>Repositories / Memory</h3>
+					<p>
+						Repo memory appears after the first compaction. Compaction fires
+						when context crosses the tier threshold (~50-70% of the window).
+						Run a longer session or lower the compaction tier to see it sooner.
+					</p>
+				</div>
+			</div>
+		);
+	}
+
 	return (
 		<div className="repos-tab">
 			<SummaryTiles

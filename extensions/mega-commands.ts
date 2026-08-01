@@ -11,13 +11,13 @@ import { sessionEntryToContextMessages } from "@earendil-works/pi-coding-agent";
 import { normalizeSessionId } from "../src/store.js";
 import { listCheckpoints, latestModelSnapshot, countInjectedGlobal, listRepoRegistry } from "../src/store/sqlite.js";
 import { decompressSmart } from "../src/store/compression.js";
-import { loadMetrics, fpRate, p95, defaultMetricsPath } from "../src/monitoring.js";
+import { loadMetrics, fpRate, p95, defaultMetricsPath, defaultEventsPath } from "../src/monitoring.js";
 import { type MegaRuntime, C, recentUserQuery } from "./mega-runtime.js";
 import { runCompact, doRecall, doRecallAsync } from "./mega-pipeline.js";
 import { vectorStats, vectorRepoStats, vectorDataInvariant } from "../src/vectorStore.js";
 import type { MegaConfig } from "./mega-config.js";
 import { spawnSync } from "node:child_process"; // guardrails-allow PREVENT-PI-004: local subprocess detection only (no network)
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { createRequire } from "node:module";
@@ -280,6 +280,52 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
     },
   });
 
+  /**
+   * Try to peek at recent events.log and mega-compact.log for low recall quality signals.
+   * Best-effort, non-fatal — returns true if a low-quality signal was found.
+   */
+  /**
+   * Try to peek at recent events.log and mega-compact.log for low recall quality signals.
+   * Best-effort, non-fatal — returns true if a low-quality signal was found.
+   */
+  function checkRecallQuality(stateDir: string): boolean {
+    const eventPaths = [
+      defaultEventsPath(stateDir),
+      path.join(stateDir, "mega-compact.log"),
+    ];
+    for (const fp of eventPaths) {
+      try {
+        if (!existsSync(fp)) continue;
+        const buf = readFileSync(fp, { encoding: "utf-8" });
+        // Only scan last 64 KiB of the file
+        const tail = buf.length > 65536 ? buf.slice(buf.length - 65536) : buf;
+        const lines = tail.split("\n").filter(Boolean);
+        for (const line of lines) {
+          try {
+            // guardrails-allow PREVENT-001: JSON.parse with null check
+            const parsed = JSON.parse(line);
+            if (typeof parsed !== "object" || parsed === null) continue;
+            // Check for recall_metrics_low_quality event (latest format)
+            if (parsed.event === "recall_metrics_low_quality" && parsed.score !== undefined) {
+              if (typeof parsed.score === "number" && parsed.score < 0.4) return true;
+            }
+            // Check for recall_metrics with low relevanceScore
+            if (parsed.event === "recall_metrics" && parsed.relevanceScore !== undefined) {
+              if (typeof parsed.relevanceScore === "number" && parsed.relevanceScore < 0.4) return true;
+            }
+            // Check for RecallQualityEvent format from monitoring.ts
+            if (parsed.score !== undefined && typeof parsed.score === "number" && parsed.score < 0.4) return true;
+          } catch {
+            // skip unparseable lines
+          }
+        }
+      } catch {
+        // non-fatal: skip if can't read
+      }
+    }
+    return false;
+  }
+
   pi.registerCommand("mega-setup", {
     description:
       "Local embedding setup wizard — detect available embedders and configure mega-compact.",
@@ -355,6 +401,11 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
         // require error
       }
 
+      // --- 2.5 Quality check ---
+      // Scan recent events for low recall quality (best-effort, non-fatal)
+      const stateDir = process.env["MEGACOMPACT_STATE_DIR"] ?? path.join(os.homedir(), ".pi", "mega-compact");
+      const lowRecallQuality = checkRecallQuality(stateDir);
+
       // --- 3. Build choices ---
       interface Choice {
         label: string;
@@ -402,6 +453,11 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
 
       // --- 4. Prompt user ---
       log(`Current embedder: ${currentEmbedder}`);
+      if (lowRecallQuality) {
+        log(
+          "Tap: recent recall quality is low. Consider switching to Ollama or llama.cpp for better results.",
+        );
+      }
       let selected = "trigram";
       if (choices.length > 1) {
         try {
@@ -435,7 +491,6 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
         const envContent = lines.join("\n") + "\n";
 
         // Write .mega-compact.env to state dir
-        const stateDir = process.env["MEGACOMPACT_STATE_DIR"] ?? path.join(os.homedir(), ".pi", "mega-compact");
         try {
           mkdirSync(stateDir, { recursive: true });
           writeFileSync(path.join(stateDir, ".mega-compact.env"), envContent, "utf-8");
@@ -457,8 +512,6 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
           `export MEGACOMPACT_EMBEDDING_URL="${url}"`,
         ];
         const envContent = lines.join("\n") + "\n";
-
-        const stateDir = process.env["MEGACOMPACT_STATE_DIR"] ?? path.join(os.homedir(), ".pi", "mega-compact");
         try {
           mkdirSync(stateDir, { recursive: true });
           writeFileSync(path.join(stateDir, ".mega-compact.env"), envContent, "utf-8");
@@ -477,7 +530,11 @@ export function registerCommands(pi: ExtensionAPI, runtime: MegaRuntime, config:
           "ONNX Runtime configuration is experimental.\n\nSet MEGACOMPACT_EMBEDDING_URL to your local ONNX server URL, or see docs for manual setup.\nKeeping TrigramEmbedder for now.",
         );
       } else {
-        log("Keeping TrigramEmbedder (default). No configuration needed.");
+        const qualityTip =
+          lowRecallQuality
+            ? " Recent recall quality is low — consider running /mega-setup again to switch to Ollama or llama.cpp for better results."
+            : "";
+        log(`Keeping TrigramEmbedder (default). No configuration needed.${qualityTip}`);
       }
      } catch (e) {
        ctx.ui.notify(`[mega-compact] /mega-setup failed: ${String(e)}`);

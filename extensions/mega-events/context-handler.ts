@@ -29,6 +29,8 @@ import {
 	createTopicStore,
 	bumpWikiCompactCounter,
 } from "../../src/topics/index.js";
+import { TrigramEmbedder } from "../../src/embedder.js";
+import type { EmbeddedChunk } from "../../src/topics/types.js";
 import { computeLiveTrimCut, liveTrimSummaryMessage } from "../mega-trim.js";
 import {
 	pressureFromPct,
@@ -304,6 +306,84 @@ export function registerContextHandler(
 				} catch (wikiErr) {
 					runtime.logger.warn("wiki_rebuild_failed", {
 						error: String(wikiErr),
+					});
+				}
+
+				// D1: seed the topic model from raw_transcript when context_chunks is
+				// thin (pre-compaction). Gated on WIKI_SEED_FROM_TURNS; non-fatal.
+				// Seeds buildTopicModel with on-the-fly trigram embeddings from
+				// recent raw_transcript rows for the current session.
+				try {
+					if (
+						config.autoWikiEnabled &&
+						config.turnsDbEnabled &&
+						TurnsConfig.WIKI_SEED_FROM_TURNS
+					) {
+						const floor = 50;
+						const countRow = db
+							.prepare(
+								`SELECT COUNT(*) AS cnt FROM context_chunks WHERE session_id = ?`,
+							)
+							.get(runtime.rt.sessionId) as { cnt: number } | undefined;
+						const chunkCount = countRow?.cnt ?? 0;
+						if (chunkCount < floor) {
+							const transcriptRows = db
+								.prepare(
+									`SELECT DISTINCT content_bytes
+			       FROM raw_transcript
+			       WHERE session_id = ?
+			         AND length(content_bytes) > 10
+			       ORDER BY seq ASC
+			       LIMIT 200`,
+								)
+								.all(runtime.rt.sessionId) as Array<{
+								content_bytes: string;
+							}>;
+							if (transcriptRows.length > 0) {
+								const embedder = new TrigramEmbedder();
+								const seedChunks: EmbeddedChunk[] = [];
+								for (let i = 0; i < transcriptRows.length; i++) {
+									const text = transcriptRows[i].content_bytes.trim();
+									if (text.length === 0) continue;
+									const vec = embedder.embed(text);
+									seedChunks.push({
+										chunkId: `seed_transcript_${i}`,
+										sessionId: runtime.rt.sessionId,
+										vec,
+										text,
+									});
+								}
+								if (seedChunks.length > 0) {
+									const model = buildTopicModel(
+										db,
+										{
+											kRange: [
+												TurnsConfig.WIKI_K_MIN,
+												TurnsConfig.WIKI_K_MAX,
+											],
+											labelTopTerms:
+												TurnsConfig.WIKI_LABEL_TOP_TERMS,
+											restarts: 5,
+											seed: 0x9e3779b9,
+										},
+										seedChunks,
+									);
+									createTopicStore(
+										runtime.currentStateDir,
+									).replaceTopicModel(model);
+									runtime.logger.info("wiki_seed", {
+										clusterCount: model.k,
+										sourceChunks: seedChunks.length,
+										totalChunks: model.totalChunks,
+										method: "kmeans+tfidf",
+									});
+								}
+							}
+						}
+					}
+				} catch (seedErr) {
+					runtime.logger.warn("wiki_seed_failed", {
+						error: String(seedErr),
 					});
 				}
 				// S27 Task 6: Fire-and-forget dedup pipeline.

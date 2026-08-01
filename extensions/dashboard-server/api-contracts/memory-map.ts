@@ -1,10 +1,11 @@
 /**
- * api-contracts/memory-map.ts — Memory graph API contract (S46).
+ * api-contracts/memory-map.ts — Memory graph API contract (S46/D3).
  *
- * Response shape for GET /api/memory-map: graph nodes, edges, and metadata.
- * This is a read-only JSON payload consumed by the MemoryMapTab React component.
+ * Response shape for GET /api/memory-map: graph nodes, edges, metadata,
+ * and validation report. Consumed by the MemoryMapTab React component.
  */
-import type { GraphMetadata } from "../../../src/memoryGraph.js";
+import type { GraphMetadata, GraphValidationReport } from "../../../src/memoryGraph.js";
+export type { GraphValidationReport } from "../../../src/memoryGraph.js";
 
 /**
  * Query parameters for GET /api/memory-map.
@@ -19,14 +20,19 @@ export interface MemoryMapQuery {
   readonly maxEdgesPerNode?: number;
 }
 
-/** Response body for GET /api/memory-map. */
+/** Response body for GET /api/memory-map (D3: +validation). */
 export interface MemoryMapResponse {
   readonly nodes: MemoryMapNode[];
   readonly edges: MemoryMapEdgeEntry[];
   readonly metadata: GraphMetadata;
+  /** D3: validation report from the 9-gate pipeline. Optional for backward compat. */
+  readonly validation?: GraphValidationReport;
 }
 
-/** A node in the response (client-safe subset — no full embedding vector). */
+/**
+ * A node in the response (client-safe subset — no full embedding vector).
+ * D3: +nodeType discriminator for UI node-shape rendering.
+ */
 export interface MemoryMapNode {
   readonly id: string;
   readonly sessionId: string;
@@ -39,6 +45,8 @@ export interface MemoryMapNode {
   readonly topicSummary: string | undefined;
   readonly decisionCount: number;
   readonly textSnippet: string;
+  /** D3: source type discriminator for UI node-shape encoding. */
+  readonly nodeType: "checkpoint" | "turn" | "turn-content" | "memory";
 }
 
 /** An edge entry in the response. */

@@ -1,16 +1,17 @@
 /**
- * MemoryMapTab.tsx — S46 visual memory map (force-directed graph of checkpoints).
- *
- * Fetches graph data from /api/memory-map and renders an SVG-based
- * force-directed layout. Uses no external graph library (no @xyflow/react).
- * The simulation uses Coulomb repulsion + Hooke attraction + center gravity.
+ * MemoryMapTab.tsx — D3 memory map with force-directed graph.
+ * Node shape encodes nodeType: checkpoint=filled circle, turn=hollow circle,
+ * turn-content=hollow+ring, memory=diamond.
+ * Fetches from /api/memory-map, renders SVG force layout.
  */
 import type React from "react";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { renderNodeShape, NODE_COLORS, NODE_TYPE_LABELS } from "../memory-map-shapes.js";
+import type { NodeType } from "../memory-map-shapes.js";
+import { buildLayout, applyForces } from "../memory-map-layout.js";
+import type { LayoutNode, LayoutEdge } from "../memory-map-layout.js";
 
-// ---------------------------------------------------------------------------
 // Types (mirror of api-contracts/memory-map.ts — client-side only)
-// ---------------------------------------------------------------------------
 
 interface GraphNode {
   id: string;
@@ -24,6 +25,8 @@ interface GraphNode {
   topicSummary: string | undefined;
   decisionCount: number;
   textSnippet: string;
+  /** Source type discriminator for UI node-shape encoding. */
+  nodeType: "checkpoint" | "turn" | "turn-content" | "memory";
 }
 
 interface GraphEdge {
@@ -33,64 +36,45 @@ interface GraphEdge {
   type: "temporal" | "semantic" | "raptor_parent";
 }
 
+interface GraphValidationReport {
+  readonly gatesRun: number;
+  readonly gatesPassed: number;
+  readonly dropped: { nodes: number; edges: number };
+  readonly warnings: Array<{ gate: string; code: string; count: number }>;
+  readonly sources: {
+    checkpoint: number;
+    turn: number;
+    turnContent: number;
+    memory: number;
+  };
+  readonly builtAt: number;
+}
+
 interface GraphMetadata {
-  sessionCount: number;
-  totalCheckpoints: number;
+  totalNodes: number;
   totalEdges: number;
-  semanticEdgeCount: number;
-  temporalEdgeCount: number;
-  raptorEdgeCount: number;
-  similarityThresholdUsed: number;
-  builtAt: number;
+  avgWeight: number;
+  nodeTypeBreakdown: Record<string, number>;
+  edgeTypeBreakdown: Record<string, number>;
 }
 
 interface MemoryMapResponse {
   nodes: GraphNode[];
   edges: GraphEdge[];
   metadata: GraphMetadata;
+  /** Validation report from the 9-gate pipeline. Optional for backward compat. */
+  validation?: GraphValidationReport;
 }
 
-// ---------------------------------------------------------------------------
-// Force-directed layout types
-// ---------------------------------------------------------------------------
+// Simulation rendering constants (layout math is in memory-map-layout.ts)
 
-interface Position {
-  x: number;
-  y: number;
-}
-
-interface LayoutNode extends GraphNode {
-  pos: Position;
-  vx: number;
-  vy: number;
-  pinned: boolean;
-}
-
-interface LayoutEdge {
-  source: number;
-  target: number;
-  weight: number;
-  type: GraphEdge["type"];
-}
-
-// ---------------------------------------------------------------------------
-// Force simulation constants
-// ---------------------------------------------------------------------------
-
-const REPULSION = 5_000;
-const ATTRACTION = 0.005;
-const CENTER_GRAVITY = 0.01;
-const DAMPING = 0.9;
-const MIN_VELOCITY = 0.1;
 const MAX_ITERATIONS = 300;
 const EDGE_ALPHA = 0.3;
 const SVG_WIDTH = 900;
 const SVG_HEIGHT = 600;
 const PADDING = 40;
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 function edgeColor(type: GraphEdge["type"]): string {
   switch (type) {
@@ -103,106 +87,49 @@ function edgeColor(type: GraphEdge["type"]): string {
   }
 }
 
-function nodeOpacity(dedupStatus: string | undefined): number {
-  if (!dedupStatus || dedupStatus === "active") return 1;
-  return 0.5;
+// Minimal legend swatch component
+interface SwatchProps {
+  type: "node" | "edge";
+  color: string;
+  shape: "filled-circle" | "hollow-circle" | "hollow-ring" | "diamond" | "line";
+  label: string;
 }
-
-// ---------------------------------------------------------------------------
-// Force simulation engine
-// ---------------------------------------------------------------------------
-
-function buildLayout(data: MemoryMapResponse): { nodes: LayoutNode[]; edges: LayoutEdge[] } {
-  const nodes: LayoutNode[] = data.nodes.map((n, i) => {
-    const angle = (2 * Math.PI * i) / Math.max(data.nodes.length, 1);
-    const radius = 200;
-    return {
-      ...n,
-      pos: { x: Math.cos(angle) * radius + 300, y: Math.sin(angle) * radius + 200 },
-      vx: 0,
-      vy: 0,
-      pinned: false,
-    };
-  });
-
-  const nodeIndex = new Map<string, number>();
-  nodes.forEach((n, i) => nodeIndex.set(n.id, i));
-
-  const edges: LayoutEdge[] = data.edges
-    .map((e) => {
-      const si = nodeIndex.get(e.source);
-      const ti = nodeIndex.get(e.target);
-      if (si === undefined || ti === undefined || si === ti) return null;
-      return { source: si, target: ti, weight: e.weight, type: e.type };
-    })
-    .filter((e): e is LayoutEdge => e !== null);
-
-  return { nodes, edges };
-}
-
-function applyForces(layout: { nodes: LayoutNode[]; edges: LayoutEdge[] }): void {
-  const { nodes, edges } = layout;
-  const n = nodes.length;
-  if (n === 0) return;
-
-  for (let i = 0; i < n; i++) {
-    if (nodes[i].pinned) continue;
-    let fx = 0;
-    let fy = 0;
-
-    for (let j = 0; j < n; j++) {
-      if (i === j) continue;
-      const dx = nodes[i].pos.x - nodes[j].pos.x;
-      const dy = nodes[i].pos.y - nodes[j].pos.y;
-      const distSq = dx * dx + dy * dy || 1;
-      const force = REPULSION / distSq;
-      const dist = Math.sqrt(distSq);
-      fx += (dx / dist) * force;
-      fy += (dy / dist) * force;
-    }
-
-    for (const e of edges) {
-      let other: number;
-      if (e.source === i) other = e.target;
-      else if (e.target === i) other = e.source;
-      else continue;
-      const dx = nodes[other].pos.x - nodes[i].pos.x;
-      const dy = nodes[other].pos.y - nodes[i].pos.y;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      fx += dx * ATTRACTION * e.weight;
-      fy += dy * ATTRACTION * e.weight;
-    }
-
-    fx -= nodes[i].pos.x * CENTER_GRAVITY;
-    fy -= nodes[i].pos.y * CENTER_GRAVITY;
-
-    nodes[i].vx = (nodes[i].vx + fx) * DAMPING;
-    nodes[i].vy = (nodes[i].vy + fy) * DAMPING;
-
-    const speed = Math.sqrt(nodes[i].vx * nodes[i].vx + nodes[i].vy * nodes[i].vy);
-    if (speed > 50) {
-      nodes[i].vx = (nodes[i].vx / speed) * 50;
-      nodes[i].vy = (nodes[i].vy / speed) * 50;
-    }
-
-    if (speed > MIN_VELOCITY) {
-      nodes[i].pos.x += nodes[i].vx;
-      nodes[i].pos.y += nodes[i].vy;
-    }
+const Swatch: React.FC<SwatchProps> = ({ color, shape, label }) => {
+  const base: React.CSSProperties = {
+    display: "inline-block",
+    width: "10px",
+    height: "10px",
+    verticalAlign: "middle",
+    marginRight: "3px",
+    borderRadius: shape.startsWith("hollow") || shape === "filled-circle" ? "50%" : undefined,
+  };
+  let swatch: JSX.Element;
+  if (shape === "line") {
+    return <span style={{ color, marginRight: "6px" }}>{label}</span>;
+  } else if (shape === "filled-circle") {
+    swatch = <span style={{ ...base, backgroundColor: color }} />;
+  } else if (shape === "hollow-circle") {
+    swatch = <span style={{ ...base, border: `2px solid ${color}`, backgroundColor: "transparent" }} />;
+  } else if (shape === "hollow-ring") {
+    swatch = (
+      <span style={{ ...base, border: `2px solid ${color}`, backgroundColor: "transparent", position: "relative" }}>
+        <span style={{ display: "block", width: "4px", height: "4px", borderRadius: "50%", backgroundColor: color, margin: "2px auto" }} />
+      </span>
+    );
+  } else {
+    swatch = <span style={{ ...base, clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)", backgroundColor: color }} />;
   }
-}
+  return <><span className="memory-map-legend-item">{swatch}{label}</span> </>;
+};
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
+// Force simulation engine (delegated to memory-map-layout.ts)
 const MemoryMapTab: React.FC = () => {
   const [data, setData] = useState<MemoryMapResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [filterSession, setFilterSession] = useState<string>("");
+  const [filterSession] = useState<string>("");
   const [frame, setFrame] = useState<number>(0);
 
   const layoutRef = useRef<{ nodes: LayoutNode[]; edges: LayoutEdge[] } | null>(null);
@@ -291,13 +218,79 @@ const MemoryMapTab: React.FC = () => {
     );
   }, [searchQuery]);
 
-  // ---------- Loading state ----------
+  // Health indicator helpers (D3)
+
+  /**
+   * Derive graph health from validation report:
+   * green = all gates passed + no warnings
+   * yellow = warnings present but no critical gate failed
+   * red = a critical gate (gatesRun > gatesPassed) failed
+   */
+  const graphHealth = useMemo<{ level: "green" | "yellow" | "red"; label: string }>(() => {
+    const v = data?.validation;
+    if (!v) return { level: "yellow", label: "No validation" };
+    if (v.gatesPassed < v.gatesRun) return { level: "red", label: "Gate failure" };
+    if (v.warnings.length > 0) return { level: "yellow", label: `${v.warnings.length} warning(s)` };
+    return { level: "green", label: "Healthy" };
+  }, [data?.validation]);
+
+  const healthColor: Record<string, string> = {
+    green: "#22c55e",
+    yellow: "#eab308",
+    red: "#ef4444",
+  };
+
+  // Source availability indicators (D3)
+
+  /** Count badge fragments from validation.sources. */
+  const countBadge = useMemo<string>(() => {
+    const v = data?.validation;
+    if (!v) {
+      const totalNodes = data?.metadata.totalNodes ?? 0;
+      return `${totalNodes} nodes`;
+    }
+    const parts: string[] = [];
+    if (v.sources.checkpoint > 0) parts.push(`${v.sources.checkpoint} checkpoints`);
+    if (v.sources.turn > 0) parts.push(`${v.sources.turn} turns`);
+    if (v.sources.turnContent > 0) parts.push(`${v.sources.turnContent} turn-content`);
+    if (v.sources.memory > 0) parts.push(`${v.sources.memory} memories`);
+    if (parts.length === 0) {
+      parts.push(`${data?.metadata.totalNodes ?? 0} nodes`);
+    }
+    return parts.join(" · ");
+  }, [data?.validation, data?.metadata.totalNodes]);
+
+  /** Per-source availability: ✓ for available sources, ✗ for empty ones. */
+  const sourceAvail = useMemo<string>(() => {
+    const v = data?.validation;
+    if (!v) return "";
+    const parts: string[] = [];
+    parts.push(v.sources.checkpoint > 0 ? "✓ checkpoints" : "✗ checkpoints");
+    parts.push(v.sources.turn > 0 ? "✓ turns" : "✗ turns");
+    parts.push(v.sources.turnContent > 0 ? "✓ turn-content" : "✗ turn-content");
+    parts.push(v.sources.memory > 0 ? "✓ memories" : "✗ memories");
+    return parts.join(" | ");
+  }, [data?.validation]);
+
+  /** Whether all four sources are empty (true empty state). */
+  const allSourcesEmpty = useMemo<boolean>(() => {
+    const v = data?.validation;
+    if (!v) return data?.metadata.totalNodes === 0;
+    return (
+      v.sources.checkpoint === 0 &&
+      v.sources.turn === 0 &&
+      v.sources.turnContent === 0 &&
+      v.sources.memory === 0
+    );
+  }, [data?.validation, data?.metadata.totalNodes]);
+
+  // Loading state
 
   if (loading) {
     return <div className="memory-map-loading">Loading memory graph...</div>;
   }
 
-  // ---------- Error state ----------
+  // Error state
 
   if (error) {
     return (
@@ -313,15 +306,19 @@ const MemoryMapTab: React.FC = () => {
     );
   }
 
-  // ---------- Empty state ----------
+  // Empty state (D2)
 
-  if (!data || !layoutRef.current) {
-    return <div className="memory-map-empty">No memory data available.</div>;
+  if (!data || !layoutRef.current || allSourcesEmpty) {
+    return (
+      <div className="memory-map-empty">
+        <p>Memories appear after your first compaction. The graph shows checkpoints (compaction summaries) linked by semantic similarity and time. Run a longer session or lower the compaction tier to see it sooner.</p>
+      </div>
+    );
   }
 
   const layout = layoutRef.current;
 
-  // ---------- Render ----------
+  // Render
 
   return (
     <div className="memory-map-container">
@@ -337,18 +334,48 @@ const MemoryMapTab: React.FC = () => {
           className="memory-map-search"
         />
         <span className="memory-map-stats">
-          {data.nodes.length} memories, {data.edges.length} edges
+          {/* Count badge */}
+          <span className="memory-map-count-badge">{countBadge}</span>
           <br />
-          Sessions: {data.metadata.sessionCount} | Threshold:{" "}
-          {data.metadata.similarityThresholdUsed.toFixed(2)}
+          <span className="memory-map-edges">{data.edges.length} edges</span>
+        </span>
+        {/* Graph-health indicator */}
+        <span
+          className="memory-map-health-badge"
+          style={{
+            backgroundColor: healthColor[graphHealth.level] ?? "#6b7280",
+            color: "#fff",
+            padding: "2px 8px",
+            borderRadius: "10px",
+            fontSize: "11px",
+            fontWeight: 600,
+            marginLeft: "8px",
+          }}
+          title={`Validation: ${graphHealth.label}`}
+        >
+          {graphHealth.level === "green" ? "Healthy" : graphHealth.level === "yellow" ? "Warnings" : "Critical"}
         </span>
       </div>
 
-      {/* Legend */}
+      {/* Source availability indicators */}
+      {sourceAvail ? (
+        <div className="memory-map-source-avail" style={{ fontSize: "11px", padding: "2px 12px", color: "#6b7280" }}>
+          {sourceAvail}
+        </div>
+      ) : null}
+
+      {/* Legend — node types + edge types */}
       <div className="memory-map-legend">
-        <span style={{ color: edgeColor("semantic") }}>Semantic</span>
-        <span style={{ color: edgeColor("temporal") }}>Temporal</span>
-        <span style={{ color: edgeColor("raptor_parent") }}>Raptor</span>
+        <span className="memory-map-legend-section">Nodes:</span>
+        <Swatch type="node" color={NODE_COLORS.checkpoint} shape="filled-circle" label="Checkpoint" />
+        <Swatch type="node" color={NODE_COLORS.turn} shape="hollow-circle" label="Turn" />
+        <Swatch type="node" color={NODE_COLORS["turn-content"]} shape="hollow-ring" label="Turn Content" />
+        <Swatch type="node" color={NODE_COLORS.memory} shape="diamond" label="Memory" />
+        <span className="memory-map-legend-sep">|</span>
+        <span className="memory-map-legend-section">Edges:</span>
+        <Swatch type="edge" color={edgeColor("semantic")} shape="line" label="Semantic" />
+        <Swatch type="edge" color={edgeColor("temporal")} shape="line" label="Temporal" />
+        <Swatch type="edge" color={edgeColor("raptor_parent")} shape="line" label="Raptor" />
       </div>
 
       {/* SVG graph */}
@@ -378,7 +405,7 @@ const MemoryMapTab: React.FC = () => {
           );
         })}
 
-        {/* Nodes */}
+        {/* Nodes — shape encodes nodeType */}
         {layout.nodes.map((n, i) => {
           const cx =
             PADDING + (n.pos.x / (layout.nodes.length || 1)) * (SVG_WIDTH - 2 * PADDING);
@@ -390,18 +417,13 @@ const MemoryMapTab: React.FC = () => {
           const nodeLabel = n.label.length > 20 ? n.label.slice(0, 18) + "..." : n.label;
 
           return (
-            <g key={`node-${i}`} className="memory-map-node-group">
-              <circle
-                cx={cx}
-                cy={cy}
-                r={isSelected ? radius + 3 : radius}
-                fill={isFiltered ? (n.raptorLevel > 0 ? "#f59e0b" : "#6366f1") : "#d1d5db"}
-                opacity={nodeOpacity(n.dedupStatus)}
-                stroke={isSelected ? "#ef4444" : "none"}
-                strokeWidth={isSelected ? 2 : 0}
-                className="memory-map-node"
-                onClick={() => handleNodeClick(n, i)}
-              />
+            <g
+              key={`node-${i}`}
+              className="memory-map-node-group"
+              onClick={() => handleNodeClick(n, i)}
+              style={{ cursor: "pointer" }}
+            >
+              {renderNodeShape(cx, cy, radius, n.nodeType as NodeType, isSelected, isFiltered, n.dedupStatus)}
               <text
                 x={cx}
                 y={cy + radius + 12}
@@ -420,7 +442,21 @@ const MemoryMapTab: React.FC = () => {
       {/* Node detail panel */}
       {selectedNode ? (
         <div className="memory-map-detail">
-          <h3>{selectedNode.label}</h3>
+          <h3>
+            <span
+              className="memory-map-detail-type"
+              style={{
+                display: "inline-block",
+                fontSize: "12px",
+                fontWeight: 400,
+                color: "#6b7280",
+                marginRight: "6px",
+              }}
+            >
+              {NODE_TYPE_LABELS[selectedNode.nodeType]}
+            </span>
+            {selectedNode.label}
+          </h3>
           <p>{selectedNode.summaryTruncated}</p>
           {selectedNode.topicSummary ? (
             <p className="memory-map-topic">Topic: {selectedNode.topicSummary}</p>

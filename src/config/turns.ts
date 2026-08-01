@@ -37,8 +37,10 @@ export interface TurnsConfigShape {
 	WIKI_K_MAX: number;
 	/** S51: how many TF-IDF terms form a topic label (default 5). */
 	WIKI_LABEL_TOP_TERMS: number;
-	/** S51: rebuild the topic model every Nth compaction (default 10). */
+	/** S51: rebuild the topic model every Nth compaction (default 3). */
 	WIKI_REBUILD_EVERY_N_COMPACTS: number;
+	/** D1: seed the topic model from raw_transcript when context_chunks is thin (default true). */
+	WIKI_SEED_FROM_TURNS: boolean;
 }
 
 function envKRange(defMin: number, defMax: number): [number, number] {
@@ -62,7 +64,8 @@ export function loadTurnsConfig(): TurnsConfigShape {
 		WIKI_K_MIN: kMin,
 		WIKI_K_MAX: kMax,
 		WIKI_LABEL_TOP_TERMS: envNum("MEGACOMPACT_WIKI_LABEL_TOP_TERMS", 5),
-		WIKI_REBUILD_EVERY_N_COMPACTS: envNum("MEGACOMPACT_WIKI_REBUILD_EVERY", 10),
+		WIKI_REBUILD_EVERY_N_COMPACTS: envNum("MEGACOMPACT_WIKI_REBUILD_EVERY", 3),
+		WIKI_SEED_FROM_TURNS: envBool("MEGACOMPACT_WIKI_SEED_FROM_TURNS", true),
 	};
 }
 

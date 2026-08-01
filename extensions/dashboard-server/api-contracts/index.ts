@@ -210,12 +210,13 @@ export type { MemoryStatusResponse, MemoryStatsTopMemory } from "./memory.js";
 // Setup wizard — embedder configuration + backend detection
 export type { SetupStatusResponse, SetupDetectResponse, SetupConfigureRequest, SetupConfigureResponse, DetectResult, OllamaDetectResult } from "./setup.js";
 
-// S46 — memory graph (visual memory map)
+// S46/D3 — memory graph (visual memory map) + validation report
 export type {
 	MemoryMapResponse,
 	MemoryMapNode,
 	MemoryMapEdgeEntry,
 	MemoryMapQuery,
+	GraphValidationReport,
 } from "./memory-map.js";
 
 // A3 — cache stripe distribution + health

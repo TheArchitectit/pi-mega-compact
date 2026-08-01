@@ -1,7 +1,8 @@
 /**
- * routes-memory-map.ts — GET /api/memory-map route handler (S46).
+ * routes-memory-map.ts — GET /api/memory-map route handler (S46/D3).
  *
  * Builds a memory graph from the local SQLite store and returns it as JSON.
+ * D3: surfaces nodeType on each node and the GraphValidationReport.
  * Uses an inline require to the pi-agnostic src/memoryGraph.ts builder.
  */
 import { createRequire } from "node:module";
@@ -25,14 +26,7 @@ export function handleMemoryMap(
 
 	// guardrails-allow PREVENT-PI-004: local loopback-only dashboard server — reads the local SQLite store for graph data.
 	const { buildMemoryGraph } = _req("../../src/memoryGraph.js") as {
-		buildMemoryGraph: (opts?: {
-			sessionId?: string;
-			similarityThreshold?: number;
-			maxEdgesPerNode?: number;
-			stateDir?: string;
-			includeRaptorEdges?: boolean;
-			includeTemporalEdges?: boolean;
-		}) => MemoryGraphReturn;
+		buildMemoryGraph: (sessionId: string, stateDir: string) => MemoryGraphReturn;
 	};
 
 	type MemoryGraphReturn = {
@@ -48,6 +42,7 @@ export function handleMemoryMap(
 			topicSummary: string | undefined;
 			decisionCount: number;
 			textSnippet: string;
+			nodeType: "checkpoint" | "turn" | "turn-content" | "memory";
 		}>;
 		edges: Array<{
 			source: string;
@@ -56,31 +51,25 @@ export function handleMemoryMap(
 			type: "temporal" | "semantic" | "raptor_parent";
 		}>;
 		metadata: {
-			sessionCount: number;
-			totalCheckpoints: number;
+			totalNodes: number;
 			totalEdges: number;
-			semanticEdgeCount: number;
-			temporalEdgeCount: number;
-			raptorEdgeCount: number;
-			similarityThresholdUsed: number;
+			avgWeight: number;
+			nodeTypeBreakdown: Record<string, number>;
+			edgeTypeBreakdown: Record<string, number>;
+		};
+		validation: {
+			gatesRun: number;
+			gatesPassed: number;
+			dropped: { nodes: number; edges: number };
+			warnings: Array<{ gate: string; code: string; count: number }>;
+			sources: { checkpoint: number; turn: number; turnContent: number; memory: number };
 			builtAt: number;
 		};
 	};
 
-	const sessionId = typeof parsed.query.sessionId === "string" ? parsed.query.sessionId : undefined;
-	const threshold = typeof parsed.query.threshold === "string" ? Number.parseFloat(parsed.query.threshold) : undefined;
-	const maxEdges = typeof parsed.query.maxEdgesPerNode === "string" ? Number.parseInt(parsed.query.maxEdgesPerNode, 10) : undefined;
-	const raptorEdges = parsed.query.includeRaptorEdges === "false" ? false : true;
-	const temporalEdges = parsed.query.includeTemporalEdges === "false" ? false : true;
+	const sessionId = typeof parsed.query.sessionId === "string" ? parsed.query.sessionId : "";
 
-	const graph = buildMemoryGraph({
-		sessionId,
-		similarityThreshold: threshold,
-		maxEdgesPerNode: maxEdges,
-		stateDir: ctx.stateDir,
-		includeRaptorEdges: raptorEdges,
-		includeTemporalEdges: temporalEdges,
-	});
+	const graph = buildMemoryGraph(sessionId, ctx.stateDir);
 
 	const nodes: MemoryMapNode[] = graph.nodes.map((n) => ({
 		id: n.id,
@@ -94,10 +83,13 @@ export function handleMemoryMap(
 		topicSummary: n.topicSummary,
 		decisionCount: n.decisionCount,
 		textSnippet: n.textSnippet,
+		// D3: pass through nodeType for UI node-shape encoding
+		nodeType: n.nodeType,
 	}));
 
 	const edges: MemoryMapEdgeEntry[] = graph.edges as MemoryMapEdgeEntry[];
-	const response: MemoryMapResponse = { nodes, edges, metadata: graph.metadata };
+	// D3: surface the validation report (optional in the response type for backward compat)
+	const response: MemoryMapResponse = { nodes, edges, metadata: graph.metadata, validation: graph.validation };
 
 	res.writeHead(200, { "Content-Type": "application/json" });
 	res.end(JSON.stringify(response));

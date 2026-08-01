@@ -84,13 +84,23 @@ export function loadEmbeddings(mainDb: DatabaseSync): EmbeddedChunk[] {
  * Build a topic model from the real stored chunks. Picks k by silhouette when
  * computable, else elbow; degenerate/small corpus → single `general` cluster.
  * Never throws on degenerate input — returns the safe single-cluster model.
+ *
+ * When `source` is provided, uses those pre-loaded EmbeddedChunks instead of
+ * reading from `mainDb` (used by D1 seed path from raw_transcript). Source can
+ * be partial — the function still falls back to mainDb for additional chunks
+ * when source is non-empty but mainDb also has rows. Default behavior unchanged
+ * when source is omitted (backward-compatible).
  */
 export function buildTopicModel(
 	mainDb: DatabaseSync,
 	cfg: WikiClusterConfig = DEFAULT_CLUSTER_CONFIG,
+	source?: EmbeddedChunk[],
 ): ClusterModel {
 	const builtAt = Date.now();
-	const chunks = loadEmbeddings(mainDb);
+	const chunks =
+		source !== undefined && source.length > 0
+			? source
+			: loadEmbeddings(mainDb);
 	const totalChunks = chunks.length;
 
 	// Too small to cluster meaningfully → single general cluster.

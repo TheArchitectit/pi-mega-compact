@@ -183,6 +183,18 @@ export interface MegaConfig {
 	ragRecallMetrics: boolean;
 	/** S57 B4: Memory graph traversal (dashboard-oriented). */
 	ragMemoryGraph: boolean;
+	/** D1: Seed initial wiki topic model from live turns when no context_chunks exist yet. */
+	wikiSeedFromTurns: boolean;
+	/** D3 Source A: Include structural turn nodes in the memory graph (metadata only, no content). */
+	memoryGraphSeedTurns: boolean;
+	/** D3 Source B: Include raw_transcript content nodes in the memory graph (requires dbMirror). */
+	memoryGraphSeedTurnContent: boolean;
+	/** D3 Source C: Include memory review nodes in the memory graph. */
+	memoryGraphSeedMemories: boolean;
+	/** D3 edges: Stricter cosine floor for cross-type edges (e.g. turn↔checkpoint). */
+	memoryGraphCrossTypeThreshold: number;
+	/** D3 edges: Cosine floor for within-type semantic edges. */
+	memoryGraphWithinTypeThreshold: number;
 }
 
 function envFlag(name: string, fallback: number): number {
@@ -350,6 +362,12 @@ export function loadConfig(): MegaConfig {
 		ragTieredRouter: envBool("MEGACOMPACT_TIERED_ROUTER", false),
 		ragRecallMetrics: envBool("MEGACOMPACT_RECALL_METRICS", false),
 		ragMemoryGraph: envBool("MEGACOMPACT_MEMORY_GRAPH", false),
+		wikiSeedFromTurns: envBool("MEGACOMPACT_WIKI_SEED_FROM_TURNS", true),
+		memoryGraphSeedTurns: envBool("MEGACOMPACT_MEMORY_GRAPH_SEED_TURNS", true),
+		memoryGraphSeedTurnContent: envBool("MEGACOMPACT_MEMORY_GRAPH_SEED_TURN_CONTENT", true),
+		memoryGraphSeedMemories: envBool("MEGACOMPACT_MEMORY_GRAPH_SEED_MEMORIES", true),
+		memoryGraphCrossTypeThreshold: envFlag("MEGACOMPACT_MEMORY_GRAPH_CROSS_TYPE_THRESHOLD", 0.85),
+		memoryGraphWithinTypeThreshold: envFlag("MEGACOMPACT_MEMORY_GRAPH_WITHIN_TYPE_THRESHOLD", 0.7),
 		// D.1: env-overridable recompact delta (minimum context growth % before
 		// re-compacting instead of replaying the cached live trim). Default 50.
 		recompactPctDelta: envFlag("MEGACOMPACT_RECOMPACT_PCT_DELTA", 50),
