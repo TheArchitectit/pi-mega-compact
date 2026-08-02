@@ -16,15 +16,17 @@
 #
 #   It enforces (in order):
 #     1. Clean git tree (no uncommitted changes).
+#     1.5. Pre-flight: verify @mongodb-js/zstd native binding loads (fail fast
+#          with the rebuild command instead of a mysterious mid-gate crash).
 #     2. Full gate: build + test + lint + regression_check + guardrails-scan.
 #     3. Build the React dashboard (npm run build:dashboard).
 #     4. CRITICAL VERIFY: confirm extensions/dashboard-client/dist/index.html
 #        exists AND is listed by `npm pack --dry-run` — fail with exit 1 if
 #        missing (this is exactly the 0.8.5 regression we are preventing).
-#     5. Bump package.json version to <new-version>.
-#     6. Commit the version bump (+ dist if changed).
+#     5. Bump package.json + package-lock.json version to <new-version>.
+#     6. Commit the version bump (package.json + package-lock.json + dist).
 #     7. npm publish (the ONLY valid distribution path — PREVENT-DIST-001).
-#     8. git tag v<version> + git push --follow-tags.
+#     8. git tag -a v<version> (annotated) + git push --follow-tags.
 #     9. Print post-publish device instructions.
 #
 #   Distribution is npm-only. NEVER produce or rely on a .tgz tarball
@@ -74,6 +76,19 @@ if ! git diff --cached --quiet; then
   exit 1
 fi
 echo "[deploy] git tree clean."
+
+# --- 1.5 pre-flight: native deps loadable ------------------------------------
+# Friction fix: @mongodb-js/zstd's native binding can fail to build when npm's
+# allowScripts blocks it. That surfaces as a mysterious compression-test failure
+# mid-gate (after several minutes). Fail fast with the fix instead.
+if ! node -e "require('@mongodb-js/zstd')" 2>/dev/null; then
+  echo "[deploy] ERROR: @mongodb-js/zstd native binding not loadable." >&2
+  echo "[deploy]        The compression tests would fail mid-gate. Rebuild it:" >&2
+  echo "[deploy]          npm install-scripts approve @mongodb-js/zstd && npm rebuild @mongodb-js/zstd" >&2
+  echo "[deploy]        Then re-run: ./scripts/deploy.sh $NEW_VERSION" >&2
+  exit 1
+fi
+echo "[deploy] @mongodb-js/zstd loadable."
 
 # --- 2. full gate -------------------------------------------------------------
 echo "[deploy] running gate: build + test + lint + regression + guardrails"
@@ -125,11 +140,14 @@ else
 fi
 
 # --- 6. commit version bump + dashboard dist if changed ----------------------
-if git diff --quiet -- package.json extensions/dashboard-client/dist; then
+# Stage package-lock.json alongside package.json: `npm version` bumps BOTH,
+# and leaving the lockfile uncommitted was a recurring friction point — the
+# next deploy's clean-tree check (step 1) failed on the stale lockfile.
+if git diff --quiet -- package.json package-lock.json extensions/dashboard-client/dist; then
   echo "[deploy] nothing to commit (version already set, dist unchanged)."
 else
   echo "[deploy] committing version bump + dashboard dist"
-  git add package.json extensions/dashboard-client/dist
+  git add package.json package-lock.json extensions/dashboard-client/dist
   git commit -m "chore(release): v$NEW_VERSION
 
 Release v$NEW_VERSION published via scripts/deploy.sh.
@@ -149,16 +167,21 @@ if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
   echo "[deploy] tag $TAG already exists; skipping tag creation."
 else
   echo "[deploy] creating tag $TAG"
-  git tag "$TAG"
+  # Annotated tag (-a): `git push --follow-tags` only pushes annotated tags,
+  # so this makes the push on the next line the real mechanism (not a no-op).
+  git tag -a "$TAG" -m "Release v$NEW_VERSION"
 fi
 echo "[deploy] pushing commits + tags (git push --follow-tags)"
 git push --follow-tags
 
-# --- 8b. push the lightweight tag explicitly + create GitHub release with notes -
-# Known friction: `--follow-tags` only pushes ANNOTATED tags; this script creates
-# a lightweight tag, so push it explicitly. Then create a GitHub release with
-# auto-generated notes (the commit log since the previous tag) for tracking.
-git push origin "$TAG" 2>/dev/null || true
+# --- 8b. verify the tag reached origin + create GitHub release with notes -----
+# Safety net: confirm the annotated tag is on the remote. With -a it rides the
+# --follow-tags push above; if it somehow didn't, surface the error (do NOT
+# swallow it — a silent tag-push failure was the old friction point).
+if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+  echo "[deploy] pushing tag $TAG explicitly (not found on origin after --follow-tags)"
+  git push origin "$TAG"
+fi
 PREV_TAG=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
 if [ -n "$PREV_TAG" ]; then
   RELEASE_NOTES=$(git log --pretty=format:"- %s" "$PREV_TAG..$TAG" 2>/dev/null | grep -vE "^- chore\(release\)|^- chore: (sync|clean|rebuild)" | head -15)
