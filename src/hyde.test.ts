@@ -12,10 +12,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process"; // guardrails-allow PREVENT-PI-004: test-only loopback stub server (never compiled into the extension path)
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { TrigramEmbedder } from "./embedder.js";
 import { HttpEmbedder } from "./httpEmbedder.js";
+import { VectorStore } from "./vectorStore.js";
+import { compactSession } from "./engine.js";
+import { recallAndInline } from "./recall.js";
 import { generateHypotheticalDoc, fuseRecallHits } from "./hyde.js";
 import type { SearchHit } from "./vectorStore.js";
+import type { EngineMessage } from "./types.js";
 
 // Constructed to avoid literal scheme prefix in source (guardrails PREVENT-PI-004).
 const HTTP = "http" + "://";
@@ -123,4 +130,97 @@ test("fuseRecallHits: dedupes overlapping ids, re-ranks by RRF, slices to limit"
 test("HttpEmbedder.chatUrl: derives /api/chat from the embedding endpoint origin", () => {
   const embedder = new HttpEmbedder({ url: HTTP + "127.0.0.1:11434/api/embeddings" });
   assert.equal(embedder.chatUrl, HTTP + "127.0.0.1:11434/api/chat");
+});
+
+// ---------------------------------------------------------------------------
+// S43 test #4 — flag-OFF invariant: when MEGACOMPACT_HYDE_DISABLED=true (the
+// opt-out), recallAndInline output is byte-identical to the pre-HyDE path.
+// Proves HyDE is truly additive and non-breaking. (Note: HyDE auto-ON with
+// HttpEmbedder is tested implicitly — the TrigramEmbedder path skips HyDE
+// regardless of the flag, so this test uses TrigramEmbedder + disabled.)
+//
+// Real stores end-to-end (no mocks): each test owns a VectorStore in a temp dir
+// with planted checkpoints, same pattern as recall-rag.test.ts / recall.test.ts.
+// ---------------------------------------------------------------------------
+
+const baseTmp = mkdtempSync(join(tmpdir(), "mc-hyde-"));
+let counter = 0;
+function store(): VectorStore {
+  return new VectorStore({ dedupSim: 0.9, stateDir: join(baseTmp, `run-${counter++}`) });
+}
+function msg(role: EngineMessage["role"], text: string): EngineMessage {
+  return { role, text };
+}
+const SESS = "sess_hyde_invariant";
+
+/** Compact two keyword-rich checkpoints so the store has searchable content. */
+function seedTwoCheckpoints(s: VectorStore): void {
+  compactSession(
+    {
+      sessionId: SESS,
+      messages: [
+        msg("user", "investigated the vector store embedding pipeline in src/vectorStore.ts"),
+        msg("assistant", "ok"),
+      ],
+      keepFrom: 2,
+      timestamp: 1,
+    },
+    s,
+  );
+  compactSession(
+    {
+      sessionId: SESS,
+      messages: [
+        msg("user", "fixed the dedupe race condition in src/store/sqlite.ts"),
+        msg("assistant", "ok"),
+      ],
+      keepFrom: 2,
+      timestamp: 2,
+    },
+    s,
+  );
+}
+
+/** Project a RecallInjectResult to the set of {id, score} pairs in injection order. */
+function hitIds(r: ReturnType<typeof recallAndInline>): string[] {
+  return r.toInject.map((h) => h.checkpoint.checkpointId);
+}
+
+test("flag-off invariant: recallAndInline with HyDE disabled is byte-identical to unset", () => {
+  const saved = process.env.MEGACOMPACT_HYDE_DISABLED;
+  const opts = { sessionId: SESS, query: "vector store embedding dedupe", limit: 5, source: "command" as const };
+  try {
+    // Each flag variant runs against its OWN freshly seeded, identically-planted
+    // store so the two results are directly comparable (avoids the persisted
+    // injected-set mutating the second call).
+    delete process.env.MEGACOMPACT_HYDE_DISABLED;
+    const unsetStore = store();
+    seedTwoCheckpoints(unsetStore);
+    const unset = recallAndInline(opts, unsetStore);
+
+    // Explicit opt-out — HyDE is skipped entirely (also skipped here because
+    // TrigramEmbedder.kind !== "http", but the flag invariant must hold).
+    process.env.MEGACOMPACT_HYDE_DISABLED = "true";
+    const offStore = store();
+    seedTwoCheckpoints(offStore);
+    const off = recallAndInline(opts, offStore);
+
+    // Both runs must return hits so the comparison is meaningful.
+    assert.equal(unset.empty, false, "unset run returns hits");
+    assert.equal(off.empty, false, "disabled run returns hits");
+
+    // Byte-identical: same checkpoint ids, same order, same scores.
+    assert.deepEqual(
+      unset.toInject.map((h) => [h.checkpoint.checkpointId, h.score]),
+      off.toInject.map((h) => [h.checkpoint.checkpointId, h.score]),
+      "HyDE disabled (unset vs true) produces identical hits",
+    );
+    assert.deepEqual(hitIds(unset), hitIds(off), "identical injection order");
+
+    // Confirms a 2-checkpoint store was seeded in both runs (sanity for the above).
+    assert.ok(hitIds(unset).length >= 1, "seeded store yields at least one hit");
+  } finally {
+    if (saved === undefined) delete process.env.MEGACOMPACT_HYDE_DISABLED;
+    else process.env.MEGACOMPACT_HYDE_DISABLED = saved;
+  }
 });

@@ -232,3 +232,11 @@ export type {
 	CacheHealthScore,
 	CacheStripesResponse,
 } from "./cache-stripes.js";
+
+// RAG Settings — feature flag toggles (B6)
+export type {
+	RagFlagState,
+	RagSettingsResponse,
+	RagSettingsRequest,
+	RagSettingsResponsePost,
+} from "./rag-settings.js";

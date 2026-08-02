@@ -13,6 +13,7 @@ import { useState, useEffect, useCallback } from "react";
 import type { SetupStatusResponse, SetupDetectResponse, SetupConfigureResponse } from "@contracts";
 import { fetchSetupStatus, fetchSetupDetect, configureEmbedder } from "../../api/client";
 import EmbedderHealthCard from "./EmbedderHealthCard";
+import RagSettingsCard from "./RagSettingsCard";
 
 const styles: Record<string, React.CSSProperties> = {
 	container: {
@@ -463,6 +464,7 @@ export default function EmbedderSetup(): React.ReactElement {
 					</li>
 				</ul>
 			</div>
+			<RagSettingsCard />
 		</div>
 	);
 }

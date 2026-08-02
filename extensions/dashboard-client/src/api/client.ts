@@ -48,6 +48,9 @@ import type {
 	SetupConfigureResponse,
 	EmbedderHealthResponse,
 	RaptorTreeResponse,
+	RagSettingsResponse,
+	RagSettingsRequest,
+	RagSettingsResponsePost,
 } from "@contracts";
 
 /** Error thrown when a dashboard API response is not 2xx. */
@@ -322,4 +325,18 @@ export function fetchRaptorTree(sessionId?: string): Promise<RaptorTreeResponse>
 /** GET /api/embedder-health — round-trip a test embed through the active embedder. */
 export function fetchEmbedderHealth(): Promise<EmbedderHealthResponse> {
 	return getJson<EmbedderHealthResponse>(ENDPOINTS.embedderHealth.path);
+}
+
+// ─── RAG Settings ─────────────────────────────────────────────────────
+
+/** GET /api/rag-settings — read the current state of all RAG feature flags. */
+export function fetchRagSettings(): Promise<RagSettingsResponse> {
+	return getJson<RagSettingsResponse>(ENDPOINTS.ragSettings.path);
+}
+
+/** POST /api/rag-settings — toggle RAG feature flags (writes _DISABLED env vars). */
+export function postRagSettings(
+	body: RagSettingsRequest,
+): Promise<RagSettingsResponsePost> {
+	return postJson<RagSettingsResponsePost>(ENDPOINTS.ragSettingsUpdate.path, body);
 }

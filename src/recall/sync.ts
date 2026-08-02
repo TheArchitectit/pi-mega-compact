@@ -88,9 +88,10 @@ export function recallAndInline(
 	// defaultEmbedder() is deterministic but creating it per call wastes allocations.
 	const embedder = defaultEmbedder();
 
-	// S43 re-plan: HyDE — when HttpEmbedder is active and RAG_HYDE_ENABLED,
-	// generate a hypothetical answer doc, embed it, run a second searchRecall,
-	// and RRF-fuse with the raw-query results. Non-fatal: any error → raw-only.
+	// S43 re-plan: HyDE — auto-ON when an HttpEmbedder is active (LLM configured
+	// for indexing); opt out via MEGACOMPACT_HYDE_DISABLED=true. Generates a
+	// hypothetical answer doc, embeds it, runs a second searchRecall, and
+	// RRF-fuses with the raw-query results. Non-fatal: any error → raw-only.
 	// TrigramEmbedder (kind !== "http") skips this — S57 B1 reformulation above
 	// already handles the no-LLM path.
 	let hydeHits: SearchHit[] | null = null;

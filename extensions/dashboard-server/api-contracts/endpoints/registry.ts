@@ -20,6 +20,11 @@ import type { MemoryStatusResponse } from "../memory.js";
 import type { SetupStatusResponse, SetupDetectResponse, SetupConfigureRequest, SetupConfigureResponse } from "../setup.js";
 import type { EmbedderHealthResponse } from "../embedder-health.js";
 import type {
+	RagSettingsResponse,
+	RagSettingsRequest,
+	RagSettingsResponsePost,
+} from "../rag-settings.js";
+import type {
 	TurnsResponse,
 	ConversationTurnsResponse,
 	RewindIntentsResponse,
@@ -357,4 +362,22 @@ export const ENDPOINTS = {
 		description:
 			"Probe the active embedder with a test embed and report status, latency, dimensions, and masked URL.",
 	} as const satisfies EndpointDef<"GET", undefined, EmbedderHealthResponse>,
+
+	// ─── RAG Settings (Sprint B6) ─────────────────────────────────────
+
+	/** GET /api/rag-settings — Read the state of all RAG feature flags. */
+	ragSettings: {
+		method: "GET",
+		path: "/api/rag-settings",
+		description:
+			"Read the current state of all RAG feature flags (enabled/disabled).",
+	} as const satisfies EndpointDef<"GET", undefined, RagSettingsResponse>,
+
+	/** POST /api/rag-settings — Update RAG feature flag states. */
+	ragSettingsUpdate: {
+		method: "POST",
+		path: "/api/rag-settings",
+		description:
+			"Update RAG feature flag states by writing _DISABLED env vars to .mega-compact.env.",
+	} as const satisfies EndpointDef<"POST", RagSettingsRequest, RagSettingsResponsePost>,
 } as const;

@@ -104,7 +104,9 @@ export function memoryReviewCadence(band: PressureBand, baseInterval: number): n
 }
 
 // ---------------------------------------------------------------------------
-// S57 RAG Suite feature flags — each maps to MEGACOMPACT_* env var, default OFF
+// S57 RAG Suite feature flags — all default ON with graceful fallback; opt OUT
+// via MEGACOMPACT_<NAME>_DISABLED=true. Every feature degrades to existing
+// behavior on error (non-fatal, best-effort).
 // ---------------------------------------------------------------------------
 
 function ragFlag(name: string): boolean {
@@ -113,22 +115,28 @@ function ragFlag(name: string): boolean {
   return v === "true" || v === "1";
 }
 
+function ragEnabled(name: string): boolean {
+  return !ragFlag(name + "_DISABLED");
+}
+
 /** B1: Query reformulation (keyword expansion via embedding neighbors). */
 export const RAG_QUERY_REFORMULATION = (): boolean =>
-  ragFlag("MEGACOMPACT_QUERY_REFORMULATION");
+  ragEnabled("MEGACOMPACT_QUERY_REFORMULATION");
 
 /** B2: Tiered recall router (L0 cache → L1 FTS5 → L2 HNSW). */
 export const RAG_TIERED_ROUTER = (): boolean =>
-  ragFlag("MEGACOMPACT_TIERED_ROUTER");
+  ragEnabled("MEGACOMPACT_TIERED_ROUTER");
 
 /** B3: Recall quality metrics (precision/recall scoring + logging). */
 export const RAG_RECALL_METRICS = (): boolean =>
-  ragFlag("MEGACOMPACT_RECALL_METRICS");
+  ragEnabled("MEGACOMPACT_RECALL_METRICS");
 
 /** B4: Memory graph traversal (dashboard-oriented). */
 export const RAG_MEMORY_GRAPH = (): boolean =>
-  ragFlag("MEGACOMPACT_MEMORY_GRAPH");
+  ragEnabled("MEGACOMPACT_MEMORY_GRAPH");
 
-/** B5: HyDE — generate a hypothetical answer doc via LLM (HttpEmbedder only). Default OFF. */
+/** B5: HyDE — generate a hypothetical answer doc via LLM. Auto-ON when an
+ * HttpEmbedder is active (the LLM is configured for indexing); opt OUT with
+ * MEGACOMPACT_HYDE_DISABLED=true. TrigramEmbedder path is unaffected. */
 export const RAG_HYDE_ENABLED = (): boolean =>
-  ragFlag("MEGACOMPACT_HYDE_ENABLED");
+  ragEnabled("MEGACOMPACT_HYDE");

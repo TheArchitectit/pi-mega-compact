@@ -118,7 +118,7 @@ void _c_achievements;
 // correct paths.
 
 const ENDPOINT_KEYS = Object.keys(ENDPOINTS) as (keyof typeof ENDPOINTS)[];
-const EXPECTED_ENDPOINT_COUNT = 34; // 23 base + 3 S49B maintenance + 1 provider-cache + 1 memory-status + 3 setup + 1 cache-stripes + 1 embedder-health + 1 raptor-tree
+const EXPECTED_ENDPOINT_COUNT = 36; // 23 base + 3 S49B maintenance + 1 provider-cache + 1 memory-status + 3 setup + 1 cache-stripes + 1 embedder-health + 1 raptor-tree + 2 rag-settings
 
 /** All `/api/*` paths served by server.ts (extracted from the route handlers). */
 const SERVER_TS_PATHS: string[] = [
@@ -138,6 +138,7 @@ const SERVER_TS_PATHS: string[] = [
 	"/api/sessions/timeseries",
 	"/api/topics",
 	"/api/provider-cache",
+	"/api/rag-settings",
 ];
 
 // ─── Tests ───────────────────────────────────────────────────────────────────

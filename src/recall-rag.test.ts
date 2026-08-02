@@ -6,6 +6,10 @@
  * via process.env in beforeEach and restored in afterEach. Each test creates
  * its own VectorStore in a temp directory.
  *
+ * RAG flags are now opt-OUT (default ON): set MEGACOMPACT_<FLAG>_DISABLED=true
+ * to turn a feature off. Tests that want a feature ON leave the flag alone
+ * (default) or explicitly set the _DISABLED var to "false".
+ *
  * Hard constraints:
  *   PREVENT-001: JSON.parse null-checked
  *   PREVENT-002: parameterized SQL only (no string concat)
@@ -45,9 +49,11 @@ const EMPTY_SESS = "sess_rag_empty";
 // Backup of the original env so afterEach can restore exactly.
 const ORIG_ENV: Record<string, string | undefined> = {};
 const RAG_FLAGS = [
-  "MEGACOMPACT_QUERY_REFORMULATION",
-  "MEGACOMPACT_TIERED_ROUTER",
-  "MEGACOMPACT_RECALL_METRICS",
+  "MEGACOMPACT_QUERY_REFORMULATION_DISABLED",
+  "MEGACOMPACT_TIERED_ROUTER_DISABLED",
+  "MEGACOMPACT_RECALL_METRICS_DISABLED",
+  "MEGACOMPACT_MEMORY_GRAPH_DISABLED",
+  "MEGACOMPACT_HYDE_DISABLED",
   "MEGACOMPACT_TIERED_ROUTING_ENABLED",
 ];
 
@@ -106,11 +112,17 @@ function seedTwoCheckpoints(s: VectorStore): void {
 // Tests
 // ---------------------------------------------------------------------------
 
-test("B0: flag-OFF parity — recallAndInline returns same hits as plain path", () => {
+test("B0: explicitly-disabled parity — recallAndInline returns same hits as plain path", () => {
   const s = store();
   seedTwoCheckpoints(s);
 
-  // All flags default OFF — this exercises the identical pre-S57 path.
+  // RAG flags are opt-OUT (default ON). Explicitly disable every flag to
+  // exercise the identical pre-S57 path.
+  process.env.MEGACOMPACT_QUERY_REFORMULATION_DISABLED = "true";
+  process.env.MEGACOMPACT_TIERED_ROUTER_DISABLED = "true";
+  process.env.MEGACOMPACT_RECALL_METRICS_DISABLED = "true";
+  process.env.MEGACOMPACT_MEMORY_GRAPH_DISABLED = "true";
+  process.env.MEGACOMPACT_HYDE_DISABLED = "true";
   const r = recallAndInline(
     { sessionId: SESS, query: "vector store embedding dedupe", limit: 5, source: "command" },
     s as any,
@@ -119,13 +131,13 @@ test("B0: flag-OFF parity — recallAndInline returns same hits as plain path", 
   assert.equal(r.empty, false, "should return hits");
   assert.ok(r.toInject.length >= 1, "should inject at least one checkpoint");
   assert.ok(r.block.includes("Recalled context"), 'block should contain "Recalled context" header');
-  // flag-OFF means recallQuery === opts.query and single searchRecall call;
+  // flag-off means recallQuery === opts.query and single searchRecall call;
   // the result shape matches pre-S57 behavior.
   assert.ok(r.toInject.length <= 5, "should not exceed limit");
 });
 
 test("B1 ON, vague query — recall still works (non-fatal fallback)", () => {
-  process.env.MEGACOMPACT_QUERY_REFORMULATION = "1";
+  process.env.MEGACOMPACT_QUERY_REFORMULATION_DISABLED = "false";
   const s = store();
   seedTwoCheckpoints(s);
 
@@ -147,7 +159,7 @@ test("B1 ON, vague query — recall still works (non-fatal fallback)", () => {
 });
 
 test("B1 ON, specific query — recall works (reformulation skips non-vague)", () => {
-  process.env.MEGACOMPACT_QUERY_REFORMULATION = "1";
+  process.env.MEGACOMPACT_QUERY_REFORMULATION_DISABLED = "false";
   const s = store();
   seedTwoCheckpoints(s);
 
@@ -168,7 +180,7 @@ test("B1 ON, specific query — recall works (reformulation skips non-vague)", (
 });
 
 test("B2 ON — recall returns hits (L0 cache miss falls through)", () => {
-  process.env.MEGACOMPACT_TIERED_ROUTER = "1";
+  process.env.MEGACOMPACT_TIERED_ROUTER_DISABLED = "false";
   process.env.MEGACOMPACT_TIERED_ROUTING_ENABLED = "1";
   const s = store();
   seedTwoCheckpoints(s);
@@ -184,8 +196,8 @@ test("B2 ON — recall returns hits (L0 cache miss falls through)", () => {
 });
 
 test("B2 ON + B1 ON together — recall works", () => {
-  process.env.MEGACOMPACT_QUERY_REFORMULATION = "1";
-  process.env.MEGACOMPACT_TIERED_ROUTER = "1";
+  process.env.MEGACOMPACT_QUERY_REFORMULATION_DISABLED = "false";
+  process.env.MEGACOMPACT_TIERED_ROUTER_DISABLED = "false";
   process.env.MEGACOMPACT_TIERED_ROUTING_ENABLED = "1";
   const s = store();
   seedTwoCheckpoints(s);
@@ -200,7 +212,7 @@ test("B2 ON + B1 ON together — recall works", () => {
 });
 
 test("B3 ON — recall works and does not throw (metrics logging is non-fatal)", () => {
-  process.env.MEGACOMPACT_RECALL_METRICS = "1";
+  process.env.MEGACOMPACT_RECALL_METRICS_DISABLED = "false";
   const s = store();
   seedTwoCheckpoints(s);
 
@@ -216,10 +228,10 @@ test("B3 ON — recall works and does not throw (metrics logging is non-fatal)",
 });
 
 test("All three B1+B2+B3 ON — recall works", () => {
-  process.env.MEGACOMPACT_QUERY_REFORMULATION = "1";
-  process.env.MEGACOMPACT_TIERED_ROUTER = "1";
+  process.env.MEGACOMPACT_QUERY_REFORMULATION_DISABLED = "false";
+  process.env.MEGACOMPACT_TIERED_ROUTER_DISABLED = "false";
   process.env.MEGACOMPACT_TIERED_ROUTING_ENABLED = "1";
-  process.env.MEGACOMPACT_RECALL_METRICS = "1";
+  process.env.MEGACOMPACT_RECALL_METRICS_DISABLED = "false";
   const s = store();
   seedTwoCheckpoints(s);
 
@@ -233,7 +245,7 @@ test("All three B1+B2+B3 ON — recall works", () => {
 });
 
 test("B1 ON, empty store — recall returns empty gracefully (no throw)", () => {
-  process.env.MEGACOMPACT_QUERY_REFORMULATION = "1";
+  process.env.MEGACOMPACT_QUERY_REFORMULATION_DISABLED = "false";
   const s = store();
 
   // No checkpoints compacted — empty store. Reformulation will get 0
