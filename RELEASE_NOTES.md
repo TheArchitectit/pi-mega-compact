@@ -1,5 +1,132 @@
 # Release Notes — pi-mega-compact
 
+## v0.12.6 (2026-08-02) — deploy.sh friction fixes
+
+Resolves the three recurring `scripts/deploy.sh` friction points that forced manual repair mid-release through v0.12.5.
+
+- **package-lock.json drift** — `npm version` bumps both `package.json` and `package-lock.json`, but the release commit only staged `package.json` + dist, leaving the lockfile uncommitted. The next deploy's clean-tree check then failed on the stale lockfile. Now stages `package-lock.json` in both the diff check and `git add`. The existing drift (0.12.4 → 0.12.5, plus a stale BSD-2-Clause → BSD-3-Clause license field) is reconciled.
+- **Lightweight tag not pushed** — `git tag` created a lightweight tag, but `git push --follow-tags` only pushes annotated tags. Now uses `git tag -a` (annotated) so `--follow-tags` is the real push mechanism, with a `git ls-remote --exit-code` verification that surfaces any real push failure instead of swallowing it.
+- **zstd allowScripts** — when npm's allowScripts blocked `@mongodb-js/zstd`'s native build, the gate failed mid-test with no actionable message. Added a step-1.5 pre-flight that fails fast with the rebuild command.
+
+Dogfooded: the v0.12.6 release itself ran through the fixed pipeline (annotated tag rode `--follow-tags`; tree clean post-publish; versions synced).
+
+## v0.12.5 (2026-08-02) — README + lockfile sync
+
+Docs release. The README had no coverage of the v0.12.x work; this corrects it.
+
+- Added a **Context health + KV cache poison validation** feature bullet (5-sub-score composite, tri-layer validation, Health tab, auto-mitigation toggle).
+- Updated the dashboard tab list from 12 → all 15 tabs (was missing Health, Setup, Memory Map), grouped primary vs advanced.
+- Added the five `MEGACOMPACT_CONTEXT_HEALTH_*` flags to the config table.
+- Refreshed the architecture file map and corrected the test count (1112 → 1088).
+- Synced `package-lock.json` version drift ahead of release.
+
+## v0.12.4 (2026-07-31) — snapshot metric wiring fixes
+
+Three session-vs-cumulative mix-ups in `buildDashboardSnapshot` (`extensions/mega-runtime/dashboard-snapshot.ts`):
+
+- **Session card** was showing cumulative dedup stats (meta table) instead of session-scoped (`rt.dedupSkips`/`dedupAttempts`, which reset on session restart).
+- **`compacts.total`** used `st.checkpointCount` (session-scoped) instead of `repo.checkpointCount` (cumulative) — showed 0 instead of 42.
+- **`cacheHits.total`** and `timeSaved` now use `repo.dedupCollapsed` for consistency with the repo card.
+
+## v0.12.3 (2026-07-31) — memory map gate + perf stale window
+
+- **Memory map gate drops** — `gateNodeCompleteness` dropped ALL nodes because an empty-string sessionId is falsy. Now uses the actual `row.session_id` from each row instead of the empty parameter.
+- **Perf stale window** — when the time-windowed query returned 0 samples (data older than 30 min), the Perf tab went blank. Now falls back to the most recent 200 samples regardless of age.
+
+## v0.12.2 (2026-07-31) — turns blank + memory map wrong db + setup persistence
+
+Six dashboard data-population fixes:
+
+- **Turns tab blank** — `turns.db` CHECK constraint only allowed `pressure_band` in `('green','yellow','red')` but the runtime sends `('low','medium','high','ultra','mega')`. Every INSERT failed silently (non-fatal try/catch swallowed the error). Widened the constraint + a v1→v2 migration drops the empty turns table.
+- **Memory map empty (wrong db)** — `buildTurnNodes`/`buildTurnContentNodes` queried the main `sqlite.db` but turns live in `turns.db`. Now opens `turns.db` separately (can't JOIN across SQLite databases).
+- **Setup still says "run detection"** — `detectCurrentEmbedder` reads `process.env` but the configure step writes `.mega-compact.env`. Added `detectConfiguredEmbedder` that reads the file, plus `configuredEmbedder`/`restartRequired` to the status response.
+- **epoch_id** added to the `appendTurn` INSERT column list (was omitted).
+- **`resetRuntime(undefined)`** generated a random session ID every call (session stats all zero). Now keeps the existing `rt.sessionId` when none is passed.
+- **Debug bundle** gained a `dataSourceAudit` section — row counts for every table across both databases.
+
+## v0.12.1 (2026-07-31) — context-health auto-mitigation + Maintenance tab toggle
+
+- Wires `MEGACOMPACT_CONTEXT_HEALTH_MITIGATE` into the runtime: force a compaction when composite < 0.4 (degraded context), inject a prefix break when cachePoison < 0.3 (corrupted KV cache). Default OFF.
+- The mitigation flag is now runtime-toggleable via the `meta` table (`getHealthMitigate`/`setHealthMitigate`), not just the env var — the Maintenance tab has a toggle card with clear directions.
+- `handleTurnEndHealth` returns a `HealthMitigationSignal` that `agent-handlers.ts` acts on (`ctx.compact()` / `runtime.trimCache = null`).
+
+## v0.12.0 (2026-07-31) — real-time context drift + KV cache poison validation
+
+A real-time context-health layer for the failure mode where a large-context model (e.g. DeepSeek V4 Flash, 1M window) degrades at <1% usage — the context isn't overflowing, it's *unhealthy*.
+
+- **Composite 0-1 health score per turn** from five sub-scores: drift (22%), output quality (22%), error rate (18%), cache health (18%), cache poison (20%). Persisted to a new `context_health` SQLite table.
+- **Output quality** (`src/contextHealth/outputQuality.ts`): 3-gram repetition ratio, adjacent-sentence coherence (TrigramEmbedder cosine), token-salad detection, empty-output check.
+- **Drift** (`src/contextHealth/drift.ts`): topic drift (cosine vs rolling 5-turn mean), error escalation, prefix instability.
+- **Tri-layer KV cache poison validation** (`src/contextHealth/cachePoison.ts`): L1 FNV-1a prefix hash, L2 output-quality-by-cache-hit (semantic), L3 error-rate correlation (behavioral). Events persisted to `cache_poison_events`.
+- New **Health tab** (gauge, sparkline, sub-score bars, alerts, per-model table) + `/api/context-health`, `/api/cache-poison`, `/api/context-health/settings` routes.
+- Five `MEGACOMPACT_CONTEXT_HEALTH_*` flags (master + 3 sub-scores default ON; mitigation default OFF). SCHEMA_VERSION 4 → 5.
+
+## v0.11.13 (2026-07-30) — wiki rebuild + six data-population bugs
+
+- **Wiki rebuild** fires regardless of `dbMirror` (was gated on it); the promotion guard now handles an empty checkpoint set.
+- Six dashboard data-population bug fixes across tabs (stale/zero data on Vector Store session stats, Cache Hits, Repos, Savings by Model, Wiki topics, Memory map).
+
+## v0.11.12 (2026-07-30) — SetupTab TDZ fix
+
+- **SetupTab TDZ error** — `loadStatus` was declared after `applyEmbedder` in the `useCallback` dependency array, so `applyEmbedder`'s array referenced a `const` in the temporal dead zone. Reordered the hooks.
+
+## v0.11.11 (2026-07-30) — README full review
+
+- Full README review + a tester-requests section.
+
+## v0.11.10 (2026-07-30) — incremental RAPTOR + deploy auto-release
+
+- **Incremental RAPTOR** (#7) — tree updates are incremental (no full rebuild), default ON (`MEGACOMPACT_RAPTOR_INCREMENTAL`). Adoption docs (#8).
+- **Guardrails widening** (P0d) + guardrails-scan glob matcher improvement.
+- `scripts/deploy.sh` now auto-creates a GitHub release with notes on every publish.
+
+## v0.11.9 (2026-07-30) — compaction death-spiral + maintenance debug bundle
+
+- **"Already compacted" death-spiral** — a critical-over escape hatch forces a trim + durable compact at >=90% context, so a session that hit the loop becomes recoverable instead of unrecoverable.
+- **Gather-debug bundle** — the Maintenance tab's Gather Debug Logs button collects events, config, and store state into a shareable archive for bug reports.
+- PLAN_V2: cache-optimized prompt + topic-shift stripes + P4.6 guidance.
+
+## v0.11.8 (2026-07-30) — memory/wiki seeding + stacked graph + C2 wizard
+
+- D1+D2+D3 memory/wiki seeding + the stacked memory graph + the C2 setup wizard.
+
+## v0.11.7 (2026-07-30) — RAG Track B wiring
+
+- Wires B1/B2/B3 (query reformulation, tiered routing, recall metrics) into `recallAndInline` + integration tests.
+
+## v0.11.6 (2026-07-30) — RAG suite + cache striping + dedup audit
+
+- **Cache-stability + setup** (Track A): message separation + cache striping + dashboard + setup-flow fix.
+- **RAG** (Track B/C): S43–S46 modules + cache striping + dedup audit logging.
+
+## v0.11.5 (2026-07-30) — prefix-break classification + recall tail + /megasetup
+
+- **Phase 0** — prefix-break classification, embedder cache, memoryStats, `DuplicateTurnError`, deep-audit fixes, the `/mega-setup` wizard.
+- **F6 — S53 recall tail-injection** (prefix-preserving recall).
+- **R13** — stop injecting user-visible advisory messages (2026-07-31 incident); legacy `advisoryChannel=false` path.
+- CI: Node version 20 → 22 + full gate on push/PR to master.
+
+## v0.11.4 (2026-07-30) — error-retry hardening R8–R12
+
+- **R8** — router-wrapped infra errors stay transient (No healthy target / All targets failed).
+- **R9** — bare 0-token errors corroborate via the repeat detector (no first-turn poisoned).
+- **R10** — provider-outage advisory; runtime state wiring.
+- **R11** — decision observability (signal tags + raw error capture).
+- **R12** — signature normalization for repeat detection.
+
+## v0.11.3 (2026-07-30) — error-retry R3 guard + provider cache sprint
+
+- **R3 guard hardened** — shared known-retryable pattern closes timed-out/ETIMEDOUT/429 false alarms; network guard for the poisoned-context upgrade so timeout ×3 no longer triggers a `/clear` false alarm.
+- **Provider cache sprint** — savings-by-model provider cache columns (E.3); per-repo provider cache in the dashboard (E.2–E.3); prompt cache stats A–D completed.
+
+## v0.11.2 (2026-07-30) — S49B schema-health validation gate
+
+- S49B schema-health validation gate + the Maintenance tab + backup-before-maintenance.
+
+## v0.11.1 (2026-07-30) — built_at migration crash fix
+
+- **'no such column: built_at'** — migration crash on upgrade from pre-S25 DBs. Biome reflow on `schema.ts`.
+
 ## v0.11.0 (2026-07-29) — S49–S52 program lands on master
 
 **The mainline release.** The `s49-master-reconcile` branch merges into `master`, bringing the full S49–S52 per-turn memory platform to the mainline. This is the same code as v0.10.1 (the feature-branch release) plus a post-release prettier cleanup of the dashboard turns/wiki routes and session-handlers. If you're already on v0.10.1, this is a cosmetic refresh; if you're on master's v0.10.0-rc or earlier, this is the release that ships per-turn memory tracking, recall provenance, the auto-categorizing wiki, and the dashboard Turns + Wiki tabs.
