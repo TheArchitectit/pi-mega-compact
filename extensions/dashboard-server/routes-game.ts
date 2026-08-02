@@ -234,7 +234,12 @@ export function handlePerf(
 		if (!Number.isFinite(minutes) || minutes <= 0) minutes = 30;
 		minutes = Math.min(minutes, 1440); // cap at 24h
 		const sinceTs = Date.now() - minutes * 60_000;
-		const rows = readPerfSamples(stateDir, sinceTs); // guardrails-allow PREVENT-PI-004: local SQLite read (loopback dashboard)
+		let rows = readPerfSamples(stateDir, sinceTs); // guardrails-allow PREVENT-PI-004: local SQLite read (loopback dashboard)
+		// Fallback: if the window is empty (stale data from a previous
+		// session), show the most recent 200 samples regardless of age.
+		if (rows.length === 0) {
+			rows = readPerfSamples(stateDir, 0).slice(-200);
+		}
 		const byKind = new Map<string, number[]>();
 		for (const r of rows) {
 			let arr = byKind.get(r.kind);

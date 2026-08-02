@@ -77,10 +77,11 @@ export function buildCheckpointNodes(
   let prevId: string | null = null;
   for (const row of rows) {
     const id = String(row.id);
+    const rowSessionId = sessionId || String(row.session_id ?? "");
     const summary = String(row.summary ?? "");
     const node: MemoryGraphNode = {
       id,
-      sessionId,
+      sessionId: rowSessionId,
       label: id,
       summaryTruncated: summary.length > 200 ? summary.slice(0, 197) + "..." : summary,
       tokenEstimate: Number(row.token_estimate ?? 0),
@@ -149,7 +150,7 @@ export function buildTurnNodes(
   const rows = sessionId
     ? (db
         .prepare(
-          `SELECT turn_index, role, pressure_band, ctx_tokens, ctx_percent,
+          `SELECT turn_index, session_id, role, pressure_band, ctx_tokens, ctx_percent,
                   epoch_id, ended_at
            FROM turns
            WHERE session_id = ?
@@ -158,7 +159,7 @@ export function buildTurnNodes(
         .all(sessionId) as Array<Record<string, unknown>>)
     : (db
         .prepare(
-          `SELECT turn_index, role, pressure_band, ctx_tokens, ctx_percent,
+          `SELECT turn_index, session_id, role, pressure_band, ctx_tokens, ctx_percent,
                   epoch_id, ended_at
            FROM turns
            ORDER BY turn_index ASC`,
@@ -170,7 +171,8 @@ export function buildTurnNodes(
   let prevId: string | null = null;
   for (const row of rows) {
     const ti = Number(row.turn_index);
-    const nodeId = `turn:${sessionId}:${ti}`;
+    const rowSessionId = sessionId || String(row.session_id ?? "");
+    const nodeId = `turn:${rowSessionId}:${ti}`;
     if (existingIds.has(nodeId)) continue;
     existingIds.add(nodeId);
 
@@ -179,7 +181,7 @@ export function buildTurnNodes(
 
     const node: MemoryGraphNode = {
       id: nodeId,
-      sessionId,
+      sessionId: rowSessionId,
       label: `Turn ${ti}`,
       summaryTruncated: `Turn ${ti}: ${role}${row.epoch_id ? ` (epoch: ${String(row.epoch_id)})` : ""}`,
       tokenEstimate: row.ctx_tokens ? Number(row.ctx_tokens) : 0,
