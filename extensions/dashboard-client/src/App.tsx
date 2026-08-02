@@ -125,6 +125,7 @@ export default function App(): React.ReactElement {
 						{activeTab === "achievements" && <AchievementsTab />}
 						{activeTab === "sessions" && <SessionsTab />}
 						{activeTab === "topics" && <TopicsTab />}
+						{activeTab === "turns" && <TurnsTab />}
 						{activeTab === "maintenance" && <MaintenanceTab />}
 						{activeTab === "memory-map" && <MemoryMapTab />}
 						{activeTab === "health" && <HealthTab />}

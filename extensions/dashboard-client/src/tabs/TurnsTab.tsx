@@ -239,7 +239,7 @@ function ConversationRow({
 				<td>{c.turnCount}</td>
 				<td>{c.totalRecall}</td>
 				<td>{c.epochCount}</td>
-				<td>{(c.avgCtxPercent * 100).toFixed(0)}%</td>
+				<td>{c.avgCtxPercent.toFixed(0)}%</td>
 				<td>{fmtTs(c.lastTurnAt)}</td>
 				<td />
 			</tr>
@@ -282,7 +282,7 @@ function TurnDetail({
 							{t.ctxPercent != null && (
 								<span className="muted">
 									{" "}
-									· {(t.ctxPercent * 100).toFixed(0)}%
+									· {t.ctxPercent.toFixed(0)}%
 								</span>
 							)}
 						</td>

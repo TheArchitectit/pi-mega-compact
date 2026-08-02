@@ -311,7 +311,9 @@ export function registerAgentHandlers(
 
 		// S43 (per-turn tracking): record one turn row with the cached metrics so
 		// the turn layer is queryable + forkable. Best-effort + non-fatal: a write
-		// failure never breaks the agent loop.
+		// failure never breaks the agent loop. The catch logs the error (structured
+		// JSON line to events.log) so a recurring turn-write failure is diagnosable
+		// instead of silently producing a blank Turns tab.
 		try {
 			const convId = ensureConversationIdFor(
 				config,
@@ -334,8 +336,19 @@ export function registerAgentHandlers(
 				},
 				runtime.currentStateDir,
 			);
-		} catch {
-			/* non-fatal: per-turn tracking never breaks the agent loop */
+			runtime.dashboard.event("turn_written", {
+				turnIndex: event.turnIndex,
+				conversationId: convId,
+				pressureBand: runtime.pressureBand ?? null,
+				turnsDbEnabled: config.turnsDbEnabled,
+			});
+		} catch (e) {
+			runtime.dashboard.event("turn_write_failed", {
+				turnIndex: event.turnIndex,
+				turnsDbEnabled: config.turnsDbEnabled,
+				error: e instanceof Error ? e.message : String(e),
+				stack: e instanceof Error ? e.stack?.split("\n").slice(0, 3).join(" | ") : undefined,
+			});
 		}
 
 		// S33: game-mode scoring — record turns + cache metrics per repo, and arm

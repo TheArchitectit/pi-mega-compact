@@ -161,6 +161,27 @@ export function sendGatherDebug(res: ServerResponse, ctx: RouteContext): void {
 					audit[`turns.${table}`] = "table missing";
 				}
 			}
+			// Turns-schema diagnostic: detect the v1 pressure_band constraint
+			// (the root cause of the "turns blank" bug — pre-v0.12.2 schema only
+			// allowed 'green'/'yellow'/'red' but the runtime sends 'low'/'medium'/
+			// 'high'/'ultra'/'mega', so every INSERT failed silently). If this
+			// shows "v1 (broken)", the migration did not run and turns can't be
+			// written until the extension is updated + pi restarted.
+			try {
+				const tSql = tdb
+					.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='turns'")
+					.get() as { sql?: string } | undefined;
+				const sql = tSql?.sql ?? "";
+				if (sql.includes("'low'")) audit["turns.schema"] = "v2 (widened)";
+				else if (sql.includes("'green'")) audit["turns.schema"] = "v1 (broken — needs update+restart)";
+				else if (sql) audit["turns.schema"] = "unknown";
+				else audit["turns.schema"] = "table absent";
+			} catch {
+				audit["turns.schema"] = "check failed";
+			}
+			// Whether the turns.db path is enabled (if false, turns go to the
+			// legacy main-db path and turns.db stays empty → blank Turns tab).
+			audit["turns.dbEnabled"] = process.env.MEGACOMPACT_TURNS_DB ?? "true (default)";
 		} catch (e) {
 			audit["turns.db"] = `error: ${e instanceof Error ? e.message : String(e)}`;
 		}
