@@ -17,7 +17,6 @@ import type { SnapshotResponse } from "@contracts";
 const OverviewTab = React.lazy(() => import("./tabs/OverviewTab"));
 const ReposTab = React.lazy(() => import("./tabs/ReposTab"));
 const EventsTab = React.lazy(() => import("./tabs/EventsTab"));
-const ConfigTab = React.lazy(() => import("./tabs/ConfigTab"));
 const SetupTab = React.lazy(() => import("./tabs/SetupTab"));
 const MetricsTab = React.lazy(() => import("./tabs/MetricsTab"));
 const CacheTab = React.lazy(() => import("./tabs/CacheTab"));
@@ -32,7 +31,6 @@ export type TabId =
 	| "overview"
 	| "repos"
 	| "events"
-	| "config"
 	| "setup"
 	| "metrics"
 	| "cache"
@@ -56,7 +54,6 @@ const PRIMARY_TABS: TabDef[] = [
 const ADVANCED_TABS: TabDef[] = [
 	{ id: "repos", label: "Repos" },
 	{ id: "events", label: "Events" },
-	{ id: "config", label: "Config" },
 	{ id: "setup", label: "Setup" },
 	{ id: "metrics", label: "Metrics" },
 	{ id: "topics", label: "Topics" },
@@ -111,7 +108,6 @@ export default function App(): React.ReactElement {
 						)}
 						{activeTab === "repos" && <ReposTab />}
 						{activeTab === "events" && <EventsTab />}
-						{activeTab === "config" && <ConfigTab />}
 						{activeTab === "setup" && <SetupTab />}
 						{activeTab === "metrics" && <MetricsTab />}
 						{activeTab === "cache" && <CacheTab />}

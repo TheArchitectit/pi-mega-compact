@@ -14,6 +14,7 @@ import type { SetupStatusResponse, SetupDetectResponse, SetupConfigureResponse }
 import { fetchSetupStatus, fetchSetupDetect, configureEmbedder } from "../api/client";
 import GameTab from "./GameTab";
 import AchievementsTab from "./AchievementsTab";
+import ConfigTab from "./ConfigTab";
 
 // ---------------------------------------------------------------------------
 // Style constants
@@ -484,14 +485,14 @@ export function EmbedderSetup(): React.ReactElement {
 
 
 // ---------------------------------------------------------------------------
-// SetupTab shell — sub-tabs for Embedder / Game Mode / Achievements.
-// Game + Achievements moved here from the top-level tab bar (audit #9: 15 tabs
-// was too many; the novelty surfaces crowd the bar for the 95% who don't use
-// them). The sub-tab nav reuses the inline-style approach of the embedder
-// section for visual consistency.
+// SetupTab shell — sub-tabs for Embedder / Config / Game Mode / Achievements.
+// Config + Game + Achievements moved here from the top-level tab bar (audit
+// #9: 15 tabs was too many; the novelty surfaces and the config editor crowd
+// the bar for the 95% who don't use them). The sub-tab nav reuses the
+// inline-style approach of the embedder section for visual consistency.
 // ---------------------------------------------------------------------------
 
-type SetupSubTab = "embedder" | "game" | "achievements";
+type SetupSubTab = "embedder" | "config" | "game" | "achievements";
 
 const subTabNavStyle: React.CSSProperties = {
 	display: "flex",
@@ -530,6 +531,13 @@ export default function SetupTab(): React.ReactElement {
 				</button>
 				<button
 					type="button"
+					style={subTabBtnStyle(subTab === "config")}
+					onClick={() => setSubTab("config")}
+				>
+					Config
+				</button>
+				<button
+					type="button"
 					style={subTabBtnStyle(subTab === "game")}
 					onClick={() => setSubTab("game")}
 				>
@@ -545,6 +553,7 @@ export default function SetupTab(): React.ReactElement {
 			</nav>
 
 			{subTab === "embedder" && <EmbedderSetup />}
+			{subTab === "config" && <ConfigTab />}
 			{subTab === "game" && <GameTab />}
 			{subTab === "achievements" && <AchievementsTab />}
 		</div>
