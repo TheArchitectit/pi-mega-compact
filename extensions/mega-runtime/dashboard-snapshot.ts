@@ -110,7 +110,21 @@ export function buildDashboardSnapshot(ctx: SnapshotBuildContext): DashboardSnap
 			tierPct: ctx.config.tierPct,
 			effectiveThresholdPct: ctx.config.tierPct != null ? ctx.config.tierPct * 100 : null,
 		},
-		store: ctx.st,
+		store: {
+			checkpointCount: ctx.st.checkpointCount,
+			totalTokenEstimate: ctx.st.totalTokenEstimate,
+			originalTokens: ctx.st.originalTokens,
+			tokensSaved: ctx.st.tokensSaved,
+			injectedCount: ctx.st.injectedCount,
+			dedupHitRate: ctx.st.dedupHitRate,
+			// Session-scoped dedup stats from runtime counters, NOT the
+			// cumulative meta table (which is repo-wide and belongs in the
+			// repo card below). rt.dedupSkips/dedupAttempts reset on session
+			// restart so the session card shows only this session's dedup.
+			storageDedupRate: ctx.rt.dedupAttempts > 0 ? ctx.rt.dedupSkips / ctx.rt.dedupAttempts : 0,
+			dedupAttempts: ctx.rt.dedupAttempts,
+			dedupCollapsed: ctx.rt.dedupSkips,
+		},
 		crew: {
 			activeAgents: ctx.activeAgents,
 			currentTurn: ctx.currentTurn,
@@ -135,13 +149,17 @@ export function buildDashboardSnapshot(ctx: SnapshotBuildContext): DashboardSnap
 		integrity: ctx.di,
 		cacheHits: {
 			session: ctx.rt.dedupSkips + ctx.rt.recallInjections,
-			total: ctx.st.dedupCollapsed + ctx.st.injectedCount,
+			// Total = cumulative dedup collapses (meta table) + session
+			// recall injections. The meta table is the authoritative
+			// cumulative counter for dedup; recall injections are tracked
+			// per-session in rt and there's no cumulative counter yet.
+			total: ctx.repo.dedupCollapsed,
 			sessionTokensSaved: ctx.rt.cacheHitTokens,
-			totalTokensSaved: ctx.st.dedupCollapsed > 0 ? ctx.st.dedupCollapsed * 100 : 0,
+			totalTokensSaved: ctx.repo.dedupCollapsed > 0 ? ctx.repo.dedupCollapsed * 100 : 0,
 		},
 		compacts: {
 			session: ctx.rt.compactCount,
-			total: ctx.st.checkpointCount,
+			total: ctx.repo.checkpointCount,
 		},
 		timeSaved: {
 			compact: {
@@ -150,7 +168,7 @@ export function buildDashboardSnapshot(ctx: SnapshotBuildContext): DashboardSnap
 			},
 			cacheHit: {
 				sessionSec: ctx.rt.cacheHitTokens / 1000,
-				totalSec: (ctx.st.dedupCollapsed * 100) / 1000,
+				totalSec: (ctx.repo.dedupCollapsed * 100) / 1000,
 			},
 		},
 		model: ctx.currentModel
