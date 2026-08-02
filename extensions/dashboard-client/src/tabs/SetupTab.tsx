@@ -94,6 +94,14 @@ export default function SetupTab(): React.ReactElement {
 	const [configResult, setConfigResult] = useState<SetupConfigureResponse | null>(null);
 	const [configError, setConfigError] = useState<string | null>(null);
 
+	const loadStatus = useCallback(() => {
+		fetchSetupStatus()
+			.then(setStatus)
+			.catch((e: unknown) =>
+				setStatusError(e instanceof Error ? e.message : String(e)),
+			);
+	}, []);
+
 	const applyEmbedder = useCallback((embedder: "ollama" | "llama" | "trigram") => {
 		setConfiguring(embedder);
 		setConfigError(null);
@@ -109,14 +117,6 @@ export default function SetupTab(): React.ReactElement {
 				setConfiguring(null);
 			});
 	}, [loadStatus]);
-
-	const loadStatus = useCallback(() => {
-		fetchSetupStatus()
-			.then(setStatus)
-			.catch((e: unknown) =>
-				setStatusError(e instanceof Error ? e.message : String(e)),
-			);
-	}, []);
 
 	const runDetect = useCallback(() => {
 		setRunningDetect(true);
