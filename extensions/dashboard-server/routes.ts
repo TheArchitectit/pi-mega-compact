@@ -24,4 +24,4 @@ export { handleMemoryStatus } from "./routes-memory.js";
 export { handleSetupStatus, handleSetupDetect, handleSetupConfigure } from "./routes-setup.js";
 export { handleMemoryMap } from "./routes-memory-map.js";
 export { handleCacheStripes } from "./routes-cache.js";
-export { handleContextHealth, handleCachePoison } from "./routes-health.js";
+export { handleContextHealth, handleCachePoison, handleHealthSettings } from "./routes-health.js";

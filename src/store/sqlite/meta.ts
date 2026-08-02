@@ -79,6 +79,22 @@ export function bumpDedupStats(deduped: boolean, stateDir: string = getStateDir(
   if (deduped) incMeta("deduped", 1, stateDir);
 }
 
+// --- Context health mitigation (runtime-toggleable via dashboard) ----------
+
+/** Read the context_health_mitigate flag from meta. Returns false if unset. */
+export function getHealthMitigate(stateDir: string = getStateDir()): boolean {
+  return getMeta("context_health_mitigate", stateDir) === "true";
+}
+
+/** Set the context_health_mitigate flag in meta (runtime-toggleable). */
+export function setHealthMitigate(enabled: boolean, stateDir: string = getStateDir()): void {
+  const db = openStore(stateDir);
+  db.prepare(
+    `INSERT INTO meta(key, value) VALUES('context_health_mitigate', ?)
+     ON CONFLICT(key) DO UPDATE SET value = ?`,
+  ).run(enabled ? "true" : "false", enabled ? "true" : "false");
+}
+
 // --- Live dashboard counters (schemaless meta key/value — NO migration) -----
 // These reuse the private `incMeta` atomically-incrementing integer counter so
 // all cumulative tallies live in the same `meta` table as tokens_saved etc.

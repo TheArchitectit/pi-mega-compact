@@ -32,6 +32,7 @@ import {
 import {
 	recordCachePoisonEvent,
 } from "../../src/store/sqlite/context-health.js";
+import { getHealthMitigate } from "../../src/store/sqlite/meta.js";
 
 const RING_MAX = 5;
 
@@ -64,13 +65,24 @@ interface TurnEvent {
 	message?: { role?: string; content?: unknown; stopReason?: string; usage?: { cacheRead?: number } };
 }
 
-/** Handle turn_end: compute + persist context health. Non-fatal. */
+export interface HealthMitigationSignal {
+	/** Force a compaction to flush degraded context (composite < 0.4). */
+	forceCompact: boolean;
+	/** Inject a prefix break to bypass corrupted KV cache (cachePoison < 0.3). */
+	breakPrefix: boolean;
+	/** The composite health score that triggered mitigation (if any). */
+	composite: number;
+}
+
+/** Handle turn_end: compute + persist context health. Non-fatal.
+ * Returns mitigation signals for the caller to act on (agent-handlers has ctx). */
 export function handleTurnEndHealth(
 	event: TurnEvent,
 	runtime: MegaRuntime,
 	config: MegaConfig,
-): void {
-	if (!config.contextHealth) return;
+): HealthMitigationSignal {
+	const noSignal: HealthMitigationSignal = { forceCompact: false, breakPrefix: false, composite: 1 };
+	if (!config.contextHealth) return noSignal;
 	try {
 		const text = extractAssistantText(event);
 		const embedder = defaultEmbedder();
@@ -173,6 +185,11 @@ export function handleTurnEndHealth(
 			turnIndex: event.turnIndex,
 		});
 
+		// Mitigation: check the runtime-toggleable flag (meta table), not just
+		// the env var. The dashboard Maintenance tab toggles this at runtime.
+		const mitigate = config.contextHealthMitigate ||
+			getHealthMitigate(runtime.currentStateDir);
+
 		// Update ring buffers
 		runtime.recentTurnEmbeddings.push(emb);
 		if (runtime.recentTurnEmbeddings.length > RING_MAX) {
@@ -182,9 +199,20 @@ export function handleTurnEndHealth(
 		if (runtime.recentErrorCategories.length > RING_MAX) {
 			runtime.recentErrorCategories.shift();
 		}
+
+		// Return mitigation signals so agent-handlers.ts (which has ctx) can act.
+		if (mitigate) {
+			return {
+				forceCompact: composite < 0.4,
+				breakPrefix: cachePoison < 0.3,
+				composite,
+			};
+		}
+		return { forceCompact: false, breakPrefix: false, composite };
 	} catch (e) {
 		runtime.logger?.error("context_health_failed", {
 			error: String(e instanceof Error ? e.message : e),
 		});
+		return noSignal;
 	}
 }

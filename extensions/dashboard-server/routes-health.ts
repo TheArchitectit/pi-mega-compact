@@ -102,3 +102,54 @@ export function handleCachePoison(
 	}
 	return true;
 }
+
+/** GET/PUT /api/context-health/settings — read or toggle mitigation. */
+export function handleHealthSettings(
+	req: IncomingMessage,
+	res: ServerResponse,
+	ctx: RouteContext,
+): boolean {
+	if (!req.url?.startsWith("/api/context-health/settings")) return false;
+	try {
+		const pfReq = createRequire(import.meta.url);
+		const { getHealthMitigate, setHealthMitigate } = pfReq(
+			"../../src/store/sqlite.js",
+		) as typeof import("../../src/store/sqlite.js");
+
+		if (req.method === "GET") {
+			const mitigate = getHealthMitigate(ctx.stateDir);
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ mitigate }));
+			return true;
+		}
+
+		if (req.method === "PUT") {
+			let body = "";
+			req.on("data", (c) => (body += c));
+			req.on("end", () => {
+				try {
+					const parsed = JSON.parse(body) as { mitigate?: unknown };
+					if (typeof parsed.mitigate !== "boolean") {
+						res.writeHead(400, { "Content-Type": "application/json" });
+						res.end(JSON.stringify({ error: "mitigate must be boolean" }));
+						return;
+					}
+					setHealthMitigate(parsed.mitigate, ctx.stateDir);
+					res.writeHead(200, { "Content-Type": "application/json" });
+					res.end(JSON.stringify({ mitigate: parsed.mitigate }));
+				} catch {
+					res.writeHead(400, { "Content-Type": "application/json" });
+					res.end(JSON.stringify({ error: "invalid_json" }));
+				}
+			});
+			return true;
+		}
+
+		res.writeHead(405, { "Content-Type": "application/json" });
+		res.end(JSON.stringify({ error: "method_not_allowed" }));
+	} catch (e) {
+		res.writeHead(500, { "Content-Type": "application/json" });
+		res.end(JSON.stringify({ error: String(e) }));
+	}
+	return true;
+}

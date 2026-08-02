@@ -62,3 +62,19 @@ export async function fetchCachePoison(): Promise<CachePoisonResponse> {
 	if (!r.ok) throw new Error(`cache-poison: ${r.status}`);
 	return r.json() as Promise<CachePoisonResponse>;
 }
+
+export async function fetchHealthSettings(): Promise<{ mitigate: boolean }> {
+	const r = await fetch("/api/context-health/settings");
+	if (!r.ok) throw new Error(`health-settings: ${r.status}`);
+	return r.json() as Promise<{ mitigate: boolean }>;
+}
+
+export async function setHealthMitigate(mitigate: boolean): Promise<{ mitigate: boolean }> {
+	const r = await fetch("/api/context-health/settings", {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ mitigate }),
+	});
+	if (!r.ok) throw new Error(`health-settings PUT: ${r.status}`);
+	return r.json() as Promise<{ mitigate: boolean }>;
+}

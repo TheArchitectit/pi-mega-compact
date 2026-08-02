@@ -865,6 +865,31 @@ export function registerAgentHandlers(
 		}
 
 		// v0.12: Context Health — compute + persist health score. Non-fatal.
-		handleTurnEndHealth(event, runtime, config);
+		// Mitigation signals are acted on here (ctx is in scope at turn_end).
+		const healthSignal = handleTurnEndHealth(event, runtime, config);
+		if (healthSignal.forceCompact) {
+			runtime.logger?.info("health_mitigate_compact", {
+				composite: healthSignal.composite,
+				turnIndex: event.turnIndex,
+			});
+			try {
+				// Force a compaction to flush degraded context. Same race-guarded
+				// deferred path as the critical-over escape hatch above.
+				if (!piCompactWouldNoop(ctx)) {
+					ctx.compact();
+				}
+			} catch {
+				/* non-fatal: mitigation never breaks the agent loop */
+			}
+		}
+		if (healthSignal.breakPrefix) {
+			runtime.logger?.info("health_mitigate_prefix_break", {
+				turnIndex: event.turnIndex,
+			});
+			// Invalidate the cached trim so the next context event regenerates
+			// from scratch — the prefix change forces a cache miss, bypassing
+			// the corrupted KV state.
+			runtime.trimCache = null;
+		}
 	});
 }
