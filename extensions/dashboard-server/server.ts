@@ -44,6 +44,8 @@ import {
 	handleSetupDetect,
 	handleSetupConfigure,
 	handleMemoryMap,
+	handleContextHealth,
+	handleCachePoison,
 	handleStatic,
 } from "./routes.js";
 
@@ -239,6 +241,8 @@ export async function launchDashboardServer(
 		if (handleSetupDetect(req, res, ctx)) return;
 		if (handleSetupConfigure(req, res, ctx)) return;
 		if (handleMemoryMap(req, res, ctx)) return;
+		if (handleContextHealth(req, res, ctx)) return;
+		if (handleCachePoison(req, res, ctx)) return;
 		handleStatic(req, res, ctx);
 	});
 

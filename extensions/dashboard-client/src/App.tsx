@@ -28,6 +28,7 @@ const TopicsTab = React.lazy(() => import("./tabs/TopicsTab"));
 const TurnsTab = React.lazy(() => import("./tabs/TurnsTab"));
 const MaintenanceTab = React.lazy(() => import("./tabs/MaintenanceTab"));
 const MemoryMapTab = React.lazy(() => import("./tabs/MemoryMapTab"));
+const HealthTab = React.lazy(() => import("./tabs/HealthTab"));
 
 export type TabId =
 	| "overview"
@@ -43,7 +44,8 @@ export type TabId =
 	| "topics"
 	| "turns"
 	| "maintenance"
-	| "memory-map";
+	| "memory-map"
+	| "health";
 
 type TabDef = { id: TabId; label: string };
 
@@ -52,6 +54,7 @@ const PRIMARY_TABS: TabDef[] = [
 	{ id: "cache", label: "Cache" },
 	{ id: "sessions", label: "Sessions" },
 	{ id: "turns", label: "Turns" },
+	{ id: "health", label: "Health" },
 ];
 
 const ADVANCED_TABS: TabDef[] = [
@@ -124,6 +127,7 @@ export default function App(): React.ReactElement {
 						{activeTab === "topics" && <TopicsTab />}
 						{activeTab === "maintenance" && <MaintenanceTab />}
 						{activeTab === "memory-map" && <MemoryMapTab />}
+						{activeTab === "health" && <HealthTab />}
 					</React.Suspense>
 				</main>
 			</div>

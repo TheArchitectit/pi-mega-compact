@@ -198,6 +198,16 @@ export interface MegaConfig {
 	memoryGraphCrossTypeThreshold: number;
 	/** D3 edges: Cosine floor for within-type semantic edges. */
 	memoryGraphWithinTypeThreshold: number;
+	/** v0.12: Context health monitoring (drift + output quality + cache poison). Default ON. */
+	contextHealth: boolean;
+	/** Sub-flag: drift detection (topic drift + error escalation + prefix instability). */
+	contextHealthDrift: boolean;
+	/** Sub-flag: output quality analysis (repetition, coherence, token salad). */
+	contextHealthOutputQuality: boolean;
+	/** Sub-flag: tri-layer KV cache poison validation. */
+	contextHealthCachePoison: boolean;
+	/** v0.12: KV cache poison mitigation — inject prefix break on mismatch. Default OFF. */
+	contextHealthMitigate: boolean;
 }
 
 function envFlag(name: string, fallback: number): number {
@@ -372,6 +382,11 @@ export function loadConfig(): MegaConfig {
 		memoryGraphSeedMemories: envBool("MEGACOMPACT_MEMORY_GRAPH_SEED_MEMORIES", true),
 		memoryGraphCrossTypeThreshold: envFlag("MEGACOMPACT_MEMORY_GRAPH_CROSS_TYPE_THRESHOLD", 0.85),
 		memoryGraphWithinTypeThreshold: envFlag("MEGACOMPACT_MEMORY_GRAPH_WITHIN_TYPE_THRESHOLD", 0.7),
+		contextHealth: envBool("MEGACOMPACT_CONTEXT_HEALTH", true),
+		contextHealthDrift: envBool("MEGACOMPACT_CONTEXT_HEALTH_DRIFT", true),
+		contextHealthOutputQuality: envBool("MEGACOMPACT_CONTEXT_HEALTH_OUTPUT_QUALITY", true),
+		contextHealthCachePoison: envBool("MEGACOMPACT_CONTEXT_HEALTH_CACHE_POISON", true),
+		contextHealthMitigate: envBool("MEGACOMPACT_CONTEXT_HEALTH_MITIGATE", false),
 		// D.1: env-overridable recompact delta (minimum context growth % before
 		// re-compacting instead of replaying the cached live trim). Default 50.
 		recompactPctDelta: envFlag("MEGACOMPACT_RECOMPACT_PCT_DELTA", 50),

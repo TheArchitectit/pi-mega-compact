@@ -35,6 +35,7 @@ import {
 import {
 	refreshStripeAssignments as writeStripeAssignments,
 } from "../../src/cache-stripe-impl.js";
+import { handleTurnEndHealth } from "./health-handler.js";
 
 /** Register agent/turn tracking event handlers. */
 export function registerAgentHandlers(
@@ -296,6 +297,7 @@ export function registerAgentHandlers(
 	pi.on("turn_end", async (event, ctx) => {
 		runtime.dashboard.event("turn_end", { turnIndex: event.turnIndex });
 		runtime.snapshot(ctx);
+		runtime.lastErrorCategory = null;
 
 		// S53: consume staged recall blocks ONLY if they were actually injected
 		// into a view this turn. If no context event fired (edge: turn ended
@@ -436,6 +438,7 @@ export function registerAgentHandlers(
 			} else {
 				const category = classifyError(event.message);
 				const detail = classifyErrorDetailed(event.message);
+				runtime.lastErrorCategory = category;
 				// R3: stateful poisoned-context signal — repeated identical error text
 				// across consecutive turns. The classifier is stateless, so this
 				// upgrade happens here. A 'transient' (or 'poisoned-context') turn
@@ -860,5 +863,8 @@ export function registerAgentHandlers(
 				/* non-fatal: stripe refresh never breaks the agent loop */
 			}
 		}
+
+		// v0.12: Context Health — compute + persist health score. Non-fatal.
+		handleTurnEndHealth(event, runtime, config);
 	});
 }

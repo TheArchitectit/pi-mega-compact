@@ -263,6 +263,13 @@ export class MegaRuntime {
 	diagCtxCutNull = 0; // computeLiveTrimCut returned null (anchor/boundary)
 	diagCtxThrown = 0; // live-trim try threw (caught)
 
+	// Context health instrumentation (v0.12): rolling ring buffers for
+	// drift detection + cache poison Layer 1 hash baseline.
+	recentTurnEmbeddings: number[][] = [];
+	recentErrorCategories: (string | null)[] = [];
+	lastPrefixHash: string | null = null;
+	lastErrorCategory: string | null = null;
+
 	/**
 	 * S26 capture instrumentation: the "model_snapshots empty → $0.00 cost card"
 	 * bug was invisible because captureModel swallowed the DB write in a silent

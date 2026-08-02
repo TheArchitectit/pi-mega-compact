@@ -4,7 +4,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { ACHIEVEMENT_DEFS } from "../../game/scoring.js";
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 /**
  * Add `column` (with `decl`, e.g. "INTEGER") to `table` if it does not already
@@ -425,6 +425,48 @@ export function initSchema(db: DatabaseSync): void {
     );
     CREATE INDEX IF NOT EXISTS idx_emb_cache_computed
       ON embedding_cache(computed_at DESC);
+
+    -- A2 PLAN_V2 Phase 2 (SCHEMA_VERSION 5): Context Health metrics. One row
+    -- per turn recorded during compactSession. drift_score / output_quality /
+    -- error_score / cache_health / cache_poison / composite are the core signal
+    -- columns; repetition_ratio / coherence_score / prefix_hash are optional
+    -- enrichment. Parameterized accessors in context-health.ts (PREVENT-002).
+    CREATE TABLE IF NOT EXISTS context_health (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts              INTEGER NOT NULL,
+      turn_index      INTEGER NOT NULL,
+      session_id      TEXT NOT NULL,
+      drift_score     REAL,
+      output_quality  REAL,
+      error_score     REAL,
+      cache_health    REAL,
+      cache_poison    REAL,
+      composite       REAL,
+      model_id        TEXT,
+      repetition_ratio REAL,
+      coherence_score REAL,
+      prefix_hash     TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_ctx_health_ts
+      ON context_health(ts);
+    CREATE INDEX IF NOT EXISTS idx_ctx_health_session
+      ON context_health(session_id, ts);
+
+    -- A2 PLAN_V2 Phase 2 (SCHEMA_VERSION 5): Cache poison advisory events.
+    -- Emitted when cache corruption / inconsistency is detected at a given
+    -- layer during compactSession. Drives the R13 advisory channel redesign.
+    -- Parameterized accessors in context-health.ts (PREVENT-002).
+    CREATE TABLE IF NOT EXISTS cache_poison_events (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts          INTEGER NOT NULL,
+      turn_index  INTEGER NOT NULL,
+      session_id  TEXT NOT NULL,
+      layer       INTEGER,
+      detail      TEXT,
+      severity    TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_cache_poison_ts
+      ON cache_poison_events(ts);
   `);
 	// Idempotent column migrations. `CREATE TABLE IF NOT EXISTS` is a no-op on a
 	// pre-existing table, so new columns added to context_chunks after a store was
