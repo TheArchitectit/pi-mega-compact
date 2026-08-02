@@ -11,7 +11,7 @@
 
 import { spawnSync } from "node:child_process"; // guardrails-allow PREVENT-PI-004: local subprocess detection only
 import { createRequire } from "node:module";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
@@ -37,10 +37,29 @@ function detectCurrentEmbedder(): SetupStatusResponse["currentEmbedder"] {
 	return "trigram";
 }
 
+/** Read the configured embedder from the .mega-compact.env file (written by
+ *  the configure endpoint). This shows what the user SELECTED even before pi
+ *  restarts and loads the env file into process.env. */
+function detectConfiguredEmbedder(stateDir: string): { embedder: "trigram" | "http" | "minilm"; url: string | null } {
+	try {
+		const envPath = join(stateDir, ".mega-compact.env");
+		if (!existsSync(envPath)) return { embedder: "trigram", url: null };
+		const content = readFileSync(envPath, "utf-8");
+		const urlMatch = content.match(/^export\s+MEGACOMPACT_EMBEDDING_URL="([^"]+)"/m);
+		if (urlMatch) return { embedder: "http", url: urlMatch[1] };
+		const minilmMatch = content.match(/^export\s+MEGACOMPACT_MINILM="?(.+?)"?\s*$/m);
+		if (minilmMatch && ["1", "true", "yes"].includes(minilmMatch[1].trim().toLowerCase()))
+			return { embedder: "minilm", url: null };
+		return { embedder: "trigram", url: null };
+	} catch {
+		return { embedder: "trigram", url: null };
+	}
+}
+
 export function handleSetupStatus(
 	req: IncomingMessage,
 	res: ServerResponse,
-	_ctx: RouteContext,
+	ctx: RouteContext,
 ): boolean {
 	if (req.url !== "/api/setup-status") return false;
 	if (req.method !== "GET") {
@@ -49,9 +68,14 @@ export function handleSetupStatus(
 		res.end(JSON.stringify({ error: "method_not_allowed" }));
 		return true;
 	}
+	const configured = detectConfiguredEmbedder(ctx.stateDir);
+	const active = detectCurrentEmbedder();
 	const body: SetupStatusResponse = {
-		currentEmbedder: detectCurrentEmbedder(),
-		embeddingUrl: process.env["MEGACOMPACT_EMBEDDING_URL"] ?? null,
+		currentEmbedder: active,
+		configuredEmbedder: configured.embedder,
+		configuredUrl: configured.url,
+		restartRequired: active !== configured.embedder,
+		embeddingUrl: process.env["MEGACOMPACT_EMBEDDING_URL"] ?? configured.url,
 		embedCache: process.env["MEGACOMPACT_EMBED_CACHE"] ?? null,
 		minilm: ["1", "true", "yes"].includes(
 			(process.env["MEGACOMPACT_MINILM"] ?? "").trim().toLowerCase(),

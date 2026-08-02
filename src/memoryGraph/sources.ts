@@ -206,7 +206,8 @@ export function buildTurnNodes(
 // ---------------------------------------------------------------------------
 
 export function buildTurnContentNodes(
-  db: DatabaseSync,
+  turnDb: DatabaseSync,
+  mainDb: DatabaseSync,
   sessionId: string,
   nodes: MemoryGraphNode[],
   edges: MemoryGraphEdge[],
@@ -216,24 +217,57 @@ export function buildTurnContentNodes(
   // (identity_merge) merges them with the richest nodeType winning. Using the
   // global nodes array here would skip every node (Source A already added them).
   const seen = new Set<string>();
-  const rows = sessionId
-    ? (db
+
+  // turns live in turns.db, raw_transcript in the main db — can't JOIN across
+  // databases, so query separately and merge in JS.
+  const turnRows = sessionId
+    ? (turnDb
         .prepare(
-          `SELECT t.turn_index, t.role, t.ended_at, r.content_bytes
-           FROM turns t
-           JOIN raw_transcript r ON r.session_id = t.session_id AND r.turn_index = t.turn_index
-           WHERE t.session_id = ?
-           ORDER BY t.turn_index ASC`,
+          `SELECT turn_index, role, ended_at
+           FROM turns
+           WHERE session_id = ?
+           ORDER BY turn_index ASC`,
         )
         .all(sessionId) as Array<Record<string, unknown>>)
-    : (db
+    : (turnDb
         .prepare(
-          `SELECT t.turn_index, t.role, t.ended_at, r.content_bytes
-           FROM turns t
-           JOIN raw_transcript r ON r.session_id = t.session_id AND r.turn_index = t.turn_index
-           ORDER BY t.turn_index ASC`,
+          `SELECT turn_index, role, ended_at
+           FROM turns
+           ORDER BY turn_index ASC`,
         )
         .all() as Array<Record<string, unknown>>);
+
+  // Build a map of (session_id, turn_index) → content from raw_transcript.
+  const contentMap = new Map<string, string>();
+  try {
+    const transcriptRows = sessionId
+      ? (mainDb
+          .prepare(
+            `SELECT turn_index, content_bytes FROM raw_transcript WHERE session_id = ?`,
+          )
+          .all(sessionId) as Array<Record<string, unknown>>)
+      : (mainDb
+          .prepare(
+            `SELECT turn_index, content_bytes FROM raw_transcript`,
+          )
+          .all() as Array<Record<string, unknown>>);
+    for (const r of transcriptRows) {
+      contentMap.set(String(r.turn_index), String(r.content_bytes ?? ""));
+    }
+  } catch {
+    // raw_transcript may not exist in the main db (dbMirror off) — return empty.
+    return;
+  }
+
+  // Merge: only produce nodes where both a turn row AND transcript content exist.
+  const rows = turnRows
+    .filter((t) => contentMap.has(String(t.turn_index)))
+    .map((t) => ({
+      turn_index: t.turn_index,
+      role: t.role,
+      ended_at: t.ended_at,
+      content_bytes: contentMap.get(String(t.turn_index)) ?? "",
+    }));
 
   if (rows.length === 0) return;
 
@@ -269,7 +303,7 @@ export function buildTurnContentNodes(
   if (turnContentNodes.length > 1) {
     const embeddings = turnContentNodes.map((n) => {
       try {
-        return { id: n.id, vec: getOrComputeEmbedding(db, n.textSnippet) };
+        return { id: n.id, vec: getOrComputeEmbedding(mainDb, n.textSnippet) };
       } catch {
         return { id: n.id, vec: null as number[] | null };
       }
@@ -291,7 +325,7 @@ export function buildTurnContentNodes(
       }
     }
 
-    linkTurnToCheckpointEdges(db, sessionId, turnContentNodes, edges);
+    linkTurnToCheckpointEdges(mainDb, sessionId, turnContentNodes, edges);
   }
 
   nodes.push(...turnContentNodes);

@@ -13,8 +13,14 @@
  * Returns the current embedder configuration read from the environment.
  */
 export interface SetupStatusResponse {
-  /** Which embedder implementation is currently active. */
+  /** Which embedder implementation is currently active in the running process. */
   readonly currentEmbedder: "trigram" | "http" | "minilm" | "unknown";
+  /** Which embedder was configured via the dashboard (from .mega-compact.env). */
+  readonly configuredEmbedder: "trigram" | "http" | "minilm";
+  /** The URL configured in .mega-compact.env, if any. */
+  readonly configuredUrl: string | null;
+  /** True when the configured embedder differs from the active one (restart needed). */
+  readonly restartRequired: boolean;
   /** The embedding URL if httpEmbedder is active, otherwise null. */
   readonly embeddingUrl: string | null;
   /** The MEGACOMPACT_EMBED_CACHE value (number as string), or null. */

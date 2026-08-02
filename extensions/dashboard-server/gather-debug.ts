@@ -44,6 +44,7 @@ export function sendGatherDebug(res: ServerResponse, ctx: RouteContext): void {
 		dashboardSnapshot: { error: "not fetched" },
 		recentEvents: [],
 		criticalEvents: [],
+		dataSourceAudit: {},
 	};
 
 	// 1. Config flags (no secrets — MEGACOMPACT_* only)
@@ -121,6 +122,68 @@ export function sendGatherDebug(res: ServerResponse, ctx: RouteContext): void {
 		}
 	} catch (e) {
 		result.recentEvents = [{ error: e instanceof Error ? e.message : String(e) }];
+	}
+
+	// 6. Data source audit — per-tab data population check
+	try {
+		const audit: Record<string, unknown> = {};
+		const db = openStoreDb(ctx);
+
+		// Main db tables
+		for (const table of ["context_chunks", "memories", "raw_transcript", "checkpoint_epochs", "dedup_mirror"]) {
+			try {
+				const row = db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get() as { c: number };
+				audit[`main.${table}`] = row.c;
+			} catch {
+				audit[`main.${table}`] = "table missing";
+			}
+		}
+
+		// context_health + cache_poison_events
+		for (const table of ["context_health", "cache_poison_events"]) {
+			try {
+				const row = db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get() as { c: number };
+				audit[`main.${table}`] = row.c;
+			} catch {
+				audit[`main.${table}`] = "table missing";
+			}
+		}
+
+		// turns.db tables
+		try {
+			const turnMod = require("../../src/store/turns/connection.js") as typeof import("../../src/store/turns/connection.js");
+			const tdb = turnMod.openTurnDb(ctx.stateDir);
+			for (const table of ["turns", "turn_recall", "session_conversations", "topics", "memory_topics"]) {
+				try {
+					const row = tdb.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get() as { c: number };
+					audit[`turns.${table}`] = row.c;
+				} catch {
+					audit[`turns.${table}`] = "table missing";
+				}
+			}
+		} catch (e) {
+			audit["turns.db"] = `error: ${e instanceof Error ? e.message : String(e)}`;
+		}
+
+		// .mega-compact.env
+		try {
+			const envPath = ctx.stateDir + "/.mega-compact.env";
+			audit["mega-compact.env"] = existsSync(envPath) ? "exists" : "not found";
+		} catch {
+			audit["mega-compact.env"] = "check failed";
+		}
+
+		// dashboard.json
+		try {
+			const metricsPath = defaultMetricsPath(ctx.stateDir);
+			audit["dashboard.json"] = existsSync(metricsPath) ? "exists" : "not found";
+		} catch {
+			audit["dashboard.json"] = "check failed";
+		}
+
+		(result as { dataSourceAudit: Record<string, unknown> }).dataSourceAudit = audit;
+	} catch (e) {
+		(result as { dataSourceAudit: unknown }).dataSourceAudit = { error: e instanceof Error ? e.message : String(e) };
 	}
 
 	// Send (local helper to avoid importing sendJson from a non-exporting module)

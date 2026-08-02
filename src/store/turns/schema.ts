@@ -16,10 +16,26 @@
 import type { DatabaseSync } from "node:sqlite";
 
 /** Schema version stamp (written once into turns_meta). */
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 /** Create the unified turn-store schema if absent. Idempotent. */
 export function initTurnSchema(db: DatabaseSync): void {
+	// Migration: v1 had a pressure_band CHECK constraint that only allowed
+	// 'green','yellow','red' — but the runtime sends 'low','medium','high',
+	// 'ultra','mega'. Every INSERT failed silently. Since the constraint
+	// blocked ALL writes, the turns table is guaranteed empty — safe to
+	// drop and recreate with the widened constraint.
+	try {
+		const tableSql = db
+			.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='turns'")
+			.get() as { sql?: string } | undefined;
+		if (tableSql?.sql && tableSql.sql.includes("'green'") && !tableSql.sql.includes("'low'")) {
+			db.exec("DROP TABLE IF EXISTS turns");
+		}
+	} catch {
+		/* non-fatal: table may not exist yet */
+	}
+
 	// ── Contract tables (master's SqliteTurnStore shape) ──────────────────
 	db.exec(`
     CREATE TABLE IF NOT EXISTS turns_meta (
@@ -41,7 +57,7 @@ export function initTurnSchema(db: DatabaseSync): void {
       ended_at        INTEGER NOT NULL,
       ctx_tokens      INTEGER,
       ctx_percent     REAL,
-      pressure_band   TEXT    CHECK(pressure_band IS NULL OR pressure_band IN ('green','yellow','red')),
+      pressure_band   TEXT    CHECK(pressure_band IS NULL OR pressure_band IN ('low','medium','high','ultra','mega','green','yellow','red')),
       model           TEXT,
       epoch_id        TEXT,
       UNIQUE(conversation_id, turn_index)

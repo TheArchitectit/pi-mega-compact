@@ -14,6 +14,7 @@
  */
 import { getStateDir } from "./store.js";
 import { openStore } from "./store/sqlite/utils.js";
+import { openTurnStore } from "./store/turns/connection.js";
 import type { DatabaseSync } from "node:sqlite";
 import { Logger } from "./log.js";
 import { runValidationPipeline } from "./memoryGraph/gates.js";
@@ -182,14 +183,23 @@ function buildUnvalidatedGraph(
     return { nodes: [], edges: [] };
   }
 
+  // Turns live in the isolated turns.db, not the main sqlite.db. Open it
+  // separately so buildTurnNodes/buildTurnContentNodes can query it.
+  let turnDb: DatabaseSync | null = null;
+  try {
+    turnDb = openTurnStore(stateDir);
+  } catch {
+    log.warn("graph_source_unavailable", { detail: "Cannot open turns.db" });
+  }
+
   try {
     // Source: checkpoints (always on)
     buildCheckpointNodes(db, sessionId, nodes, edges);
 
-    // Source A: turns (structural, metadata-only)
-    if (areTurnsEnabled()) {
+    // Source A: turns (structural, metadata-only) — from turns.db, not main db
+    if (areTurnsEnabled() && turnDb) {
       try {
-        buildTurnNodes(db, sessionId, nodes, edges);
+        buildTurnNodes(turnDb, sessionId, nodes, edges);
       } catch (err) {
         log.warn("graph_source_unavailable", {
           source: "turns",
@@ -199,9 +209,11 @@ function buildUnvalidatedGraph(
     }
 
     // Source B: turn content (raw_transcript join, embedding-based)
-    if (isTurnContentEnabled()) {
+    // raw_transcript is in the main db, but turns are in turns.db — the JOIN
+    // can't span databases, so we pass both and merge in JS.
+    if (isTurnContentEnabled() && turnDb) {
       try {
-        buildTurnContentNodes(db, sessionId, nodes, edges);
+        buildTurnContentNodes(turnDb, db, sessionId, nodes, edges);
       } catch (err) {
         log.warn("graph_source_unavailable", {
           source: "turn-content",

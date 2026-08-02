@@ -207,6 +207,25 @@ export default function SetupTab(): React.ReactElement {
 								{embedderLabel(status.currentEmbedder)}
 							</span>
 						</div>
+						{"configuredEmbedder" in status && status.configuredEmbedder !== status.currentEmbedder && (
+							<div style={styles.warning}>
+								<strong>Configured but not active:</strong>{" "}
+								{embedderLabel(status.configuredEmbedder)} is configured in
+								.mega-compact.env but not yet loaded.{" "}
+								<strong>Restart pi</strong> to activate it.
+								{status.configuredUrl && (
+									<> ({status.configuredUrl})</>
+								)}
+							</div>
+						)}
+						{"restartRequired" in status && status.restartRequired && (
+							<div style={{ ...styles.row, color: "#ff9800" }}>
+								<span style={styles.label}>Status:</span>
+								<span style={styles.value}>
+									Restart required to activate the configured embedder
+								</span>
+							</div>
+						)}
 						<div style={styles.row}>
 							<span style={styles.label}>Embedding URL:</span>
 							<span style={styles.value}>

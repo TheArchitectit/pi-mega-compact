@@ -94,4 +94,5 @@ export interface DebugBundleResponse {
 	dashboardSnapshot: unknown | { error: string };
 	recentEvents: unknown[];
 	criticalEvents: unknown[];
+	dataSourceAudit?: Record<string, unknown> | { error: string };
 }
