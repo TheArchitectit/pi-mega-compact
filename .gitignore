@@ -50,6 +50,10 @@ mega-compact-vector/
 # agent temp scratch dir
 tmp/
 
+# Playwright MCP scratch dir + ad-hoc debug screenshots
+.playwright-mcp/
+*-tab-fixed.png
+
 # Local agent/session state (never track)
 .claw/
 .clawd-todos.json

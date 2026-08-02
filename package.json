@@ -48,6 +48,7 @@
     "prebuild": "npm run clean",
     "build": "tsc -p tsconfig.json",
     "build:dashboard": "cd extensions/dashboard-client && npx vite build",
+    "test:dashboard-smoke": "node scripts/dashboard-tab-smoke.mjs",
     "lint": "tsc --noEmit && node scripts/guardrails-scan.mjs && node scripts/semantic-scan.mjs",
     "test": "npm run build && node scripts/run-tests.mjs",
     "guardrails": "python3 scripts/regression_check.py --all || node scripts/guardrails-scan.mjs || node scripts/semantic-scan.mjs",
@@ -62,6 +63,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
+    "playwright": "^1.60.0",
     "typescript": "^5.4.0"
   },
   "dependencies": {

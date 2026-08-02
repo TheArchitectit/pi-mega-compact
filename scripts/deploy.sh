@@ -23,6 +23,9 @@
 #     4. CRITICAL VERIFY: confirm extensions/dashboard-client/dist/index.html
 #        exists AND is listed by `npm pack --dry-run` — fail with exit 1 if
 #        missing (this is exactly the 0.8.5 regression we are preventing).
+#     4.5 Dashboard tab smoke (Playwright): headless-chromium drive of the
+#         built bundle — click every tab, assert non-empty content. Catches
+#         missing-render-branch regressions (v0.12.7 Turns-blank bug class).
 #     5. Bump package.json + package-lock.json version to <new-version>.
 #     6. Commit the version bump (package.json + package-lock.json + dist).
 #     7. npm publish (the ONLY valid distribution path — PREVENT-DIST-001).
@@ -116,6 +119,21 @@ if [[ ! -f "$DASHBOARD_INDEX" ]]; then
   exit 1
 fi
 echo "[deploy] $DASHBOARD_INDEX exists."
+
+# --- 4.5 dashboard tab smoke (Playwright) -----------------------------------
+# Drive the built bundle with headless chromium, click every tab, and assert
+# each renders non-empty content. Catches the missing-render-branch regression
+# class (the v0.12.7 Turns-tab-100%-blank bug: a tab registered in the tab bar
+# but with no {activeTab === "x" && <XTab/>} render branch in App.tsx → <main>
+# renders nothing). Structural check — no dashboard server needed.
+echo "[deploy] running dashboard tab smoke (Playwright)"
+if ! node scripts/dashboard-tab-smoke.mjs; then
+  echo "[deploy] ERROR: dashboard tab smoke failed — a tab rendered blank." >&2
+  echo "[deploy]        This means a tab is registered but has no render branch" >&2
+  echo "[deploy]        in App.tsx. Fix before publishing." >&2
+  exit 1
+fi
+echo "[deploy] dashboard tab smoke green."
 
 # Verify npm pack actually lists the dashboard bundle.
 # `npm pack --dry-run` prints the packed file list to stdout; we grep for the
