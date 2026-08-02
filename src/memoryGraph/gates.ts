@@ -112,7 +112,7 @@ export function gatePromotionGuard(ws: GraphWorkingSet): GateResult {
       continue;
     }
     const epochId = n.epochId;
-    if (epochId && checkpointIds.has(epochId)) {
+    if (epochId && checkpointIds.size > 0 && checkpointIds.has(epochId)) {
       droppedIds.add(n.id);
       dropped++;
       log.warn("graph_orphaned_epoch", {
