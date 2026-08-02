@@ -64,7 +64,7 @@ function renderByModel(repos) {
   var rows = document.getElementById('bm-rows');
   if (!rows) return;
   if (!repos || !repos.length) {
-    rows.innerHTML = '<tr><td colspan="14" class="repo-none">No repositories registered yet.</td></tr>';
+    rows.innerHTML = '<tr><td colspan="16" class="repo-none">No repositories registered yet.</td></tr>';
     return;
   }
   var groups = {};
@@ -107,11 +107,35 @@ function renderByModel(repos) {
     var fmt = function(v) { return '$' + v.toFixed(6); };
     return lo === hi ? fmt(lo) : fmt(lo) + '–' + fmt(hi);
   }
+  // Helper: compute cache hit % from providerCacheRead/Write tokens
+  function cacheHitPct(cr, cw, inp) {
+    var denom = cr + cw + (inp || 0);
+    return denom > 0 ? ((cr / denom) * 100).toFixed(1) + '%' : '—';
+  }
+  // Helper: compute cache $ saved (read = 0.9 * inputRate, write = 0.25 * inputRate)
+  function cacheDollar(cr, cw, rate) {
+    if (!cr || !rate) return '—';
+    var saved = cr * rate * 0.9 - cw * rate * 0.25;
+    return '$' + saved.toFixed(4);
+  }
+  // Aggregate providerCacheRead/Write across repos in this group
+  var groupCacheRead = 0, groupCacheWrite = 0, groupTokensIn = 0;
+  for (var ii = 0; ii < repos.length; ii++) {
+    var rr = repos[ii];
+    var key2 = (rr.modelName && String(rr.modelName).trim()) || '(unknown)';
+    if (key2 === g.model) {
+      groupCacheRead += (rr.providerCacheRead || 0);
+      groupCacheWrite += (rr.providerCacheWrite || 0);
+      groupTokensIn += (rr.tokensDropped || 0);
+    }
+  }
   rows.innerHTML = arr.map(function(g) {
     var freed = (g.tokensIn || 0) - (g.tokensOut || 0);
-    var usd = g.usd > 0 ? '$' + g.usd.toFixed(4) : '—';
+    // B: always show a dollar value (including $0.0000) — do not use '—' when usd is 0
+    var usd = '$' + (g.usd || 0).toFixed(4);
     var when = g.lastAt ? new Date(g.lastAt).toLocaleString() : '—';
     var reas = g.reasoning == null ? '—' : (g.reasoning ? 'yes' : 'no');
+    var rate0 = g.inRates && g.inRates.length ? g.inRates[0] : 0;
     return '<tr>' +
       '<td><span class="repo-model">' + sanitize(g.model) + '</span></td>' +
       '<td>' + sanitize(g.provider) + '</td>' +
@@ -126,6 +150,8 @@ function renderByModel(repos) {
       '<td class="num">' + collapseRate(g.inRates) + '</td>' +
       '<td class="num">' + collapseRate(g.outRates) + '</td>' +
       '<td class="num">' + sanitize(usd) + '</td>' +
+      '<td class="num">' + cacheHitPct(groupCacheRead, groupCacheWrite, groupTokensIn) + '</td>' +
+      '<td class="num">' + cacheDollar(groupCacheRead, groupCacheWrite, rate0) + '</td>' +
       '<td class="num">' + sanitize(when) + '</td>' +
     '</tr>';
   }).join('');

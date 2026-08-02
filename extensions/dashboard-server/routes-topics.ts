@@ -10,6 +10,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
 import { openTurnStore } from "../../src/store/turns/connection.js";
 import { createTopicStore } from "../../src/topics/store.js";
+import { openStore } from "../../src/store/sqlite.js";
+import { buildTopicModel } from "../../src/topics/cluster.js";
 import type { TopicsResponse, TopicRow } from "./api-contracts/game-types.js";
 import type { TopicMemoriesResponse } from "./api-contracts/turns.js";
 
@@ -53,6 +55,25 @@ export function handleTopics(
 
 	try {
 		const tdb = openTurnStore(ctx.stateDir);
+
+		// Lazy build: when the topics table is empty, attempt a one-shot build
+		// from available context_chunks embeddings so the wiki is useful even
+		// before the first compaction fires.
+		const topicCount = (
+			tdb.prepare("SELECT COUNT(*) AS c FROM topics").get() as { c: number }
+		).c;
+		if (topicCount === 0) {
+			try {
+				const mainDb = openStore(ctx.stateDir);
+				const model = buildTopicModel(mainDb);
+				if (model.k > 0 && model.totalChunks > 0) {
+					createTopicStore(ctx.stateDir).replaceTopicModel(model);
+				}
+			} catch {
+				/* non-fatal: lazy wiki build is best-effort */
+			}
+		}
+
 		const topics: TopicRow[] = (
 			tdb
 				.prepare(

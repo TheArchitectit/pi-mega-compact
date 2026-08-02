@@ -51,16 +51,26 @@ export function buildCheckpointNodes(
   nodes: MemoryGraphNode[],
   edges: MemoryGraphEdge[],
 ): void {
-  const rows = db
-    .prepare(
-      `SELECT id, session_id, summary, token_estimate, timestamp,
-              dedup_status, topic_summary, key_decisions,
-              normalized_text, embedding_blob
-       FROM context_chunks
-       WHERE session_id = ?
-       ORDER BY timestamp ASC`,
-    )
-    .all(sessionId) as Array<Record<string, unknown>>;
+  const rows = sessionId
+    ? (db
+        .prepare(
+          `SELECT id, session_id, summary, token_estimate, timestamp,
+                  dedup_status, topic_summary, key_decisions,
+                  normalized_text, embedding_blob
+           FROM context_chunks
+           WHERE session_id = ?
+           ORDER BY timestamp ASC`,
+        )
+        .all(sessionId) as Array<Record<string, unknown>>)
+    : (db
+        .prepare(
+          `SELECT id, session_id, summary, token_estimate, timestamp,
+                  dedup_status, topic_summary, key_decisions,
+                  normalized_text, embedding_blob
+           FROM context_chunks
+           ORDER BY timestamp ASC`,
+        )
+        .all() as Array<Record<string, unknown>>);
 
   if (rows.length === 0) return;
 
@@ -136,15 +146,24 @@ export function buildTurnNodes(
   edges: MemoryGraphEdge[],
 ): void {
   const existingIds = new Set(nodes.map((n) => n.id));
-  const rows = db
-    .prepare(
-      `SELECT turn_index, role, pressure_band, ctx_tokens, ctx_percent,
-              epoch_id, ended_at
-       FROM turns
-       WHERE session_id = ?
-       ORDER BY turn_index ASC`,
-    )
-    .all(sessionId) as Array<Record<string, unknown>>;
+  const rows = sessionId
+    ? (db
+        .prepare(
+          `SELECT turn_index, role, pressure_band, ctx_tokens, ctx_percent,
+                  epoch_id, ended_at
+           FROM turns
+           WHERE session_id = ?
+           ORDER BY turn_index ASC`,
+        )
+        .all(sessionId) as Array<Record<string, unknown>>)
+    : (db
+        .prepare(
+          `SELECT turn_index, role, pressure_band, ctx_tokens, ctx_percent,
+                  epoch_id, ended_at
+           FROM turns
+           ORDER BY turn_index ASC`,
+        )
+        .all() as Array<Record<string, unknown>>);
 
   if (rows.length === 0) return;
 
@@ -197,15 +216,24 @@ export function buildTurnContentNodes(
   // (identity_merge) merges them with the richest nodeType winning. Using the
   // global nodes array here would skip every node (Source A already added them).
   const seen = new Set<string>();
-  const rows = db
-    .prepare(
-      `SELECT t.turn_index, t.role, t.ended_at, r.content_bytes
-       FROM turns t
-       JOIN raw_transcript r ON r.session_id = t.session_id AND r.turn_index = t.turn_index
-       WHERE t.session_id = ?
-       ORDER BY t.turn_index ASC`,
-    )
-    .all(sessionId) as Array<Record<string, unknown>>;
+  const rows = sessionId
+    ? (db
+        .prepare(
+          `SELECT t.turn_index, t.role, t.ended_at, r.content_bytes
+           FROM turns t
+           JOIN raw_transcript r ON r.session_id = t.session_id AND r.turn_index = t.turn_index
+           WHERE t.session_id = ?
+           ORDER BY t.turn_index ASC`,
+        )
+        .all(sessionId) as Array<Record<string, unknown>>)
+    : (db
+        .prepare(
+          `SELECT t.turn_index, t.role, t.ended_at, r.content_bytes
+           FROM turns t
+           JOIN raw_transcript r ON r.session_id = t.session_id AND r.turn_index = t.turn_index
+           ORDER BY t.turn_index ASC`,
+        )
+        .all() as Array<Record<string, unknown>>);
 
   if (rows.length === 0) return;
 

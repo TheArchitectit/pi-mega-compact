@@ -14,6 +14,9 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { IndexRepo, IndexIndex } from "./types.js";
+import {
+	readProviderCacheForRepo,
+} from "../../src/store/sqlite/perf-samples.js";
 
 export function getIndexDir(): string {
 	const override = process.env.MEGACOMPACT_INDEX_DIR;
@@ -100,25 +103,21 @@ export function readIndex(): IndexIndex | null {
 							repo.maxTokens = Number(mrow.max_tokens ?? 0) || null;
 							repo.reasoning = Number(mrow.reasoning ?? 0) === 1;
 						}
-						// Provider prompt-cache stats (E.3)
+						// Provider prompt-cache stats (E.3 / F4)
+						// Use readProviderCacheForRepo which correctly reads cache token
+						// counts from the meta JSON column (cacheRead/cacheWrite), not
+						// from non-existent table columns cache_read/cache_write.
 						try {
-							const pRow = sdb
-								.prepare(
-									`SELECT
-                    SUM(cache_read) AS totalRead,
-                    SUM(cache_write) AS totalWrite,
-                    SUM(cache_read + cache_write) * 1.0 / MAX(SUM(cache_read + cache_write + tokens_in), 1) AS hitPct
-                   FROM perf_samples
-                   WHERE cache_read > 0 OR cache_write > 0`,
-								)
-								.get() as
-								| { totalRead: number; totalWrite: number; hitPct: number }
-								| undefined;
-							if (pRow && pRow.totalRead > 0) {
-								repo.providerCacheRead = Number(pRow.totalRead);
-								repo.providerCacheWrite = Number(pRow.totalWrite);
-								repo.providerCachePct = Number((pRow.hitPct * 100).toFixed(1));
+							const pc = readProviderCacheForRepo(repo.stateDir);
+							if (pc.totalCacheRead > 0) {
+								repo.providerCacheRead = pc.totalCacheRead;
+								repo.providerCacheWrite = pc.totalCacheWrite;
+								repo.providerCachePct = Number(pc.avgHitPct.toFixed(1));
 							}
+							// Also enrich contextWindow/maxTokens/reasoning from the
+							// latest model_snapshots row (was already read above, but
+							// when latestModelSnapshot was used above we get the same
+							// data from the per-repo store — keep as-is).
 						} catch {
 							/* best-effort — perf_samples may not exist */
 						}

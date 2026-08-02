@@ -42,7 +42,11 @@ export function resetRuntimeImpl(
 	self: ResetRuntimeContext,
 	sessionId: string | undefined,
 ): void {
-	const sid = normalizeSessionId(sessionId);
+	// Only call normalizeSessionId when a real sessionId string is passed.
+	// When undefined, keep the existing self.rt.sessionId (set by the real
+	// session-start / compact pipeline) so the early-return guard can fire and
+	// dashboard stats keyed by sessionId are not silently orphaned.
+	const sid = sessionId ? normalizeSessionId(sessionId) : self.rt.sessionId;
 	if (self.rt.sessionId === sid && self.rt.persistedThisSession) return; // same session, keep checkpoint memory
 	self.rt = {
 		sessionId: sid,

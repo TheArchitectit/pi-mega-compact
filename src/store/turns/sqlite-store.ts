@@ -242,8 +242,8 @@ export class SqliteTurnStore implements TurnStore {
 			this.db
 				.prepare(
 					`INSERT INTO turns (conversation_id, session_id, turn_index, role, ended_at,
-                                   ctx_tokens, ctx_percent, pressure_band, model)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                   ctx_tokens, ctx_percent, pressure_band, model, epoch_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				)
 				.run(
 					entry.conversationId,
@@ -255,6 +255,7 @@ export class SqliteTurnStore implements TurnStore {
 					entry.ctxPercent ?? null,
 					entry.pressureBand ?? null,
 					entry.model ?? null,
+					entry.epochId ?? null,
 				);
 		} catch (e) {
 			if (
@@ -524,8 +525,8 @@ export class SqliteTurnStore implements TurnStore {
 		this.clear();
 		const insertTurn = this.db.prepare(
 			`INSERT INTO turns (conversation_id, session_id, turn_index, role, ended_at,
-                               ctx_tokens, ctx_percent, pressure_band, model)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                               ctx_tokens, ctx_percent, pressure_band, model, epoch_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		);
 		const insertRecall = this.db.prepare(
 			`INSERT INTO turn_recall (turn_id, checkpoint_id, score, source, raptor_level)
@@ -553,6 +554,7 @@ export class SqliteTurnStore implements TurnStore {
 					t.ctxPercent ?? null,
 					t.pressureBand ?? null,
 					t.model ?? null,
+					t.epochId ?? null,
 				);
 				const row = this.db
 					.prepare(
