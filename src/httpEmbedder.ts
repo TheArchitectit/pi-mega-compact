@@ -173,10 +173,19 @@ export function embeddingConfigFromEnv(): HttpEmbedderOptions | null {
   };
 }
 
-/** Extract a single embedding vector from a tolerant OpenAI-style response. */
+/** True if the URL is an Ollama /api/embeddings endpoint. */
+function isOllamaEndpoint(url: string): boolean {
+  return url.includes("/api/embeddings");
+}
+
+/** Extract a single embedding vector from a tolerant response.
+ *  Handles Ollama ({embedding:[...]}), OpenAI ({data:[{embedding:[...]}]}),
+ *  and simple ({data:[...]} / {embeddings:[...]}) shapes. */
 function parseEmbedding(body: unknown): number[] {
   if (body && typeof body === "object") {
     const b = body as Record<string, unknown>;
+    // Ollama: { embedding: [0.1, ...] }
+    if (Array.isArray(b.embedding)) return b.embedding as number[];
     if (Array.isArray(b.data) && b.data[0] && typeof b.data[0] === "object") {
       const first = b.data[0] as Record<string, unknown>;
       if (Array.isArray(first.embedding)) return first.embedding as number[];
@@ -227,7 +236,10 @@ export class HttpEmbedder implements Embedder {
   }
 
   embed(text: string): Vector {
-    const body = JSON.stringify({ input: [text] });
+    const ollama = isOllamaEndpoint(this.url);
+    const body = ollama
+      ? JSON.stringify({ model: process.env.MEGACOMPACT_OLLAMA_MODEL || "nomic-embed-text", prompt: text })
+      : JSON.stringify({ input: [text] });
     const headers: Record<string, string> = {
       "content-type": "application/json",
       ...this.headers,
