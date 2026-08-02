@@ -211,6 +211,9 @@ export type { MemoryStatusResponse, MemoryStatsTopMemory } from "./memory.js";
 // Setup wizard — embedder configuration + backend detection
 export type { SetupStatusResponse, SetupDetectResponse, SetupConfigureRequest, SetupConfigureResponse, DetectResult, OllamaDetectResult } from "./setup.js";
 
+// Embedder health probe
+export type { EmbedderHealthResponse } from "./embedder-health.js";
+
 // S46/D3 — memory graph (visual memory map) + validation report
 export type {
 	MemoryMapResponse,
@@ -219,6 +222,9 @@ export type {
 	MemoryMapQuery,
 	GraphValidationReport,
 } from "./memory-map.js";
+
+// Part B — RAPTOR tree
+export type { RaptorNodeDTO, RaptorTreeResponse } from "./raptor.js";
 
 // A3 — cache stripe distribution + health
 export type {

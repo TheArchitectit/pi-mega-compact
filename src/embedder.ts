@@ -18,6 +18,9 @@ export type Vector = number[];
 export interface Embedder {
   /** Dimensionality of vectors this embedder produces. */
   readonly dim: number;
+  /** Discriminator: "trigram" | "http". Lets callers branch on the embedder
+   *  backend without instanceof checks (e.g. HyDE is http-only). */
+  readonly kind: string;
   embed(text: string): Vector;
 }
 
@@ -65,6 +68,7 @@ function fnv1a(str: string): number {
  * from corrupting stored vectors. Set MEGACOMPACT_EMBED_CACHE=0 to disable.
  */
 export class TrigramEmbedder implements Embedder {
+  readonly kind = "trigram";
   readonly dim: number;
   private readonly seed: number;
   /** @type {Map<string, Vector>} */

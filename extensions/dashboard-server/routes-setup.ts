@@ -28,7 +28,7 @@ import type {
 // handleSetupStatus — "/api/setup-status"
 // ---------------------------------------------------------------------------
 
-function detectCurrentEmbedder(): SetupStatusResponse["currentEmbedder"] {
+export function detectCurrentEmbedder(): SetupStatusResponse["currentEmbedder"] {
 	const url = process.env["MEGACOMPACT_EMBEDDING_URL"];
 	const minilm = process.env["MEGACOMPACT_MINILM"];
 	if (url && url.trim().length > 0) return "http";

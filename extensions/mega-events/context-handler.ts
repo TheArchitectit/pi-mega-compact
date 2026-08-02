@@ -1,9 +1,13 @@
 /**
  * mega-events/context-handler.ts — the context event handler (auto-trigger).
  *
- * Handles the live-trim compaction pipeline: DB-mirror append, fast-gate
- * threshold check, pipeline invocation, checkpoint epoch write, dedup, and
- * the live-trim message reconstruction that feeds pi's transformContext.
+ * Delegate-shell (extensions split): handles the live-trim compaction pipeline —
+ * DB-mirror append, fast-gate threshold check, pipeline invocation, legacy
+ * durable compact, and the live-trim message reconstruction that feeds pi's
+ * transformContext. The extracted pieces live in ./context-handler/:
+ *  - messageText.ts    (messageContentText — best-effort text extraction)
+ *  - tailResult.ts     (buildTailResult — recall-tail injection factory)
+ *  - afterCompact.ts   (persistEpochAndMaintain — epoch/wiki/seed/dedup writes)
  */
 import type {
 	ExtensionAPI,
@@ -13,47 +17,22 @@ import type {
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
 	openStore,
-	writeCheckpointEpoch,
-	type CheckpointEpoch,
 } from "../../src/store/sqlite.js";
-import { epochIdFor } from "../../src/mirror/epoch.js";
 import { autoCompactCheck } from "../../src/compact.js";
 import { estimateSessionTokens } from "../../src/tokens.js";
 import type { MegaRuntime } from "../mega-runtime.js";
 import { runCompact, piCompactWouldNoop } from "../mega-pipeline.js";
-import { stampTurnsEpochFor } from "../mega-turn-store.js";
-import { TurnsConfig } from "../../src/config/turns.js";
-import { openTurnStore } from "../../src/store/turns/connection.js";
-import {
-	buildTopicModel,
-	createTopicStore,
-	bumpWikiCompactCounter,
-} from "../../src/topics/index.js";
-import { TrigramEmbedder } from "../../src/embedder.js";
-import type { EmbeddedChunk } from "../../src/topics/types.js";
-import { computeLiveTrimCut, liveTrimSummaryMessage } from "../mega-trim.js";
 import {
 	pressureFromPct,
 	pressureRatio,
 	type MegaConfig,
 } from "../mega-config.js";
 import { appendMirrorMessages } from "./mirror-append.js";
-import { stagedForTail, withRecallTail } from "./recall-tail.js";
-import { buildSeparatedPrompt, buildCacheOptimizedPrompt } from "./separated-prompt.js";
-
-/** Best-effort text extraction from an AgentMessage for analytics/logging.
- *  AgentMessage is a discriminated union; .content exists only on some
- *  variants (user/assistant/toolResult/custom). Narrow by role, never assume. */
-function messageContentText(m: AgentMessage): string {
-	const c = (m as { content?: unknown }).content;
-	if (typeof c === "string") return c;
-	if (Array.isArray(c)) {
-		return c
-			.map((b) => (b && typeof b === "object" && "text" in b ? String((b as { text?: string }).text ?? "") : ""))
-			.join(" ");
-	}
-	return "";
-}
+import { epochIdFor } from "../../src/mirror/epoch.js";
+import { computeLiveTrimCut, liveTrimSummaryMessage } from "../mega-trim.js";
+import { messageContentText } from "./context-handler/messageText.js";
+import { buildTailResult } from "./context-handler/tailResult.js";
+import { persistEpochAndMaintain } from "./context-handler/afterCompact.js";
 
 /** Register the context event handler (live-trim auto-trigger). */
 export function registerContextHandler(
@@ -82,40 +61,8 @@ export function registerContextHandler(
 		// S53: helper to inject the staged recall/memory block as a user-role
 		// tail message at any view-return point. Returns undefined when nothing
 		// is staged (or the flag is OFF) so the caller falls through to its
-		// normal return. The F3 mirror append (above the gates) runs on the
-		// REAL transcript before any view is built, so the injected tail never
-		// reaches raw_transcript (PREVENT-PI: append-only, view-only).
-		const tailResult = (msgs?: readonly AgentMessage[]) => {
-			const base = msgs ?? messages;
-			if (!stagedForTail(runtime, config) && !config.messageSeparation && !config.cacheStriping) return undefined;
-			let result: AgentMessage[] = stagedForTail(runtime, config)
-				? withRecallTail(base, runtime, config)
-				: (base as AgentMessage[]);
-			if (config.cacheStriping) {
-				result = buildCacheOptimizedPrompt(result);
-			} else if (config.messageSeparation) {
-				result = buildSeparatedPrompt(result);
-			}
-			// P2.5: log prefix stability (fire-and-forget, non-fatal).
-			// tailResult is sync, so use .then().catch() on the dynamic import.
-			if (result.length > 1) {
-				import("../../src/cache-stripe-impl.js").then(({ computeStabilityScore }) => {
-					const stableScore = computeStabilityScore(
-						{ content: messageContentText(result[0] ?? result[0]), chunkId: "prefix", accessCount: 0, lastAccessedAt: 0 },
-						result.slice(0, 2).map((m) => ({ content: messageContentText(m), chunkId: "prefix", accessCount: 0, lastAccessedAt: 0 })),
-					);
-					runtime.logger.info("prefix_stability", {
-						stableScore: Number.isFinite(stableScore) ? stableScore : 0,
-						prefixMessages: result.length,
-						separation: config.messageSeparation ? "v2" : "off",
-						striping: config.cacheStriping ? "v3" : "off",
-					});
-				}).catch(() => {
-					// Non-fatal: stability logging is best-effort.
-				});
-			}
-			return { messages: result };
-		};
+		// normal return.
+		const tailResult = buildTailResult(runtime, config, messages);
 		// Always track context for the dashboard/widget, even when auto is off.
 		// (v0.8 regression: !config.auto gate sat above this, leaving ctx stats
 		// null -> widget '?% / ?/?' when auto disabled. Track first, THEN gate.)
@@ -303,174 +250,9 @@ export function registerContextHandler(
 			return tailResult() ?? undefined;
 		}
 
-		// S27 DB-mirror: write checkpoint_epoch with deterministic nonce.
-		// This makes the cache key stable across identical compactions.
-		if (config.dbMirror) {
-			try {
-				const db = openStore(runtime.currentStateDir);
-				const cpId = ran.result.checkpointId ?? `epoch-${Date.now()}`;
-				const epoch: CheckpointEpoch = {
-					epochId: epochIdFor(cpId),
-					sessionId: runtime.rt.sessionId,
-					startedSeq: 0,
-					committedSeq: ran.result.compactedFrom,
-					checkpointId: cpId,
-					cutIndex: ran.result.compactedFrom,
-					summaryMessageText: ran.result.summary,
-					createdAt: Date.now(),
-				};
-				writeCheckpointEpoch(db, epoch);
-				// S50B: link this session's turns to the epoch that just compacted
-				// them (compression-by-conversation-epoch metrics). Isolated-store
-				// only; best-effort + non-fatal.
-				try {
-					stampTurnsEpochFor(
-						config,
-						runtime.rt.sessionId,
-						epoch.epochId,
-						runtime.currentStateDir,
-					);
-				} catch {
-					/* non-fatal: epoch stamping never breaks compaction */
-				}
-
-		// S51B: auto-categorizing wiki rebuild — every Nth compaction, derived
-		// from real context_chunks embeddings. Isolated-store only, gated on
-		// AUTO_WIKI_ENABLED; best-effort + non-fatal (never breaks compaction).
-		// Fire regardless of dbMirror — context_chunks is the isolated store.
-		// Uses the already-open db when inside the dbMirror block; opens its own
-		// connection otherwise.
-		// from real context_chunks embeddings. Isolated-store only, gated on
-		// AUTO_WIKI_ENABLED; best-effort + non-fatal (never breaks compaction).
-		try {
-			if (config.autoWikiEnabled && config.turnsDbEnabled) {
-				const every = Math.max(
-					1,
-					TurnsConfig.WIKI_REBUILD_EVERY_N_COMPACTS,
-				);
-				const tdb = openTurnStore(runtime.currentStateDir);
-				const n = bumpWikiCompactCounter(tdb);
-				if (n % every === 0) {
-					const model = buildTopicModel(db, {
-						kRange: [TurnsConfig.WIKI_K_MIN, TurnsConfig.WIKI_K_MAX],
-						labelTopTerms: TurnsConfig.WIKI_LABEL_TOP_TERMS,
-						restarts: 5,
-						seed: 0x9e3779b9,
-					});
-					createTopicStore(runtime.currentStateDir).replaceTopicModel(
-						model,
-					);
-					runtime.logger.info("wiki_rebuild", {
-						clusterCount: model.k,
-						totalChunks: model.totalChunks,
-						method: "kmeans+tfidf",
-						criterion: model.criterion,
-						silhouetteScore: model.silhouetteScore,
-						uncalibrated: false,
-					});
-				}
-			}
-		} catch (wikiErr) {
-			runtime.logger.warn("wiki_rebuild_failed", {
-				error: String(wikiErr),
-			});
-		}
-
-		// D1: seed the topic model from raw_transcript when context_chunks is
-		// thin (pre-compaction). Gated on WIKI_SEED_FROM_TURNS; non-fatal.
-		// Seeds buildTopicModel with on-the-fly trigram embeddings from
-		// recent raw_transcript rows for the current session.
-		try {
-			if (
-				config.autoWikiEnabled &&
-				config.turnsDbEnabled &&
-				TurnsConfig.WIKI_SEED_FROM_TURNS
-			) {
-				const floor = 50;
-				const countRow = db
-					.prepare(
-						`SELECT COUNT(*) AS cnt FROM context_chunks WHERE session_id = ?`,
-					)
-					.get(runtime.rt.sessionId) as { cnt: number } | undefined;
-				const chunkCount = countRow?.cnt ?? 0;
-				if (chunkCount < floor) {
-					const transcriptRows = db
-						.prepare(
-							`SELECT DISTINCT content_bytes
-	       FROM raw_transcript
-	       WHERE session_id = ?
-	         AND length(content_bytes) > 10
-	       ORDER BY seq ASC
-	       LIMIT 200`,
-						)
-						.all(runtime.rt.sessionId) as Array<{
-						content_bytes: string;
-					}>;
-					if (transcriptRows.length > 0) {
-						const embedder = new TrigramEmbedder();
-						const seedChunks: EmbeddedChunk[] = [];
-						for (let i = 0; i < transcriptRows.length; i++) {
-							const text = transcriptRows[i].content_bytes.trim();
-							if (text.length === 0) continue;
-							const vec = embedder.embed(text);
-							seedChunks.push({
-								chunkId: `seed_transcript_${i}`,
-								sessionId: runtime.rt.sessionId,
-								vec,
-								text,
-							});
-						}
-						if (seedChunks.length > 0) {
-							const model = buildTopicModel(
-								db,
-								{
-									kRange: [
-										TurnsConfig.WIKI_K_MIN,
-										TurnsConfig.WIKI_K_MAX,
-									],
-									labelTopTerms:
-										TurnsConfig.WIKI_LABEL_TOP_TERMS,
-									restarts: 5,
-									seed: 0x9e3779b9,
-								},
-								seedChunks,
-							);
-							createTopicStore(
-								runtime.currentStateDir,
-							).replaceTopicModel(model);
-							runtime.logger.info("wiki_seed", {
-								clusterCount: model.k,
-								sourceChunks: seedChunks.length,
-								totalChunks: model.totalChunks,
-								method: "kmeans+tfidf",
-							});
-						}
-					}
-				}
-			}
-		} catch (seedErr) {
-			runtime.logger.warn("wiki_seed_failed", {
-				error: String(seedErr),
-			});
-		}
-
-				// S27 Task 6: Fire-and-forget dedup pipeline.
-				// Deduplicates raw_transcript rows for the compacted range.
-				try {
-					const { dedupTranscript } = await import("../../src/mirror/dedup.js");
-					dedupTranscript(
-						db,
-						runtime.rt.sessionId,
-						0,
-						ran.result.compactedFrom,
-					);
-				} catch (_dedupErr) {
-					// Fire-and-forget: dedup failure is non-fatal
-				}
-			} catch (e) {
-				runtime.logger.warn("db-mirror-epoch-fail", { error: String(e) });
-			}
-		}
+		// S27 DB-mirror: write checkpoint_epoch + stamp turn epochs + auto-wiki +
+		// topic seed + fire-and-forget dedup. Best-effort + non-fatal.
+		await persistEpochAndMaintain(runtime, config, ran);
 
 		// LEGACY path (rollback): v0.4.28 ctx.compact() + the no-op gate. The
 		// manual compact path aborts the in-flight turn — only used behind the flag.

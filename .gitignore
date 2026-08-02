@@ -58,3 +58,4 @@ tmp/
 .claw/
 .clawd-todos.json
 .pi-subagents/
+scripts/__pycache__/

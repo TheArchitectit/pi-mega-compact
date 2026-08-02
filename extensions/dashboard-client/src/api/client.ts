@@ -46,6 +46,8 @@ import type {
 	SetupDetectResponse,
 	SetupConfigureRequest,
 	SetupConfigureResponse,
+	EmbedderHealthResponse,
+	RaptorTreeResponse,
 } from "@contracts";
 
 /** Error thrown when a dashboard API response is not 2xx. */
@@ -306,4 +308,18 @@ export function configureEmbedder(
 	body: SetupConfigureRequest,
 ): Promise<SetupConfigureResponse> {
 	return postJson<SetupConfigureResponse>(ENDPOINTS.setupConfigure.path, body);
+}
+
+// ─── RAPTOR tree (Part B) ─────────────────────────────────────────────
+
+/** GET /api/raptor-tree — tree for a session (defaults to latest with nodes). */
+export function fetchRaptorTree(sessionId?: string): Promise<RaptorTreeResponse> {
+	return getJson<RaptorTreeResponse>(
+		`${ENDPOINTS.raptorTree.path}${query({ sessionId })}`,
+	);
+}
+
+/** GET /api/embedder-health — round-trip a test embed through the active embedder. */
+export function fetchEmbedderHealth(): Promise<EmbedderHealthResponse> {
+	return getJson<EmbedderHealthResponse>(ENDPOINTS.embedderHealth.path);
 }

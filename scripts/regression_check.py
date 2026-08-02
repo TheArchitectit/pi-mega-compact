@@ -28,6 +28,115 @@ DEFAULT_REGISTRY_PATH = Path(".guardrails/failure-registry.jsonl")
 DEFAULT_RULES_PATH = Path(".guardrails/prevention-rules")
 
 
+# File-size limits (CLAUDE.md §6 + user rule: ALL non-doc well under 500).
+# src/ 300 soft / 500 hard; extensions/ 400 soft / 500 hard; tests/ 600 hard.
+FILE_SIZE_DIRS = ("src", "extensions")
+FILE_SIZE_SKIP_PARTS = ("node_modules", "dist", ".claude", "worktrees")
+FILE_SIZE_SKIP_SUFFIXES = (".d.ts",)
+SRC_SOFT = 300
+SRC_HARD = 500
+EXT_SOFT = 400
+EXT_HARD = 500
+TEST_HARD = 600
+
+
+def _classify_file(rel_path: str) -> Tuple[Optional[int], Optional[int]]:
+    """Return (soft, hard) line limits for a repo-relative .ts/.tsx path, or
+    (None, None) if the file should be skipped."""
+    parts = rel_path.split(os.sep)
+    for skip in FILE_SIZE_SKIP_PARTS:
+        if skip in parts:
+            return (None, None)
+    for suf in FILE_SIZE_SKIP_SUFFIXES:
+        if rel_path.endswith(suf):
+            return (None, None)
+    is_test = rel_path.endswith(".test.ts") or rel_path.endswith(".test.tsx")
+    if rel_path.startswith("extensions" + os.sep):
+        return (EXT_SOFT, TEST_HARD if is_test else EXT_HARD)
+    if rel_path.startswith("src" + os.sep):
+        return (SRC_SOFT, TEST_HARD if is_test else SRC_HARD)
+    return (None, None)
+
+
+def check_file_sizes(repo_root: Path) -> List[Dict]:
+    """Scan src/ and extensions/ for files over soft/hard line limits.
+
+    Returns a list of issue dicts: {file, lines, soft, hard, severity,
+    kind}. severity is 'error' (over hard) or 'warning' (over soft only).
+    Sorted: hard-limit violations first (by line count desc), then warnings.
+    """
+    violations: List[Dict] = []
+    warnings: List[Dict] = []
+
+    for top in FILE_SIZE_DIRS:
+        base = repo_root / top
+        if not base.is_dir():
+            continue
+        for dirpath, _dirnames, filenames in os.walk(base):
+            for name in filenames:
+                if not (name.endswith(".ts") or name.endswith(".tsx")):
+                    continue
+                abs_path = Path(dirpath) / name
+                try:
+                    rel_path = abs_path.relative_to(repo_root).as_posix()
+                except ValueError:
+                    continue
+                soft, hard = _classify_file(rel_path)
+                if hard is None:
+                    continue
+                try:
+                    with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+                        line_count = sum(1 for _ in f)
+                except OSError:
+                    continue
+                if line_count > hard:
+                    violations.append({
+                        "file": rel_path,
+                        "lines": line_count,
+                        "soft": soft,
+                        "hard": hard,
+                        "severity": "error",
+                        "kind": "hard",
+                    })
+                elif soft is not None and line_count > soft:
+                    warnings.append({
+                        "file": rel_path,
+                        "lines": line_count,
+                        "soft": soft,
+                        "hard": hard,
+                        "severity": "warning",
+                        "kind": "soft",
+                    })
+
+    violations.sort(key=lambda d: d["lines"], reverse=True)
+    warnings.sort(key=lambda d: d["lines"], reverse=True)
+    return violations + warnings
+
+
+def print_file_size_report(size_issues: List[Dict]) -> None:
+    """Print formatted report of file-size issues."""
+    if not size_issues:
+        print("✓ All source files within soft/hard line limits")
+        return
+
+    hard_count = sum(1 for i in size_issues if i["kind"] == "hard")
+    soft_count = sum(1 for i in size_issues if i["kind"] == "soft")
+
+    print("\n" + "=" * 70)
+    print("FILE-SIZE CHECK")
+    print("=" * 70)
+
+    for issue in size_issues:
+        severity = format_severity(issue["severity"])
+        tag = "OVER HARD LIMIT" if issue["kind"] == "hard" else "over soft limit"
+        print(f"  {severity}  {issue['file']}  ({issue['lines']} lines, "
+              f"limit {issue['hard'] if issue['kind'] == 'hard' else issue['soft']})  {tag}")
+
+    print("-" * 70)
+    print(f"  {hard_count} over hard limit (blocks commit), {soft_count} over soft limit (warning)")
+    print("=" * 70)
+
+
 def run_git_command(args: List[str]) -> Tuple[int, str, str]:
     """Run a git command and return (returncode, stdout, stderr)."""
     try:
@@ -349,6 +458,8 @@ Examples:
                         help="Exit with non-zero code if issues found (for pre-commit hooks)")
     parser.add_argument("--json", action="store_true",
                         help="Output results as JSON")
+    parser.add_argument("--no-file-sizes", action="store_true",
+                        help="Skip the file-size scan of src/ and extensions/")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Verbose output")
     parser.add_argument("--quiet", "-q", action="store_true",
@@ -371,17 +482,32 @@ Examples:
         verbose=args.verbose and not args.quiet
     )
 
+    # File-size check (always on unless --no-file-sizes).
+    size_issues: List[Dict] = []
+    size_hard_count = 0
+    if not args.no_file_sizes:
+        size_issues = check_file_sizes(Path.cwd())
+        size_hard_count = sum(1 for i in size_issues if i["kind"] == "hard")
+
     # Output results
     if args.json:
         print(json.dumps({
             "issue_count": count,
-            "issues": issues
+            "size_violations_hard": size_hard_count,
+            "issues": issues,
+            "file_sizes": size_issues,
         }, indent=2))
-    elif not args.quiet or count > 0:
-        print_report(issues, verbose=args.verbose)
+    else:
+        if not args.quiet or count > 0:
+            print_report(issues, verbose=args.verbose)
+        if size_issues and (not args.quiet or size_hard_count > 0):
+            print_file_size_report(size_issues)
+        elif not args.quiet and not size_issues and not args.json:
+            print_file_size_report(size_issues)
 
-    # Exit code
-    if args.pre_commit and count > 0:
+    # Exit code: pre-commit fails on EITHER failure-registry issues OR any
+    # file over its hard size limit.
+    if args.pre_commit and (count > 0 or size_hard_count > 0):
         sys.exit(1)
     sys.exit(0)
 

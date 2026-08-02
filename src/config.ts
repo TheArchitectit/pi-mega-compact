@@ -128,3 +128,7 @@ export const RAG_RECALL_METRICS = (): boolean =>
 /** B4: Memory graph traversal (dashboard-oriented). */
 export const RAG_MEMORY_GRAPH = (): boolean =>
   ragFlag("MEGACOMPACT_MEMORY_GRAPH");
+
+/** B5: HyDE — generate a hypothetical answer doc via LLM (HttpEmbedder only). Default OFF. */
+export const RAG_HYDE_ENABLED = (): boolean =>
+  ragFlag("MEGACOMPACT_HYDE_ENABLED");

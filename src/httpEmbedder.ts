@@ -203,6 +203,7 @@ try {
 `;
 
 export class HttpEmbedder implements Embedder {
+  readonly kind = "http";
   private readonly url: string;
   private readonly apiKey?: string;
   private readonly headers: Record<string, string>;
@@ -217,6 +218,12 @@ export class HttpEmbedder implements Embedder {
 
   get dim(): number {
     return this.resolvedDim;
+  }
+
+  /** Derive the Ollama /api/chat endpoint from the embedding endpoint's origin
+   *  (same host:port as the BYO embedding server). Used by HyDE (src/hyde.ts). */
+  get chatUrl(): string {
+    return new URL("/api/chat", this.url).href;
   }
 
   embed(text: string): Vector {
