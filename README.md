@@ -1,6 +1,6 @@
 # pi-mega-compact
 
-A local context compressor for the [pi coding agent](https://github.com/earendil-works/pi). Keeps long sessions running without overflowing the context window. All on your machine — no cloud, no API calls, no telemetry.
+A local-first context compressor for the [pi coding agent](https://github.com/earendil-works/pi). Keeps long sessions running without overflowing the context window. Local by default — no cloud, no API calls, no telemetry. Bring your own localhost embedder (Ollama, ONNX, TEI) for better semantic matches, or opt in to a remote endpoint if you need to.
 
 ## Features
 
@@ -13,10 +13,10 @@ A local context compressor for the [pi coding agent](https://github.com/earendil
 - **Durable memory** — on a cadence the store auto-reviews and safe-keeps decisions, facts, and preferences as first-class RAG memories, so long-running projects remember what mattered.
 - **Prompt-cache optimization** — message separation + cache striping (default OFF, opt-in). Targets 82-90% cache hit rate by structuring context around provider cache boundaries. Enables with `MEGACOMPACT_MESSAGE_SEPARATION` and `MEGACOMPACT_CACHE_STRIPING`.
 - **Context health + KV cache poison validation** (v0.12) — a real-time composite 0-1 health score per turn from five sub-scores (drift, output quality, error rate, cache health, cache poison). Catches garbled/hallucinated output and provider-side KV-cache corruption *before* they waste tokens — the failure mode where a large-context model (e.g. DeepSeek V4 Flash, 1M window) degrades at <1% usage. Tri-layer cache poison validation: prefix hash (L1 FNV-1a), output-quality-by-cache-hit (L2 semantic), error-rate correlation (L3 behavioral). The dashboard **Health tab** shows a gauge, sparkline, sub-score bars, alerts, and per-model breakdown. Auto-mitigation (force compaction on degraded context, prefix break on poisoned cache) is default OFF — toggle it in the Maintenance tab.
-- **RAG suite** — query reformulation (TF-IDF + RRF), tiered routing (L0 cache -> L1 FTS5 -> L2 PGlite), and recall-quality metrics (CRAG). All default OFF, opt-in via flags `MEGACOMPACT_QUERY_REFORMULATION`, `MEGACOMPACT_TIERED_ROUTER`, `MEGACOMPACT_RECALL_METRICS`.
+- **RAG suite** — query reformulation (TF-IDF + RRF), tiered routing (L0 cache -> L1 FTS5 -> L2 PGlite), recall-quality metrics (CRAG), memory graph, and HyDE (hypothetical document embeddings). All default ON with graceful fallback — opt out via `MEGACOMPACT_<NAME>_DISABLED=true`. HyDE auto-activates only when an LLM embedder (Ollama/HTTP) is configured — it's a no-op with the default TrigramEmbedder. Toggle any flag from the dashboard Setup tab.
 - **Stacked memory graph** — the dashboard shows memory composition over time from 3 content sources (turns, durable memories, wiki) with a 9-gate validation system and a graph-health indicator. Per-model provider cache breakdown in the Cache tab.
 - **Debug bundle** — Maintenance tab in the dashboard has a **Gather Debug Logs** button that collects events, config, and store state into a shareable archive for bug reports.
-- **Fully local** — node:sqlite + trigram embeddings by default. Bring your own localhost embedder (ONNX, Ollama, TEI) for better semantic matches. Zero calls off your machine except the optional, localhost-only dashboard.
+- **Local-first by default** — node:sqlite + trigram embeddings by default, zero calls off your machine. Bring your own localhost embedder (Ollama, ONNX, TEI) for better semantic matches — the embedder endpoint is loopback-only by default (`MEGACOMPACT_ALLOW_REMOTE_EMBEDDER=1` opts in to a remote/third-party endpoint). The optional dashboard is localhost-only. No cloud, no API calls, no telemetry.
 - **Team-run aware** — fine-grained durable trim fires at agent settle during sub-agent runs, so long multi-agent work doesn't just collapse at the end.
 - **Multi-pi dashboard** — one dashboard tab per active pi process with the context stack, per-repo stats, and a live SSE feed across all of them. The React SPA has 15 lazy-loaded tabs — **Overview**, **Cache**, **Sessions**, **Turns** (per-turn memory + recall + rewind), and **Health** (context-health gauge + cache-poison alerts) are primary; **Repos**, **Events**, **Config**, **Setup** (embedding wizard), **Metrics** (perf latency/TPS/CPU), **Game**, **Achievements**, **Topics** (wiki), **Memory Map** (D3 graph), and **Maintenance** (debug bundle) are advanced.
 - **Auto-categorizing wiki.** Every 3 compactions (seeds from turns before that), the store clusters your real memory embeddings (k-means) and labels each cluster with its most discriminative terms (TF-IDF) — no LLM, no Ollama, fully local. The dashboard **Wiki tab** browses topics, searches by label or term, and drills down into the member memories of each cluster.
@@ -67,13 +67,16 @@ Set env vars before starting pi. Defaults are in `src/config/dedup.ts`.
 | `MEGACOMPACT_AUTO` | `true` | Enable auto-compaction |
 | `MEGACOMPACT_DEDUP_SIM` | `0.90` | Cosine threshold for near-dup collapse |
 | `MEGACOMPACT_CROSSREPO_ENABLED` | `true` | Cross-repo recall on resume |
-| `MEGACOMPACT_EMBEDDING_URL` | _(unset)_ | BYO localhost embedder endpoint |
+| `MEGACOMPACT_EMBEDDING_URL` | _(unset)_ | BYO localhost embedder endpoint (loopback-only by default) |
+| `MEGACOMPACT_ALLOW_REMOTE_EMBEDDER` | `false` | Opt-in: allow non-loopback embedder endpoint (e.g. hosted API) |
 | `MEGACOMPACT_TUI_WIDGET` | `true` | Render the above-editor panel |
 | `MEGACOMPACT_MESSAGE_SEPARATION` | `false` | Opt-in: separate messages at provider cache boundaries |
 | `MEGACOMPACT_CACHE_STRIPING` | `false` | Opt-in: stripe cache stripes across conversation |
-| `MEGACOMPACT_QUERY_REFORMULATION` | `false` | Opt-in: TF-IDF + RRF query reformulation |
-| `MEGACOMPACT_TIERED_ROUTER` | `false` | Opt-in: L0->L1->L2 recall routing |
-| `MEGACOMPACT_RECALL_METRICS` | `false` | Opt-in: CRAG recall quality metrics |
+| `MEGACOMPACT_QUERY_REFORMULATION_DISABLED` | `false` | Default ON — set `true` to disable TF-IDF + RRF query reformulation |
+| `MEGACOMPACT_TIERED_ROUTER_DISABLED` | `false` | Default ON — set `true` to disable L0->L1->L2 recall routing |
+| `MEGACOMPACT_RECALL_METRICS_DISABLED` | `false` | Default ON — set `true` to disable CRAG recall quality metrics |
+| `MEGACOMPACT_MEMORY_GRAPH_DISABLED` | `false` | Default ON — set `true` to disable memory graph |
+| `MEGACOMPACT_HYDE_DISABLED` | `false` | Default ON — set `true` to disable HyDE (auto-activates only with LLM embedder) |
 | `MEGACOMPACT_MEMORY_GRAPH_SEED_TURNS` | `true` | Seed memory graph from turns (default ON) |
 | `MEGACOMPACT_WIKI_SEED_FROM_TURNS` | `true` | Seed wiki from turns (default ON) |
 | `MEGACOMPACT_RAPTOR_INCREMENTAL` | `true` | Incremental RAPTOR updates (default ON) |
@@ -104,7 +107,7 @@ Detailed architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
 ```bash
 npm run build     # TypeScript compile
-npm test          # Build + 1088 tests
+npm test          # Build + 1145 tests
 npm run lint      # Type check + guardrails scan
 ```
 
