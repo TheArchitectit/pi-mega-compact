@@ -29,7 +29,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { closeVectorIndex } from "../src/store/vectorIndex.js";
 import { closeMemoryIndex } from "../src/store/memoryIndex.js";
-import { loadConfig } from "./mega-config.js";
+import { loadConfig, repoStateDir } from "./mega-config.js";
 import { loadMegaEnv } from "./mega-runtime/env-loader.js";
 import { MegaRuntime } from "./mega-runtime.js";
 import { registerEventHandlers } from "./mega-events.js";
@@ -45,7 +45,17 @@ export default function (pi: ExtensionAPI) {
 	// Load .mega-compact.env (written by /mega-setup + dashboard Setup tab) BEFORE
 	// config resolution so the wizard's choices take effect. Shell env wins over
 	// the file (see env-loader.ts). Non-fatal: missing/malformed file is a no-op.
-	loadMegaEnv(loadConfig().stateDir);
+	//
+	// The dashboard Setup tab + /mega-setup write the file to the PER-REPO state
+	// dir (<repo>/.pi/mega-compact, resolved via repoStateDir), NOT the global
+	// default (~/.pi/agent/extensions/pi-mega-compact). Loading from the global
+	// dir was the root cause of the embedder-never-activates bug: the file sat in
+	// the per-repo dir, the loader read the empty global dir, and the configured
+	// embedder silently never loaded after restart. Load per-repo first (where
+	// the wizard writes), then the global dir as a legacy fallback.
+	const globalStateDir = loadConfig().stateDir;
+	loadMegaEnv(repoStateDir(process.cwd(), globalStateDir));
+	loadMegaEnv(globalStateDir);
 	const config = loadConfig();
 	// S38.9: preflight env validation — check for obviously invalid values at startup.
 	// Non-fatal: log warnings and fall back to defaults.

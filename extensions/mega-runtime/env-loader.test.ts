@@ -10,7 +10,8 @@ import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { execSync } from "node:child_process"; // guardrails-allow PREVENT-PI-004: `git init` in an isolated temp dir to test per-repo state-dir resolution — not a network call
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -117,6 +118,34 @@ describe("loadMegaEnv", () => {
 		withEnv({ MEGACOMPACT_EMBEDDING_URL: undefined }, () => {
 			loadMegaEnv(d);
 			assert.equal(process.env.MEGACOMPACT_EMBEDDING_URL, undefined);
+		});
+	});
+
+	it("loads from the per-repo state dir (repoStateDir resolution)", () => {
+		// Regression for the v0.13.0 embedder-activation bug: the dashboard Setup
+		// tab writes .mega-compact.env to the PER-REPO state dir
+		// (<repo>/.pi/mega-compact, resolved by repoStateDir), but mega-compact.ts
+		// was loading from the global default dir (~/.pi/agent/extensions/...) —
+		// so the file sat unread and the configured embedder never activated
+		// after restart. This proves repoStateDir(cwd, fallback) + loadMegaEnv
+		// together reach the file the wizard actually writes.
+		const repo = freshDir();
+		// Make `repo` a real git root so repoStateDir resolves to <repo>/.pi/mega-compact.
+		execSync("git init -q", { cwd: repo, stdio: ["ignore", "ignore", "ignore"] });
+		const { repoStateDir } = require("../mega-config.js") as {
+			repoStateDir: (cwd: string, fallback: string) => string;
+		};
+		const perRepo = repoStateDir(repo, join(tmpdir(), "fallback"));
+		assert.equal(perRepo, join(repo, ".pi", "mega-compact"));
+		// Write the env file where the dashboard writes it, then load.
+		mkdirSync(perRepo, { recursive: true });
+		writeFileSync(
+			join(perRepo, ".mega-compact.env"),
+			`export MEGACOMPACT_EMBEDDING_URL="${OLLAMA_URL}"\n`,
+		);
+		withEnv({ MEGACOMPACT_EMBEDDING_URL: undefined }, () => {
+			loadMegaEnv(perRepo);
+			assert.equal(process.env.MEGACOMPACT_EMBEDDING_URL, OLLAMA_URL);
 		});
 	});
 });
