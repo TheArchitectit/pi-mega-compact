@@ -265,16 +265,27 @@ export function handleSetupConfigure(
 		}
 		const body = parsed.value as unknown as SetupConfigureRequest;
 		const embedder = body.embedder;
-		if (embedder !== "ollama" && embedder !== "llama" && embedder !== "trigram") {
+		if (embedder !== "ollama" && embedder !== "llama" && embedder !== "trigram" && embedder !== "custom") {
 			res.writeHead(400, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ error: "invalid_embedder" }));
 			return;
 		}
 		const url = body.url;
 		let resolvedUrl: string | null;
+		let allowRemote = false;
 		if (embedder === "ollama") resolvedUrl = typeof url === "string" && url ? url : OLLAMA_DEFAULT_URL;
 		else if (embedder === "llama") resolvedUrl = typeof url === "string" && url ? url : LLAMA_DEFAULT_URL;
-		else resolvedUrl = null;
+		else if (embedder === "custom") {
+			// Third-party / remote endpoint. Requires a URL; opts in to the
+			// non-loopback allowlist so embeddingConfigFromEnv() accepts it.
+			if (typeof url !== "string" || !url) {
+				res.writeHead(400, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: "custom_embedder_requires_url" }));
+				return;
+			}
+			resolvedUrl = url;
+			allowRemote = true;
+		} else resolvedUrl = null;
 
 		// Write .mega-compact.env to the state dir (loaded by env-loader at next startup).
 		const stateDir = ctx.stateDir;
@@ -285,10 +296,16 @@ export function handleSetupConfigure(
 		];
 		if (resolvedUrl) {
 			lines.push(`export MEGACOMPACT_EMBEDDING_URL="${resolvedUrl}"`);
+			if (allowRemote) {
+				lines.push(`export MEGACOMPACT_ALLOW_REMOTE_EMBEDDER="1"`);
+			} else {
+				lines.push(`# MEGACOMPACT_ALLOW_REMOTE_EMBEDDER not set (loopback-only)`);
+			}
 		} else {
 			lines.push("# trigram: built-in embedder, no URL needed");
 			lines.push("# unset MEGACOMPACT_EMBEDDING_URL (commented to override any shell-set value)");
 			lines.push("# export MEGACOMPACT_EMBEDDING_URL=");
+			lines.push("# export MEGACOMPACT_ALLOW_REMOTE_EMBEDDER=");
 		}
 		lines.push("");
 		try {

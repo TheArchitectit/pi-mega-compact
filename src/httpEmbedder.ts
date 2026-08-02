@@ -126,18 +126,32 @@ export function embeddingConfigFromEnv(): HttpEmbedderOptions | null {
 
   const hostname = parsed.hostname.replace(/^\[|\]$/g, ""); // strip IPv6 brackets
 
-  if (isIP(hostname)) {
-    // Literal IP — must be loopback.
-    if (!isLoopbackIP(hostname)) {
-      console.warn(`MEGACOMPACT_EMBEDDING_URL must be a loopback IP (got ${hostname}) — falling back to default embedder (PREVENT-PI-004)`);
-      return null;
+  // Opt-in escape hatch for a remote/third-party embedding endpoint (e.g. a
+  // hosted embeddings API). Default OFF — loopback-only (PREVENT-PI-004). When
+  // MEGACOMPACT_ALLOW_REMOTE_EMBEDDER=1 the loopback check is skipped, so an
+  // advanced user can point at a non-loopback URL. The fetch still goes through
+  // HttpEmbedder (guardrails-allowed below) and credentials-in-URL are still
+  // rejected. Flag-OFF = byte-identical to the pre-change loopback enforcement.
+  const allowRemote =
+    process.env.MEGACOMPACT_ALLOW_REMOTE_EMBEDDER === "1" ||
+    process.env.MEGACOMPACT_ALLOW_REMOTE_EMBEDDER === "true";
+
+  if (!allowRemote) {
+    if (isIP(hostname)) {
+      // Literal IP — must be loopback.
+      if (!isLoopbackIP(hostname)) {
+        console.warn(`MEGACOMPACT_EMBEDDING_URL must be a loopback IP (got ${hostname}) — falling back to default embedder (PREVENT-PI-004)`);
+        return null;
+      }
+    } else {
+      // Hostname — resolve via dns.lookup and require ALL addresses loopback.
+      if (!hostnameResolvesToLoopback(hostname)) {
+        console.warn(`MEGACOMPACT_EMBEDDING_URL hostname "${hostname}" does not resolve to loopback — falling back to default embedder (PREVENT-PI-004)`);
+        return null;
+      }
     }
   } else {
-    // Hostname — resolve via dns.lookup and require ALL addresses loopback.
-    if (!hostnameResolvesToLoopback(hostname)) {
-      console.warn(`MEGACOMPACT_EMBEDDING_URL hostname "${hostname}" does not resolve to loopback — falling back to default embedder (PREVENT-PI-004)`);
-      return null;
-    }
+    console.warn(`MEGACOMPACT_ALLOW_REMOTE_EMBEDDER=1 — allowing non-loopback embedder endpoint ${hostname} (user-opted-in)`);
   }
 
   const headers: Record<string, string> = {};
@@ -180,7 +194,7 @@ function parseEmbedding(body: unknown): number[] {
 const WORKER = String.raw`
 const u = process.env.MC_URL, b = process.env.MC_BODY, h = JSON.parse(process.env.MC_HEADERS || "{}");
 try {
-  const r = await fetch(u, { method: "POST", headers: h, body: b }); // guardrails-allow PREVENT-PI-004: localhost-only user-spawned embedding server (BYO backend, never remote)
+  const r = await fetch(u, { method: "POST", headers: h, body: b }); // guardrails-allow PREVENT-PI-004: BYO embedding endpoint — loopback-only by default; remote allowed only when MEGACOMPACT_ALLOW_REMOTE_EMBEDDER=1 (user opt-in)
   const out = JSON.stringify({ status: r.status, ok: r.ok, json: await r.json() });
   process.stdout.write(out);
 } catch (e) {

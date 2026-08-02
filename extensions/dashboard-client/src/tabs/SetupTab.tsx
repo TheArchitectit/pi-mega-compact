@@ -12,6 +12,8 @@ import type React from "react";
 import { useState, useEffect, useCallback } from "react";
 import type { SetupStatusResponse, SetupDetectResponse, SetupConfigureResponse } from "@contracts";
 import { fetchSetupStatus, fetchSetupDetect, configureEmbedder } from "../api/client";
+import GameTab from "./GameTab";
+import AchievementsTab from "./AchievementsTab";
 
 // ---------------------------------------------------------------------------
 // Style constants
@@ -84,7 +86,7 @@ const styles: Record<string, React.CSSProperties> = {
 // SetupTab component
 // ---------------------------------------------------------------------------
 
-export default function SetupTab(): React.ReactElement {
+export function EmbedderSetup(): React.ReactElement {
 	const [status, setStatus] = useState<SetupStatusResponse | null>(null);
 	const [detect, setDetect] = useState<SetupDetectResponse | null>(null);
 	const [statusError, setStatusError] = useState<string | null>(null);
@@ -93,6 +95,7 @@ export default function SetupTab(): React.ReactElement {
 	const [configuring, setConfiguring] = useState<string | null>(null);
 	const [configResult, setConfigResult] = useState<SetupConfigureResponse | null>(null);
 	const [configError, setConfigError] = useState<string | null>(null);
+	const [customUrl, setCustomUrl] = useState("");
 
 	const loadStatus = useCallback(() => {
 		fetchSetupStatus()
@@ -102,11 +105,11 @@ export default function SetupTab(): React.ReactElement {
 			);
 	}, []);
 
-	const applyEmbedder = useCallback((embedder: "ollama" | "llama" | "trigram") => {
+	const applyEmbedder = useCallback((embedder: "ollama" | "llama" | "trigram" | "custom", url?: string) => {
 		setConfiguring(embedder);
 		setConfigError(null);
 		setConfigResult(null);
-		configureEmbedder({ embedder })
+		configureEmbedder({ embedder, url })
 			.then((r) => {
 				setConfigResult(r);
 				setConfiguring(null);
@@ -403,6 +406,49 @@ export default function SetupTab(): React.ReactElement {
 				)}
 			</div>
 
+			{/* Custom (remote) embedder — third-party / hosted endpoint */}
+			<div style={styles.section}>
+				<h3 style={styles.sectionTitle}>Custom Endpoint (remote / third-party)</h3>
+				<p style={{ fontSize: "0.85rem", color: "#a0a0c0", marginTop: 0 }}>
+					Point at any OpenAI-compatible embeddings API or hosted endpoint.
+					This opts in to a non-loopback connection (sets{" "}
+					<code>MEGACOMPACT_ALLOW_REMOTE_EMBEDDER=1</code>) — your prompts'
+					embedding requests will be sent to the URL you enter. Default is
+					loopback-only.
+				</p>
+				<div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+					<input
+						type="url"
+						placeholder="https://api.example.com/v1/embeddings"
+						value={customUrl}
+						onChange={(e) => setCustomUrl(e.target.value)}
+						style={{
+							flex: "1 1 300px",
+							background: "#12122a",
+							color: "#e0e0e0",
+							border: "1px solid #2a2a4e",
+							borderRadius: "6px",
+							padding: "0.4rem 0.6rem",
+							fontSize: "0.85rem",
+							fontFamily: "monospace",
+						}}
+					/>
+					<button
+						style={{ ...styles.button, opacity: customUrl ? 1 : 0.4 }}
+						onClick={() => applyEmbedder("custom", customUrl)}
+						disabled={!customUrl || configuring !== null}
+					>
+						{configuring === "custom" ? "Writing..." : "Use Custom URL"}
+					</button>
+				</div>
+				<div style={styles.warning}>
+					<strong>Heads up:</strong> a remote endpoint receives the text you embed
+					(it does NOT receive your full conversation — only the strings passed to
+					<code> embed()</code> for recall/dedup). Verify the endpoint's privacy
+					policy before use.
+				</div>
+			</div>
+
 			{/* Help Section */}
 			<div style={styles.section}>
 				<h3 style={styles.sectionTitle}>How to Upgrade</h3>
@@ -432,6 +478,75 @@ export default function SetupTab(): React.ReactElement {
 					</li>
 				</ul>
 			</div>
+		</div>
+	);
+}
+
+
+// ---------------------------------------------------------------------------
+// SetupTab shell — sub-tabs for Embedder / Game Mode / Achievements.
+// Game + Achievements moved here from the top-level tab bar (audit #9: 15 tabs
+// was too many; the novelty surfaces crowd the bar for the 95% who don't use
+// them). The sub-tab nav reuses the inline-style approach of the embedder
+// section for visual consistency.
+// ---------------------------------------------------------------------------
+
+type SetupSubTab = "embedder" | "game" | "achievements";
+
+const subTabNavStyle: React.CSSProperties = {
+	display: "flex",
+	gap: "0.5rem",
+	marginBottom: "1rem",
+	borderBottom: "1px solid #2a2a4e",
+	paddingBottom: "0.5rem",
+};
+
+function subTabBtnStyle(active: boolean): React.CSSProperties {
+	return {
+		background: active ? "#3a5a9f" : "transparent",
+		color: active ? "#fff" : "#a0a0c0",
+		border: "1px solid",
+		borderColor: active ? "#3a5a9f" : "#2a2a4e",
+		borderRadius: "6px",
+		padding: "0.4rem 0.8rem",
+		cursor: "pointer",
+		fontSize: "0.9rem",
+		fontWeight: active ? 600 : 400,
+	};
+}
+
+export default function SetupTab(): React.ReactElement {
+	const [subTab, setSubTab] = useState<SetupSubTab>("embedder");
+
+	return (
+		<div style={styles.container}>
+			<nav style={subTabNavStyle} aria-label="Setup sections">
+				<button
+					type="button"
+					style={subTabBtnStyle(subTab === "embedder")}
+					onClick={() => setSubTab("embedder")}
+				>
+					Embedder
+				</button>
+				<button
+					type="button"
+					style={subTabBtnStyle(subTab === "game")}
+					onClick={() => setSubTab("game")}
+				>
+					Game Mode
+				</button>
+				<button
+					type="button"
+					style={subTabBtnStyle(subTab === "achievements")}
+					onClick={() => setSubTab("achievements")}
+				>
+					Achievements
+				</button>
+			</nav>
+
+			{subTab === "embedder" && <EmbedderSetup />}
+			{subTab === "game" && <GameTab />}
+			{subTab === "achievements" && <AchievementsTab />}
 		</div>
 	);
 }

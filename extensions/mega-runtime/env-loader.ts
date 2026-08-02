@@ -38,7 +38,12 @@ export function loadMegaEnv(stateDir: string): void {
 		if (!trimmed || trimmed.startsWith("#")) continue;
 		const eq = trimmed.indexOf("=");
 		if (eq < 0) continue;
-		const key = trimmed.slice(0, eq).trim();
+		let key = trimmed.slice(0, eq).trim();
+		// The setup wizard + Setup tab write shell-sourceable syntax
+		// (`export KEY="VALUE"`). Strip the leading `export ` so the key is
+		// `KEY`, not `export KEY` — otherwise process.env gets a useless entry
+		// with a space in the name and the real var is never set.
+		key = key.replace(/^export\s+/, "");
 		if (!key) continue;
 		let val = trimmed.slice(eq + 1).trim();
 		if (

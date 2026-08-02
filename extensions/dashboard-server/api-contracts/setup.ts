@@ -65,9 +65,11 @@ export interface SetupDetectResponse {
 
 /** Request body for POST /api/setup-configure. */
 export interface SetupConfigureRequest {
-  /** Which embedder to configure. "trigram" clears the URL (uses built-in). */
-  readonly embedder: "ollama" | "llama" | "trigram";
-  /** Optional override URL (for non-default Ollama ports or llama.cpp). */
+  /** Which embedder to configure. "trigram" clears the URL (uses built-in).
+   *  "custom" writes a user-supplied URL and opts in to non-loopback endpoints
+   *  (sets MEGACOMPACT_ALLOW_REMOTE_EMBEDDER=1) for third-party / hosted APIs. */
+  readonly embedder: "ollama" | "llama" | "trigram" | "custom";
+  /** Override URL (required for "custom"; optional default for ollama/llama). */
   readonly url?: string;
 }
 

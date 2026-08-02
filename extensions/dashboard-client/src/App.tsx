@@ -21,8 +21,6 @@ const ConfigTab = React.lazy(() => import("./tabs/ConfigTab"));
 const SetupTab = React.lazy(() => import("./tabs/SetupTab"));
 const MetricsTab = React.lazy(() => import("./tabs/MetricsTab"));
 const CacheTab = React.lazy(() => import("./tabs/CacheTab"));
-const GameTab = React.lazy(() => import("./tabs/GameTab"));
-const AchievementsTab = React.lazy(() => import("./tabs/AchievementsTab"));
 const SessionsTab = React.lazy(() => import("./tabs/SessionsTab"));
 const TopicsTab = React.lazy(() => import("./tabs/TopicsTab"));
 const TurnsTab = React.lazy(() => import("./tabs/TurnsTab"));
@@ -38,8 +36,6 @@ export type TabId =
 	| "setup"
 	| "metrics"
 	| "cache"
-	| "game"
-	| "achievements"
 	| "sessions"
 	| "topics"
 	| "turns"
@@ -63,8 +59,6 @@ const ADVANCED_TABS: TabDef[] = [
 	{ id: "config", label: "Config" },
 	{ id: "setup", label: "Setup" },
 	{ id: "metrics", label: "Metrics" },
-	{ id: "game", label: "Game" },
-	{ id: "achievements", label: "Achievements" },
 	{ id: "topics", label: "Topics" },
 	{ id: "maintenance", label: "Maintenance" },
 	{ id: "memory-map", label: "Memory Map" },
@@ -121,8 +115,6 @@ export default function App(): React.ReactElement {
 						{activeTab === "setup" && <SetupTab />}
 						{activeTab === "metrics" && <MetricsTab />}
 						{activeTab === "cache" && <CacheTab />}
-						{activeTab === "game" && <GameTab />}
-						{activeTab === "achievements" && <AchievementsTab />}
 						{activeTab === "sessions" && <SessionsTab />}
 						{activeTab === "topics" && <TopicsTab />}
 						{activeTab === "turns" && <TurnsTab />}
