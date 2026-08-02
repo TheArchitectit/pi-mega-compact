@@ -12,12 +12,13 @@ A local context compressor for the [pi coding agent](https://github.com/earendil
 - **Cross-repo recall** — doors you close in one repo don't reopen when you move to another. A decision stored while hacking repo A is a recall hit the next time you're in repo B.
 - **Durable memory** — on a cadence the store auto-reviews and safe-keeps decisions, facts, and preferences as first-class RAG memories, so long-running projects remember what mattered.
 - **Prompt-cache optimization** — message separation + cache striping (default OFF, opt-in). Targets 82-90% cache hit rate by structuring context around provider cache boundaries. Enables with `MEGACOMPACT_MESSAGE_SEPARATION` and `MEGACOMPACT_CACHE_STRIPING`.
+- **Context health + KV cache poison validation** (v0.12) — a real-time composite 0-1 health score per turn from five sub-scores (drift, output quality, error rate, cache health, cache poison). Catches garbled/hallucinated output and provider-side KV-cache corruption *before* they waste tokens — the failure mode where a large-context model (e.g. DeepSeek V4 Flash, 1M window) degrades at <1% usage. Tri-layer cache poison validation: prefix hash (L1 FNV-1a), output-quality-by-cache-hit (L2 semantic), error-rate correlation (L3 behavioral). The dashboard **Health tab** shows a gauge, sparkline, sub-score bars, alerts, and per-model breakdown. Auto-mitigation (force compaction on degraded context, prefix break on poisoned cache) is default OFF — toggle it in the Maintenance tab.
 - **RAG suite** — query reformulation (TF-IDF + RRF), tiered routing (L0 cache -> L1 FTS5 -> L2 PGlite), and recall-quality metrics (CRAG). All default OFF, opt-in via flags `MEGACOMPACT_QUERY_REFORMULATION`, `MEGACOMPACT_TIERED_ROUTER`, `MEGACOMPACT_RECALL_METRICS`.
 - **Stacked memory graph** — the dashboard shows memory composition over time from 3 content sources (turns, durable memories, wiki) with a 9-gate validation system and a graph-health indicator. Per-model provider cache breakdown in the Cache tab.
 - **Debug bundle** — Maintenance tab in the dashboard has a **Gather Debug Logs** button that collects events, config, and store state into a shareable archive for bug reports.
 - **Fully local** — node:sqlite + trigram embeddings by default. Bring your own localhost embedder (ONNX, Ollama, TEI) for better semantic matches. Zero calls off your machine except the optional, localhost-only dashboard.
 - **Team-run aware** — fine-grained durable trim fires at agent settle during sub-agent runs, so long multi-agent work doesn't just collapse at the end.
-- **Multi-pi dashboard** — one dashboard tab per active pi process with the context stack, per-repo stats, and a live SSE feed across all of them. The React SPA has lazy-loaded tabs: Overview, Repos, Events, Config, Metrics, Cache, Game, Achievements, Sessions, Topics (wiki), Turns (per-turn memory + recall + rewind), and Maintenance (debug bundle).
+- **Multi-pi dashboard** — one dashboard tab per active pi process with the context stack, per-repo stats, and a live SSE feed across all of them. The React SPA has 15 lazy-loaded tabs — **Overview**, **Cache**, **Sessions**, **Turns** (per-turn memory + recall + rewind), and **Health** (context-health gauge + cache-poison alerts) are primary; **Repos**, **Events**, **Config**, **Setup** (embedding wizard), **Metrics** (perf latency/TPS/CPU), **Game**, **Achievements**, **Topics** (wiki), **Memory Map** (D3 graph), and **Maintenance** (debug bundle) are advanced.
 - **Auto-categorizing wiki.** Every 3 compactions (seeds from turns before that), the store clusters your real memory embeddings (k-means) and labels each cluster with its most discriminative terms (TF-IDF) — no LLM, no Ollama, fully local. The dashboard **Wiki tab** browses topics, searches by label or term, and drills down into the member memories of each cluster.
 
 ## Install
@@ -76,17 +77,23 @@ Set env vars before starting pi. Defaults are in `src/config/dedup.ts`.
 | `MEGACOMPACT_MEMORY_GRAPH_SEED_TURNS` | `true` | Seed memory graph from turns (default ON) |
 | `MEGACOMPACT_WIKI_SEED_FROM_TURNS` | `true` | Seed wiki from turns (default ON) |
 | `MEGACOMPACT_RAPTOR_INCREMENTAL` | `true` | Incremental RAPTOR updates (default ON) |
+| `MEGACOMPACT_CONTEXT_HEALTH` | `true` | Master switch: per-turn context-health composite score |
+| `MEGACOMPACT_CONTEXT_HEALTH_DRIFT` | `true` | Sub-score: topic drift + error escalation + prefix instability |
+| `MEGACOMPACT_CONTEXT_HEALTH_OUTPUT_QUALITY` | `true` | Sub-score: repetition, coherence, token-salad detection |
+| `MEGACOMPACT_CONTEXT_HEALTH_CACHE_POISON` | `true` | Sub-score: tri-layer KV cache poison validation |
+| `MEGACOMPACT_CONTEXT_HEALTH_MITIGATE` | `false` | Opt-in: auto-compaction on degraded context, prefix break on poisoned cache |
 
 Full config reference: [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)
 
 ## Architecture
 
 ```
-extensions/    Pi entry points (mega-compact, mega-trim, dashboard)
-src/engine.ts  Trident pipeline (supersede -> collapse -> cluster)
+extensions/          Pi entry points (mega-compact, mega-trim, dashboard)
+src/engine.ts        Trident pipeline (supersede -> collapse -> cluster)
 src/vectorStore.ts   Local vector DB (add/search/dedupe)
 src/compact.ts       Summarize / merge / auto-compact
 src/memory.ts        Durable memories + auto-review
+src/contextHealth.ts Context health composite + KV cache poison validation
 src/store/sqlite.ts   node:sqlite store (Node >=22.13)
 src/store/vectorIndex.ts  PGlite/HNSW cross-repo index
 ```
@@ -97,7 +104,7 @@ Detailed architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
 ```bash
 npm run build     # TypeScript compile
-npm test          # Build + 1112 tests
+npm test          # Build + 1088 tests
 npm run lint      # Type check + guardrails scan
 ```
 
