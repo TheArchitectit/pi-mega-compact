@@ -14,7 +14,8 @@ Production (`src/`):
 - `src/config/vector-cortex.ts` — `VC0B_ENABLED()` (default ON; `MEGACOMPACT_VC0B=0` → off). Re-exported by root `src/config.ts`.
 - `src/vector-cortex/replay/types.ts` — `ReplayCutV2`, `ReplayReportV2`, `ReplayOccurrenceV2`, `ReplayToolPair`, `ReplayRetreatCode`, plus registered ID ranges `CUT_IDS` (CUT-001..020) and `M3_IDS` (M3-001..010).
 - `src/vector-cortex/replay/cut.ts` — `computeEffectiveCutV2` (min-of-three + pair retreat + anchor floor + lower-source tie-break), `cutIsPairSafe`.
-- `src/vector-cortex/replay/replay.ts` — `runReplayV2` (ascending `(seq,eventId)` scan), `extractToolPairs`, `largestPairSafeSeq`, `compareOccurrences`. Emits `vector_cortex_replay_cut_retreat` and `vector_cortex_replay_highwater_frozen`.
+- `src/vector-cortex/replay/replay.ts` — `runReplayV2` (ascending `(seq,eventId)` scan), `extractToolPairs`, `largestPairSafeSeq`, `compareOccurrences`. Emits `vector_cortex_replay_cut_retreat` and `vector_cortex_replay_highwater_frozen` via the replay emit seam.
+- `src/vector-cortex/replay/emit.ts` — replay emit seam (VC0B): the single structured-event surface for the replay/effective-cut path, mirroring the VC0A eval observer (`src/vector-cortex/eval/observer.ts`) with the same non-fatal, structured-JSON `ts`+`event` contract (`src/log.ts` LogEntry). `createReplayReporter(emit?)` builds a typed, best-effort reporter bound to the two replay event names; absent emitter degrades to a no-op (byte-identical predecessor). This is deliberately MINIMAL — not a second metrics pipeline; a future VC0C breaker/dashboard consumes the lines.
 - `src/vector-cortex/migrations/effective-cut-v2.ts` — M3 copy/validate/switch (`m3Copy`/`m3Validate`/`m3Switch`/`migrateEffectiveCutV2`), failure codes `M3_HOST_MISSING`/`M3_MINIMA_VIOLATED`/`M3_PAIR_SPLIT`/`M3_ANCHOR_CROSSED`/`M3_COPY_MISMATCH`.
 
 Scripts:
@@ -55,7 +56,7 @@ Unique failure injection (`M3-002`): crash after copy+validate but before switch
 
 - A = v2 effective-cut calculator (`computeEffectiveCutV2`).
 - B = sequential boundary scan with no aggregate index (`largestPairSafeSeq`); matches A's effective cut on balanced streams (replay.test.ts "mode B matches mode A").
-- C = unchanged host transcript, derived high-water frozen (`runReplayV2` mode C returns zero bytes and emits `vector_cortex_replay_highwater_frozen`).
+- C = unchanged host transcript, derived high-water frozen (`runReplayV2` mode C returns zero bytes and emits `vector_cortex_replay_highwater_frozen` via the real C path — no stub).
 - `node scripts/vector-cortex-network-denial.mjs --modes=A,B,C` → all clean, zero network egress.
 
 ## Commands and verbatim summaries
@@ -94,15 +95,20 @@ Zero runtime network egress verified under full `net/tls/http/https/dns.lookup/f
 
 ## File sizes and baseline exceptions
 
-All new files within limits: replay/types.ts 145, cut.ts 162, replay.ts 247, migrations/effective-cut-v2.ts 149, cut.test.ts 90, replay.test.ts 192, vc0b-acceptance.test.ts 331 (< 600 test hard limit; single cohesive aggregator). Pre-existing over-hard-limit `extensions/mega-events/context-handler.ts` (514 @ HEAD) is out of scope.
+All new files within limits: replay/types.ts 145, cut.ts 162, replay/replay.ts 244, replay/emit.ts 76, migrations/effective-cut-v2.ts 149, cut.test.ts 90, replay.test.ts 198, vc0b-acceptance.test.ts 331 (< 600 test hard limit; single cohesive aggregator). Pre-existing over-hard-limit `extensions/mega-events/context-handler.ts` (514 @ HEAD) is out of scope.
 
 ## Rollback / downgrade rehearsal
 
 `MEGACOMPACT_VC0B=0` → legacy capped replay; acceptance suite passes with the flag off (0 failed) and the outbound/predecessor golden bytes match exactly (byte-identical). The M3 crash-injection rehearsal (`M3-002`) proves a stop after copy/validate but before switch retains the old cut pointer; `M3-003` proves resumption is idempotent. Evidence is retained on rollback.
 
+## Issues found during implementation
+
+- **VC0B-I01 [type: minor, state: fixed-in-this-sprint]**: initial replay emission used an ad-hoc inline `emit` callback rather than a named seam. Per the VC0A review'd sequencing finding (emit via the established observer/emit helpers OR a minimal `replay/emit.ts` — never a second pipeline), formalized as `src/vector-cortex/replay/emit.ts` (`createReplayReporter`) mirroring the VC0A eval observer's non-fatal `ts`+`event` contract; `runReplayV2` now routes through it. M3 was briefly considered as an emitter but reverted — M3 is a pointer migration, not a replay scan, so emitting replay events there would be duplicate/forced emission.
+- **VC0B-I02 [type: minor, state: fixed-in-this-sprint]**: `emit.ts` initial `Record<string,unknown>` cast needed a `via unknown` hop for TS2352; resolved with a localized double-cast (no `any`, no index-signature widening). No production `any` remains; the lone `as any` is confined to the acceptance test's fixture helper.
+
 ## Residual risks
 
-- **Deferred producer wiring:** the live pi loop is not yet connected — `extensions/mega-compact.ts` / `src/engine.ts` do NOT call `runReplayV2` / `migrateEffectiveCutV2` this sprint. The `MEGACOMPACT_VC0B` flag currently gates the v2 module availability + SETTINGS toggle only; the actual caller hook-up in the live compaction/replay loop is deferred to the VC1 integration sprint (mirrors the VC0A deferred-observer precedent). Flag-off remains byte-identical regardless.
+- **Deferred producer wiring:** the live pi loop is not yet connected — `extensions/mega-compact.ts` / `src/engine.ts` do NOT call `runReplayV2` / `migrateEffectiveCutV2` this sprint. The `MEGACOMPACT_VC0B` flag currently gates the v2 module availability + SETTINGS toggle only; the actual caller hook-up in the live compaction/replay loop is deferred to the VC1 integration sprint (mirrors the VC0A deferred-observer precedent). The replay emit seam and the eval observer are both unwired dead-ends until a live producer exists — that is the VC0C/VC1 wiring action, which this sprint leaves clean (single emit seam, no second pipeline). Flag-off remains byte-identical regardless.
 - `runReplayV2` mode C emits `vector_cortex_replay_highwater_frozen`; the frozen-high-water semantics are validated at the unit/acceptance seam, with full authority-outage integration owned by the triad/spool sprint (VC0C).
 - `log_failure.py --list` reports 2 pre-existing active runtime failures unrelated to VC0B.
 

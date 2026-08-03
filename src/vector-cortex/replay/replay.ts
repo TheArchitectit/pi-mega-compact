@@ -13,11 +13,12 @@
  * boundary scan with no precomputed index; mode C leaves the host transcript
  * unchanged and returns a zero-byte report with the derived high-water frozen.
  *
- * Pure wrt inputs, emits structured events via an injected callback (no console,
- * no network — PREVENT-PI-004).
+ * Pure wrt inputs, emits structured events via the replay emit seam
+ * (`src/vector-cortex/replay/emit.ts`) — no console, no network (PREVENT-PI-004).
  */
 
 import { computeEffectiveCutV2 } from "./cut.js";
+import { createReplayReporter, type ReplayReporter } from "./emit.js";
 import type {
   ReplayOccurrenceV2,
   ReplayReportV2,
@@ -33,8 +34,8 @@ export interface ReplayV2Options {
   readonly capturedHighWater: bigint;
   readonly anchorFloor: bigint;
   readonly mode?: "A" | "B" | "C";
-  /** Structured event emitter (ts+event); optional, best-effort. */
-  readonly emit?: (event: string, fields: Record<string, unknown>) => void;
+  /** Structured event reporter (ts+event); optional, best-effort. */
+  readonly reporter?: ReplayReporter;
 }
 
 /** The pair map is per-session; a tool result references one earlier call by id. */
@@ -101,11 +102,7 @@ export function runReplayV2(
 ): { report: ReplayReportV2; bytes: Uint8Array } {
   const { sessionId, occurrences, requestedSeq, committedSeq, capturedHighWater, anchorFloor } = options;
   const mode = options.mode ?? "A";
-  const emit =
-    options.emit ??
-    (() => {
-      /* no-op */
-    });
+  const reporter = options.reporter ?? createReplayReporter();
 
   // Mode C: unchanged host transcript — derived high-water frozen, zero bytes.
   if (mode === "C") {
@@ -116,7 +113,7 @@ export function runReplayV2(
       capturedHighWater,
       effectiveSeq: anchorFloor,
     };
-    emit("vector_cortex_replay_highwater_frozen", {
+    reporter.highWaterFrozen({
       session: sessionId,
       committedSeq: committedSeq.toString(),
       frozenHighWater: capturedHighWater.toString(),
@@ -144,7 +141,7 @@ export function runReplayV2(
   const { cut, retreats } = effectiveResult;
 
   for (const r of retreats) {
-    emit("vector_cortex_replay_cut_retreat", {
+    reporter.cutRetreat({
       session: sessionId,
       code: r.code,
       fromSeq: r.fromSeq.toString(),

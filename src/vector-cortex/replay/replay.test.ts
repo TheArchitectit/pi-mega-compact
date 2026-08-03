@@ -9,6 +9,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { runReplayV2, extractToolPairs, largestPairSafeSeq, compareOccurrences } from "./replay.js";
+import { createReplayReporter } from "./emit.js";
 import type { ReplayOccurrenceV2 } from "./types.js";
 
 /** Build a balanced tool call/result stream with surrounding message events. */
@@ -118,9 +119,10 @@ describe("runReplayV2", () => {
     assert.equal(b.report.cut.boundarySafeSeq, direct);
   });
 
-  test("mode C freezes derived high-water and returns zero bytes", () => {
+  test("mode C freezes derived high-water and returns zero bytes via the real C path", () => {
     const emitted: string[] = [];
     const occurrences = buildBalancedStream("s-vc0b-c", 10);
+    const reporter = createReplayReporter((ev) => emitted.push(ev));
     const { report, bytes } = runReplayV2({
       sessionId: "s-vc0b-c",
       occurrences,
@@ -129,11 +131,14 @@ describe("runReplayV2", () => {
       capturedHighWater: 42n,
       anchorFloor: 0n,
       mode: "C",
-      emit: (ev) => emitted.push(ev),
+      reporter,
     });
     assert.equal(bytes.length, 0);
     assert.equal(report.counts.replayed, 0);
+    // Exercises the real C branch (not a stub): the frozen event name round-trips
+    // through the emit seam and reports the frozen high-water verbatim.
     assert.ok(emitted.includes("vector_cortex_replay_highwater_frozen"));
+    assert.equal(report.cut.capturedHighWater, 42n);
   });
 
   test("emits cut_retreat events when a pair split occurs", () => {
@@ -142,6 +147,7 @@ describe("runReplayV2", () => {
     const occurrences = buildBalancedStream("s-vc0b-retreat", 20);
     // committed lands exactly on call seq 11 (call 11, result 12) => the min is
     // inside a pair and the effective cut must retreat to call boundary (10).
+    const reporter = createReplayReporter((ev) => emitted.push(ev));
     const { report } = runReplayV2({
       sessionId: "s-vc0b-retreat",
       occurrences,
@@ -150,7 +156,7 @@ describe("runReplayV2", () => {
       capturedHighWater: 14n,
       anchorFloor: 0n,
       mode: "A",
-      emit: (ev) => emitted.push(ev),
+      reporter,
     });
     assert.equal(report.cut.effectiveSeq, 10n);
     assert.ok(emitted.includes("vector_cortex_replay_cut_retreat"));
