@@ -2,6 +2,42 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+## Progress Tracker (updated 2026-08-02)
+
+| Sprint | Status | Commits | Notes |
+|--------|--------|---------|-------|
+| W1.1 Schema + tables | DONE | `0000864` | topic_overrides, topic_evolution, memory_topics.session_id. SCHEMA stayed at 3 (H1.3 already bumped). |
+| W1.2 Store session_id + applyOverridesAfterRebuild | DONE | `16677a5` | INSERT includes session_id; `applyOverridesAfterRebuild` re-applies label overrides post-rebuild. |
+| W1.3 Config flag | DONE | `1c4af66` | `WIKI_ENHANCED_ENABLED` following `_DISABLED` opt-out convention. |
+| W2.1 Curation module | DONE | `7e105cf` | rename/merge/split with withTx atomic transactions. |
+| W2.2 API contracts + SSE union | DONE | `be276d5` | 7 endpoint types + 4 SSE event types + registry entries. |
+| W2.3 Route dispatch | DONE | `63211d8` | Flag-gated, parameterized, SSE emit on mutations. |
+| W2.4 Handler tests | DONE | `79cea40` | 30 tests across 8 groups, all passing. |
+| W1+W2 review fixes | DONE | `d0a45bf`, `da71d60` | FK CASCADE on topic_evolution + runtime migration; applyOverridesAfterRebuild wired into afterCompact; decodeSegment URI hardening; split ID collision fix; regression test. |
+| W3 Wiki Tab UI | **IN PROGRESS** | — | Client wrappers, list tab, page view, controls, timeline. |
+| W4 Topic Evolution Graph | **IN PROGRESS** | — | D3 force graph + scrubber + SSE refresh. |
+| W5 QA + Hybrid Durability | PENDING | — | See revised scope below. |
+
+## W5 Revised Scope: Hybrid Override Durability (2026-08-02 design change)
+
+The original W5 scope was QA + docs + release. The user reviewed the merge/split-survives-rebuild design and approved a **hybrid approach**:
+
+**A — Override replay after rebuild (extends applyOverridesAfterRebuild):**
+- After `replaceTopicModel`, replay `topic_overrides` in order of `overridden_at`
+- Labels: already works (current `applyOverridesAfterRebuild`)
+- Merges: use `topic_evolution` rows to identify source memories, force into target topic (or nearest by overlap if target dissolved)
+- Splits: use `split_memory_ids` to create new topic with exactly those memories
+
+**B — Incremental topic assignment (new):**
+- Instead of full `replaceTopicModel` every N compacts, assign new memories to nearest existing topic centroid
+- Track silhouette score over time; only trigger full rebuild when score drops below configurable threshold
+- Config: `MEGACOMPACT_WIKI_INCREMENTAL` (default ON when WIKI_ENHANCED enabled)
+- This reduces rebuild frequency, making (A) needed less often
+
+**Why hybrid:** (A) catches any drift from incremental updates; (B) reduces how often the wholesale rebuild fires. Together they make user curation durable without sacrificing clustering quality.
+
+---
+
 **Goal:** Revive the dead wiki engine (`src/wiki.ts`) by wiring 7 new endpoints, adding turn/session provenance, persistent user curation (rename/merge/split), and topic-evolution visualizations (per-topic timeline + global D3 graph), all behind the `MEGACOMPACT_WIKI_ENHANCED` flag.
 
 **Architecture:** `src/wiki.ts` already ships a fully tested extractive page engine with zero callers. We revive it by layering three things on top of the durable topic model (`topics`/`memory_topics` in the isolated turns.db): (1) two new append-only tables — `topic_overrides` (user curation, immune to `replaceTopicModel` because that DELETE+reinsert touches only `topics`+`memory_topics`) and `topic_evolution` (per-memory join log), plus a `session_id` column on `memory_topics` so provenance join works across the per-session `context_chunks.id` PK; (2) a `src/wiki/curation.ts` module of `withTx` mutations + a `routes-wiki.ts` dispatch handler; (3) a D3 `TopicEvolutionView` that extends the existing Memory Map force-directed idioms. All reads/writes are pure local `node:sqlite`, parameterized (PREVENT-002), non-fatal, and SSE events travel over the existing JSONL `events.log` tail.

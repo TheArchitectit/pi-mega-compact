@@ -28,6 +28,18 @@ src/recall/sync.ts (HyDE fires or is skipped → hydeInfo on result; metrics sco
 - `MEGACOMPACT_HYDE_DISABLED` — gates HyDE telemetry (`hyde_executed` SSE + run columns).
 - `MEGACOMPACT_NEW_UI_DISABLED` — gates the new dashboard components (from Spec 1).
 
+## Progress Tracker (updated 2026-08-02)
+
+| Sprint | Status | Commits | Notes |
+|--------|--------|---------|-------|
+| H1.1+H1.2 Contract types + sync threading | DONE | `72999ad` | `HydeInvocationInfo`, `RecallMetricsSnapshot`, `hydeTelemetry.ts` builders. Spec + quality reviews passed. |
+| H1.3 Schema v3 + hydeStore | DONE | `be761c1` | SCHEMA_VERSION 2→3, 13 telemetry columns via ensureColumn. `hydeStore.ts` read helpers. |
+| H1.4 Turn-write adapter + SSE | DONE | `f837c23` | `recordTurnWrite` pipes hyde/recallMetrics into appendTurn. SSE emit in `recall.ts`. |
+| H2.1 API contracts | DONE | `e2844b2` | `RagMetricsResponse` type + SSE event types. |
+| H2.2 Route handler + tests | DONE | `660b6c9` | `GET /api/rag-metrics` with parameterized SQL, flag gating. 3 handler tests passing. |
+| H3 Dashboard UI | **IN PROGRESS** | — | HydeDetailPanel, RagDashboard, RagHealthCard, tab wiring. |
+| H4 Integration + QA | PENDING | — | Full gate, live check, flag-off regression, doc map. |
+
 **Guardrail notes (read before coding):** PREVENT-PI-004 (zero network at runtime — the only exception is the optional localhost dashboard server, already audited), PREVENT-002 (all SQL parameterized), PREVENT-011 (no `any`), PREVENT-001 (null-safe JSON at route boundaries). `src/` must stay pi-agnostic — **no `runtime` import anywhere under `src/`**. `toInject` is `SearchHit[]`, NOT a `RecallBlock`. SSE uses `ts: string` (ISO 8601), NOT `ts: number`. Turns table is append-only — telemetry lands in the single INSERT that creates the turn row, never via `UPDATE`.
 
 ---
