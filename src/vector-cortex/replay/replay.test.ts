@@ -99,21 +99,62 @@ describe("runReplayV2", () => {
     assert.equal(report.counts.orphanToolEvents, 0, "10k turns: zero orphan tool events");
   });
 
-  test("mode B sequential boundary scan matches mode A effective cut", () => {
-    const occurrences = buildBalancedStream("s-vc0b-b", 30);
-    const opts = {
-      sessionId: "s-vc0b-b",
-      occurrences,
-      requestedSeq: BigInt(occurrences.length),
-      committedSeq: 70n,
-      capturedHighWater: 80n,
-      anchorFloor: 0n,
-    };
-    const a = runReplayV2({ ...opts, mode: "A" });
+  test("mode B is byte-identical to mode A across a forced-retreat parameter corpus", () => {
+    // Deliberate spread over committedSeq/capturedHighWater/requestedSeq/anchorFloor
+    // values, including many that land INSIDE a call/result pair (forcing a
+    // CUT_TOOL_PAIR_SPLIT retreat) and floors that clamp the cut. B must compute
+    // the same effectiveSeq and produce identical replayed bytes via its own
+    // independent algorithm.
+    for (const turns of [5, 10, 20]) {
+      const occurrences = buildBalancedStream("s-vc0b-ab-byte", turns);
+      const N = BigInt(occurrences.length);
+      for (const requestedSeq of [N, N - 1n, 2n, 5n, 7n]) {
+        for (const committedSeq of [0n, 2n, 5n, 7n, N, N + 1n]) {
+          for (const capturedHighWater of [0n, 4n, 9n, N, N + 5n]) {
+            for (const anchorFloor of [0n, 1n, 4n]) {
+              const opts = { sessionId: "s-vc0b-ab-byte", occurrences, requestedSeq, committedSeq, capturedHighWater, anchorFloor };
+              const a = runReplayV2({ ...opts, mode: "A" });
+              const b = runReplayV2({ ...opts, mode: "B" });
+              assert.equal(
+                b.report.cut.effectiveSeq,
+                a.report.cut.effectiveSeq,
+                `effectiveSeq diverge (req=${requestedSeq} com=${committedSeq} cap=${capturedHighWater} floor=${anchorFloor})`,
+              );
+              assert.ok(
+                Buffer.from(b.bytes).equals(Buffer.from(a.bytes)),
+                `bytes diverge (req=${requestedSeq} com=${committedSeq} cap=${capturedHighWater} floor=${anchorFloor})`,
+              );
+            }
+          }
+        }
+      }
+    }
+  });
+
+  test("mode B derives the same effectiveSeq via its own algorithm under forced fixtures", () => {
+    // committedSeq lands exactly on call seq 5 (call 5 / result 6): the min is
+    // inside a pair, so B (independent streaming) AND A must both land at 4
+    // (retreat to call boundary), and B reaches it without A's subroutines.
+    const occurrences = buildBalancedStream("s-vc0b-b-own", 10);
+    const opts = { sessionId: "s-vc0b-b-own", occurrences, requestedSeq: 8n, committedSeq: 5n, capturedHighWater: 9n, anchorFloor: 0n };
     const b = runReplayV2({ ...opts, mode: "B" });
-    assert.equal(a.report.cut.effectiveSeq, b.report.cut.effectiveSeq);
-    // Mode B recomputes boundarySafety by a plain scan, so its boundarySafeSeq is
-    // the same pair-safe value.
+    assert.equal(b.report.cut.effectiveSeq, 4n, "B retreats to call boundary independently");
+    assert.equal(b.report.counts.orphanToolEvents, 0);
+
+    // capturedHighWater wins when it is the smallest, and the anchor floor clamps.
+    const opts2 = { ...opts, committedSeq: 30n, capturedHighWater: 5n, anchorFloor: 3n };
+    const b2 = runReplayV2({ ...opts2, mode: "B" });
+    const a2 = runReplayV2({ ...opts2, mode: "A" });
+    assert.equal(b2.report.cut.effectiveSeq, a2.report.cut.effectiveSeq);
+    assert.equal(b2.report.cut.effectiveSeq, 4n, "captured+floor resolved identically to A");
+  });
+
+  test("mode B boundarySafeSeq matches the independent sequential scan", () => {
+    const occurrences = buildBalancedStream("s-vc0b-b", 30);
+    const opts = { sessionId: "s-vc0b-b", occurrences, requestedSeq: BigInt(occurrences.length), committedSeq: 70n, capturedHighWater: 80n, anchorFloor: 0n };
+    const b = runReplayV2({ ...opts, mode: "B" });
+    // B's boundarySafeSeq is its own largest pair-complete seq <= requestedSeq,
+    // which must equal the pair-list scan A's largestPairSafeSeq returns.
     const pairs = extractToolPairs(occurrences);
     const direct = largestPairSafeSeq(pairs, BigInt(occurrences.length));
     assert.equal(b.report.cut.boundarySafeSeq, direct);

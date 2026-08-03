@@ -18,10 +18,13 @@
  */
 
 import { computeEffectiveCutV2 } from "./cut.js";
+import { computeEffectiveCutV2B } from "./replayB.js";
 import { createReplayReporter, type ReplayReporter } from "./emit.js";
 import type {
+  ReplayCutV2,
   ReplayOccurrenceV2,
   ReplayReportV2,
+  ReplayRetreatRecord,
   ReplayToolPair,
 } from "./types.js";
 
@@ -126,7 +129,33 @@ export function runReplayV2(
 
   const pairs = extractToolPairs(occurrences);
 
-  // Boundary-safe cap: largest pair-safe seq (sequential scan; mode A and B).
+  // Mode B: genuinely independent deterministic local cut (streams the bytes,
+  // shares no subroutine with A). Mode A: optimized pair-list + min-of-three.
+  if (mode === "B") {
+    const b = computeEffectiveCutV2B({
+      occurrences,
+      requestedSeq,
+      committedSeq,
+      capturedHighWater,
+      anchorFloor,
+    });
+    const bCut: ReplayCutV2 = {
+      requestedSeq,
+      boundarySafeSeq: b.boundarySafeSeq,
+      committedSeq,
+      capturedHighWater,
+      effectiveSeq: b.effectiveSeq,
+    };
+    return finalizeReplay({
+      occurrences,
+      cut: bCut,
+      mode: "B",
+      retreats: [],
+      pairs,
+    });
+  }
+
+  // Boundary-safe cap: largest pair-safe seq (sequential scan; mode A).
   const boundarySafeSeq = largestPairSafeSeq(pairs, requestedSeq);
 
   // effective cut: min-of-three + pair retreat + anchor floor.
@@ -149,6 +178,24 @@ export function runReplayV2(
     });
   }
 
+  return finalizeReplay({
+    occurrences,
+    cut,
+    mode: "A",
+    retreats,
+    pairs,
+  });
+}
+
+/** Shared post-cut scan: strict (seq,eventId) prefix + invariant counting. */
+function finalizeReplay(opts: {
+  occurrences: readonly ReplayOccurrenceV2[];
+  cut: ReplayCutV2;
+  mode: "A" | "B";
+  retreats: readonly ReplayRetreatRecord[];
+  pairs: readonly ReplayToolPair[];
+}): { report: ReplayReportV2; bytes: Uint8Array } {
+  const { occurrences, cut, mode, retreats, pairs } = opts;
   const effective = cut.effectiveSeq;
 
   // Strict ascending source order scan up to the effective cut.
