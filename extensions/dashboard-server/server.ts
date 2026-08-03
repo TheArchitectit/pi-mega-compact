@@ -23,6 +23,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
+import { NEW_UI } from "../../src/config.js";
 import { log, setLogPath, setDashboardServerVersion } from "./state.js";
 import {
 	buildRouteContext,
@@ -119,6 +120,15 @@ export async function launchDashboardServer(
 	const hasClientBuild = existsSync(clientIndexHtml);
 	if (hasClientBuild) log("client build present", { clientDist });
 
+	function injectUiFlag(html: string): string {
+		const flag = NEW_UI() ? "true" : "false";
+		const script = `<script>window.MEGACOMPACT_NEW_UI=${flag}</script>`;
+		if (html.includes("</head>")) {
+			return html.replace("</head>", `${script}</head>`);
+		}
+		return html + script;
+	}
+
 	// guardrails-allow PREVENT-PI-004: read-only static file serving from the local dashboard-client/dist bundle (loopback-only UI).
 	const serveClientAsset = (reqPath: string, res: ServerResponse): boolean => {
 		if (!hasClientBuild) return false;
@@ -131,7 +141,7 @@ export async function launchDashboardServer(
 		if (!file.startsWith(clientDist) || !existsSync(file)) {
 			// SPA fallback: unknown non-asset routes serve index.html (client-side routing).
 			res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-			res.end(readFileSync(clientIndexHtml));
+			res.end(injectUiFlag(readFileSync(clientIndexHtml, "utf-8")));
 			return true;
 		}
 		const ext = rel.slice(rel.lastIndexOf(".") + 1);
@@ -145,10 +155,12 @@ export async function launchDashboardServer(
 			ico: "image/x-icon",
 			map: "application/json",
 		};
+		const payload: string | Uint8Array =
+			ext === "html" ? injectUiFlag(readFileSync(file, "utf-8")) : readFileSync(file);
 		res.writeHead(200, {
 			"Content-Type": types[ext] ?? "application/octet-stream",
 		});
-		res.end(readFileSync(file));
+		res.end(payload);
 		return true;
 	};
 

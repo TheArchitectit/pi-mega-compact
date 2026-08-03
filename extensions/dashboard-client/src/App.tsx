@@ -3,6 +3,7 @@
  *
  * SPRINT-B1: React scaffold with tab routing, header, error boundary.
  * SPRINT-C1+: tabs wired progressively with real content.
+ * SPRINT-V2: NEW_UI flag splits OldDashboard (legacy) from NewDashboard (AppShell).
  */
 
 import React, { useState, useCallback } from "react";
@@ -12,6 +13,15 @@ import { LoadingSpinner } from "./components/LoadingSpinner";
 import { useApi } from "./hooks/useApi";
 import { fetchSnapshot } from "./api/client";
 import type { SnapshotResponse } from "@contracts";
+import { NEW_UI } from "./config";
+import { AppShell } from "./components/layout/AppShell";
+import {
+  PRIMARY_TABS,
+  ADVANCED_TABS,
+  ADVANCED_TAB_IDS as advancedTabIds,
+  type TabId,
+} from "./tabs/registry";
+export type { TabId };
 
 // Tab components — lazy-loaded. C1 fills Overview + Events; C2/C3 fill the rest.
 const OverviewTab = React.lazy(() => import("./tabs/OverviewTab"));
@@ -27,99 +37,128 @@ const MaintenanceTab = React.lazy(() => import("./tabs/MaintenanceTab"));
 const MemoryMapTab = React.lazy(() => import("./tabs/MemoryMapTab"));
 const HealthTab = React.lazy(() => import("./tabs/HealthTab"));
 
-export type TabId =
-	| "overview"
-	| "repos"
-	| "events"
-	| "setup"
-	| "metrics"
-	| "cache"
-	| "sessions"
-	| "topics"
-	| "turns"
-	| "maintenance"
-	| "memory-map"
-	| "health";
+interface AppState {
+  snapshot: SnapshotResponse | null;
+  loading: boolean;
+  error: Error | null;
+}
 
-type TabDef = { id: TabId; label: string };
+function TabContent({
+  activeTab,
+  snapshot,
+  loading,
+  error,
+}: AppState & { activeTab: TabId }): React.ReactElement {
+  return (
+    <React.Suspense fallback={<LoadingSpinner />}>
+      {activeTab === "overview" && (
+        <OverviewTab snapshot={snapshot} loading={loading} error={error} />
+      )}
+      {activeTab === "repos" && <ReposTab />}
+      {activeTab === "events" && <EventsTab />}
+      {activeTab === "setup" && <SetupTab />}
+      {activeTab === "metrics" && <MetricsTab />}
+      {activeTab === "cache" && <CacheTab />}
+      {activeTab === "sessions" && <SessionsTab />}
+      {activeTab === "topics" && <TopicsTab />}
+      {activeTab === "turns" && <TurnsTab />}
+      {activeTab === "maintenance" && <MaintenanceTab />}
+      {activeTab === "memory-map" && <MemoryMapTab />}
+      {activeTab === "health" && <HealthTab />}
+    </React.Suspense>
+  );
+}
 
-const PRIMARY_TABS: TabDef[] = [
-	{ id: "overview", label: "Overview" },
-	{ id: "cache", label: "Cache" },
-	{ id: "sessions", label: "Sessions" },
-	{ id: "turns", label: "Turns" },
-	{ id: "health", label: "Health" },
-];
+function OldDashboard({
+  activeTab,
+  setActiveTab,
+  snapshot,
+  loading,
+  error,
+}: AppState & {
+  activeTab: TabId;
+  setActiveTab: (id: TabId) => void;
+}): React.ReactElement {
+  const tier = snapshot?.tier ?? "unknown";
+  const version = snapshot?.model?.name ?? "";
 
-const ADVANCED_TABS: TabDef[] = [
-	{ id: "repos", label: "Repos" },
-	{ id: "events", label: "Events" },
-	{ id: "setup", label: "Setup" },
-	{ id: "metrics", label: "Metrics" },
-	{ id: "topics", label: "Topics" },
-	{ id: "maintenance", label: "Maintenance" },
-	{ id: "memory-map", label: "Memory Map" },
-];
+  return (
+    <ErrorBoundary>
+      <div className="dashboard-app">
+        <header className="dashboard-header">
+          <h1>
+            mega-compact dashboard
+            <span className="tier">{tier}</span>
+            {version && <span className="version-pill">{version}</span>}
+          </h1>
+        </header>
+        <TabBar
+          primaryTabs={PRIMARY_TABS}
+          advancedTabs={ADVANCED_TABS}
+          advancedTabIds={advancedTabIds}
+          active={activeTab}
+          onTabChange={setActiveTab}
+        />
+        <main className="dashboard-content">
+          <TabContent activeTab={activeTab} snapshot={snapshot} loading={loading} error={error} />
+        </main>
+      </div>
+    </ErrorBoundary>
+  );
+}
 
-const advancedTabIds = new Set<TabId>(ADVANCED_TABS.map((t) => t.id));
+function NewDashboard({
+  activeTab,
+  setActiveTab,
+  snapshot,
+  loading,
+  error,
+}: AppState & {
+  activeTab: TabId;
+  setActiveTab: (id: TabId) => void;
+}): React.ReactElement {
+  return (
+    <ErrorBoundary>
+      <AppShell active={activeTab} onTabChange={setActiveTab} snapshot={snapshot}>
+        <TabContent activeTab={activeTab} snapshot={snapshot} loading={loading} error={error} />
+      </AppShell>
+    </ErrorBoundary>
+  );
+}
 
 export default function App(): React.ReactElement {
-	const [activeTab, setActiveTab] = useState<TabId>("overview");
-	const {
-		data: snapshot,
-		loading,
-		error,
-	} = useApi<SnapshotResponse>(
-		useCallback(() => fetchSnapshot(), []),
-		{
-			// Poll every 5s so Overview stays live without SSE. D1 will add retry/stale.
-			pollInterval: 5000,
-		},
-	);
+  const [activeTab, setActiveTab] = useState<TabId>("overview");
+  const {
+    data: snapshot,
+    loading,
+    error,
+  } = useApi<SnapshotResponse>(
+    useCallback(() => fetchSnapshot(), []),
+    {
+      // Poll every 5s so Overview stays live without SSE. D1 will add retry/stale.
+      pollInterval: 5000,
+    },
+  );
 
-	const tier = snapshot?.tier ?? "unknown";
-	const version = snapshot?.model?.name ?? "";
+  if (NEW_UI()) {
+    return (
+      <NewDashboard
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        snapshot={snapshot}
+        loading={loading}
+        error={error}
+      />
+    );
+  }
 
-	return (
-		<ErrorBoundary>
-			<div className="dashboard-app">
-				<header className="dashboard-header">
-					<h1>
-						mega-compact dashboard
-						<span className="tier">{tier}</span>
-						{version && <span className="version-pill">{version}</span>}
-					</h1>
-				</header>
-				<TabBar
-					primaryTabs={PRIMARY_TABS}
-					advancedTabs={ADVANCED_TABS}
-					advancedTabIds={advancedTabIds}
-					active={activeTab}
-					onTabChange={setActiveTab}
-				/>
-				<main className="dashboard-content">
-					<React.Suspense fallback={<LoadingSpinner />}>
-						{activeTab === "overview" && (
-							<OverviewTab
-								snapshot={snapshot}
-								loading={loading}
-								error={error}
-							/>
-						)}
-						{activeTab === "repos" && <ReposTab />}
-						{activeTab === "events" && <EventsTab />}
-						{activeTab === "setup" && <SetupTab />}
-						{activeTab === "metrics" && <MetricsTab />}
-						{activeTab === "cache" && <CacheTab />}
-						{activeTab === "sessions" && <SessionsTab />}
-						{activeTab === "topics" && <TopicsTab />}
-						{activeTab === "turns" && <TurnsTab />}
-						{activeTab === "maintenance" && <MaintenanceTab />}
-						{activeTab === "memory-map" && <MemoryMapTab />}
-						{activeTab === "health" && <HealthTab />}
-					</React.Suspense>
-				</main>
-			</div>
-		</ErrorBoundary>
-	);
+  return (
+    <OldDashboard
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+      snapshot={snapshot}
+      loading={loading}
+      error={error}
+    />
+  );
 }

@@ -11,7 +11,7 @@ import type { TabId } from "../App";
 export interface TabBarProps {
 	primaryTabs: Array<{ id: TabId; label: string }>;
 	advancedTabs: Array<{ id: TabId; label: string }>;
-	advancedTabIds: Set<TabId>;
+	advancedTabIds: ReadonlySet<TabId>;
 	active: TabId;
 	onTabChange: (id: TabId) => void;
 }

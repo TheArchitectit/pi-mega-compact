@@ -140,3 +140,6 @@ export const RAG_MEMORY_GRAPH = (): boolean =>
  * MEGACOMPACT_HYDE_DISABLED=true. TrigramEmbedder path is unaffected. */
 export const RAG_HYDE_ENABLED = (): boolean =>
   ragEnabled("MEGACOMPACT_HYDE");
+
+/** Spec 1: vbrainstorm visual design migration for the dashboard. */
+export const NEW_UI = (): boolean => ragEnabled("MEGACOMPACT_NEW_UI");
