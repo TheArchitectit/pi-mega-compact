@@ -52,8 +52,15 @@ export function createLedgerAdapter(emit?: (event: string, fields: Record<string
     validate(events) {
       const result = validateEvents(events);
       if (!result.ok) {
-        for (const code of result.codes) {
-          reporter.validationFailed({ session: "", seq: "", eventId: "", code });
+        // Emit one event per failing occurrence with its REAL locator — a
+        // consumer of the feed can identify WHICH event failed (VC1A-I05).
+        for (const issue of result.issues) {
+          reporter.validationFailed({
+            session: issue.sessionId,
+            seq: issue.seq.toString(),
+            eventId: issue.eventId,
+            code: issue.code,
+          });
         }
       }
       return result;

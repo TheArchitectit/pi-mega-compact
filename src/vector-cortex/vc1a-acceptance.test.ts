@@ -154,6 +154,15 @@ describe("VC1A flag gates ledger observability (real consumer)", () => {
     const bad = { ...ev, bytesDigest: "sha256:0000000000000000000000000000000000000000000000000000000000000000" } as EventV2;
     adapter.validate([bad]);
     assert.ok(emitter.includes("vector_cortex_event_validation_failed"), "flag ON emits validation_failed");
+    // VC1A-I05: the failure emission carries the REAL failing-event locator.
+    const failedRes = adapter.validate([bad]);
+    assert.equal(failedRes.ok, false);
+    if (!failedRes.ok) {
+      assert.equal(failedRes.issues.length, 1, "one issue per failing occurrence");
+      assert.equal(failedRes.issues[0].eventId, "e1", "issue names the failing eventId");
+      assert.equal(failedRes.issues[0].sessionId, "s-vc1a-flag");
+      assert.equal(failedRes.issues[0].code, "EVT_DIGEST_MISMATCH");
+    }
 
     // Flag OFF — same adapter emits NOTHING while the codec still decodes.
     emitter.length = 0;
@@ -290,10 +299,12 @@ describe("EVT conformance corpus (manifest-indexed, EVT-001..015)", () => {
     if (!res.ok) {
       assert.deepEqual(res.codes, ["EVT_DIGEST_MISMATCH"]);
     }
-    // No replacement text is fabricated anywhere on the failure path.
+    // No replacement text is fabricated anywhere on the failure path. (issues
+    // carry bigint seq, so serialize with a bigint-safe replacer.)
     const cls = classifyUtf8(event.originalBytes);
     assert.equal(cls.valid, true, "the payload itself is still valid UTF-8");
-    assert.ok(!JSON.stringify(res).includes("sha256:0000"), "no replacement text in the result");
+    const json = JSON.stringify(res, (_k, v) => (typeof v === "bigint" ? v.toString() : v));
+    assert.ok(!json.includes("sha256:0000"), "no replacement text in the result");
   });
 });
 

@@ -83,10 +83,14 @@ export type ValidationCode =
   /** Duplicate (sessionId, seq, eventId) occurrence. */
   | "EVT_DUPLICATE_ID";
 
-/** Deterministic validation result (`ok:false` carries the failure codes). */
+/**
+ * Deterministic validation result. `ok:false` carries the deduplicated failure
+ * codes (fixed priority order) AND the per-occurrence `issues` with real
+ * locators (sessionId/seq/eventId) so consumers can identify WHICH event failed.
+ */
 export type ValidationResult =
   | { ok: true; ordered: readonly EventV2[] }
-  | { ok: false; codes: readonly ValidationCode[] };
+  | { ok: false; codes: readonly ValidationCode[]; issues: readonly ValidationIssue[] };
 
 /** A single flagged validation issue (code + the offending occurrence locator). */
 export interface ValidationIssue {

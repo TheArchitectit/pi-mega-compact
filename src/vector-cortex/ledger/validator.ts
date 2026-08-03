@@ -107,7 +107,9 @@ export function validateEvents(events: readonly EventV2[]): ValidationResult {
   if (issues.length === 0) {
     return { ok: true, ordered: sortEvents(events) };
   }
-  return { ok: false, codes: dedupe(issues.map((i) => i.code)) };
+  // Surface the per-occurrence issues (real locators) alongside the deduped
+  // codes so the adapter/observability feed can name WHICH event failed.
+  return { ok: false, codes: dedupe(issues.map((i) => i.code)), issues };
 }
 
 function dedupe(codes: ValidationCode[]): ValidationCode[] {
