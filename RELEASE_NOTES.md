@@ -1,5 +1,18 @@
 # Release Notes — pi-mega-compact
 
+## v0.14.0 (2026-08-03) — RAPTOR promoted live + HyDE telemetry + cost API + build history
+
+Four major improvements from the RAPTOR/HyDE audit and dashboard cost-data work:
+
+- **RAPTOR serve live by default** — shadow mode defaulted to `true`, so the tree was built + persisted on every compaction but never served in recall queries. Flipped the default: shadow mode is now opt-in (`RAPTOR_SHADOW_MODE=true`). The RAPTOR tree now serves live recall hits when `MEGACOMPACT_RAPTOR_ENABLED=true` (the Setup tab toggle), matching the config comment and the canary rollout (L0→L1→L2→RAPTOR with p95 auto-disable).
+- **RAPTOR incremental guardrails** — incremental tree updates (the default path since v0.11.10) recomputed summaries via `summarizeCluster()` but skipped `applyHallucinationGuardrails()`, the full build's 4-layer faithfulness check. Added `summarizeGuarded()` mirroring `tree.ts:summarizeInto` — summarize, guardrail-check, and if the guard marks extractive_fallback, re-summarize with the deterministic extractive path. Applied to both Level-0 recompute and the propagation-up loop.
+- **RAPTOR build history in dashboard** — `raptor_build_history` stored coherence_score, depth, leaf_count, timed_out, and node_count per build, but none of it was exposed via the dashboard. Added `GET /api/raptor-build-history` endpoint + `RaptorBuildHistoryDTO` contract. The Memory Map RAPTOR Tree sub-tab now shows coherence % (green ≥70%), leaf count, depth, and timed_out badge in the summary header, with an expandable build history for the last 10 builds.
+- **HyDE telemetry on empty-recall turns** — `recordTurnWrite` was inside the `result.toInject.length > 0` block, so HyDE invocations that returned zero hits were computed but never written to `turns.db`. The dashboard Metrics/Turns tabs showed no empty-recall HyDE runs. Extracted the turn write so telemetry (HyDE + recall metrics) persists even when recall finds nothing; only `recordRecallWrite` stays conditional on actual hits.
+- **Cost API pricing lookup** — model pricing showed $0.0000 for any model not in the local pricing table. Added an optional, user-opted-in cost API (`MEGACOMPACT_COST_API_ENABLED`, default OFF) that fetches model pricing from an OpenRouter-compatible endpoint to enrich the dashboard's inputRate/outputRate. 1-hour in-memory cache, `spawnSync` bridge pattern. PREVENT-PI-004 network exception, annotated + scanner-enforced. New "Cost API" category in the Setup panel with toggle + URL input.
+- **deploy.sh fix** — reordered to push BEFORE npm publish (was publish→tag→push, irrecoverable if push failed). Added no-upstream fallback for worktree branches. Root cause of the missing v0.13.6/v0.13.7 GitHub releases.
+- **GitHub releases backfilled** — v0.13.6 and v0.13.7 releases created manually with proper notes. v0.13.0 release notes corrected to capture the dashboard overhaul.
+- **README + RELEASE_NOTES backfilled** — all 8 releases v0.12.7→v0.13.7 now have detailed notes. README updated for 12-tab layout, wiki curation, settings panel, v0.13 config flags, and 1197 test count.
+
 ## v0.13.7 (2026-08-03) — per-repo snapshot resolution + Events SSE filter + costing fallback
 
 Three fixes from the Playwright metric audit of all 12 dashboard tabs:
