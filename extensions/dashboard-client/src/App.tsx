@@ -31,7 +31,7 @@ const SetupTab = React.lazy(() => import("./tabs/SetupTab"));
 const MetricsTab = React.lazy(() => import("./tabs/MetricsTab"));
 const CacheTab = React.lazy(() => import("./tabs/CacheTab"));
 const SessionsTab = React.lazy(() => import("./tabs/SessionsTab"));
-const TopicsTab = React.lazy(() => import("./tabs/TopicsTab"));
+const WikiTab = React.lazy(() => import("./tabs/WikiTab"));
 const TurnsTab = React.lazy(() => import("./tabs/TurnsTab"));
 const MaintenanceTab = React.lazy(() => import("./tabs/MaintenanceTab"));
 const MemoryMapTab = React.lazy(() => import("./tabs/MemoryMapTab"));
@@ -60,7 +60,7 @@ function TabContent({
       {activeTab === "metrics" && <MetricsTab />}
       {activeTab === "cache" && <CacheTab />}
       {activeTab === "sessions" && <SessionsTab />}
-      {activeTab === "topics" && <TopicsTab />}
+      {activeTab === "wiki" && <WikiTab />}
       {activeTab === "turns" && <TurnsTab />}
       {activeTab === "maintenance" && <MaintenanceTab />}
       {activeTab === "memory-map" && <MemoryMapTab />}

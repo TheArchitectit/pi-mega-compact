@@ -102,6 +102,10 @@ export async function persistEpochAndMaintain(
 						);
 						// Re-stamp custom label overrides wiped by the rebuild.
 						applyOverridesAfterRebuild(tdb);
+						// SSE push so the dashboard Wiki/Evolution views refresh (non-fatal).
+						runtime.dashboard.event("wiki_rebuilt", {
+							topicCount: model.k,
+						});
 						runtime.logger.info("wiki_rebuild", {
 							clusterCount: model.k,
 							totalChunks: model.totalChunks,

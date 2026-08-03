@@ -9,7 +9,7 @@ import {
   ScrollText,
   Settings,
   BarChart3,
-  FolderTree,
+  BookOpen,
   Wrench,
   Network,
 } from "lucide-react";
@@ -22,7 +22,7 @@ export type TabId =
   | "metrics"
   | "cache"
   | "sessions"
-  | "topics"
+  | "wiki"
   | "turns"
   | "maintenance"
   | "memory-map"
@@ -47,7 +47,7 @@ export const ADVANCED_TABS: TabDef[] = [
   { id: "events", label: "Events", icon: ScrollText },
   { id: "setup", label: "Setup", icon: Settings },
   { id: "metrics", label: "Metrics", icon: BarChart3 },
-  { id: "topics", label: "Topics", icon: FolderTree },
+  { id: "wiki", label: "Wiki", icon: BookOpen },
   { id: "maintenance", label: "Maintenance", icon: Wrench },
   { id: "memory-map", label: "Memory Map", icon: Network },
 ];

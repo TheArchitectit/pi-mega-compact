@@ -51,6 +51,15 @@ import type {
 	RagSettingsResponse,
 	RagSettingsRequest,
 	RagSettingsResponsePost,
+	RagMetricsResponse,
+	WikiIndexResponse,
+	WikiPageResponse,
+	CurationResult,
+	RenameTopicRequest,
+	MergeTopicsRequest,
+	SplitTopicRequest,
+	TopicTimelineResponse,
+	TopicEvolutionResponse,
 } from "@contracts";
 
 /** Error thrown when a dashboard API response is not 2xx. */
@@ -339,4 +348,82 @@ export function postRagSettings(
 	body: RagSettingsRequest,
 ): Promise<RagSettingsResponsePost> {
 	return postJson<RagSettingsResponsePost>(ENDPOINTS.ragSettingsUpdate.path, body);
+}
+
+/** GET /api/rag-metrics — HyDE + recall-quality telemetry aggregates (H2). */
+export function fetchRagMetrics(): Promise<RagMetricsResponse> {
+	return getJson<RagMetricsResponse>(ENDPOINTS.ragMetrics.path);
+}
+
+// ─── Wiki Revival (W3) ────────────────────────────────────────────────
+
+/** GET /api/wiki/index — wiki landing (topics with resolved labels + badges). */
+export function fetchWikiIndex(): Promise<WikiIndexResponse> {
+	return getJson<WikiIndexResponse>(ENDPOINTS.wikiIndex.path);
+}
+
+/** GET /api/wiki/topic/:topicId — single topic page + provenance. */
+export function fetchWikiTopic(topicId: string): Promise<WikiPageResponse> {
+	return getJson<WikiPageResponse>(
+		ENDPOINTS.wikiTopic.path.replace(
+			":topicId",
+			encodeURIComponent(topicId),
+		),
+	);
+}
+
+/** PUT /api/wiki/topic/:topicId/label — rename a topic (user curation). */
+export function renameTopic(
+	topicId: string,
+	label: string,
+): Promise<CurationResult> {
+	return putJson<CurationResult>(
+		ENDPOINTS.renameTopic.path.replace(
+			":topicId",
+			encodeURIComponent(topicId),
+		),
+		{ label } satisfies RenameTopicRequest,
+	);
+}
+
+/** POST /api/wiki/merge — merge source topic into target. */
+export function mergeTopics(
+	sourceTopicId: string,
+	targetTopicId: string,
+): Promise<CurationResult> {
+	return postJson<CurationResult>(ENDPOINTS.mergeTopics.path, {
+		sourceTopicId,
+		targetTopicId,
+	} satisfies MergeTopicsRequest);
+}
+
+/** POST /api/wiki/topic/:topicId/split — carve listed memories into a new topic. */
+export function splitTopic(
+	topicId: string,
+	memoryIds: string[],
+): Promise<CurationResult> {
+	return postJson<CurationResult>(
+		ENDPOINTS.splitTopic.path.replace(
+			":topicId",
+			encodeURIComponent(topicId),
+		),
+		{ memoryIds } satisfies SplitTopicRequest,
+	);
+}
+
+/** GET /api/wiki/topic/:topicId/timeline — per-topic memory-addition buckets. */
+export function fetchTopicTimeline(
+	topicId: string,
+): Promise<TopicTimelineResponse> {
+	return getJson<TopicTimelineResponse>(
+		ENDPOINTS.topicTimeline.path.replace(
+			":topicId",
+			encodeURIComponent(topicId),
+		),
+	);
+}
+
+/** GET /api/wiki/evolution — global D3 topic-evolution graph feed. */
+export function fetchTopicEvolution(): Promise<TopicEvolutionResponse> {
+	return getJson<TopicEvolutionResponse>(ENDPOINTS.topicEvolution.path);
 }
