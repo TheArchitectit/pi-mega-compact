@@ -150,6 +150,7 @@ SETTINGS_CONFIG_FILES = (
     "src/config/dedup.ts",
     "src/hyde.ts",
     "src/dedup/raptor/summarizer.ts",
+    "src/costApi.ts",
 )
 
 # Regex for MEGACOMPACT_* env var names (captured group = key).

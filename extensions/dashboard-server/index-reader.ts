@@ -18,6 +18,7 @@ import {
 	readProviderCacheForRepo,
 } from "../../src/store/sqlite/perf-samples.js";
 import { lookupModelInputRate } from "../../src/pricing.js";
+import { costApiConfig, lookupCostApiPricing } from "../../src/costApi.js";
 
 export function getIndexDir(): string {
 	const override = process.env.MEGACOMPACT_INDEX_DIR;
@@ -41,7 +42,29 @@ export function readIndex(): IndexIndex | null {
 		const rows = db
 			.prepare("SELECT * FROM repo_registry ORDER BY last_seen DESC")
 			.all() as Record<string, unknown>[];
-		const mapped: IndexRepo[] = rows.map((r) => ({
+		// Lazily fetch cost-API pricing once per readIndex call (cached for 1 hour
+		// inside costApi.ts). Avoids per-row network calls.
+		const costApi = costApiConfig();
+		const mapped: IndexRepo[] = rows.map((r) => {
+			const modelName = String(r.model_name ?? "");
+			const localRate = (r.input_rate as number | null) ||
+				lookupModelInputRate(modelName) ||
+				null;
+			let inputRate = localRate;
+			let outputRate = (r.output_rate as number | null) ?? null;
+			// Fall back to the cost API when the local table has no data.
+			if (costApi.enabled && (inputRate == null || outputRate == null) && modelName) {
+				const apiPricing = lookupCostApiPricing(modelName);
+				if (apiPricing) {
+					if (inputRate == null && apiPricing.inputRate != null) {
+						inputRate = apiPricing.inputRate;
+					}
+					if (outputRate == null && apiPricing.outputRate != null) {
+						outputRate = apiPricing.outputRate;
+					}
+				}
+			}
+			return {
 			repoRoot: String(r.repo_root ?? ""),
 			displayName: String(r.display_name ?? ""),
 			stateDir: String(r.state_dir ?? ""),
@@ -52,9 +75,8 @@ export function readIndex(): IndexIndex | null {
 			provider: (r.provider as string | null) ?? null,
 			providerName: (r.provider_name as string | null) ?? null,
 			modelName: (r.model_name as string | null) ?? null,
-			inputRate: ((r.input_rate as number | null) ||
-				lookupModelInputRate(String(r.model_name ?? ""))) ?? null,
-			outputRate: (r.output_rate as number | null) ?? null,
+			inputRate,
+			outputRate,
 			lastSeen: Number(r.last_seen ?? 0),
 			// Defaults — enriched below from each repo's own store.
 			tokensKept: 0,
@@ -66,7 +88,8 @@ export function readIndex(): IndexIndex | null {
 			providerCachePct: null,
 			providerCacheRead: null,
 			providerCacheWrite: null,
-		}));
+		};
+		});
 		// Enrich each repo with per-store token + model detail read directly via
 		// node:sqlite (same zero-dependency invariant as readIndex; no store graph
 		// import). Best-effort: a missing/corrupt store degrades to the defaults

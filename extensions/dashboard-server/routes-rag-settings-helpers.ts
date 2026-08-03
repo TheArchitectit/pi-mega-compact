@@ -272,6 +272,23 @@ export const SETTINGS: ReadonlyArray<{
 			num("MEGACOMPACT_EMBED_CACHE", "Embed Cache Size", "Embedding cache entries (0 = disabled)", 256, 0, 10000),
 		],
 	},
+	{
+		name: "Cost API",
+		settings: [
+			boolDirect(
+				"MEGACOMPACT_COST_API_ENABLED",
+				"Cost API Lookup",
+				"Fetch model pricing from an external API (PREVENT-PI-004 network exception — opt-in). Enriches the dashboard Cache/Repos tabs with real $/token rates for models not in the local pricing table.",
+				false,
+			),
+			str(
+				"MEGACOMPACT_COST_API_URL",
+				"Cost API URL",
+				"OpenRouter-compatible model pricing endpoint (e.g. https://openrouter.ai/api/v1/models). Only contacted when Cost API Lookup is ON.",
+				"",
+			),
+		],
+	},
 ];
 
 /** Flat index of every setting by key for O(1) lookup + validation. */

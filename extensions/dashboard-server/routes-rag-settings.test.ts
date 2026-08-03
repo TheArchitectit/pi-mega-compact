@@ -125,7 +125,7 @@ function get(): { body: string; statusCode: number } {
 }
 
 describe("handleRagSettings — comprehensive settings", () => {
-	it("GET returns all 6 categories", () => {
+	it("GET returns all 7 categories", () => {
 		const { body, statusCode } = get();
 		assert.equal(statusCode, 200);
 		const parsed = JSON.parse(body) as {
@@ -136,7 +136,7 @@ describe("handleRagSettings — comprehensive settings", () => {
 		for (const cat of SETTINGS) {
 			assert.ok(names.includes(cat.name), `missing category ${cat.name}`);
 		}
-		assert.equal(names.length, 6);
+		assert.equal(names.length, SETTINGS.length);
 		// Every declared setting appears under its category.
 		for (const cat of SETTINGS) {
 			const got = parsed.categories.find((c) => c.name === cat.name);
