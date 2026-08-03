@@ -15,12 +15,10 @@ import "./styles/repos-metrics.css";
 import "./styles/repos-extra.css";
 import "./styles/overview-extra.css";
 import "./styles/config.css";
-import "./styles/metrics-extra.css";
 import "./styles/game-achievements.css";
 import "./styles/sessions.css";
 import "./styles/repostack.css";
 import "./styles/session-gauges.css";
-import "./styles/turns.css";
 import "./styles/maintenance.css";
 import "./styles/cache.css";
 
