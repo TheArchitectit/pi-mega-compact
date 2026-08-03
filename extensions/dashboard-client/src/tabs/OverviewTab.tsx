@@ -177,7 +177,14 @@ export default function OverviewTab({
 	if (loading && !snapshot)
 		return <div className="tab-stub">Loading snapshot…</div>;
 	if (error && !snapshot)
-		return <div className="tab-stub">Error: {error.message}</div>;
+		return (
+			<div className="tab-stub">
+				<p>Error loading snapshot: {error.message}</p>
+				<p className="text-xs text-muted-foreground mt-2">
+					Auto-retried with backoff and will re-poll every 5s — no action needed.
+				</p>
+			</div>
+		);
 	if (!snapshot) return <div className="tab-stub">No snapshot data.</div>;
 
 	// Cast to RuntimeSnapshot for tierPct (runtime-only field).

@@ -49,9 +49,9 @@ set -euo pipefail
 
 # --- args --------------------------------------------------------------------
 if [[ $# -ne 1 ]]; then
-  echo "usage: $0 <new-version>" >&2
-  echo "  e.g. $0 0.8.15" >&2
-  exit 2
+	echo "usage: $0 <new-version>" >&2
+	echo "  e.g. $0 0.8.15" >&2
+	exit 2
 fi
 
 NEW_VERSION="$1"
@@ -60,8 +60,8 @@ NEW_VERSION="$1"
 NEW_VERSION="${NEW_VERSION#v}"
 
 if ! [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-  echo "[deploy] ERROR: '$NEW_VERSION' is not a valid semver." >&2
-  exit 2
+	echo "[deploy] ERROR: '$NEW_VERSION' is not a valid semver." >&2
+	exit 2
 fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -72,13 +72,13 @@ echo "[deploy] working dir: $ROOT"
 
 # --- 1. clean git tree --------------------------------------------------------
 if ! git diff --quiet; then
-  echo "[deploy] ERROR: working tree has unstaged changes. Commit or stash first." >&2
-  git diff --stat >&2 || true
-  exit 1
+	echo "[deploy] ERROR: working tree has unstaged changes. Commit or stash first." >&2
+	git diff --stat >&2 || true
+	exit 1
 fi
 if ! git diff --cached --quiet; then
-  echo "[deploy] ERROR: index has staged but uncommitted changes. Commit first." >&2
-  exit 1
+	echo "[deploy] ERROR: index has staged but uncommitted changes. Commit first." >&2
+	exit 1
 fi
 echo "[deploy] git tree clean."
 
@@ -87,11 +87,11 @@ echo "[deploy] git tree clean."
 # allowScripts blocks it. That surfaces as a mysterious compression-test failure
 # mid-gate (after several minutes). Fail fast with the fix instead.
 if ! node -e "require('@mongodb-js/zstd')" 2>/dev/null; then
-  echo "[deploy] ERROR: @mongodb-js/zstd native binding not loadable." >&2
-  echo "[deploy]        The compression tests would fail mid-gate. Rebuild it:" >&2
-  echo "[deploy]          npm install-scripts approve @mongodb-js/zstd && npm rebuild @mongodb-js/zstd" >&2
-  echo "[deploy]        Then re-run: ./scripts/deploy.sh $NEW_VERSION" >&2
-  exit 1
+	echo "[deploy] ERROR: @mongodb-js/zstd native binding not loadable." >&2
+	echo "[deploy]        The compression tests would fail mid-gate. Rebuild it:" >&2
+	echo "[deploy]          npm install-scripts approve @mongodb-js/zstd && npm rebuild @mongodb-js/zstd" >&2
+	echo "[deploy]        Then re-run: ./scripts/deploy.sh $NEW_VERSION" >&2
+	exit 1
 fi
 echo "[deploy] @mongodb-js/zstd loadable."
 
@@ -116,9 +116,9 @@ npm run build:dashboard
 # --- 4. CRITICAL VERIFY: dashboard bundle is present AND in the tarball -------
 DASHBOARD_INDEX="extensions/dashboard-client/dist/index.html"
 if [[ ! -f "$DASHBOARD_INDEX" ]]; then
-  echo "[deploy] ERROR: $DASHBOARD_INDEX missing after build:dashboard." >&2
-  echo "[deploy]        This is the 0.8.5 regression — ABORTING before publish." >&2
-  exit 1
+	echo "[deploy] ERROR: $DASHBOARD_INDEX missing after build:dashboard." >&2
+	echo "[deploy]        This is the 0.8.5 regression — ABORTING before publish." >&2
+	exit 1
 fi
 echo "[deploy] $DASHBOARD_INDEX exists."
 
@@ -130,33 +130,33 @@ echo "[deploy] $DASHBOARD_INDEX exists."
 # renders nothing). Structural check — no dashboard server needed.
 echo "[deploy] running dashboard tab smoke (Playwright)"
 if ! node scripts/dashboard-tab-smoke.mjs; then
-  echo "[deploy] ERROR: dashboard tab smoke failed — a tab rendered blank." >&2
-  echo "[deploy]        This means a tab is registered but has no render branch" >&2
-  echo "[deploy]        in App.tsx. Fix before publishing." >&2
-  exit 1
+	echo "[deploy] ERROR: dashboard tab smoke failed — a tab rendered blank." >&2
+	echo "[deploy]        This means a tab is registered but has no render branch" >&2
+	echo "[deploy]        in App.tsx. Fix before publishing." >&2
+	exit 1
 fi
 echo "[deploy] dashboard tab smoke green."
 
 # Verify npm pack actually lists the dashboard bundle.
 # `npm pack --dry-run` prints the packed file list to stdout; we grep for the
 # index.html path. (We do NOT write a .tgz — --dry-run only lists.)
-if ! npm pack --dry-run --json 2>/dev/null \
-    | grep -q "extensions/dashboard-client/dist/index.html"; then
-  echo "[deploy] ERROR: 'npm pack --dry-run' does NOT list" >&2
-  echo "[deploy]        extensions/dashboard-client/dist/index.html." >&2
-  echo "[deploy]        Check package.json#files. ABORTING before publish (0.8.5 regression)." >&2
-  exit 1
+if ! npm pack --dry-run --json 2>/dev/null |
+	grep -q "extensions/dashboard-client/dist/index.html"; then
+	echo "[deploy] ERROR: 'npm pack --dry-run' does NOT list" >&2
+	echo "[deploy]        extensions/dashboard-client/dist/index.html." >&2
+	echo "[deploy]        Check package.json#files. ABORTING before publish (0.8.5 regression)." >&2
+	exit 1
 fi
 echo "[deploy] dashboard bundle verified in npm pack output."
 
 # --- 5. bump version ----------------------------------------------------------
 CURRENT_VERSION="$(node -e "console.log(require('./package.json').version)")"
 if [[ "$CURRENT_VERSION" == "$NEW_VERSION" ]]; then
-  echo "[deploy] package.json already at v$NEW_VERSION."
+	echo "[deploy] package.json already at v$NEW_VERSION."
 else
-  echo "[deploy] bumping package.json $CURRENT_VERSION → $NEW_VERSION"
-  # Use npm version (no commit/tag yet — we commit explicitly below with dist).
-  npm version "$NEW_VERSION" --no-git-tag-version
+	echo "[deploy] bumping package.json $CURRENT_VERSION → $NEW_VERSION"
+	# Use npm version (no commit/tag yet — we commit explicitly below with dist).
+	npm version "$NEW_VERSION" --no-git-tag-version
 fi
 
 # --- 6. commit version bump + dashboard dist if changed ----------------------
@@ -164,11 +164,11 @@ fi
 # and leaving the lockfile uncommitted was a recurring friction point — the
 # next deploy's clean-tree check (step 1) failed on the stale lockfile.
 if git diff --quiet -- package.json package-lock.json extensions/dashboard-client/dist; then
-  echo "[deploy] nothing to commit (version already set, dist unchanged)."
+	echo "[deploy] nothing to commit (version already set, dist unchanged)."
 else
-  echo "[deploy] committing version bump + dashboard dist"
-  git add package.json package-lock.json extensions/dashboard-client/dist
-  git commit -m "chore(release): v$NEW_VERSION
+	echo "[deploy] committing version bump + dashboard dist"
+	git add package.json package-lock.json extensions/dashboard-client/dist
+	git commit -m "chore(release): v$NEW_VERSION
 
 Release v$NEW_VERSION published via scripts/deploy.sh.
 
@@ -183,26 +183,26 @@ fi
 # was skipped.
 TAG="v$NEW_VERSION"
 if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-  echo "[deploy] tag $TAG already exists; skipping tag creation."
+	echo "[deploy] tag $TAG already exists; skipping tag creation."
 else
-  echo "[deploy] creating tag $TAG"
-  # Annotated tag (-a): `git push --follow-tags` only pushes annotated tags,
-  # so this makes the push on the next line the real mechanism (not a no-op).
-  git tag -a "$TAG" -m "Release v$NEW_VERSION"
+	echo "[deploy] creating tag $TAG"
+	# Annotated tag (-a): `git push --follow-tags` only pushes annotated tags,
+	# so this makes the push on the next line the real mechanism (not a no-op).
+	git tag -a "$TAG" -m "Release v$NEW_VERSION"
 fi
 echo "[deploy] pushing commits + tags (git push --follow-tags)"
 # Handle branches with no upstream (e.g. worktree branches): fall back to
 # --set-upstream so the push succeeds rather than failing with exit 128.
 if ! git push --follow-tags 2>/dev/null; then
-  echo "[deploy] git push --follow-tags failed; setting upstream and retrying"
-  CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-  git push --set-upstream origin "$CURRENT_BRANCH" --follow-tags
+	echo "[deploy] git push --follow-tags failed; setting upstream and retrying"
+	CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+	git push --set-upstream origin "$CURRENT_BRANCH" --follow-tags
 fi
 
 # --- 7b. verify the tag reached origin ----------------------------------------
 if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-  echo "[deploy] pushing tag $TAG explicitly (not found on origin after --follow-tags)"
-  git push origin "$TAG"
+	echo "[deploy] pushing tag $TAG explicitly (not found on origin after --follow-tags)"
+	git push origin "$TAG"
 fi
 
 # --- 8. publish (npm only — PREVENT-DIST-001) --------------------------------
@@ -227,19 +227,19 @@ echo "[deploy] published v$NEW_VERSION to npm."
 # deploy after the package is already shipped.
 PREV_TAG=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
 if [ -n "$PREV_TAG" ]; then
-  RELEASE_NOTES=$(git log --pretty=format:"- %s" "$PREV_TAG..$TAG" 2>/dev/null | grep -vE "^- chore\(release\)|^- chore: (sync|clean|rebuild)" | sed -n '1,15p' || true)
+	RELEASE_NOTES=$(git log --pretty=format:"- %s" "$PREV_TAG..$TAG" 2>/dev/null | grep -vE "^- chore\(release\)|^- chore: (sync|clean|rebuild)" | sed -n '1,15p' || true)
 else
-  RELEASE_NOTES=$(git log --pretty=format:"- %s" "$TAG" 2>/dev/null | sed -n '1,15p' || true)
+	RELEASE_NOTES=$(git log --pretty=format:"- %s" "$TAG" 2>/dev/null | sed -n '1,15p' || true)
 fi
 RELEASE_NOTES="${RELEASE_NOTES:-(no commit notes extracted)}"
 if command -v gh >/dev/null 2>&1; then
-  echo "[deploy] creating GitHub release $TAG with notes"
-  gh release create "$TAG" --target "$(git rev-list -n 1 "$TAG")" \
-    --title "v$NEW_VERSION" \
-    --notes "$(printf '## What changed\n\n%s\n\n**Install:** \`pi update --extensions\`' "$RELEASE_NOTES")" \
-    2>/dev/null || echo "[deploy] WARN: gh release create failed (gh not authenticated or release exists) — skipping"
+	echo "[deploy] creating GitHub release $TAG with notes"
+	gh release create "$TAG" --target "$(git rev-list -n 1 "$TAG")" \
+		--title "v$NEW_VERSION" \
+		--notes "$(printf '## What changed\n\n%s\n\n**Install:** \`pi update --extensions\`' "$RELEASE_NOTES")" \
+		2>/dev/null || echo "[deploy] WARN: gh release create failed (gh not authenticated or release exists) — skipping"
 else
-  echo "[deploy] WARN: gh CLI not installed — skipping GitHub release creation. Tag $TAG is pushed."
+	echo "[deploy] WARN: gh CLI not installed — skipping GitHub release creation. Tag $TAG is pushed."
 fi
 
 # --- 10. post-publish device instructions ------------------------------------

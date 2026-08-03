@@ -24,15 +24,45 @@ export interface UseApiOptions {
 	retryBaseMs?: number;
 }
 
-// SPRINT-D1-REMAINING: integrate retryWithBackoff from utils/retry.ts.
-// SPRINT-D1-REMAINING: integrate staleness detection from utils/staleness.ts.
+// SPRINT-D1: retry with exponential backoff on fetch failure, so a
+// transient network blip (dashboard server still starting, ECONNRESET, a
+// single malformed response) auto-recovers instead of surfacing a hard
+// error screen that forces a manual page refresh. Crosses any fetch this
+// hook backs (snapshot, sessions, ...).
+function sleep(ms: number): Promise<void> {
+	return new Promise((r) => setTimeout(r, ms));
+}
+
+/** Fetch with bounded exponential backoff retry. The retry schedule is
+ *  {0, retryBaseMs, retryBaseMs*2, retryBaseMs*4, ...} capped at retryBaseMs*8,
+ *  so maxRetries=3 yields ~0ms + 500ms + 1000ms + 2000ms before giving up. */
+async function fetchWithRetry<T>(
+	fetchFn: () => Promise<T>,
+	maxRetries: number,
+	retryBaseMs: number,
+): Promise<T> {
+	let lastErr: unknown;
+	for (let attempt = 0; attempt <= maxRetries; attempt++) {
+		try {
+			return await fetchFn();
+		} catch (err) {
+			lastErr = err;
+			if (attempt === maxRetries) break;
+			// Exponential backoff capped at 8x base to avoid long stalls.
+			const delay = Math.min(retryBaseMs * 2 ** attempt, retryBaseMs * 8);
+			await sleep(delay);
+		}
+	}
+	throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
 // SPRINT-T1-REMAINING: add Authorization header when auth token present.
 
 export function useApi<T>(
 	fetchFn: () => Promise<T>,
 	options: UseApiOptions = {},
 ): UseApiResult<T> {
-	const { pollInterval = 0 } = options;
+	const { pollInterval = 0, maxRetries = 3, retryBaseMs = 500 } = options;
 	const [data, setData] = useState<T | null>(null);
 	const [error, setError] = useState<Error | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -43,7 +73,10 @@ export function useApi<T>(
 		setLoading(true);
 		setError(null);
 		try {
-			const result = await fetchFn();
+			// Retry transient failures with exponential backoff so a single
+			// network blip on page load auto-recovers instead of showing a
+			// hard error that requires a manual refresh.
+			const result = await fetchWithRetry(fetchFn, maxRetries, retryBaseMs);
 			if (mountedRef.current) {
 				setData(result);
 				setLastFetchedAt(Date.now());
@@ -57,7 +90,7 @@ export function useApi<T>(
 				setLoading(false);
 			}
 		}
-	}, [fetchFn]);
+	}, [fetchFn, maxRetries, retryBaseMs]);
 
 	useEffect(() => {
 		mountedRef.current = true;

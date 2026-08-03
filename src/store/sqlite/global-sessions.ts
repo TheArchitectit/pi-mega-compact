@@ -101,6 +101,17 @@ export function recordSessionHeartbeat(
     ctx_window: ctxWindow,
     last_seen: now,
   });
+  // Enforce the invariant: one heartbeat row per live pi PROCESS (pid).
+  // A pi process owns exactly one session_id at a time — when it restarts /
+  // resumes into a new session_id, the OLD (pid, old_session_id) row is stale
+  // and must be deleted, otherwise it lingers (its last_seen was updated by
+  // the prior heartbeat, so the 30-min prune won't catch it) and surfaces as
+  // a phantom 0% "pi-<repo>" gauge in the dashboard's "Context per Session"
+  // card (null tokens, dead session_id that no longer matches the launcher).
+  // Parameterized (PREVENT-002).
+  db.prepare(
+    `DELETE FROM session_heartbeats WHERE pid = @pid AND session_id != @session_id`,
+  ).run({ pid, session_id: sessionId });
 }
 
 /**
@@ -220,7 +231,20 @@ export function readActiveSessions(
     tokens: number | null;
     percent: number | null;
   }>;
-  return rows.map((r) => ({
+  // Dedup BY PID (one row per live pi process, keeping the most-recently-seen
+  // row). The schema PK is (pid, session_id), so a process that restarted /
+  // resumed into a new session_id leaves a stale (pid, old_session_id) row
+  // until recordSessionHeartbeat's cleanup fires or the 30-min prune runs.
+  // Without this dedup those stale rows surface as phantom 0% gauges in the
+  // "Context per Session" card (null tokens, dead session_id). Rows are
+  // already ordered by last_seen DESC, so the first row seen for a pid wins.
+  const seenPid = new Set<number>();
+  const deduped = rows.filter((r) => {
+    if (seenPid.has(r.pid)) return false;
+    seenPid.add(r.pid);
+    return true;
+  });
+  return deduped.map((r) => ({
     pid: r.pid,
     sessionId: r.session_id,
     repoRoot: r.repo_root,

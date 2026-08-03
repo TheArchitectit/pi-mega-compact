@@ -135,11 +135,26 @@ export function SessionContextGauges({
 	];
 
 	// Other active sessions (exclude the launcher by sessionId to avoid dup).
-	const others: ActiveSession[] = (sessions?.sessions ?? []).filter(
+	// Also dedup BY PID: the heartbeat schema PK is (pid, session_id), so a
+	// process that restarted into a new session_id leaves a stale
+	// (pid, old_session_id) row. That stale row has a different sessionId so
+	// the launcher filter above doesn't catch it, and it surfaces as a
+	// phantom 0% box (null tokens). Keep only the most-recently-seen row per
+	// pid (rows are sorted by lastSeen DESC below before the loop).
+	const othersRaw: ActiveSession[] = (sessions?.sessions ?? []).filter(
 		(s) => s.sessionId !== launcherSessionId,
 	);
-	// Sort by lastSeen descending (most recent first).
-	others.sort((a, b) => b.lastSeen - a.lastSeen);
+	othersRaw.sort((a, b) => b.lastSeen - a.lastSeen);
+	const seenPid = new Set<number>();
+	const others: ActiveSession[] = othersRaw.filter((s) => {
+		// Skip stale rows with no token sample — they have nothing to gauge
+		// and are always either a fresh session (briefly) or a dead lingering
+		// row. Either way a 0% / "?" gauge is noise.
+		if (s.tokens == null && s.percent == null) return false;
+		if (seenPid.has(s.pid)) return false;
+		seenPid.add(s.pid);
+		return true;
+	});
 	for (const s of others) {
 		gauges.push({
 			key: s.sessionId,
