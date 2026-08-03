@@ -48,6 +48,7 @@ import type {
 	SetupConfigureResponse,
 	EmbedderHealthResponse,
 	RaptorTreeResponse,
+	RaptorBuildHistoryResponse,
 	SettingsResponse,
 	SettingsUpdateRequest,
 	SettingsResponsePost,
@@ -328,6 +329,15 @@ export function configureEmbedder(
 export function fetchRaptorTree(sessionId?: string): Promise<RaptorTreeResponse> {
 	return getJson<RaptorTreeResponse>(
 		`${ENDPOINTS.raptorTree.path}${query({ sessionId })}`,
+	);
+}
+
+/** GET /api/raptor-build-history — build history for a session (coherence, depth, timeout). */
+export function fetchRaptorBuildHistory(
+	sessionId?: string,
+): Promise<RaptorBuildHistoryResponse> {
+	return getJson<RaptorBuildHistoryResponse>(
+		`${ENDPOINTS.raptorBuildHistory.path}${query({ sessionId })}`,
 	);
 }
 

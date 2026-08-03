@@ -241,8 +241,8 @@ export type {
 	GraphValidationReport,
 } from "./memory-map.js";
 
-// Part B — RAPTOR tree
-export type { RaptorNodeDTO, RaptorTreeResponse } from "./raptor.js";
+// Part B — RAPTOR tree + build history
+export type { RaptorNodeDTO, RaptorTreeResponse, RaptorBuildHistoryDTO, RaptorBuildHistoryResponse } from "./raptor.js";
 
 // A3 — cache stripe distribution + health
 export type {

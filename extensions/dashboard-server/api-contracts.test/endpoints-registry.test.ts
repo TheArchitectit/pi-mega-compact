@@ -118,7 +118,7 @@ void _c_achievements;
 // correct paths.
 
 const ENDPOINT_KEYS = Object.keys(ENDPOINTS) as (keyof typeof ENDPOINTS)[];
-const EXPECTED_ENDPOINT_COUNT = 44; // 36 prior + 7 wiki revival (W2) + 1 rag-metrics (H2)
+const EXPECTED_ENDPOINT_COUNT = 45; // 44 + 1 raptor-build-history
 
 /** All `/api/*` paths served by server.ts (extracted from the route handlers). */
 const SERVER_TS_PATHS: string[] = [
@@ -139,6 +139,7 @@ const SERVER_TS_PATHS: string[] = [
 	"/api/topics",
 	"/api/provider-cache",
 	"/api/rag-settings",
+	"/api/raptor-build-history",
 ];
 
 // ─── Tests ───────────────────────────────────────────────────────────────────

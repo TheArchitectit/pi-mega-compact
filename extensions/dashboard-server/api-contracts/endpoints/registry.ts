@@ -15,7 +15,7 @@ import type { IndexesSummaryResponse } from "../multi-repo.js";
 import type { GameStateResponse } from "../game.js";
 import type { SseEvent } from "../index.js";
 import type { ProviderCacheResponse } from "../provider-cache.js";
-import type { RaptorTreeResponse } from "../raptor.js";
+import type { RaptorTreeResponse, RaptorBuildHistoryResponse } from "../raptor.js";
 import type { MemoryStatusResponse } from "../memory.js";
 import type { SetupStatusResponse, SetupDetectResponse, SetupConfigureRequest, SetupConfigureResponse } from "../setup.js";
 import type { EmbedderHealthResponse } from "../embedder-health.js";
@@ -423,6 +423,14 @@ export const ENDPOINTS = {
 		description:
 			"Hierarchical RAPTOR tree (summary nodes by level) for a session; defaults to the latest session with nodes.",
 	} as const satisfies EndpointDef<"GET", undefined, RaptorTreeResponse>,
+
+	/** GET /api/raptor-build-history — Build history (coherence, depth, timeout) for a session. */
+	raptorBuildHistory: {
+		method: "GET",
+		path: "/api/raptor-build-history",
+		description:
+			"RAPTOR build history rows (node/leaf count, depth, coherence score, timed_out) for a session; defaults to the latest session with builds.",
+	} as const satisfies EndpointDef<"GET", undefined, RaptorBuildHistoryResponse>,
 
 	/** GET /api/embedder-health — Round-trip a test embed through the active embedder. */
 	embedderHealth: {

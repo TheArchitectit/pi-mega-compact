@@ -47,3 +47,22 @@ export interface RaptorTreeResponse {
 	/** True when there are no RAPTOR nodes for the resolved session. */
 	readonly empty: boolean;
 }
+
+/** A single build-history row (client-safe). */
+export interface RaptorBuildHistoryDTO {
+	readonly buildId: string;
+	readonly sessionId: string;
+	readonly startedAt: number;
+	readonly completedAt: number;
+	readonly nodeCount: number;
+	readonly leafCount: number;
+	readonly depth: number;
+	readonly coherenceScore: number | null;
+	readonly timedOut: boolean;
+}
+
+/** Response body for GET /api/raptor-build-history. */
+export interface RaptorBuildHistoryResponse {
+	readonly builds: RaptorBuildHistoryDTO[];
+	readonly empty: boolean;
+}

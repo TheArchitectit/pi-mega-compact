@@ -46,6 +46,7 @@ import {
 	handleSetupConfigure,
 	handleMemoryMap,
 	handleRaptorTree,
+	handleRaptorBuildHistory,
 	handleContextHealth,
 	handleCachePoison,
 	handleHealthSettings,
@@ -260,6 +261,7 @@ export async function launchDashboardServer(
 		if (handleSetupConfigure(req, res, ctx)) return;
 		if (handleMemoryMap(req, res, ctx)) return;
 		if (handleRaptorTree(req, res, ctx)) return;
+		if (handleRaptorBuildHistory(req, res, ctx)) return;
 		if (handleContextHealth(req, res, ctx)) return;
 		if (handleCachePoison(req, res, ctx)) return;
 		if (handleHealthSettings(req, res, ctx)) return;

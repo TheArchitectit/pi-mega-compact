@@ -7,8 +7,12 @@
  */
 import type React from "react";
 import { useEffect, useState } from "react";
-import { fetchRaptorTree } from "../../api/client";
-import type { RaptorTreeResponse, RaptorNodeDTO } from "@contracts";
+import { fetchRaptorTree, fetchRaptorBuildHistory } from "../../api/client";
+import type {
+	RaptorTreeResponse,
+	RaptorNodeDTO,
+	RaptorBuildHistoryResponse,
+} from "@contracts";
 
 /** Per-level border color for node cards. */
 function levelColor(level: number): string {
@@ -68,6 +72,7 @@ function NodeCard({ node }: { node: RaptorNodeDTO }): React.ReactElement {
 
 export default function RaptorTreeView(): React.ReactElement {
 	const [data, setData] = useState<RaptorTreeResponse | null>(null);
+	const [history, setHistory] = useState<RaptorBuildHistoryResponse | null>(null);
 	const [loading, setLoading] = useState<boolean>(true);
 	const [error, setError] = useState<string | null>(null);
 
@@ -75,10 +80,11 @@ export default function RaptorTreeView(): React.ReactElement {
 		let cancelled = false;
 		setLoading(true);
 		setError(null);
-		fetchRaptorTree()
-			.then((d) => {
+		Promise.all([fetchRaptorTree(), fetchRaptorBuildHistory()])
+			.then(([d, h]) => {
 				if (!cancelled) {
 					setData(d);
+					setHistory(h);
 					setLoading(false);
 				}
 			})
@@ -120,6 +126,11 @@ export default function RaptorTreeView(): React.ReactElement {
 		);
 	}
 
+	const latestBuild = history && !history.empty ? history.builds[0] : null;
+	const coherencePct = latestBuild?.coherenceScore != null
+		? Math.round(latestBuild.coherenceScore * 100)
+		: null;
+
 	return (
 		<div className="w-full p-4">
 			<div className="mb-4 flex items-center gap-6 text-sm text-muted-foreground">
@@ -130,7 +141,50 @@ export default function RaptorTreeView(): React.ReactElement {
 					<strong>{data.levels + 1}</strong> levels
 				</span>
 				<span>Built {formatDate(data.builtAt ?? 0)}</span>
+				{latestBuild && (
+					<>
+						<span>
+							Coherence:{" "}
+							<strong style={{ color: coherencePct != null && coherencePct >= 70 ? "#22c55e" : "#f59e0b" }}>
+								{coherencePct != null ? `${coherencePct}%` : "—"}
+							</strong>
+						</span>
+						<span>
+							Leaves: <strong>{latestBuild.leafCount}</strong>
+						</span>
+						<span>
+							Depth: <strong>{latestBuild.depth}</strong>
+						</span>
+						{latestBuild.timedOut && (
+							<span style={{ color: "#ef4444" }}>budget timeout</span>
+						)}
+					</>
+				)}
 			</div>
+			{history && !history.empty && history.builds.length > 1 && (
+				<details className="mb-4">
+					<summary className="cursor-pointer text-xs text-muted-foreground">
+						Build history ({history.builds.length} builds)
+					</summary>
+					<div className="mt-2 space-y-1">
+						{history.builds.slice(0, 10).map((b) => (
+							<div key={b.buildId} className="flex items-center gap-4 text-xs text-muted-foreground">
+								<span>{formatDate(b.completedAt)}</span>
+								<span>{b.nodeCount} nodes</span>
+								<span>{b.leafCount} leaves</span>
+								<span>depth {b.depth}</span>
+								<span>
+									coherence{" "}
+									{b.coherenceScore != null
+										? `${Math.round(b.coherenceScore * 100)}%`
+										: "—"}
+								</span>
+								{b.timedOut && <span style={{ color: "#ef4444" }}>timeout</span>}
+							</div>
+						))}
+					</div>
+				</details>
+			)}
 			{data.nodes.map((node) => (
 				<NodeCard key={node.id} node={node} />
 			))}
