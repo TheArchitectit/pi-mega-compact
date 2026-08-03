@@ -43,6 +43,16 @@ import type {
 } from "../maintenance.js";
 import type { CacheStripesResponse } from "../cache-stripes.js";
 import type {
+	WikiIndexResponse,
+	WikiPageResponse,
+	TopicEvolutionResponse,
+	TopicTimelineResponse,
+	RenameTopicRequest,
+	MergeTopicsRequest,
+	SplitTopicRequest,
+	CurationResult,
+} from "../wiki.js";
+import type {
 	GameScoreRow,
 	GameScoresQuery,
 	AchievementRow,
@@ -261,6 +271,64 @@ export const ENDPOINTS = {
 		path: "/api/topics/:topicId/memories",
 		description: "Member memories assigned to a wiki topic (drill-down).",
 	} as const satisfies EndpointDef<"GET", undefined, TopicMemoriesResponse>,
+
+	// ─── Wiki Revival (W2) ───────────────────────────────────────────
+
+	/** GET /api/wiki/index — wiki landing page with resolved labels. */
+	wikiIndex: {
+		method: "GET",
+		path: "/api/wiki/index",
+		description:
+			"Wiki index: auto-categorized topics with resolved (override-aware) labels.",
+	} as const satisfies EndpointDef<"GET", undefined, WikiIndexResponse>,
+
+	/** GET /api/wiki/topic/:topicId — single topic page + provenance. */
+	wikiTopic: {
+		method: "GET",
+		path: "/api/wiki/topic/:topicId",
+		description:
+			"Single wiki topic page: summary, key memories, and memory provenance.",
+	} as const satisfies EndpointDef<"GET", undefined, WikiPageResponse>,
+
+	/** PUT /api/wiki/topic/:topicId/label — rename a topic (user curation). */
+	renameTopic: {
+		method: "PUT",
+		path: "/api/wiki/topic/:topicId/label",
+		description:
+			"Rename a wiki topic (persists a label override; emits wiki_topic_renamed).",
+	} as const satisfies EndpointDef<"PUT", RenameTopicRequest, CurationResult>,
+
+	/** POST /api/wiki/merge — merge one topic into another. */
+	mergeTopics: {
+		method: "POST",
+		path: "/api/wiki/merge",
+		description:
+			"Merge source topic into target (reassigns memories; emits wiki_topics_merged).",
+	} as const satisfies EndpointDef<"POST", MergeTopicsRequest, CurationResult>,
+
+	/** POST /api/wiki/topic/:topicId/split — split listed memories into a new topic. */
+	splitTopic: {
+		method: "POST",
+		path: "/api/wiki/topic/:topicId/split",
+		description:
+			"Split listed member memories into a new topic (emits wiki_topic_split).",
+	} as const satisfies EndpointDef<"POST", SplitTopicRequest, CurationResult>,
+
+	/** GET /api/wiki/topic/:topicId/timeline — per-topic time buckets. */
+	topicTimeline: {
+		method: "GET",
+		path: "/api/wiki/topic/:topicId/timeline",
+		description:
+			"Per-topic memory-assignment timeline buckets for charts.",
+	} as const satisfies EndpointDef<"GET", undefined, TopicTimelineResponse>,
+
+	/** GET /api/wiki/evolution — node/edge D3 evolution graph. */
+	topicEvolution: {
+		method: "GET",
+		path: "/api/wiki/evolution",
+		description:
+			"Topic evolution nodes + edges + time buckets from topic_evolution.",
+	} as const satisfies EndpointDef<"GET", undefined, TopicEvolutionResponse>,
 
 	// ─── S49B Maintenance Tab ─────────────────────────────────────────
 

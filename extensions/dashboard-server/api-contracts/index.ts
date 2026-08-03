@@ -111,6 +111,13 @@ import type {
 	SseSessionSample,
 } from "./core.js";
 
+import type {
+	SseWikiRebuilt,
+	SseWikiTopicRenamed,
+	SseWikiTopicsMerged,
+	SseWikiTopicSplit,
+} from "./wiki.js";
+
 // Endpoints registry (Sprint A1)
 export type {
 	VersionResponse,
@@ -180,7 +187,11 @@ export type SseEvent =
 	| SseGameRitualEnd
 	| SseGameModeChanged
 	| SseGameRender
-	| SseSessionSample;
+	| SseSessionSample
+	| SseWikiRebuilt
+	| SseWikiTopicRenamed
+	| SseWikiTopicsMerged
+	| SseWikiTopicSplit;
 
 // S49B — maintenance tab API
 export type {
@@ -249,3 +260,24 @@ export type {
 
 // RAG metrics — HyDE + recall-quality aggregations (H1/H2)
 export type { RagMetricsResponse } from "./rag-metrics.js";
+
+// W2 — wiki revival: curation + provenance
+export type {
+	WikiIndexEntry,
+	WikiIndexResponse,
+	MemoryProvenance,
+	WikiPageResponse,
+	RenameTopicRequest,
+	MergeTopicsRequest,
+	SplitTopicRequest,
+	TopicTimelineResponse,
+	TopicEvolutionResponse,
+	TopicEvolutionNode,
+	TopicEvolutionEdge,
+	SseWikiRebuilt,
+	SseWikiTopicRenamed,
+	SseWikiTopicsMerged,
+	SseWikiTopicSplit,
+	WikiSseEvent,
+} from "./wiki.js";
+export type { CurationResult, OverrideKind, WikiCurationStore } from "../../../src/wiki/curation.js";
