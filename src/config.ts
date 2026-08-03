@@ -143,3 +143,26 @@ export const RAG_HYDE_ENABLED = (): boolean =>
 
 /** Spec 1: vbrainstorm visual design migration for the dashboard. */
 export const NEW_UI = (): boolean => ragEnabled("MEGACOMPACT_NEW_UI");
+
+// ---------------------------------------------------------------------------
+// Vector-cortex flags + breaker constants (VC0A+). Positive sprint flags,
+// default ON, `=0`/`_DISABLED` off. Re-exported from src/config/vector-cortex.ts
+// so root consumers share one source of truth.
+// ---------------------------------------------------------------------------
+
+export {
+  VC0A_ENABLED,
+  BREAKER_WINDOW_MS,
+  BREAKER_MIN_ATTEMPTS,
+  BREAKER_PERF_FAILURES,
+  BREAKER_PERF_FAILURE_RATE,
+  BREAKER_CORRECTNESS_FAILURES,
+  BREAKER_COOLDOWN_MS,
+  BREAKER_PROBE_COUNT,
+  BREAKER_RETRY_BASE_MS,
+  BREAKER_RETRY_CAP_MS,
+  BREAKER_RETRY_JITTER,
+  BREAKER_HYSTERESIS_FAILURE_RATE,
+  BREAKER_HYSTERESIS_BUDGET_P95_MS,
+  BREAKER_MIN_HEALTHY_RESIDENCE_MS,
+} from "./config/vector-cortex.js";

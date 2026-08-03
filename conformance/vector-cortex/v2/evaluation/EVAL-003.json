@@ -1,0 +1,1 @@
+{"assertion":"unknown unit rejected with EVAL_UNIT_UNKNOWN","expected":{"code":"EVAL_UNIT_UNKNOWN","ok":false},"id":"EVAL-003","input":[{"event":"e1","mode":"A","seq":1,"session":"s1","unit":"watts","value":1}],"kind":"metric","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/eval-fixture.schema.json"}
