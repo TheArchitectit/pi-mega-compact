@@ -28,3 +28,4 @@ export { handleCacheStripes } from "./routes-cache.js";
 export { handleContextHealth, handleCachePoison, handleHealthSettings } from "./routes-health.js";
 export { handleEmbedderHealth } from "./routes-embedder-health.js";
 export { handleRagSettings } from "./routes-rag-settings.js";
+export { handleRagMetrics } from "./routes-rag-metrics.js";

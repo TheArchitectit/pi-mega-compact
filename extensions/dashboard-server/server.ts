@@ -51,6 +51,7 @@ import {
 	handleHealthSettings,
 	handleEmbedderHealth,
 	handleRagSettings,
+	handleRagMetrics,
 	handleStatic,
 } from "./routes.js";
 
@@ -263,6 +264,7 @@ export async function launchDashboardServer(
 		if (handleHealthSettings(req, res, ctx)) return;
 		if (handleEmbedderHealth(req, res, ctx)) return;
 		if (handleRagSettings(req, res, ctx)) return;
+		if (handleRagMetrics(req, res, ctx)) return;
 		handleStatic(req, res, ctx);
 	});
 
