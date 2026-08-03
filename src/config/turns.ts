@@ -23,6 +23,14 @@ function envNum(name: string, def: number): number {
 	return Number.isFinite(n) ? n : def;
 }
 
+/** Default-ON toggle honoring the MEGACOMPACT_<NAME>_DISABLED opt-out convention. */
+function envEnabled(name: string, def: boolean): boolean {
+	if (process.env[`${name}_DISABLED`] === "true" || process.env[`${name}_DISABLED`] === "1") {
+		return false;
+	}
+	return envBool(name, def);
+}
+
 export interface TurnsConfigShape {
 	/** Isolated turns.db store enabled (default true). OFF = legacy main-db path. */
 	TURNS_DB_ENABLED: boolean;
@@ -41,6 +49,8 @@ export interface TurnsConfigShape {
 	WIKI_REBUILD_EVERY_N_COMPACTS: number;
 	/** D1: seed the topic model from raw_transcript when context_chunks is thin (default true). */
 	WIKI_SEED_FROM_TURNS: boolean;
+	/** W2: wiki revival curation + provenance endpoints. Default ON; off via MEGACOMPACT_WIKI_ENHANCED_DISABLED. */
+	WIKI_ENHANCED_ENABLED: boolean;
 }
 
 function envKRange(defMin: number, defMax: number): [number, number] {
@@ -66,6 +76,7 @@ export function loadTurnsConfig(): TurnsConfigShape {
 		WIKI_LABEL_TOP_TERMS: envNum("MEGACOMPACT_WIKI_LABEL_TOP_TERMS", 5),
 		WIKI_REBUILD_EVERY_N_COMPACTS: envNum("MEGACOMPACT_WIKI_REBUILD_EVERY", 3),
 		WIKI_SEED_FROM_TURNS: envBool("MEGACOMPACT_WIKI_SEED_FROM_TURNS", true),
+		WIKI_ENHANCED_ENABLED: envEnabled("MEGACOMPACT_WIKI_ENHANCED", true),
 	};
 }
 
