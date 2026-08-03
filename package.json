@@ -47,6 +47,7 @@
     "clean": "rm -rf dist",
     "prebuild": "npm run clean",
     "build": "tsc -p tsconfig.json",
+    "postbuild": "node scripts/vector-cortex-publish-acceptance.mjs",
     "build:dashboard": "cd extensions/dashboard-client && npx vite build",
     "test:dashboard-smoke": "node scripts/dashboard-tab-smoke.mjs",
     "lint": "tsc --noEmit && node scripts/guardrails-scan.mjs && node scripts/semantic-scan.mjs",

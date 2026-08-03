@@ -29,7 +29,14 @@ import { serializeRedactedJsonl } from "./eval/annotations.js";
 import { createEvalObserver } from "./eval/observer.js";
 import type { MetricEventV1 } from "./eval/types.js";
 
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+// Repo root differs by run location: the raw tsc layout puts this file at
+// dist/src/vector-cortex/ (3 levels below root) while the postbuild-published
+// copy sits at dist/vector-cortex/ (2 levels below root). Detect which layout
+// we're in by whether a "src" segment separates dist/ from vector-cortex/.
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = HERE.includes(join("dist", "src", "vector-cortex"))
+  ? join(HERE, "..", "..", "..")
+  : join(HERE, "..", "..");
 const V2 = join(REPO_ROOT, "conformance", "vector-cortex", "v2");
 
 interface ManifestRow {
