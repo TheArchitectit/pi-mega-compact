@@ -15,6 +15,8 @@ export type {
 	SessionId,
 	TurnEntry,
 	TurnRecallEntry,
+	TurnHydeTelemetry,
+	TurnRecallTelemetry,
 	ConversationFork,
 	TurnFilter,
 	PruneReport,

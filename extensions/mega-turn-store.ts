@@ -14,6 +14,8 @@ import {
 	type TurnStore,
 	type TurnEntry,
 	type TurnRecallEntry,
+	type TurnHydeTelemetry,
+	type TurnRecallTelemetry,
 } from "../src/store/turns/index.js";
 import {
 	recordTurn as legacyRecordTurn,
@@ -64,6 +66,11 @@ export function ensureConversationIdFor(
 }
 
 /** Record one turn row (turn_end). Returns the contract TurnId (string). */
+/** H1: HyDE telemetry write — a structural subset of HydeInvocationInfo. */
+export type RecallHydeWrite = TurnHydeTelemetry;
+/** H1: recall-quality write — a structural subset of RecallMetricsSnapshot. */
+export type RecallMetricsWrite = TurnRecallTelemetry;
+
 export function recordTurnWrite(
 	config: MegaConfig,
 	input: {
@@ -78,6 +85,10 @@ export function recordTurnWrite(
 		pressureBand?: string;
 		modelId?: string;
 		epochId?: string;
+		/** H1: HyDE invocation telemetry (persisted to hyde_* columns). */
+		hyde?: RecallHydeWrite;
+		/** H1: recall-quality snapshot (persisted to recall_* columns). */
+		recallMetrics?: RecallMetricsWrite;
 	},
 	stateDir: string,
 ): string {
@@ -96,6 +107,8 @@ export function recordTurnWrite(
 		pressureBand: input.pressureBand as TurnEntry["pressureBand"],
 		model: input.modelId,
 		epochId: input.epochId,
+		hyde: input.hyde,
+		recallMetrics: input.recallMetrics,
 	};
 	return storeFor(stateDir).appendTurn(entry);
 }

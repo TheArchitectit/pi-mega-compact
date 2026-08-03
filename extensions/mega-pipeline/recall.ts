@@ -66,6 +66,32 @@ export function doRecall(
 		injected: result.toInject.length,
 		empty: result.empty,
 	});
+	if (config.ragRecallMetrics && result.hydeInfo) {
+		runtime.dashboard.event("hyde_executed", {
+			sessionId: sid,
+			ran: result.hydeInfo.ran,
+			skipped: result.hydeInfo.skipped,
+			reason: result.hydeInfo.reason,
+			hypotheticalDoc: result.hydeInfo.hypotheticalDoc.slice(0, 400),
+			generationMs: result.hydeInfo.generationMs,
+			rawHitCount: result.hydeInfo.rawHitCount,
+			hydeHitCount: result.hydeInfo.hydeHitCount,
+			fusedHitCount: result.hydeInfo.fusedHitCount,
+			lift: result.hydeInfo.lift,
+		});
+	}
+	if (config.ragRecallMetrics && result.recallMetrics) {
+		runtime.dashboard.event("recall_metrics", {
+			sessionId: sid,
+			hitCount: result.recallMetrics.hitCount,
+			score: result.recallMetrics.score,
+			pass: result.recallMetrics.pass,
+			relevance: result.recallMetrics.relevance,
+			coverage: result.recallMetrics.coverage,
+			diversity: result.recallMetrics.diversity,
+			specificity: result.recallMetrics.specificity,
+		});
+	}
 	if (!result.empty && result.toInject.length > 0) {
 		const top = result.toInject[0];
 		const scorePct = Math.round((top.score ?? 0) * 100);
@@ -105,6 +131,8 @@ export function doRecall(
 					turnIndex: runtime.currentTurn,
 					role: "assistant",
 					startedAt: Date.now(),
+					hyde: result.hydeInfo ?? undefined,
+					recallMetrics: result.recallMetrics ?? undefined,
 				},
 				runtime.currentStateDir,
 			);

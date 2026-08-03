@@ -68,6 +68,54 @@ test("flag ON → writes land in turns.db (not main sqlite.db)", () => {
 	);
 });
 
+test("flag ON → hyde + recall telemetry round-trips into turns.db row", () => {
+	const dir = stateDir();
+	const c = cfg(true);
+	const conv = ensureConversationIdFor(c, "sess_tele", dir);
+	const turnId = recordTurnWrite(
+		c,
+		{
+			conversationId: conv,
+			sessionId: "sess_tele",
+			turnIndex: 0,
+			role: "assistant",
+			endedAt: Date.now(),
+			hyde: {
+				ran: true,
+				hypotheticalDoc: "hypo doc",
+				rawHitCount: 4,
+				hydeHitCount: 6,
+				fusedHitCount: 8,
+				lift: 2,
+				generationMs: 42,
+			},
+			recallMetrics: {
+				score: 0.7,
+				pass: true,
+				relevance: 0.8,
+				coverage: 0.6,
+				diversity: 0.5,
+				specificity: 0.4,
+			},
+		},
+		dir,
+	);
+	assert.ok(turnId, "telemetry turn must have a turnId");
+	const db = new DatabaseSync(turnDbPath(dir));
+	const row = db
+		.prepare("SELECT * FROM turns WHERE session_id = ?")
+		.get("sess_tele") as Record<string, unknown>;
+	assert.equal(row.hyde_ran, 1);
+	assert.equal(row.hyde_doc, "hypo doc");
+	assert.equal(row.hyde_lift, 2);
+	assert.equal(row.hyde_generation_ms, 42);
+	assert.equal(row.recall_score, 0.7);
+	assert.equal(row.recall_pass, 1);
+	assert.equal(row.recall_specificity, 0.4);
+	db.close();
+	closeTurnStore(dir);
+});
+
 test("flag OFF → writes land in main sqlite.db (legacy S48 path)", () => {
 	const dir = stateDir();
 	const c = cfg(false);
