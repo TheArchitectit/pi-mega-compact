@@ -138,5 +138,14 @@ export async function recallAndInlineAsync(
 			`  • ${h.checkpoint.checkpointId} (${h.checkpoint.summary.slice(0, 60).replace(/\n/g, " ")}…)`,
 	);
 
-	return { toInject, report, block, empty: toInject.length === 0 };
+	return {
+		toInject,
+		report,
+		block,
+		empty: toInject.length === 0,
+		// H1: cross-repo async path is HyDE-free; telemetry stays null until a
+		// future sprint threads it here.
+		hydeInfo: null,
+		recallMetrics: null,
+	};
 }

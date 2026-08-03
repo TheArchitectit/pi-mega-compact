@@ -229,6 +229,9 @@ export async function doRecallAsync(
 			),
 			block,
 			empty: merged.length === 0,
+			// H1: merged cross-repo result reuses the same-repo pass's telemetry.
+			hydeInfo: sameRepo.hydeInfo,
+			recallMetrics: sameRepo.recallMetrics,
 		};
 	} catch {
 		return sameRepo; // cross-repo failure → same-repo only (non-fatal)

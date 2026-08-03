@@ -19,10 +19,16 @@ import { estimateBlockTokens } from "../tokens.js";
 import { defaultEmbedder, cosineSimilarity } from "../embedder.js";
 import { RAG_QUERY_REFORMULATION, RAG_TIERED_ROUTER, RAG_RECALL_METRICS, RAG_HYDE_ENABLED } from "../config.js";
 import { generateHypotheticalDoc, fuseRecallHits } from "../hyde.js";
-import type { RecallInjectOptions, RecallInjectResult } from "./types.js";
+import type {
+	RecallInjectOptions,
+	RecallInjectResult,
+	HydeInvocationInfo,
+	RecallMetricsSnapshot,
+} from "./types.js";
 import type { SearchHit } from "../vectorStore.js";
 import { reformulateRecallQuery, runTieredRecall } from "./reformulate.js";
 import { formatRecallBlock, scoreAndLogRecallMetrics, raptorOverviewBlock } from "./format.js";
+import { buildHydeInfo, hydeSkipped } from "./hydeTelemetry.js";
 
 /**
  * Recall and inline context from the checkpoint store.
@@ -94,10 +100,17 @@ export function recallAndInline(
 	// RRF-fuses with the raw-query results. Non-fatal: any error → raw-only.
 	// TrigramEmbedder (kind !== "http") skips this — S57 B1 reformulation above
 	// already handles the no-LLM path.
+	// H1 telemetry tracking for the HyDE block below.
 	let hydeHits: SearchHit[] | null = null;
+	let hydeDoc = "";
+	let hydeGenMs = 0;
+	let hydeRawCount = 0;
 	if (RAG_HYDE_ENABLED() && embedder.kind === "http") {
+		const t0 = Date.now();
 		const hyde = generateHypotheticalDoc(opts.query, embedder);
+		hydeGenMs = Date.now() - t0;
 		if (hyde) {
+			hydeDoc = hyde;
 			try {
 				const r2 = searchRecall(
 					{ sessionId: opts.sessionId, query: hyde, limit, skipInjected: skip },
@@ -120,6 +133,8 @@ export function recallAndInline(
 		);
 		newHits = result.newHits;
 	}
+	// H1: the raw-query hit count is taken BEFORE fusion.
+	hydeRawCount = newHits.length;
 
 	// S43 re-plan: fuse the hypothetical-doc hits with the raw-query hits via RRF
 	// when HyDE produced results. The downstream inline dedupe + metrics + format
@@ -162,7 +177,10 @@ export function recallAndInline(
 	// byte-identical). Scores the injected hits against the ORIGINAL query so the
 	// metric measures whether the (possibly expanded) search results stay
 	// relevant to what the user actually asked.
-	if (RAG_RECALL_METRICS()) scoreAndLogRecallMetrics(opts.query, toInject);
+	let recallMetrics: RecallMetricsSnapshot | null = null;
+	if (RAG_RECALL_METRICS()) {
+		recallMetrics = scoreAndLogRecallMetrics(opts.query, toInject);
+	}
 
 	// F3: format once — one preamble, correct [1..n] numbering.
 	const recallBlock = toInject.length > 0 ? formatRecallBlock(toInject) : "";
@@ -188,10 +206,24 @@ export function recallAndInline(
 			? overview + "\n" + recallBlock
 			: overview || recallBlock;
 
+	// H1: build the HyDE invocation telemetry for this pass.
+	const fusedCount = toInject.length;
+	let hydeInfo: HydeInvocationInfo;
+	if (RAG_HYDE_ENABLED() && embedder.kind === "http") {
+		hydeInfo =
+			hydeHits && hydeHits.length > 0
+				? buildHydeInfo("ran", hydeDoc, hydeGenMs, hydeRawCount, hydeHits.length, fusedCount)
+				: hydeSkipped(hydeDoc ? "generation-failed" : "no-llm", hydeRawCount, fusedCount);
+	} else {
+		hydeInfo = hydeSkipped("disabled", hydeRawCount, fusedCount);
+	}
+
 	return {
 		toInject,
 		report,
 		block,
 		empty: block.length === 0,
+		hydeInfo,
+		recallMetrics,
 	};
 }

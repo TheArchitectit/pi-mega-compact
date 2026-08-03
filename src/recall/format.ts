@@ -12,6 +12,7 @@ import { normalizeSessionId } from "../store.js";
 import { cosineSimilarity } from "../embedder.js";
 import { computeRecallMetrics } from "../recallMetrics.js";
 import { Logger } from "../log.js";
+import type { RecallMetricsSnapshot } from "./types.js";
 
 /** Wrap a recall block so the model reads it as restored compacted context. */
 export function formatRecallBlock(hits: SearchHit[]): string {
@@ -150,7 +151,10 @@ export function raptorOverviewBlock(
  * B3: Compute recall-quality metrics on the injected hits and log them.
  * Only called when RAG_RECALL_METRICS() is ON. Non-fatal.
  */
-export function scoreAndLogRecallMetrics(query: string, toInject: SearchHit[]): void {
+export function scoreAndLogRecallMetrics(
+	query: string,
+	toInject: SearchHit[],
+): RecallMetricsSnapshot | null {
 	try {
 		const logger = new Logger();
 		const metrics = computeRecallMetrics(query, toInject);
@@ -167,7 +171,16 @@ export function scoreAndLogRecallMetrics(query: string, toInject: SearchHit[]): 
 				diversity: metrics.breakdown.diversity,
 			});
 		}
+		return {
+			hitCount: toInject.length,
+			score: metrics.score,
+			pass: metrics.pass,
+			relevance: metrics.breakdown.relevance,
+			coverage: metrics.breakdown.coverage,
+			diversity: metrics.breakdown.diversity,
+			specificity: metrics.breakdown.specificity,
+		};
 	} catch {
-		/* non-fatal: metrics never break recall */
+		return null; // non-fatal: metrics never break recall
 	}
 }

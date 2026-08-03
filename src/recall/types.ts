@@ -46,6 +46,42 @@ export interface RecallInjectResult {
 	block: string;
 	/** True when nothing new was inlined. */
 	empty: boolean;
+	/** H1: HyDE invocation telemetry for this recall pass. Non-null always. */
+	hydeInfo: HydeInvocationInfo | null;
+	/** H1: recall-quality metrics (only populated when RAG_RECALL_METRICS() is ON). */
+	recallMetrics: RecallMetricsSnapshot | null;
+}
+
+export interface HydeInvocationInfo {
+	/** True when HyDE ran (LLM generated a hypothetical doc + embedded + searched). */
+	ran: boolean;
+	/** True when HyDE was considered but explicitly skipped (e.g. no LLM surface). */
+	skipped: boolean;
+	/** Human-readable reason: "ran", "disabled", "no-llm", "generation-failed". */
+	reason: string;
+	/** The hypothetical answer document the LLM produced ("" when skipped/failed). */
+	hypotheticalDoc: string;
+	/** Wall-clock ms spent generating + embedding the hypothetical doc (0 when skipped). */
+	generationMs: number;
+	/** Hit count from the raw-query search before fusion. */
+	rawHitCount: number;
+	/** Hit count from the hypothetical-doc search before fusion. */
+	hydeHitCount: number;
+	/** Hit count of the RRF-fused result actually injected (after dedupe+cap). */
+	fusedHitCount: number;
+	/** Lift = fusedHitCount / max(1, rawHitCount) — how much HyDE changed recall breadth. */
+	lift: number;
+}
+
+/** Slim, serialization-safe slice of RecallQualityResult for persistence + SSE. */
+export interface RecallMetricsSnapshot {
+	hitCount: number;
+	score: number;
+	pass: boolean;
+	relevance: number;
+	coverage: number;
+	diversity: number;
+	specificity: number;
 }
 
 export interface MemoryRecallInjectOptions {
