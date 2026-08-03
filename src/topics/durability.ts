@@ -27,13 +27,14 @@ interface OverrideRow {
 	merged_into: string | null;
 	split_from: string | null;
 	split_memory_ids: string | null;
+	merged_memory_ids: string | null;
 }
 
 /** Read all overrides in chronological order (oldest first). */
 function loadOverrides(db: DatabaseSync): OverrideRow[] {
 	return db
 		.prepare(
-			`SELECT topic_id, kind, custom_label, merged_into, split_from, split_memory_ids
+			`SELECT topic_id, kind, custom_label, merged_into, split_from, split_memory_ids, merged_memory_ids
 			 FROM topic_overrides ORDER BY overridden_at ASC`,
 		)
 		.all() as unknown as OverrideRow[];
@@ -85,8 +86,10 @@ function nearestByLabelOverlap(db: DatabaseSync, label: string): string {
 /**
  * Replay a single merge override: force the source topic's merged members back
  * into the target topic (or its nearest-by-label-overlap survivor if the target
- * dissolved). The members are recovered from `topic_evolution` merge rows
- * recorded under the target before the rebuild.
+ * dissolved). Member ids are read from `merged_memory_ids` on the override row
+ * (W5 — survives `replaceTopicModel` because `topic_overrides` is never wiped).
+ * Falls back to `topic_evolution` for pre-W5 merges (only works when evolution
+ * rows are intact, i.e. the incremental path or no rebuild has fired since).
  */
 function replayMerge(
 	db: DatabaseSync,
@@ -94,14 +97,44 @@ function replayMerge(
 ): void {
 	const target = row.merged_into;
 	if (!target) return;
-	// Members moved by the original merge were recorded under the target.
-	const members = db
-		.prepare(
-			`SELECT memory_id, session_id FROM topic_evolution
-			 WHERE topic_id = ? AND method = 'merge' ORDER BY memory_id ASC`,
-		)
-		.all(target) as Array<{ memory_id: string; session_id: string | null }>;
-	if (members.length === 0) return;
+	// Primary source: merged_memory_ids on the override row itself.
+	let memoryIds: string[] = [];
+	if (row.merged_memory_ids) {
+		try {
+			const parsed = JSON.parse(row.merged_memory_ids) as unknown;
+			if (Array.isArray(parsed)) {
+				memoryIds = parsed.filter(
+					(m): m is string => typeof m === "string",
+				);
+			}
+		} catch {
+			/* non-fatal: malformed member list falls through to evolution */
+		}
+	}
+	// Fallback: topic_evolution rows (only intact when no rebuild has fired).
+	let members: Array<{ memory_id: string; session_id: string | null }> = [];
+	if (memoryIds.length === 0) {
+		members = db
+			.prepare(
+				`SELECT memory_id, session_id FROM topic_evolution
+				 WHERE topic_id = ? AND method = 'merge' ORDER BY memory_id ASC`,
+			)
+			.all(target) as Array<{ memory_id: string; session_id: string | null }>;
+		if (members.length === 0) return;
+	} else {
+		// Resolve session_id for each member from its current assignment (if any).
+		for (const mid of memoryIds) {
+			const r = db
+				.prepare(
+					"SELECT session_id FROM memory_topics WHERE memory_id = ? LIMIT 1",
+				)
+				.get(mid) as { session_id: string | null } | undefined;
+			members.push({
+				memory_id: mid,
+				session_id: r?.session_id ?? null,
+			});
+		}
+	}
 	let dest = target;
 	if (!topicExists(db, target)) {
 		dest = nearestByLabelOverlap(db, target);

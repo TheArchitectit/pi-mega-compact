@@ -205,6 +205,7 @@ export function initTurnSchema(db: DatabaseSync): void {
       merged_into   TEXT,
       split_from    TEXT,
       split_memory_ids TEXT,
+      merged_memory_ids TEXT,
       overridden_at INTEGER NOT NULL,
       PRIMARY KEY (topic_id, kind)
     )
@@ -212,6 +213,21 @@ export function initTurnSchema(db: DatabaseSync): void {
 	db.exec(
 		`CREATE INDEX IF NOT EXISTS idx_topic_overrides_topic ON topic_overrides(topic_id)`,
 	);
+
+	// W5: add merged_memory_ids column to existing topic_overrides tables (same
+	// additive ensureColumn pattern as the HyDE columns). Stores the member ids
+	// from the source topic at merge time so merge overrides survive a full
+	// replaceTopicModel rebuild (topic_evolution rows are CASCADE-deleted with
+	// their parent topic, but topic_overrides rows persist across rebuilds).
+	const overridesCols = db
+		.prepare("PRAGMA table_info(topic_overrides)")
+		.all() as Array<{ name: string }>;
+	if (
+		overridesCols.length > 0 &&
+		!overridesCols.some((c) => c.name === "merged_memory_ids")
+	) {
+		db.exec("ALTER TABLE topic_overrides ADD COLUMN merged_memory_ids TEXT");
+	}
 
 	db.exec(`
     CREATE TABLE IF NOT EXISTS topic_evolution (

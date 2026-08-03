@@ -153,13 +153,14 @@ test("replays a merge override — source members forced back into the target", 
 	const dir = stateDir();
 	const db = openTurnStore(dir);
 	createTopicStore(dir).replaceTopicModel(makeModel(1000));
-	// Merge override: topic_1 dissolved into topic_0.
+	// Merge override: topic_1 dissolved into topic_0, with member ids stored on
+	// the override row (W5) so they survive a full replaceTopicModel rebuild.
 	db.prepare(
 		`INSERT OR REPLACE INTO topic_overrides
-		   (topic_id, kind, merged_into, overridden_at)
-		 VALUES ('topic_1', 'merge', 'topic_0', 10)`,
+		   (topic_id, kind, merged_into, merged_memory_ids, overridden_at)
+		 VALUES ('topic_1', 'merge', 'topic_0', '["mem_b0","mem_b1"]', 10)`,
 	).run();
-	// The merge's member provenance is recorded under the target topic.
+	// Also record in topic_evolution (backward-compat path).
 	db.prepare(
 		`INSERT OR REPLACE INTO topic_evolution (topic_id, memory_id, session_id, assigned_at, method)
 		 VALUES ('topic_0', 'mem_b0', 'sess2', 5, 'merge')`,
@@ -178,6 +179,35 @@ test("replays a merge override — source members forced back into the target", 
 	applyFullOverridesAfterRebuild(db);
 
 	// Both source members now live under the target topic.
+	const targetMembers = db
+		.prepare("SELECT memory_id FROM memory_topics WHERE topic_id = 'topic_0' ORDER BY memory_id")
+		.all() as Array<{ memory_id: string }>;
+	assert.deepEqual(targetMembers.map((m) => m.memory_id), [
+		"mem_a0",
+		"mem_a1",
+		"mem_b0",
+		"mem_b1",
+	]);
+	closeTurnStore(dir);
+});
+
+test("merge survives a full replaceTopicModel rebuild (merged_memory_ids on override row)", () => {
+	const dir = stateDir();
+	const db = openTurnStore(dir);
+	createTopicStore(dir).replaceTopicModel(makeModel(1000));
+	// Merge override stores member ids on the override row itself.
+	db.prepare(
+		`INSERT OR REPLACE INTO topic_overrides
+		   (topic_id, kind, merged_into, merged_memory_ids, overridden_at)
+		 VALUES ('topic_1', 'merge', 'topic_0', '["mem_b0","mem_b1"]', 10)`,
+	).run();
+
+	// Full rebuild wipes topics + memory_topics + topic_evolution (CASCADE).
+	// Only topic_overrides survives.
+	createTopicStore(dir).replaceTopicModel(makeModel(2000));
+	applyFullOverridesAfterRebuild(db);
+
+	// Source members recovered from merged_memory_ids, forced back into target.
 	const targetMembers = db
 		.prepare("SELECT memory_id FROM memory_topics WHERE topic_id = 'topic_0' ORDER BY memory_id")
 		.all() as Array<{ memory_id: string }>;

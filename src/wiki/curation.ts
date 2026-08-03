@@ -124,9 +124,14 @@ export function createWikiCuration(stateDir?: string): WikiCurationStore {
 				}
 				db.prepare(
 					`INSERT OR REPLACE INTO topic_overrides
-					   (topic_id, kind, merged_into, overridden_at)
-					 VALUES (?, 'merge', ?, ?)`,
-				).run(sourceTopicId, targetTopicId, t);
+					   (topic_id, kind, merged_into, merged_memory_ids, overridden_at)
+					 VALUES (?, 'merge', ?, ?, ?)`,
+				).run(
+					sourceTopicId,
+					targetTopicId,
+					JSON.stringify(members.map((m) => m.memory_id)),
+					t,
+				);
 				db.prepare("DELETE FROM memory_topics WHERE topic_id = ?").run(sourceTopicId);
 				db.prepare("DELETE FROM topics WHERE id = ?").run(sourceTopicId);
 				recountTopic(db, targetTopicId);
