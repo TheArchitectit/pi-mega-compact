@@ -214,7 +214,7 @@ export function initTurnSchema(db: DatabaseSync): void {
 
 	db.exec(`
     CREATE TABLE IF NOT EXISTS topic_evolution (
-      topic_id     TEXT NOT NULL REFERENCES topics(id),
+      topic_id     TEXT NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
       memory_id    TEXT NOT NULL,
       session_id   TEXT,
       assigned_at  INTEGER NOT NULL,
@@ -228,6 +228,47 @@ export function initTurnSchema(db: DatabaseSync): void {
 	db.exec(
 		`CREATE INDEX IF NOT EXISTS idx_topic_evolution_ts   ON topic_evolution(assigned_at)`,
 	);
+
+	// Migration: topic_evolution.topic_id FK lacked ON DELETE CASCADE when the
+	// table was first created (W1). Without it, deleting a topic (merge source or
+	// replaceTopicModel rebuild) throws SQLITE_CONSTRAINT when evolution rows
+	// reference it, rolling back the delete. Recreate the table with CASCADE when
+	// the live FK definition is missing it. Non-fatal: a failure just leaves the
+	// old definition (rebuilds remain best-effort).
+	try {
+		// PRAGMA foreign_key_list exposes the referenced table + on-delete rule.
+		const fkList = db
+			.prepare("PRAGMA foreign_key_list(topic_evolution)")
+			.all() as Array<{ table: string; from: string; on_delete: string }>;
+		const topicFk = fkList.find((f) => f.from === "topic_id");
+		if (topicFk && topicFk.on_delete !== "CASCADE") {
+			db.exec("DROP TABLE IF EXISTS topic_evolution_mig");
+			db.exec(`
+	        CREATE TABLE topic_evolution_mig (
+	          topic_id     TEXT NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+	          memory_id    TEXT NOT NULL,
+	          session_id   TEXT,
+	          assigned_at  INTEGER NOT NULL,
+	          method       TEXT NOT NULL CHECK(method IN ('kmeans+tfidf','merge','split','manual')),
+	          PRIMARY KEY (topic_id, memory_id)
+	        )
+	      `);
+			db.exec(
+				`INSERT INTO topic_evolution_mig (topic_id, memory_id, session_id, assigned_at, method)
+	           SELECT topic_id, memory_id, session_id, assigned_at, method FROM topic_evolution`,
+			);
+			db.exec("DROP TABLE topic_evolution");
+			db.exec("ALTER TABLE topic_evolution_mig RENAME TO topic_evolution");
+			db.exec(
+				`CREATE INDEX IF NOT EXISTS idx_topic_evolution_topic ON topic_evolution(topic_id, assigned_at)`,
+			);
+			db.exec(
+				`CREATE INDEX IF NOT EXISTS idx_topic_evolution_ts   ON topic_evolution(assigned_at)`,
+			);
+		}
+	} catch {
+		/* non-fatal: migration never breaks turn-DB open */
+	}
 
 	// Stamp schema version once.
 	const existing = db

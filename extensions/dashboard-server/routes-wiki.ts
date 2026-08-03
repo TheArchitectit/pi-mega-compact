@@ -43,6 +43,15 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 	res.end(JSON.stringify(body));
 }
 
+/** Decode a percent-encoded path segment; null on malformed encoding (%zz). */
+function decodeSegment(raw: string): string | null {
+	try {
+		return decodeURIComponent(raw);
+	} catch {
+		return null;
+	}
+}
+
 /** Read a capped JSON body; returns { ok, value } or { error }. */
 function readJsonBody(
 	req: IncomingMessage,
@@ -183,8 +192,12 @@ export function handleWiki(
 			? url.match(/^\/api\/wiki\/topic\/([^/?]+)\/timeline$/)
 			: null;
 	if (timelineMatch) {
+		const topicId = decodeSegment(timelineMatch[1]);
+		if (topicId === null) {
+			sendJson(res, 400, { error: "malformed_topic_id" });
+			return true;
+		}
 		try {
-			const topicId = decodeURIComponent(timelineMatch[1]);
 			const tdb = openTurnStore(ctx.stateDir);
 			const rows = tdb
 				.prepare("SELECT assigned_at FROM memory_topics WHERE topic_id = ?")
@@ -205,8 +218,12 @@ export function handleWiki(
 	const topicMatch =
 		req.method === "GET" ? url.match(/^\/api\/wiki\/topic\/([^/?]+)$/) : null;
 	if (topicMatch) {
+		const topicId = decodeSegment(topicMatch[1]);
+		if (topicId === null) {
+			sendJson(res, 400, { error: "malformed_topic_id" });
+			return true;
+		}
 		try {
-			const topicId = decodeURIComponent(topicMatch[1]);
 			const store = createTopicStore(ctx.stateDir);
 			const topic = store.getTopics().find((t) => t.id === topicId);
 			if (!topic) {
@@ -261,7 +278,8 @@ export function handleWiki(
 	if (renameMatch) {
 		readJsonBody(req, (result) => {
 			if (!result.ok) return sendJson(res, 400, { error: result.error });
-			const topicId = decodeURIComponent(renameMatch[1]);
+			const topicId = decodeSegment(renameMatch[1]);
+			if (topicId === null) return sendJson(res, 400, { error: "malformed_topic_id" });
 			const label = typeof result.value.label === "string" ? result.value.label : "";
 			try {
 				const curation = createWikiCuration(ctx.stateDir);
@@ -328,7 +346,8 @@ export function handleWiki(
 	if (splitMatch) {
 		readJsonBody(req, (result) => {
 			if (!result.ok) return sendJson(res, 400, { error: result.error });
-			const topicId = decodeURIComponent(splitMatch[1]);
+			const topicId = decodeSegment(splitMatch[1]);
+			if (topicId === null) return sendJson(res, 400, { error: "malformed_topic_id" });
 			const raw = result.value.memoryIds;
 			const memoryIds = Array.isArray(raw)
 				? raw.filter((m): m is string => typeof m === "string")

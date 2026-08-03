@@ -122,7 +122,16 @@ export function createSplitTopic(
 	sourceLabel: string,
 	now: number,
 ): string {
-	const newId = `topic_${sourceId}_split_${now}`;
+	// Two splits in the same millisecond collide on the base id; append a
+	// numeric suffix until the id is unused.
+	let newId = `topic_${sourceId}_split_${now}`;
+	let suffix = 2;
+	let exists = db.prepare("SELECT 1 FROM topics WHERE id = ?").get(newId);
+	while (exists) {
+		newId = `topic_${sourceId}_split_${now}_${suffix}`;
+		exists = db.prepare("SELECT 1 FROM topics WHERE id = ?").get(newId);
+		suffix++;
+	}
 	db.prepare(
 		`INSERT INTO topics (id, label, term_scores, memory_count, last_updated, cluster_model_built_at)
 		 VALUES (?, ?, NULL, 0, ?, NULL)`,

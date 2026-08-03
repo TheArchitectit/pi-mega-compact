@@ -21,6 +21,7 @@ import {
 	buildTopicModel,
 	createTopicStore,
 	bumpWikiCompactCounter,
+	applyOverridesAfterRebuild,
 } from "../../../src/topics/index.js";
 import { TrigramEmbedder } from "../../../src/embedder.js";
 import type { EmbeddedChunk } from "../../../src/topics/types.js";
@@ -99,6 +100,8 @@ export async function persistEpochAndMaintain(
 						createTopicStore(runtime.currentStateDir).replaceTopicModel(
 							model,
 						);
+						// Re-stamp custom label overrides wiped by the rebuild.
+						applyOverridesAfterRebuild(tdb);
 						runtime.logger.info("wiki_rebuild", {
 							clusterCount: model.k,
 							totalChunks: model.totalChunks,
@@ -177,6 +180,10 @@ export async function persistEpochAndMaintain(
 								createTopicStore(
 									runtime.currentStateDir,
 								).replaceTopicModel(model);
+								// Re-stamp custom label overrides wiped by the seed rebuild.
+								applyOverridesAfterRebuild(
+									openTurnStore(runtime.currentStateDir),
+								);
 								runtime.logger.info("wiki_seed", {
 									clusterCount: model.k,
 									sourceChunks: seedChunks.length,

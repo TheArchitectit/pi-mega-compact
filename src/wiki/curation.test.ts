@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createTopicStore } from "../topics/store.js";
+import { createTopicStore, applyOverridesAfterRebuild } from "../topics/store.js";
 import { openTurnStore, closeTurnStore } from "../store/turns/connection.js";
 import { createWikiCuration } from "./curation.js";
 import type { ClusterModel } from "../topics/types.js";
@@ -204,6 +204,47 @@ test("splitTopic: moves listed memories to new topic, writes override + evolutio
 		.prepare("SELECT COUNT(*) AS c FROM topic_evolution WHERE topic_id = ?")
 		.get(r.topicId) as { c: number };
 	assert.equal(evo.c, 1);
+	closeTurnStore(dir);
+});
+
+test("rebuild after curation does not throw SQLITE_CONSTRAINT (FK CASCADE)", () => {
+	const dir = stateDir();
+	const store = createTopicStore(dir);
+	const cur = createWikiCuration(dir);
+	store.replaceTopicModel(makeModel(1000));
+	// Split topic_0 — creates a new split topic + topic_evolution rows.
+	const split = cur.splitTopic("topic_0", ["mem_a0"]);
+	assert.equal(split.ok, true);
+	assert.notEqual(split.topicId, "topic_0");
+	// Custom label that must survive a rebuild.
+	const renamed = cur.renameTopic(split.topicId, "Curated Split");
+	assert.equal(renamed.ok, true);
+
+	const db = openTurnStore(dir);
+	// The rebuilt model re-includes the curated split topic (its id is stable
+	// across the rebuild only if the model carries it).
+	const rebuilt = makeModel(2000);
+	rebuilt.topics.push({
+		id: split.topicId,
+		label: "split",
+		termScores: [],
+		memoryCount: 0,
+		lastUpdated: 2000,
+	});
+	rebuilt.k += 1;
+	// A rebuild must NOT throw: prior to the FK CASCADE fix, topic_evolution
+	// rows referencing the deleted topics made `DELETE FROM topics` fail.
+	assert.doesNotThrow(() => createTopicStore(dir).replaceTopicModel(rebuilt));
+	// After the rebuild the custom label is restored over the auto label.
+	const before = db
+		.prepare("SELECT label FROM topics WHERE id = ?")
+		.get(split.topicId) as { label: string };
+	assert.equal(before.label, "split");
+	applyOverridesAfterRebuild(db);
+	const after = db
+		.prepare("SELECT label FROM topics WHERE id = ?")
+		.get(split.topicId) as { label: string };
+	assert.equal(after.label, "Curated Split");
 	closeTurnStore(dir);
 });
 
