@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg: 222 47% 5%;
+    --bg-card: 222 32% 8%;
+    --bg-elevated: 222 28% 12%;
+    --border: 217 33% 17%;
+    --foreground: 210 40% 98%;
+    --muted: 215 20% 65%;
+    --primary: 217 91% 60%;
+    --primary-glow: 217 91% 60%;
+    --success: 142 71% 45%;
+    --warning: 38 92% 50%;
+    --danger: 0 84% 60%;
+    --accent: 280 100% 70%;
+    --radius: 0.75rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply bg-background text-foreground antialiased;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    margin: 0;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: theme("fontFamily.heading");
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply relative rounded-lg border border-border bg-bg-card/70 backdrop-blur-md;
+    box-shadow:
+      inset 0 1px 0 0 hsl(var(--border) / 0.5),
+      var(--tw-shadow, 0 8px 30px -12px hsl(var(--bg) / 0.6));
+  }
+
+  .electric-hover {
+    @apply transition-all duration-200 hover:-translate-y-0.5;
+  }
+  .electric-hover:hover {
+    border-color: hsl(var(--primary) / 0.7);
+    box-shadow: 0 0 20px -4px hsl(var(--primary-glow) / 0.45);
+  }
+  .electric-hover:focus-visible {
+    outline: 2px solid hsl(var(--primary) / 0.6);
+    outline-offset: 2px;
+  }
+
+  .glow-primary {
+    box-shadow: 0 0 20px -4px hsl(var(--primary-glow) / 0.5);
+  }
+
+  .text-neon {
+    color: hsl(var(--primary));
+  }
+
+  .gradient-text {
+    background: linear-gradient(120deg, hsl(var(--primary)), hsl(var(--accent)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
