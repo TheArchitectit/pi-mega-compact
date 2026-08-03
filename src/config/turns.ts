@@ -51,6 +51,10 @@ export interface TurnsConfigShape {
 	WIKI_SEED_FROM_TURNS: boolean;
 	/** W2: wiki revival curation + provenance endpoints. Default ON; off via MEGACOMPACT_WIKI_ENHANCED_DISABLED. */
 	WIKI_ENHANCED_ENABLED: boolean;
+	/** W5: incremental topic assignment for new memories (default ON when WIKI_ENHANCED is ON). */
+	WIKI_INCREMENTAL_ENABLED: boolean;
+	/** W5: full rebuild triggers when mean silhouette drops below this (default 0.2). */
+	WIKI_INCREMENTAL_SILHOUETTE_MIN: number;
 }
 
 function envKRange(defMin: number, defMax: number): [number, number] {
@@ -77,6 +81,8 @@ export function loadTurnsConfig(): TurnsConfigShape {
 		WIKI_REBUILD_EVERY_N_COMPACTS: envNum("MEGACOMPACT_WIKI_REBUILD_EVERY", 3),
 		WIKI_SEED_FROM_TURNS: envBool("MEGACOMPACT_WIKI_SEED_FROM_TURNS", true),
 		WIKI_ENHANCED_ENABLED: envEnabled("MEGACOMPACT_WIKI_ENHANCED", true),
+		WIKI_INCREMENTAL_ENABLED: envEnabled("MEGACOMPACT_WIKI_INCREMENTAL", true),
+		WIKI_INCREMENTAL_SILHOUETTE_MIN: envNum("MEGACOMPACT_WIKI_SILHOUETTE_MIN", 0.2),
 	};
 }
 

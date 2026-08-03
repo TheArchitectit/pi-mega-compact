@@ -13,6 +13,7 @@ export {
 	bumpWikiCompactCounter,
 	applyOverridesAfterRebuild,
 } from "./store.js";
+export { applyFullOverridesAfterRebuild } from "./durability.js";
 export type { TopicStore, StoredTopic } from "./store.js";
 export { tokenize, tfidfScores, labelFromScores, membershipConfidence } from "./labels.js";
 export type {

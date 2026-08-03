@@ -22,7 +22,9 @@ import {
 	createTopicStore,
 	bumpWikiCompactCounter,
 	applyOverridesAfterRebuild,
+	applyFullOverridesAfterRebuild,
 } from "../../../src/topics/index.js";
+import { assignNewMemoriesIncremental } from "../../../src/wiki/index.js";
 import { TrigramEmbedder } from "../../../src/embedder.js";
 import type { EmbeddedChunk } from "../../../src/topics/types.js";
 import type { MegaConfig } from "../../mega-config.js";
@@ -90,7 +92,36 @@ export async function persistEpochAndMaintain(
 					);
 					const tdb = openTurnStore(runtime.currentStateDir);
 					const n = bumpWikiCompactCounter(tdb);
-					if (n % every === 0) {
+					// W5-B: on the Nth compact we full-rebuild; otherwise try the
+					// cheap incremental path (assign new memories to nearest
+					// centroid) and only force a full rebuild when the mean
+					// silhouette has degraded below the configured floor.
+					let rebuildNow = n % every === 0;
+					if (
+						!rebuildNow &&
+						TurnsConfig.WIKI_INCREMENTAL_ENABLED &&
+						TurnsConfig.WIKI_ENHANCED_ENABLED
+					) {
+						const inc = assignNewMemoriesIncremental(
+							db,
+							runtime.currentStateDir,
+						);
+						if (
+							inc.silhouette !== null &&
+							inc.silhouette < TurnsConfig.WIKI_INCREMENTAL_SILHOUETTE_MIN
+						) {
+							// Silhouette degraded — fall through to a full rebuild.
+							rebuildNow = true;
+						} else {
+							runtime.logger.info("wiki_incremental", {
+								assigned: inc.assigned,
+								pending: inc.pending,
+								silhouetteScore: inc.silhouette,
+								uncalibrated: false,
+							});
+						}
+					}
+					if (rebuildNow) {
 						const model = buildTopicModel(db, {
 							kRange: [TurnsConfig.WIKI_K_MIN, TurnsConfig.WIKI_K_MAX],
 							labelTopTerms: TurnsConfig.WIKI_LABEL_TOP_TERMS,
@@ -100,8 +131,9 @@ export async function persistEpochAndMaintain(
 						createTopicStore(runtime.currentStateDir).replaceTopicModel(
 							model,
 						);
-						// Re-stamp custom label overrides wiped by the rebuild.
-						applyOverridesAfterRebuild(tdb);
+						// W5-A: full hybrid replay — label + merge + split overrides
+						// survive the rebuild (feature A, not just the label fast path).
+						applyFullOverridesAfterRebuild(tdb);
 						// SSE push so the dashboard Wiki/Evolution views refresh (non-fatal).
 						runtime.dashboard.event("wiki_rebuilt", {
 							topicCount: model.k,
