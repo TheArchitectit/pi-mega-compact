@@ -59,6 +59,37 @@ export interface TurnEntry {
 	model?: string; // model used for this turn
 	/** S50B: the compact epoch that superseded this turn (stamped post-hoc). */
 	epochId?: string;
+	/** H1: HyDE invocation telemetry for this turn (persisted to hyde_* columns). */
+	hyde?: TurnHydeTelemetry;
+	/** H1: recall-quality snapshot for this turn (persisted to recall_* columns). */
+	recallMetrics?: TurnRecallTelemetry;
+}
+
+/**
+ * H1: HyDE telemetry for a turn — a structural subset of the recall-core
+ * `HydeInvocationInfo` that maps onto the turns `hyde_*` columns.
+ */
+export interface TurnHydeTelemetry {
+	ran: boolean;
+	hypotheticalDoc: string;
+	rawHitCount: number;
+	hydeHitCount: number;
+	fusedHitCount: number;
+	lift: number;
+	generationMs: number;
+}
+
+/**
+ * H1: recall-quality snapshot for a turn — a structural subset of the recall-core
+ * `RecallMetricsSnapshot` that maps onto the turns `recall_*` columns.
+ */
+export interface TurnRecallTelemetry {
+	score: number;
+	pass: boolean;
+	relevance: number;
+	coverage: number;
+	diversity: number;
+	specificity: number;
 }
 
 /** A recall hit recorded during a turn — an immutable, append-only fact. */

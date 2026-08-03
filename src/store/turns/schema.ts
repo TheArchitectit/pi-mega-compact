@@ -16,7 +16,7 @@
 import type { DatabaseSync } from "node:sqlite";
 
 /** Schema version stamp (written once into turns_meta). */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 /** Create the unified turn-store schema if absent. Idempotent. */
 export function initTurnSchema(db: DatabaseSync): void {
@@ -161,6 +161,29 @@ export function initTurnSchema(db: DatabaseSync): void {
 	db.exec(
 		`CREATE INDEX IF NOT EXISTS idx_memory_topics_topic ON memory_topics(topic_id)`,
 	);
+
+	// H1: additive HyDE + recall-quality telemetry columns. ALTER TABLE ADD
+	// COLUMN (idempotent via PRAGMA guard) — turns stays append-only; these land
+	// in the single INSERT at turn-record time, never via UPDATE.
+	const ensureCol = (name: string, ddl: string): void => {
+		const has = (
+			db.prepare("PRAGMA table_info(turns)").all() as Array<{ name: string }>
+		).some((c) => c.name === name);
+		if (!has) db.exec(`ALTER TABLE turns ADD COLUMN ${ddl}`);
+	};
+	ensureCol("hyde_ran", "hyde_ran INTEGER DEFAULT 0");
+	ensureCol("hyde_doc", "hyde_doc TEXT DEFAULT ''");
+	ensureCol("hyde_raw_count", "hyde_raw_count INTEGER DEFAULT 0");
+	ensureCol("hyde_hyde_count", "hyde_hyde_count INTEGER DEFAULT 0");
+	ensureCol("hyde_fused_count", "hyde_fused_count INTEGER DEFAULT 0");
+	ensureCol("hyde_lift", "hyde_lift REAL DEFAULT 0");
+	ensureCol("hyde_generation_ms", "hyde_generation_ms INTEGER DEFAULT 0");
+	ensureCol("recall_score", "recall_score REAL DEFAULT 0");
+	ensureCol("recall_pass", "recall_pass INTEGER DEFAULT 0");
+	ensureCol("recall_relevance", "recall_relevance REAL DEFAULT 0");
+	ensureCol("recall_coverage", "recall_coverage REAL DEFAULT 0");
+	ensureCol("recall_diversity", "recall_diversity REAL DEFAULT 0");
+	ensureCol("recall_specificity", "recall_specificity REAL DEFAULT 0");
 
 	// Stamp schema version once.
 	const existing = db

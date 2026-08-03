@@ -22,8 +22,12 @@ export function appendTurn(ctx: SqliteTurnStoreCtx, entry: TurnEntry): TurnId {
 		db
 			.prepare(
 				`INSERT INTO turns (conversation_id, session_id, turn_index, role, ended_at,
-	                           ctx_tokens, ctx_percent, pressure_band, model, epoch_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	                           ctx_tokens, ctx_percent, pressure_band, model, epoch_id,
+	                           hyde_ran, hyde_doc, hyde_raw_count, hyde_hyde_count,
+	                           hyde_fused_count, hyde_lift, hyde_generation_ms,
+	                           recall_score, recall_pass, recall_relevance, recall_coverage,
+	                           recall_diversity, recall_specificity)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			)
 			.run(
 				entry.conversationId,
@@ -36,6 +40,19 @@ export function appendTurn(ctx: SqliteTurnStoreCtx, entry: TurnEntry): TurnId {
 				entry.pressureBand ?? null,
 				entry.model ?? null,
 				entry.epochId ?? null,
+				entry.hyde?.ran == null ? null : entry.hyde.ran ? 1 : 0,
+				entry.hyde?.hypotheticalDoc ?? null,
+				entry.hyde?.rawHitCount ?? null,
+				entry.hyde?.hydeHitCount ?? null,
+				entry.hyde?.fusedHitCount ?? null,
+				entry.hyde?.lift ?? null,
+				entry.hyde?.generationMs ?? null,
+				entry.recallMetrics?.score ?? null,
+				entry.recallMetrics?.pass == null ? null : entry.recallMetrics.pass ? 1 : 0,
+				entry.recallMetrics?.relevance ?? null,
+				entry.recallMetrics?.coverage ?? null,
+				entry.recallMetrics?.diversity ?? null,
+				entry.recallMetrics?.specificity ?? null,
 			);
 	} catch (e) {
 		if (

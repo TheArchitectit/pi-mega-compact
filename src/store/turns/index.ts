@@ -46,6 +46,8 @@ export {
 } from "./connection.js";
 export { initTurnSchema } from "./schema.js";
 export { migrateTurnTablesIfNeeded } from "./migrations.js";
+export { listTelemetryTurns, aggregateDailyTelemetry } from "./hydeStore.js";
+export type { TurnTelemetryRow, DailyTelemetry } from "./hydeStore.js";
 
 import { SqliteTurnStore } from "./sqlite-store.js";
 import { InMemoryTurnStore } from "./memory-store.js";

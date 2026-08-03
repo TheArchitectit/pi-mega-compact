@@ -32,6 +32,30 @@ export function rowToEntry(r: Record<string, unknown>): TurnEntry {
 			(r.pressure_band as "green" | "yellow" | "red" | null) ?? undefined,
 		model: (r.model as string | null) ?? undefined,
 		epochId: (r.epoch_id as string | null) ?? undefined,
+		// H1: telemetry columns (only populated when the row has them non-default).
+		hyde:
+			r.hyde_ran == null
+				? undefined
+				: {
+						ran: r.hyde_ran === 1,
+						hypotheticalDoc: (r.hyde_doc as string) ?? "",
+						rawHitCount: (r.hyde_raw_count as number) ?? 0,
+						hydeHitCount: (r.hyde_hyde_count as number) ?? 0,
+						fusedHitCount: (r.hyde_fused_count as number) ?? 0,
+						lift: (r.hyde_lift as number) ?? 0,
+						generationMs: (r.hyde_generation_ms as number) ?? 0,
+					},
+		recallMetrics:
+			r.recall_score == null
+				? undefined
+				: {
+						score: (r.recall_score as number) ?? 0,
+						pass: (r.recall_pass as number) === 1,
+						relevance: (r.recall_relevance as number) ?? 0,
+						coverage: (r.recall_coverage as number) ?? 0,
+						diversity: (r.recall_diversity as number) ?? 0,
+						specificity: (r.recall_specificity as number) ?? 0,
+					},
 	};
 }
 
