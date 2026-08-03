@@ -28,9 +28,11 @@
 #         missing-render-branch regressions (v0.12.7 Turns-blank bug class).
 #     5. Bump package.json + package-lock.json version to <new-version>.
 #     6. Commit the version bump (package.json + package-lock.json + dist).
-#     7. npm publish (the ONLY valid distribution path — PREVENT-DIST-001).
-#     8. git tag -a v<version> (annotated) + git push --follow-tags.
-#     9. Print post-publish device instructions.
+#     7. Tag (annotated) + push BEFORE publish — a push failure aborts
+#        before an irreversible npm publish.
+#     8. npm publish (the ONLY valid distribution path — PREVENT-DIST-001).
+#     9. Create GitHub release with notes from commit log.
+#     10. Print post-publish device instructions.
 #
 #   Distribution is npm-only. NEVER produce or rely on a .tgz tarball
 #   (`npm pack`) for shipping, and NEVER symlink into
@@ -173,13 +175,12 @@ Release v$NEW_VERSION published via scripts/deploy.sh.
 Co-Authored-By: pi-mega-compact deploy.sh <noreply@pi-mega-compact>"
 fi
 
-# --- 7. publish (npm only — PREVENT-DIST-001) --------------------------------
-echo "[deploy] publishing to npm (npm publish — the only valid distribution path)"
-npm publish
-
-echo "[deploy] published v$NEW_VERSION to npm."
-
-# --- 8. tag + push -----------------------------------------------------------
+# --- 7. tag + push BEFORE publish --------------------------------------------
+# Order matters: push the commit + tag BEFORE npm publish so a push failure
+# (e.g. no upstream branch) aborts the script before an irreversible npm
+# publish. v0.13.7 hit this exact bug — published to npm but the push failed
+# because the worktree branch had no upstream, and the GitHub release step
+# was skipped.
 TAG="v$NEW_VERSION"
 if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
   echo "[deploy] tag $TAG already exists; skipping tag creation."
@@ -190,16 +191,30 @@ else
   git tag -a "$TAG" -m "Release v$NEW_VERSION"
 fi
 echo "[deploy] pushing commits + tags (git push --follow-tags)"
-git push --follow-tags
+# Handle branches with no upstream (e.g. worktree branches): fall back to
+# --set-upstream so the push succeeds rather than failing with exit 128.
+if ! git push --follow-tags 2>/dev/null; then
+  echo "[deploy] git push --follow-tags failed; setting upstream and retrying"
+  CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+  git push --set-upstream origin "$CURRENT_BRANCH" --follow-tags
+fi
 
-# --- 8b. verify the tag reached origin + create GitHub release with notes -----
-# Safety net: confirm the annotated tag is on the remote. With -a it rides the
-# --follow-tags push above; if it somehow didn't, surface the error (do NOT
-# swallow it — a silent tag-push failure was the old friction point).
+# --- 7b. verify the tag reached origin ----------------------------------------
 if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
   echo "[deploy] pushing tag $TAG explicitly (not found on origin after --follow-tags)"
   git push origin "$TAG"
 fi
+
+# --- 8. publish (npm only — PREVENT-DIST-001) --------------------------------
+echo "[deploy] publishing to npm (npm publish — the only valid distribution path)"
+npm publish
+
+echo "[deploy] published v$NEW_VERSION to npm."
+
+# --- 8b. create GitHub release with notes ------------------------------------
+# Now runs AFTER npm publish (the release announces the published version).
+# The tag is already pushed in step 7 — this just creates the GitHub release
+# object with auto-generated notes from the commit log.
 PREV_TAG=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
 if [ -n "$PREV_TAG" ]; then
   RELEASE_NOTES=$(git log --pretty=format:"- %s" "$PREV_TAG..$TAG" 2>/dev/null | grep -vE "^- chore\(release\)|^- chore: (sync|clean|rebuild)" | head -15)
@@ -216,7 +231,7 @@ else
   echo "[deploy] WARN: gh CLI not installed — skipping GitHub release creation. Tag $TAG is pushed."
 fi
 
-# --- 9. post-publish device instructions -------------------------------------
+# --- 10. post-publish device instructions ------------------------------------
 echo
 echo "============================================================"
 echo " PUBLISHED v$NEW_VERSION — post-publish device steps"
