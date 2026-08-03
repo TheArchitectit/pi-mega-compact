@@ -156,6 +156,7 @@ SETTINGS_CONFIG_FILES = (
     "src/config.ts",
     "src/config/turns.ts",
     "src/config/dedup.ts",
+    "src/config/vector-cortex.ts",
     "src/hyde.ts",
     "src/dedup/raptor/summarizer.ts",
     "src/costApi.ts",

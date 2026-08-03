@@ -40,3 +40,6 @@ export { handleRagSettings } from "./routes-rag-settings.js";
 export { handleRagMetrics } from "./routes-rag-metrics.js";
 export { handleModelThresholds } from "./routes-model-thresholds.js";
 export { handleWiki } from "./routes-wiki.js";
+export {
+	handleVectorCortexEvaluation,
+} from "./routes-vector-cortex.js";

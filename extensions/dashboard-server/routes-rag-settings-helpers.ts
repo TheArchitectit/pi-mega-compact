@@ -273,6 +273,17 @@ export const SETTINGS: ReadonlyArray<{
 		],
 	},
 	{
+		name: "Vector Cortex",
+		settings: [
+			boolDirect(
+				"MEGACOMPACT_VC0A",
+				"VC0A Baseline Observability",
+				"Structured evaluation observer (MetricEventV1 + latency histogram). OFF = mode C, byte-identical to predecessor.",
+				true,
+			),
+		],
+	},
+	{
 		name: "Cost API",
 		settings: [
 			boolDirect(

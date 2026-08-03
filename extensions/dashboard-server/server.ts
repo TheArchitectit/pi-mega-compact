@@ -56,6 +56,7 @@ import {
 	handleRagMetrics,
 	handleModelThresholds,
 	handleWiki,
+	handleVectorCortexEvaluation,
 	handleStatic,
 } from "./routes.js";
 
@@ -275,6 +276,7 @@ export async function launchDashboardServer(
 		if (handleRagMetrics(req, res, ctx)) return;
 		if (handleModelThresholds(req, res, ctx)) return;
 		if (handleWiki(req, res, ctx)) return;
+		if (handleVectorCortexEvaluation(req, res, ctx)) return;
 		handleStatic(req, res, ctx);
 	});
 
