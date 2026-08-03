@@ -13,7 +13,7 @@ import { useState, useEffect, useCallback } from "react";
 import type { SetupStatusResponse, SetupDetectResponse, SetupConfigureResponse } from "@contracts";
 import { fetchSetupStatus, fetchSetupDetect, configureEmbedder } from "../../api/client";
 import EmbedderHealthCard from "./EmbedderHealthCard";
-import RagSettingsCard from "./RagSettingsCard";
+import SettingsPanel from "./SettingsPanel";
 
 const styles: Record<string, React.CSSProperties> = {
 	container: {
@@ -464,7 +464,11 @@ export default function EmbedderSetup(): React.ReactElement {
 					</li>
 				</ul>
 			</div>
-			<RagSettingsCard />
+			{/* Settings Section — every adjustable MEGACOMPACT_* setting */}
+			<div style={styles.section}>
+				<h3 style={styles.sectionTitle}>Settings</h3>
+				<SettingsPanel />
+			</div>
 		</div>
 	);
 }

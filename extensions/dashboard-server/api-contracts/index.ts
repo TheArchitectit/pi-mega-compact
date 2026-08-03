@@ -251,8 +251,12 @@ export type {
 	CacheStripesResponse,
 } from "./cache-stripes.js";
 
-// RAG Settings — feature flag toggles (B6)
+// RAG Settings — comprehensive adjustable settings (B6)
 export type {
+	SettingState,
+	SettingsResponse,
+	SettingsUpdateRequest,
+	SettingsResponsePost,
 	RagFlagState,
 	RagSettingsResponse,
 	RagSettingsRequest,

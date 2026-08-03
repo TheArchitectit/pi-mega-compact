@@ -48,9 +48,9 @@ import type {
 	SetupConfigureResponse,
 	EmbedderHealthResponse,
 	RaptorTreeResponse,
-	RagSettingsResponse,
-	RagSettingsRequest,
-	RagSettingsResponsePost,
+	SettingsResponse,
+	SettingsUpdateRequest,
+	SettingsResponsePost,
 	RagMetricsResponse,
 	WikiIndexResponse,
 	WikiPageResponse,
@@ -338,16 +338,28 @@ export function fetchEmbedderHealth(): Promise<EmbedderHealthResponse> {
 
 // ─── RAG Settings ─────────────────────────────────────────────────────
 
-/** GET /api/rag-settings — read the current state of all RAG feature flags. */
-export function fetchRagSettings(): Promise<RagSettingsResponse> {
-	return getJson<RagSettingsResponse>(ENDPOINTS.ragSettings.path);
+/** GET /api/rag-settings — read all adjustable settings grouped by category. */
+export function fetchSettings(): Promise<SettingsResponse> {
+	return getJson<SettingsResponse>(ENDPOINTS.ragSettings.path);
 }
 
-/** POST /api/rag-settings — toggle RAG feature flags (writes _DISABLED env vars). */
+/** POST /api/rag-settings — update a single setting (writes the env file). */
+export function postSetting(
+	body: SettingsUpdateRequest,
+): Promise<SettingsResponsePost> {
+	return postJson<SettingsResponsePost>(ENDPOINTS.ragSettingsUpdate.path, body);
+}
+
+/** @deprecated Use fetchSettings instead. */
+export function fetchRagSettings(): Promise<SettingsResponse> {
+	return fetchSettings();
+}
+
+/** @deprecated Use postSetting instead. */
 export function postRagSettings(
-	body: RagSettingsRequest,
-): Promise<RagSettingsResponsePost> {
-	return postJson<RagSettingsResponsePost>(ENDPOINTS.ragSettingsUpdate.path, body);
+	body: SettingsUpdateRequest,
+): Promise<SettingsResponsePost> {
+	return postSetting(body);
 }
 
 /** GET /api/rag-metrics — HyDE + recall-quality telemetry aggregates (H2). */
