@@ -12,6 +12,7 @@ import {
 	createTopicStore,
 	getWikiCompactCounter,
 	bumpWikiCompactCounter,
+	applyOverridesAfterRebuild,
 } from "./store.js";
 import { openTurnStore, closeTurnStore } from "../store/turns/connection.js";
 import type { ClusterModel } from "./types.js";
@@ -128,5 +129,53 @@ test("topics + memory_topics shells exist with no seed data (S49 schema)", () =>
 	const assigns = db.prepare("SELECT COUNT(*) AS c FROM memory_topics").get() as { c: number };
 	assert.equal(topics.c, 0);
 	assert.equal(assigns.c, 0);
+	closeTurnStore(dir);
+});
+
+test("session_id round-trips through replaceTopicModel (W1.2)", () => {
+	const dir = stateDir();
+	const store = createTopicStore(dir);
+	const model = makeModel(1000, 1);
+	// Make the assignments carry distinct, non-empty session ids.
+	model.assignments[0].sessionId = "sess_alpha";
+	model.assignments[1].sessionId = "sess_beta";
+	store.replaceTopicModel(model);
+	const members = store.getMemoriesForTopic("topic_0");
+	assert.equal(members[0].sessionId, "sess_alpha");
+	assert.equal(members[1].sessionId, "sess_beta");
+	const direct = store.getTopicForMemory("mem_0_0");
+	assert.equal(direct?.sessionId, "sess_alpha");
+	// Persisted column value is non-empty, not defaulted to "".
+	const db = openTurnStore(dir);
+	const row = db
+		.prepare("SELECT session_id FROM memory_topics WHERE memory_id = ?")
+		.get("mem_0_1") as { session_id: string };
+	assert.equal(row.session_id, "sess_beta");
+	closeTurnStore(dir);
+});
+
+test("applyOverridesAfterRebuild re-applies custom label overrides (W1.2)", () => {
+	const dir = stateDir();
+	const store = createTopicStore(dir);
+	const db = openTurnStore(dir);
+	store.replaceTopicModel(makeModel(1000, 1));
+	// Write a user label override, then simulate a rebuild (drops topics + memory_topics).
+	db.prepare(
+		`INSERT INTO topic_overrides (topic_id, kind, custom_label, overridden_at)
+		 VALUES ('topic_0', 'label', 'My Custom Topic', ?)`,
+	).run(Date.now());
+	store.replaceTopicModel(makeModel(2000, 1));
+	// Without re-applying, the label would be the auto-generated one.
+	assert.equal(store.getTopics()[0].label, "label 0");
+	// After re-applying, the custom label wins.
+	applyOverridesAfterRebuild(db);
+	assert.equal(store.getTopics()[0].label, "My Custom Topic");
+	// Empty/blank override does not clobber the label.
+	db.prepare(
+		`INSERT OR REPLACE INTO topic_overrides (topic_id, kind, custom_label, overridden_at)
+		 VALUES ('topic_0', 'label', '', ?)`,
+	).run(Date.now());
+	applyOverridesAfterRebuild(db);
+	assert.equal(store.getTopics()[0].label, "My Custom Topic");
 	closeTurnStore(dir);
 });

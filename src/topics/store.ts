@@ -55,6 +55,7 @@ interface AssignmentRow {
 	confidence: number | null;
 	assigned_at: number | null;
 	method: string | null;
+	session_id: string | null;
 }
 
 function parseTermScores(
@@ -85,10 +86,7 @@ function rowToTopic(r: TopicRow): StoredTopic {
 function rowToAssignment(r: AssignmentRow): TopicAssignment {
 	return {
 		memoryId: r.memory_id,
-		// memory_topics has no session_id column; the chunk id is globally unique
-		// enough for the wiki view (context_chunks PK is (session_id, id)).
-		// sessionId omitted — memory_topics has no session_id column;
-		// the TopicAssignment type marks it optional for this reason.
+		sessionId: r.session_id ?? "",
 		topicId: r.topic_id,
 		confidence: r.confidence ?? 0,
 		assignedAt: r.assigned_at ?? 0,
@@ -119,11 +117,17 @@ export function createTopicStore(stateDir?: string): TopicStore {
 				);
 			}
 			const insAssign = db.prepare(
-				`INSERT OR REPLACE INTO memory_topics (memory_id, topic_id, confidence, assigned_at, method)
-         VALUES (?, ?, ?, ?, 'kmeans+tfidf')`,
+				`INSERT OR REPLACE INTO memory_topics (memory_id, topic_id, confidence, assigned_at, method, session_id)
+         VALUES (?, ?, ?, ?, 'kmeans+tfidf', ?)`,
 			);
 			for (const a of model.assignments) {
-				insAssign.run(a.memoryId, a.topicId, a.confidence, a.assignedAt);
+				insAssign.run(
+					a.memoryId,
+					a.topicId,
+					a.confidence,
+					a.assignedAt,
+					a.sessionId ?? null,
+				);
 			}
 		});
 	}
@@ -145,7 +149,7 @@ export function createTopicStore(stateDir?: string): TopicStore {
 		): TopicAssignment[] {
 			const rows = db
 				.prepare(
-					`SELECT memory_id, topic_id, confidence, assigned_at, method
+					`SELECT memory_id, topic_id, confidence, assigned_at, method, session_id
            FROM memory_topics WHERE topic_id = ?
            ORDER BY confidence DESC, memory_id ASC LIMIT ? OFFSET ?`,
 				)
@@ -156,7 +160,7 @@ export function createTopicStore(stateDir?: string): TopicStore {
 		getTopicForMemory(memoryId: string): TopicAssignment | null {
 			const r = db
 				.prepare(
-					`SELECT memory_id, topic_id, confidence, assigned_at, method
+					`SELECT memory_id, topic_id, confidence, assigned_at, method, session_id
            FROM memory_topics WHERE memory_id = ? LIMIT 1`,
 				)
 				.get(memoryId) as unknown as AssignmentRow | undefined;
@@ -184,6 +188,28 @@ export function createTopicStore(stateDir?: string): TopicStore {
 			};
 		},
 	};
+}
+
+/**
+ * Re-apply user label overrides after a topic-model rebuild. `replaceTopicModel`
+ * deletes + recreates `topics`, so any `label` override rows that resolved to a
+ * custom label would otherwise be lost — this copies them back onto the fresh
+ * rows. Non-fatal: a failure never breaks a rebuild.
+ */
+export function applyOverridesAfterRebuild(db: DatabaseSync): void {
+	try {
+		const rows = db
+			.prepare("SELECT topic_id, custom_label FROM topic_overrides WHERE kind = 'label'")
+			.all() as Array<{ topic_id: string; custom_label: string | null }>;
+		const upd = db.prepare("UPDATE topics SET label = ? WHERE id = ?");
+		for (const r of rows) {
+			if (r.custom_label && r.custom_label.trim() !== "") {
+				upd.run(r.custom_label, r.topic_id);
+			}
+		}
+	} catch {
+		/* non-fatal: override re-apply never breaks a rebuild */
+	}
 }
 
 /** Turns-meta counter key for the every-Nth-compaction rebuild trigger. */

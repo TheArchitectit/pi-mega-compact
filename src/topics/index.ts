@@ -7,7 +7,12 @@ export {
 	DEFAULT_CLUSTER_CONFIG,
 	type WikiClusterConfig,
 } from "./cluster.js";
-export { createTopicStore, getWikiCompactCounter, bumpWikiCompactCounter } from "./store.js";
+export {
+	createTopicStore,
+	getWikiCompactCounter,
+	bumpWikiCompactCounter,
+	applyOverridesAfterRebuild,
+} from "./store.js";
 export type { TopicStore, StoredTopic } from "./store.js";
 export { tokenize, tfidfScores, labelFromScores, membershipConfidence } from "./labels.js";
 export type {
