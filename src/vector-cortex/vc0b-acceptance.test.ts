@@ -12,7 +12,7 @@
  *
  * Node --test on the compiled dist output (no mocks; real logic + fixtures).
  */
-import { test, describe } from "node:test";
+import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -21,6 +21,7 @@ import { VC0B_ENABLED } from "../config/vector-cortex.js";
 import { CUT_IDS, M3_IDS } from "./replay/types.js";
 import { computeEffectiveCutV2 } from "./replay/cut.js";
 import { runReplayV2 } from "./replay/replay.js";
+import { createReplayReporter } from "./replay/emit.js";
 import {
   migrateEffectiveCutV2,
   m3Copy,
@@ -121,24 +122,71 @@ function balancedStream(sessionId: string, turns: number) {
   return out as any;
 }
 
-describe("VC0B flag-off golden path", () => {
-  const flagOn = VC0B_ENABLED();
+describe("VC0B flag gates replay observability (real consumer)", () => {
+  const flagEnvKey = "MEGACOMPACT_VC0B";
+  const savedFlag = process.env[flagEnvKey];
 
-  test("MEGACOMPACT_VC0B=0 selects the predecessor behavior (byte-identical)", () => {
-    if (flagOn) {
-      const saved = process.env.MEGACOMPACT_VC0B;
-      process.env.MEGACOMPACT_VC0B = "0";
-      try {
-        assert.equal(VC0B_ENABLED(), false);
-        assert.equal(predecessorGolden(), "pred_legacy_capped_replay");
-      } finally {
-        if (saved === undefined) delete process.env.MEGACOMPACT_VC0B;
-        else process.env.MEGACOMPACT_VC0B = saved;
-      }
-      return;
-    }
-    assert.equal(flagOn, false);
-    assert.equal(predecessorGolden(), "pred_legacy_capped_replay");
+  after(() => {
+    if (savedFlag === undefined) delete process.env[flagEnvKey];
+    else process.env[flagEnvKey] = savedFlag;
+  });
+
+  test("flag ON emits cut_retreat + highwater_frozen; flag OFF emits ZERO events", () => {
+    // Balanced stream turns 1..3 (msg/call/result per turn, seq 1..9).
+    const occurrences = balancedStream("s-vc0b-flag-gate", 3);
+    const emitter: string[] = [];
+    const reporter = createReplayReporter((ev) => emitter.push(ev));
+
+    // Flag ON — committed lands on call seq 5 (call 5 / result 6) forcing a
+    // CUT_TOOL_PAIR_SPLIT retreat in mode A.
+    process.env[flagEnvKey] = "1";
+    const onA = runReplayV2({
+      sessionId: "s-vc0b-flag-gate",
+      occurrences,
+      requestedSeq: 8n,
+      committedSeq: 5n,
+      capturedHighWater: 8n,
+      anchorFloor: 0n,
+      mode: "A",
+      reporter,
+    });
+    assert.equal(VC0B_ENABLED(), true);
+    assert.equal(onA.report.counts.orphanToolEvents, 0);
+    assert.ok(emitter.includes("vector_cortex_replay_cut_retreat"), "flag ON emits cut_retreat");
+
+    // Flag ON — mode C also emits the frozen high-water event.
+    emitter.length = 0;
+    runReplayV2({
+      sessionId: "s-vc0b-flag-gate",
+      occurrences,
+      requestedSeq: 8n,
+      committedSeq: 5n,
+      capturedHighWater: 8n,
+      anchorFloor: 0n,
+      mode: "C",
+      reporter,
+    });
+    assert.ok(emitter.includes("vector_cortex_replay_highwater_frozen"), "flag ON emits highwater_frozen");
+
+    // Flag OFF — same reporter emits NOTHING; the report data still carries the
+    // frozen high-water and mode C (observability gated, state intact).
+    emitter.length = 0;
+    process.env[flagEnvKey] = "0";
+    assert.equal(VC0B_ENABLED(), false);
+    const offC = runReplayV2({
+      sessionId: "s-vc0b-flag-gate",
+      occurrences,
+      requestedSeq: 8n,
+      committedSeq: 5n,
+      capturedHighWater: 8n,
+      anchorFloor: 0n,
+      mode: "C",
+      reporter,
+    });
+    assert.equal(emitter.length, 0, "flag OFF emits zero replay observability events");
+    assert.equal(offC.report.mode, "C", "report still reports mode C");
+    assert.equal(offC.report.cut.capturedHighWater, 8n, "report still carries the frozen high-water");
+    assert.equal(offC.report.counts.replayed, 0, "byte-identical predecessor: zero replayed");
   });
 });
 
@@ -323,9 +371,3 @@ describe("Replay scan hard invariants (10,000 turns)", () => {
 });
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-
-/** Predecessor golden bytes: the legacy capped replay sentinel. Flag-off must
- * produce exactly these — identical regardless of the v2 module. */
-function predecessorGolden(): string {
-  return "pred_legacy_capped_replay";
-}

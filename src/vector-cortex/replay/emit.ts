@@ -12,7 +12,16 @@
  * only the two events the replay/effective-cut path emits:
  *   - vector_cortex_replay_cut_retreat     (a pair/anchor/lowest-source retreat)
  *   - vector_cortex_replay_highwater_frozen (mode C: host transcript unchanged)
+ *
+ * Flag gating: this is VC0B's single real consumer of `VC0B_ENABLED`. When the
+ * flag is OFF, the reporter emits NOTHING (zero observability writes) — mirroring
+ * the VC0A mode-C pattern where flag-off produces zero evaluation writes. The
+ * ReplayReportV2 data (cut/effectiveSeq/capturedHighWater/mode) is returned by
+ * `runReplayV2` regardless; only the emitted observability is gated. The flag is
+ * read per-call so a live toggle takes effect immediately.
  */
+
+import { VC0B_ENABLED } from "../../config/vector-cortex.js";
 
 export type ReplayEventName =
   | "vector_cortex_replay_cut_retreat"
@@ -54,11 +63,15 @@ function safe(fn: (event: ReplayEventName, fields: Record<string, unknown>) => v
 }
 
 /**
- * Build a typed reporter over an injected emit callback. `emit` is optional:
- * absent it degrades to a no-op (mode-C predecessor, byte-identical).
+ * Build a typed reporter over an injected emit callback. Observability emission
+ * is gated on `VC0B_ENABLED()` — flag OFF means zero replay observability writes
+ * (VC0A mode-C parity). `emit` is optional: absent (or flag off) degrades to a
+ * no-op. The flag is read per-call so a live toggle takes effect immediately.
  */
 export function createReplayReporter(emit?: ReplayEmitter): ReplayReporter {
-  const fire = safe((event, fields) => emit?.(event, fields));
+  const fire = safe((event, fields) => {
+    if (VC0B_ENABLED()) emit?.(event, fields);
+  });
   return {
     cutRetreat(fields) {
       fire("vector_cortex_replay_cut_retreat", fields as unknown as Record<string, unknown>);
