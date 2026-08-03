@@ -13,10 +13,12 @@
 import type { Embedder, Vector } from "../../embedder.js";
 import { cosineSimilarity } from "../../embedder.js";
 import { defaultEmbedder as getDefaultEmbedder } from "../../embedder.js";
+import type { EngineMessage } from "../../types.js";
 import { buildRaptorTree, type Leaf, type RaptorTree } from "./tree.js";
 import type { QualityMarker } from "./guardrails.js";
+import { applyHallucinationGuardrails, sourceTokenSet } from "./guardrails.js";
 import { meanVector } from "./kmeans.js";
-import { summarizeCluster } from "./summarizer.js";
+import { summarizeCluster, extractiveClusterSummary } from "./summarizer.js";
 import type { Logger } from "../../log.js";
 import {
   saveRaptorTree,
@@ -26,6 +28,38 @@ import {
 
 /** When >FRESH_THRESHOLD of existing leaves are new, a full rebuild is cheaper. */
 const FRESH_THRESHOLD = 0.5;
+
+/**
+ * Summarize + apply hallucination guardrails (mirrors tree.ts:summarizeInto).
+ * If the guardrail marks the summary as extractive_fallback (drift/hallucination),
+ * re-summarize with the deterministic extractive path so we never serve a
+ * drifted LLM summary from an incremental update.
+ */
+function summarizeGuarded(
+  messages: EngineMessage[],
+  centroid: Vector,
+  embedder: Embedder,
+  consistencyThreshold?: number,
+): { summary: string; tokenEstimate: number; qualityMarker: QualityMarker } {
+  let cs = summarizeCluster(messages);
+  const sources = messages.map((m) => m.text);
+  const guard = applyHallucinationGuardrails({
+    summary: cs.summary,
+    sources,
+    centroid,
+    embedder,
+    sourceTokens: sourceTokenSet(sources),
+    consistencyThreshold,
+  });
+  if (guard.marker === "extractive_fallback") {
+    cs = extractiveClusterSummary(messages);
+  }
+  return {
+    summary: cs.summary,
+    tokenEstimate: cs.tokenEstimate,
+    qualityMarker: guard.marker === "extractive_fallback" ? "low" : guard.marker,
+  };
+}
 
 /**
  * Incrementally update a persisted RAPTOR tree with new leaves.
@@ -173,6 +207,7 @@ export function incrementRaptorTree(
     for (const l of reallyNewLeaves) leafMap.set(l.id, l);
 
     // Recompute affected Level-0 nodes.
+    const embedder = opts.embedder ?? getDefaultEmbedder();
     for (const nid of affectedNodeIds) {
       const node = tree.nodes.get(nid);
       if (!node) continue;
@@ -186,7 +221,12 @@ export function incrementRaptorTree(
         // Summarize: flatten messages from all covered leaves.
         const messages = coveredLeaves.flatMap((l) => l.messages);
         if (messages.length > 0) {
-          const cs = summarizeCluster(messages);
+          const cs = summarizeGuarded(
+            messages,
+            node.embedding,
+            embedder,
+            opts.consistencyThreshold,
+          );
           node.summary = cs.summary;
           node.tokenEstimate = cs.tokenEstimate;
         }
@@ -215,7 +255,12 @@ export function incrementRaptorTree(
             );
             const messages = covered.flatMap((l) => l.messages);
             if (messages.length > 0) {
-              const cs = summarizeCluster(messages);
+              const cs = summarizeGuarded(
+                messages,
+                node.embedding,
+                embedder,
+                opts.consistencyThreshold,
+              );
               node.summary = cs.summary;
               node.tokenEstimate = cs.tokenEstimate;
             }
