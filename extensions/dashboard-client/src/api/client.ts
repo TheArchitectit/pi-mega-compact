@@ -25,6 +25,7 @@ import type {
 	GameScoresQuery,
 	PerfResponse,
 	PerfQuery,
+	PerfSamplesResponse,
 	AchievementRow,
 	SessionsResponse,
 	SessionTimeseriesResponse,
@@ -189,6 +190,16 @@ export function fetchGameScores(
 export function fetchPerf(params: PerfQuery = {}): Promise<PerfResponse> {
 	return getJson<PerfResponse>(
 		`${ENDPOINTS.perf.path}${query({ minutes: params.minutes })}`,
+	);
+}
+
+/** GET /api/perf/samples — raw perf samples for one kind (chart drill-down). */
+export function fetchPerfSamples(
+	kind: string,
+	minutes?: number,
+): Promise<PerfSamplesResponse> {
+	return getJson<PerfSamplesResponse>(
+		`${ENDPOINTS.perfSamples.path}${query({ kind, minutes })}`,
 	);
 }
 

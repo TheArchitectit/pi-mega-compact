@@ -13,6 +13,7 @@ export {
 	handleGameState,
 	handleGameScores,
 	handlePerf,
+	handlePerfSamples,
 	handleAchievements,
 } from "./routes-game.js";
 export { handleEvents, handleSessions } from "./routes-sessions.js";

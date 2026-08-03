@@ -11,20 +11,27 @@
 	grid-column: 1 / -1;
 }
 
+/* Full-width grid: each gauge gets plenty of room, wraps across the whole
+ * row. If there are more sessions than columns, the outer wrapper scrolls
+ * horizontally rather than cramping the gauges (see .session-gauges-scroll). */
 .session-gauges-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-	gap: 14px;
+	grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+	gap: 16px;
+}
+
+.session-gauges-scroll {
+	overflow-x: auto;
 }
 
 .session-gauge {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
-	padding: 10px 12px;
+	gap: 8px;
+	padding: 14px 16px;
 	background: var(--bg);
 	border: 1px solid var(--border);
-	border-radius: 6px;
+	border-radius: 8px;
 }
 
 .session-gauge-self {
@@ -37,17 +44,18 @@
 	display: flex;
 	justify-content: space-between;
 	align-items: baseline;
-	gap: 6px;
+	gap: 8px;
 }
 
+/* Repo/session label — readable 14px. Not truncated by default (full repo
+ * names matter); the ellipsis is applied only as a last resort via a
+ * truncate+title pattern on the component when space is genuinely tight. */
 .session-gauge-label {
-	font-size: 12px;
+	font-size: 14px;
 	font-weight: 600;
+	line-height: 1.25;
 	color: var(--text);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	max-width: 70%;
+	min-width: 0;
 }
 
 .session-gauge-self .session-gauge-label {
@@ -55,23 +63,28 @@
 }
 
 .session-gauge-pct {
-	font-size: 12px;
-	font-weight: 600;
+	font-size: 20px;
+	font-weight: 700;
+	line-height: 1.1;
 	color: var(--muted);
 	white-space: nowrap;
+	flex-shrink: 0;
 }
 
 .session-gauges-grid .gauge-bar {
-	height: 8px;
+	height: 12px;
 }
 
 .session-gauge-sub {
 	margin: 0;
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--text);
 }
 
 .session-gauge-meta {
 	margin: 0;
-	font-size: 11px;
+	font-size: 12px;
 	color: var(--muted);
 	overflow: hidden;
 	text-overflow: ellipsis;

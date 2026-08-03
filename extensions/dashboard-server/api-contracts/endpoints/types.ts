@@ -348,3 +348,39 @@ export interface PerfResponse {
 	/** Diagnostic counters from the live snapshot, or null if unavailable. */
 	readonly diag: PerfDiag | null;
 }
+
+/**
+ * Query parameters for GET /api/perf/samples. `kind` selects which perf metric
+ * to return raw samples for; `minutes` controls the rolling window size.
+ */
+export interface PerfSamplesQuery {
+	/** Perf metric kind (turn_latency_ms, tps, disk_write_ms, cache_hit_pct, ...). Required. */
+	readonly kind: string;
+	/** Rolling window size in minutes (default: 60). Optional. */
+	readonly minutes?: number;
+}
+
+/** A single raw perf sample for time-series charting. */
+export interface PerfSamplePoint {
+	/** Epoch ms timestamp of the sample. */
+	readonly ts: number;
+	/** Sample value for the requested kind. */
+	readonly value: number;
+	/** Optional stringified metadata associated with the sample. */
+	readonly meta?: string;
+}
+
+/**
+ * Response for GET /api/perf/samples. Raw perf samples for a single kind,
+ * ascending by ts, for chart drill-down in the Perf tab.
+ */
+export interface PerfSamplesResponse {
+	/** Array of raw samples ascending by ts. */
+	readonly samples: PerfSamplePoint[];
+	/** The requested perf kind. */
+	readonly kind: string;
+	/** The rolling window size in minutes used. */
+	readonly minutes: number;
+	/** Epoch ms timestamp when the response was generated. */
+	readonly updatedAt: number;
+}

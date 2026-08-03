@@ -28,6 +28,8 @@ import type {
 	GameStateResponse,
 	GameScoreRow,
 	PerfResponse,
+	PerfSamplesQuery,
+	PerfSamplesResponse,
 	AchievementRow,
 	SseEvent,
 } from "../api-contracts/index.js";
@@ -92,6 +94,11 @@ const _c_perf = ENDPOINTS.perf satisfies EndpointDef<
 	unknown,
 	PerfResponse
 >;
+const _c_perfSamples = ENDPOINTS.perfSamples satisfies EndpointDef<
+	"GET",
+	PerfSamplesQuery,
+	PerfSamplesResponse
+>;
 const _c_achievements = ENDPOINTS.achievements satisfies EndpointDef<
 	"GET",
 	undefined,
@@ -111,6 +118,7 @@ void _c_getGameState;
 void _c_putGameState;
 void _c_gameScores;
 void _c_perf;
+void _c_perfSamples;
 void _c_achievements;
 
 // ─── Compile-Time: ENDPOINTS path/method consistency ─────────────────────────
@@ -118,7 +126,7 @@ void _c_achievements;
 // correct paths.
 
 const ENDPOINT_KEYS = Object.keys(ENDPOINTS) as (keyof typeof ENDPOINTS)[];
-const EXPECTED_ENDPOINT_COUNT = 45; // 44 + 1 raptor-build-history
+const EXPECTED_ENDPOINT_COUNT = 46; // 45 + 1 perf/samples
 
 /** All `/api/*` paths served by server.ts (extracted from the route handlers). */
 const SERVER_TS_PATHS: string[] = [
@@ -133,6 +141,7 @@ const SERVER_TS_PATHS: string[] = [
 	"/api/game-state",
 	"/api/game-scores",
 	"/api/perf",
+	"/api/perf/samples",
 	"/api/achievements",
 	"/api/sessions",
 	"/api/sessions/timeseries",

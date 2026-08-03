@@ -78,7 +78,7 @@ interface GaugeData {
 	isSelf: boolean;
 }
 
-/** A single compact gauge: header label, fill bar, tokens/window sublabel. */
+/** A single readable gauge: header label, fill bar, tokens/window sublabel. */
 function SessionGauge({ data }: { data: GaugeData }): React.ReactElement {
 	const pct = data.percent ?? 0;
 	const fillWidth = Math.max(pct, 1);
@@ -89,7 +89,11 @@ function SessionGauge({ data }: { data: GaugeData }): React.ReactElement {
 	return (
 		<div className={`session-gauge ${data.isSelf ? "session-gauge-self" : ""}`}>
 			<div className="session-gauge-head">
-				<span className="session-gauge-label">{data.label}</span>
+				{/* Full repo/session name by default; truncate only as a last
+				 * resort (ellipsis + hover title) when space is genuinely tight. */}
+				<span className="session-gauge-label truncate" title={data.label}>
+					{data.label}
+				</span>
 				<span className="session-gauge-pct">{pct}%</span>
 			</div>
 			<div
@@ -103,7 +107,7 @@ function SessionGauge({ data }: { data: GaugeData }): React.ReactElement {
 				<div className="gauge-fill" style={{ width: `${fillWidth}%` }} />
 			</div>
 			<p className="gauge-label session-gauge-sub">{sublabel}</p>
-			{data.sublabel && <p className="session-gauge-meta">{data.sublabel}</p>}
+			{data.sublabel && <p className="session-gauge-meta truncate" title={data.sublabel}>{data.sublabel}</p>}
 		</div>
 	);
 }
@@ -154,7 +158,7 @@ export function SessionContextGauges({
 	const showLoading = loading && !sessions;
 
 	return (
-		<Card className="electric-hover">
+		<Card className="electric-hover session-gauges-card w-full">
 			<CardHeader>
 				<CardTitle>Context per Session (live)</CardTitle>
 			</CardHeader>
@@ -166,10 +170,12 @@ export function SessionContextGauges({
 			) : showLoading ? (
 				<div className="text-sm text-muted-foreground">Loading sessions…</div>
 			) : (
-				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-					{gauges.map((g) => (
-						<SessionGauge key={g.key} data={g} />
-					))}
+				<div className="session-gauges-scroll">
+					<div className="session-gauges-grid">
+						{gauges.map((g) => (
+							<SessionGauge key={g.key} data={g} />
+						))}
+					</div>
 				</div>
 			)}
 			</CardContent>

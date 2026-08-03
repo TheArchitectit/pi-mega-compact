@@ -8,6 +8,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { RouteContext } from "./routes-core.js";
 import type { GameMetric } from "../../src/game/scoring.js";
+import type { PerfKind } from "../../src/store/sqlite/perf-samples.js";
 
 // ---------------------------------------------------------------------------
 // handleGameState — "/api/game-state" (GET + PUT)
@@ -346,6 +347,77 @@ export function handlePerf(
 		res.writeHead(500, { "Content-Type": "application/json" });
 		res.end(
 			JSON.stringify({ error: "perf_unavailable", detail: String(e) }),
+		);
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// handlePerfSamples — "/api/perf/samples"
+// ---------------------------------------------------------------------------
+
+export function handlePerfSamples(
+	req: IncomingMessage,
+	res: ServerResponse,
+	ctx: RouteContext,
+): boolean {
+	if (!req.url?.startsWith("/api/perf/samples")) return false;
+
+	const { stateDir } = ctx;
+
+	// /api/perf/samples — dashboard Perf tab chart drill-down. GET returns raw
+	// perf_samples for a single kind (?kind=<k>&minutes=<n>) ascending by ts so
+	// the client can render a time-series for any perf metric (turn_latency_ms,
+	// tps, disk_write_ms, cache_hit_pct, db_recompute_ms, etc.). `kind` is
+	// required and validated against the PERF_KINDS allow-list (400 on unknown);
+	// `minutes` defaults to 60 and is capped at 1440 (24h). Reads perf_samples
+	// via the same require()'d sqlite helper as /api/perf — no new SQLite code.
+	// Non-GET -> 405. PREVENT-PI-004: loopback.
+	const psReq = createRequire(import.meta.url);
+	const { readPerfSamples, PERF_KINDS } = psReq(
+		"../../src/store/sqlite.js",
+	) as typeof import("../../src/store/sqlite.js");
+	if (req.method !== "GET") {
+		res.writeHead(405, { "Content-Type": "application/json" }); // guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
+		res.end(JSON.stringify({ error: "method_not_allowed" }));
+		return true;
+	}
+	try {
+		const url = new URL(req.url, "http://x"); // guardrails-allow PREVENT-PI-004: localhost dashboard URL base (loopback-only)
+		const kindParam = url.searchParams.get("kind") ?? "";
+		if (!(PERF_KINDS as readonly string[]).includes(kindParam)) {
+			res.writeHead(400, { "Content-Type": "application/json" }); // guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
+			res.end(JSON.stringify({ error: "unknown_kind", kind: kindParam }));
+			return true;
+		}
+		let minutes = Number(url.searchParams.get("minutes") ?? "60");
+		if (!Number.isFinite(minutes) || minutes <= 0) minutes = 60;
+		minutes = Math.min(minutes, 1440); // cap at 24h
+		const sinceTs = Date.now() - minutes * 60_000;
+		const kind = kindParam as PerfKind; // validated against PERF_KINDS above
+		const rows = readPerfSamples(stateDir, sinceTs, kind); // guardrails-allow PREVENT-PI-004: local SQLite read (loopback dashboard)
+		const samples = rows.map((r) => ({
+			ts: r.ts,
+			value: r.value,
+			...((r.meta != null && typeof r.meta === "object"
+				? { meta: JSON.stringify(r.meta) }
+				: r.meta != null
+					? { meta: String(r.meta) }
+					: {}) as { meta?: string }),
+		}));
+		res.writeHead(200, { "Content-Type": "application/json" });
+		res.end(
+			JSON.stringify({
+				samples,
+				kind: kindParam,
+				minutes,
+				updatedAt: Date.now(),
+			}),
+		);
+	} catch (e) {
+		res.writeHead(500, { "Content-Type": "application/json" });
+		res.end(
+			JSON.stringify({ error: "perf_samples_unavailable", detail: String(e) }),
 		);
 	}
 	return true;

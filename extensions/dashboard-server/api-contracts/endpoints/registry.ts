@@ -74,6 +74,8 @@ import type {
 	ServersResponse,
 	PerfQuery,
 	PerfResponse,
+	PerfSamplesQuery,
+	PerfSamplesResponse,
 } from "./types.js";
 
 // ─── ENDPOINTS Registry ─────────────────────────────────────────────────────
@@ -183,6 +185,14 @@ export const ENDPOINTS = {
 		path: "/api/perf",
 		description: "Rolling-window performance aggregates over perf_samples.",
 	} as const satisfies EndpointDef<"GET", PerfQuery, PerfResponse>,
+
+	/** GET /api/perf/samples — Raw perf samples for a single kind (chart drill-down). */
+	perfSamples: {
+		method: "GET",
+		path: "/api/perf/samples",
+		description:
+			"Raw perf_samples for one kind (time-series drill-down across any perf metric).",
+	} as const satisfies EndpointDef<"GET", PerfSamplesQuery, PerfSamplesResponse>,
 
 	/** GET /api/achievements — Achievement tiles with unlock state. */
 	achievements: {

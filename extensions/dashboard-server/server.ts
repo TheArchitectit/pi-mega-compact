@@ -33,6 +33,7 @@ import {
 	handleGameState,
 	handleGameScores,
 	handlePerf,
+	handlePerfSamples,
 	handleAchievements,
 	handleSessions,
 	handleTopics,
@@ -247,6 +248,7 @@ export async function launchDashboardServer(
 		if (handleEvents(req, res, ctx)) return;
 		if (handleGameState(req, res, ctx)) return;
 		if (handleGameScores(req, res, ctx)) return;
+		if (handlePerfSamples(req, res, ctx)) return;
 		if (handlePerf(req, res, ctx)) return;
 		if (handleAchievements(req, res, ctx)) return;
 		if (handleSessions(req, res, ctx)) return;

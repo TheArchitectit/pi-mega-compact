@@ -18,10 +18,10 @@
  */
 
 import type React from "react";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useApi } from "../hooks/useApi";
 import { useSSE } from "../hooks/useSSE";
-import { fetchSessions } from "../api/client";
+import { fetchSessions, fetchPerfSamples } from "../api/client";
 import type {
 	SnapshotResponse,
 	SseEvent,
@@ -44,10 +44,35 @@ import { LegendCard } from "../components/LegendCard";
 import { Badge } from "../components/ui/badge";
 import { NEW_UI } from "../config";
 import RagHealthCard from "./SetupTab/RagHealthCard";
+import { WidgetDetailModal } from "../components/WidgetDetailModal";
+import { PerfLineChart } from "../components/charts/PerfLineChart";
+import { PerfBarChart } from "../components/charts/PerfBarChart";
+import { DndContext, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext } from "@dnd-kit/sortable";
+import type { CardId } from "../types/card";
+import { useCardPositions } from "../hooks/useCardPositions";
+import { SortableCard } from "../components/ui/SortableCard";
 
 /** Type guard: narrows an SSE event to a session_sample event. */
 function isSessionSample(e: SseEvent): e is SseSessionSample {
 	return e.type === "session_sample";
+}
+
+/**
+ * Maps a widget id to its perf sample kind (null for snapshot-backed widgets,
+ * e.g. "model" which derives its drill-down from snapshot data in-component).
+ */
+function perfKindFor(widget: string): string | null {
+	switch (widget) {
+		case "cache":
+			return "cache_hit_pct";
+		case "vector":
+			return "turn_latency_ms";
+		case "time":
+			return "disk_write_ms";
+		default:
+			return null;
+	}
 }
 
 export interface OverviewTabProps {
@@ -95,6 +120,60 @@ export default function OverviewTab({
 		refetchSessions();
 	}, [lastSampleTs, refetchSessions]);
 
+	// ── Widget drill-down state ─────────────────────────────────────────────
+	// which widget's modal is open (null = none)
+	const [openWidget, setOpenWidget] = useState<string | null>(null);
+	// perf samples fetched for the opened perf-backed widget
+	const [perfData, setPerfData] = useState<Array<{ ts: number; value: number }>>([]);
+	const [perfLoading, setPerfLoading] = useState(false);
+	const [perfError, setPerfError] = useState<Error | null>(null);
+
+	useEffect(() => {
+		setPerfData([]);
+		setPerfError(null);
+
+		const kind = openWidget ? perfKindFor(openWidget) : null;
+		if (kind === null) {
+			setPerfLoading(false);
+			return;
+		}
+
+		let cancelled = false;
+		setPerfLoading(true);
+		fetchPerfSamples(kind, 60)
+			.then((res) => {
+				if (!cancelled) {
+					setPerfData(res.samples.map((s) => ({ ts: s.ts, value: s.value })));
+				}
+			})
+			.catch((err) => {
+				if (!cancelled) {
+					setPerfError(
+						err instanceof Error ? err : new Error(String(err)),
+					);
+				}
+			})
+			.finally(() => {
+				if (!cancelled) setPerfLoading(false);
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [openWidget]);
+
+	// Drag-and-drop card reordering, persisted to localStorage.
+	const { order, moveCard } = useCardPositions();
+
+	const onDragEnd = useCallback(
+		(event: DragEndEvent) => {
+			const { active, over } = event;
+			if (over && active.id !== over.id) {
+				moveCard(active.id as CardId, over.id as CardId);
+			}
+		},
+		[moveCard],
+	);
+
 	if (loading && !snapshot)
 		return <div className="tab-stub">Loading snapshot…</div>;
 	if (error && !snapshot)
@@ -113,6 +192,155 @@ export default function OverviewTab({
 	const repo = d.repo;
 	const model = d.model;
 
+	// Per-model cost breakdown for the Model & Cost drill-down, derived from
+	// snapshot data already in the component (no snapshot.byModel exists).
+	const modelBarData = useMemo(
+		() => [
+			{ label: "Tokens freed", value: compression.repo.tokensFreed },
+			{ label: "Input rate", value: model ? model.inputRate : 0 },
+			{ label: "Output rate", value: model ? model.outputRate : 0 },
+		],
+		[compression, model],
+	);
+
+	// Renders a single card (wrapped in SortableCard) by its CardId. Cards
+	// with a drill-down get an onClick; the rest are plain sortable items.
+	const renderCard = (cardId: CardId): React.ReactNode => {
+		switch (cardId) {
+			case "trigger":
+				return (
+					<SortableCard id={cardId} onClick={() => setOpenWidget("cache")}>
+						<TriggerStatus
+							armed={trigger.armed}
+							ready={trigger.ready}
+							currentTokens={trigger.currentTokens}
+							thresholdTokens={trigger.thresholdTokens}
+							fastGatePct={trigger.fastGatePct}
+						/>
+					</SortableCard>
+				);
+			case "vector":
+				return (
+					<SortableCard id={cardId} onClick={() => setOpenWidget("vector")}>
+						<VectorStoreCard
+							checkpointCount={store.checkpointCount}
+							tokensIn={compression.session.tokensIn}
+							tokensOut={compression.session.tokensOut}
+							tokensFreed={compression.session.tokensFreed}
+							injectedCount={store.injectedCount}
+							dedupHitRate={store.dedupHitRate}
+							storageDedupRate={store.storageDedupRate}
+							dedupCollapsed={store.dedupCollapsed}
+							lastCheckpointId={session.lastCheckpointId}
+							compressionPct={compression.session.compressionPct}
+							dedupPct={compression.session.dedupPct}
+						/>
+					</SortableCard>
+				);
+			case "repo-all":
+				return (
+					<SortableCard id={cardId}>
+						<RepoAllSessionsCard
+							checkpointCount={repo.checkpointCount}
+							tokensIn={compression.repo.tokensIn}
+							tokensOut={compression.repo.tokensOut}
+							tokensFreed={compression.repo.tokensFreed}
+							sessionCount={repo.sessionCount}
+							dedupCollapsed={repo.dedupCollapsed}
+							storageDedupRate={repo.storageDedupRate}
+							compressionPct={compression.repo.compressionPct}
+							dedupPct={compression.repo.dedupPct}
+						/>
+					</SortableCard>
+				);
+			case "data-safety":
+				return (
+					<SortableCard id={cardId}>
+						<DataSafetyCard
+							regionsRetained={integrity.regionsRetained}
+							compressedOriginalBytes={integrity.compressedOriginalBytes}
+							duplicatesCollapsed={integrity.duplicatesCollapsed}
+							bytesPermanentlyDeleted={integrity.bytesPermanentlyDeleted}
+						/>
+					</SortableCard>
+				);
+			case "config":
+				return (
+					<SortableCard id={cardId}>
+						<ConfigSummaryCard
+							tier={tier}
+							presetTier={d.presetTier}
+							pressure={d.pressure}
+							thresholdTokens={cfg.thresholdTokens}
+							tierPct={cfg.tierPct}
+							contextWindow={context.contextWindow}
+							fastGatePct={cfg.fastGatePct}
+							auto={cfg.auto}
+							anchorUserMessages={cfg.anchorUserMessages}
+						/>
+					</SortableCard>
+				);
+			case "model":
+				return model ? (
+					<SortableCard id={cardId} onClick={() => setOpenWidget("model")}>
+						<CacheStatusPerModel
+							name={model.name}
+							provider={model.providerName || model.provider}
+							inputRate={model.inputRate}
+							outputRate={model.outputRate}
+							repoTokensFreed={compression.repo.tokensFreed}
+							contextWindow={context.contextWindow}
+						/>
+					</SortableCard>
+				) : null;
+			case "crew":
+				return (
+					<SortableCard id={cardId}>
+						<SessionInfo
+							activeAgents={crew.activeAgents}
+							currentTurn={crew.currentTurn}
+						/>
+					</SortableCard>
+				);
+			case "cache-hits":
+				return (
+					<SortableCard id={cardId} onClick={() => setOpenWidget("cache")}>
+						<CacheHitsCard
+							cacheHitsSession={cacheHits.session}
+							cacheHitsTotal={cacheHits.total}
+							tokensSavedSession={cacheHits.sessionTokensSaved}
+							tokensSavedTotal={cacheHits.totalTokensSaved}
+							compactionsSession={compacts.session}
+							compactionsTotal={compacts.total}
+						/>
+					</SortableCard>
+				);
+			case "time-saved":
+				return (
+					<SortableCard id={cardId} onClick={() => setOpenWidget("time")}>
+						<TimeSavedCard
+							compactSessionSec={timeSaved.compact.sessionSec}
+							compactTotalSec={timeSaved.compact.totalSec}
+							cacheHitSessionSec={timeSaved.cacheHit.sessionSec}
+							cacheHitTotalSec={timeSaved.cacheHit.totalSec}
+						/>
+					</SortableCard>
+				);
+			case "rag-health":
+				return NEW_UI() ? (
+					<SortableCard id={cardId}>
+						<RagHealthCard />
+					</SortableCard>
+				) : null;
+			case "legend":
+				return (
+					<SortableCard id={cardId}>
+						<LegendCard />
+					</SortableCard>
+				);
+		}
+	};
+
 	return (
 		<div className="flex flex-col gap-4">
 			<div className="flex items-center justify-between">
@@ -121,7 +349,9 @@ export default function OverviewTab({
 					updated {formatUpdatedAt(updatedAt)}
 				</span>
 			</div>
-			<div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+			{/* Full-width live-context row: per-session gauges + per-repo stack
+			 * sit above the grid so they get the whole width of the tab. */}
+			<div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
 				<SessionContextGauges
 					sessions={sessionsData}
 					loading={sessionsLoading}
@@ -138,85 +368,86 @@ export default function OverviewTab({
 					loading={sessionsLoading}
 					error={sessionsErr}
 				/>
-				<TriggerStatus
-					armed={trigger.armed}
-					ready={trigger.ready}
-					currentTokens={trigger.currentTokens}
-					thresholdTokens={trigger.thresholdTokens}
-					fastGatePct={trigger.fastGatePct}
-				/>
-				<VectorStoreCard
-					checkpointCount={store.checkpointCount}
-					tokensIn={compression.session.tokensIn}
-					tokensOut={compression.session.tokensOut}
-					tokensFreed={compression.session.tokensFreed}
-					injectedCount={store.injectedCount}
-					dedupHitRate={store.dedupHitRate}
-					storageDedupRate={store.storageDedupRate}
-					dedupCollapsed={store.dedupCollapsed}
-					lastCheckpointId={session.lastCheckpointId}
-					compressionPct={compression.session.compressionPct}
-					dedupPct={compression.session.dedupPct}
-				/>
-				<RepoAllSessionsCard
-					checkpointCount={repo.checkpointCount}
-					tokensIn={compression.repo.tokensIn}
-					tokensOut={compression.repo.tokensOut}
-					tokensFreed={compression.repo.tokensFreed}
-					sessionCount={repo.sessionCount}
-					dedupCollapsed={repo.dedupCollapsed}
-					storageDedupRate={repo.storageDedupRate}
-					compressionPct={compression.repo.compressionPct}
-					dedupPct={compression.repo.dedupPct}
-				/>
-				<DataSafetyCard
-					regionsRetained={integrity.regionsRetained}
-					compressedOriginalBytes={integrity.compressedOriginalBytes}
-					duplicatesCollapsed={integrity.duplicatesCollapsed}
-					bytesPermanentlyDeleted={integrity.bytesPermanentlyDeleted}
-				/>
-				<ConfigSummaryCard
-					tier={tier}
-					presetTier={d.presetTier}
-					pressure={d.pressure}
-					thresholdTokens={cfg.thresholdTokens}
-					tierPct={cfg.tierPct}
-					contextWindow={context.contextWindow}
-					fastGatePct={cfg.fastGatePct}
-					auto={cfg.auto}
-					anchorUserMessages={cfg.anchorUserMessages}
-				/>
-				{model && (
-					<CacheStatusPerModel
-						name={model.name}
-						provider={model.providerName || model.provider}
-						inputRate={model.inputRate}
-						outputRate={model.outputRate}
-						repoTokensFreed={compression.repo.tokensFreed}
-						contextWindow={context.contextWindow}
+			</div>
+			<DndContext onDragEnd={onDragEnd}>
+				<SortableContext items={order}>
+					<div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+						{order
+							.map((cardId) => ({ cardId, node: renderCard(cardId) }))
+							.filter(({ node }) => node != null)
+							.map(({ cardId, node }) => (
+								<div key={cardId}>{node}</div>
+							))}
+					</div>
+				</SortableContext>
+			</DndContext>
+
+			{/* ── Drill-down modals ───────────────────────────────────────── */}
+			<WidgetDetailModal
+				title="Cache Hits Trend"
+				open={openWidget === "cache"}
+				onClose={() => setOpenWidget(null)}
+			>
+				{perfLoading ? (
+					<p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
+				) : perfError ? (
+					<p className="py-8 text-center text-sm text-red-400">{perfError.message}</p>
+				) : (
+					<PerfLineChart
+						data={perfData}
+						label="Cache hit %"
+						color="#58a6ff"
 					/>
 				)}
-				<SessionInfo
-					activeAgents={crew.activeAgents}
-					currentTurn={crew.currentTurn}
+			</WidgetDetailModal>
+
+			<WidgetDetailModal
+				title="Turn Latency"
+				open={openWidget === "vector"}
+				onClose={() => setOpenWidget(null)}
+			>
+				{perfLoading ? (
+					<p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
+				) : perfError ? (
+					<p className="py-8 text-center text-sm text-red-400">{perfError.message}</p>
+				) : (
+					<PerfLineChart
+						data={perfData}
+						label="Turn latency (ms)"
+						color="#58a6ff"
+					/>
+				)}
+			</WidgetDetailModal>
+
+			<WidgetDetailModal
+				title="Disk Write Time"
+				open={openWidget === "time"}
+				onClose={() => setOpenWidget(null)}
+			>
+				{perfLoading ? (
+					<p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
+				) : perfError ? (
+					<p className="py-8 text-center text-sm text-red-400">{perfError.message}</p>
+				) : (
+					<PerfLineChart
+						data={perfData}
+						label="Disk write (ms)"
+						color="#58a6ff"
+					/>
+				)}
+			</WidgetDetailModal>
+
+			<WidgetDetailModal
+				title="Model &amp; Cost"
+				open={openWidget === "model"}
+				onClose={() => setOpenWidget(null)}
+			>
+				<PerfBarChart
+					data={modelBarData}
+					color="#3fb950"
+					valueFormatter={(v) => v.toLocaleString()}
 				/>
-				<CacheHitsCard
-					cacheHitsSession={cacheHits.session}
-					cacheHitsTotal={cacheHits.total}
-					tokensSavedSession={cacheHits.sessionTokensSaved}
-					tokensSavedTotal={cacheHits.totalTokensSaved}
-					compactionsSession={compacts.session}
-					compactionsTotal={compacts.total}
-				/>
-				<TimeSavedCard
-					compactSessionSec={timeSaved.compact.sessionSec}
-					compactTotalSec={timeSaved.compact.totalSec}
-					cacheHitSessionSec={timeSaved.cacheHit.sessionSec}
-					cacheHitTotalSec={timeSaved.cacheHit.totalSec}
-				/>
-				{NEW_UI() && <RagHealthCard />}
-				<LegendCard />
-			</div>
+			</WidgetDetailModal>
 		</div>
 	);
 }
