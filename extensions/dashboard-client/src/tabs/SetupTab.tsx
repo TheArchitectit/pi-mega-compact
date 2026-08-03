@@ -13,12 +13,19 @@ import GameTab from "./GameTab";
 import AchievementsTab from "./AchievementsTab";
 import ConfigTab from "./ConfigTab";
 import EmbedderSetup from "./SetupTab/EmbedderSetup";
+import ThresholdsPanel from "./SetupTab/ThresholdsPanel";
 import { Toggle } from "../components/ui/toggle";
 
-type SetupSubTab = "embedder" | "config" | "game" | "achievements";
+type SetupSubTab =
+	| "embedder"
+	| "thresholds"
+	| "config"
+	| "game"
+	| "achievements";
 
 const SUB_TABS: ReadonlyArray<{ id: SetupSubTab; label: string }> = [
 	{ id: "embedder", label: "Embedder" },
+	{ id: "thresholds", label: "Thresholds" },
 	{ id: "config", label: "Config" },
 	{ id: "game", label: "Game Mode" },
 	{ id: "achievements", label: "Achievements" },
@@ -45,6 +52,7 @@ export default function SetupTab(): React.ReactElement {
 			</nav>
 
 			{subTab === "embedder" && <EmbedderSetup />}
+			{subTab === "thresholds" && <ThresholdsPanel />}
 			{subTab === "config" && <ConfigTab />}
 			{subTab === "game" && <GameTab />}
 			{subTab === "achievements" && <AchievementsTab />}

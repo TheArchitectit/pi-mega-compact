@@ -54,6 +54,7 @@ import {
 	handleEmbedderHealth,
 	handleRagSettings,
 	handleRagMetrics,
+	handleModelThresholds,
 	handleWiki,
 	handleStatic,
 } from "./routes.js";
@@ -160,7 +161,9 @@ export async function launchDashboardServer(
 			map: "application/json",
 		};
 		const payload: string | Uint8Array =
-			ext === "html" ? injectUiFlag(readFileSync(file, "utf-8")) : readFileSync(file);
+			ext === "html"
+				? injectUiFlag(readFileSync(file, "utf-8"))
+				: readFileSync(file);
 		res.writeHead(200, {
 			"Content-Type": types[ext] ?? "application/octet-stream",
 		});
@@ -270,6 +273,7 @@ export async function launchDashboardServer(
 		if (handleEmbedderHealth(req, res, ctx)) return;
 		if (handleRagSettings(req, res, ctx)) return;
 		if (handleRagMetrics(req, res, ctx)) return;
+		if (handleModelThresholds(req, res, ctx)) return;
 		if (handleWiki(req, res, ctx)) return;
 		handleStatic(req, res, ctx);
 	});

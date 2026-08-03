@@ -22,12 +22,21 @@ export { handleTurns } from "./routes-turns.js";
 export { handleMaintenance } from "./routes-maintenance.js";
 export { handleProviderCache } from "./routes-cache.js";
 export { handleMemoryStatus } from "./routes-memory.js";
-export { handleSetupStatus, handleSetupDetect, handleSetupConfigure } from "./routes-setup.js";
+export {
+	handleSetupStatus,
+	handleSetupDetect,
+	handleSetupConfigure,
+} from "./routes-setup.js";
 export { handleMemoryMap } from "./routes-memory-map.js";
 export { handleRaptorTree, handleRaptorBuildHistory } from "./routes-raptor.js";
 export { handleCacheStripes } from "./routes-cache.js";
-export { handleContextHealth, handleCachePoison, handleHealthSettings } from "./routes-health.js";
+export {
+	handleContextHealth,
+	handleCachePoison,
+	handleHealthSettings,
+} from "./routes-health.js";
 export { handleEmbedderHealth } from "./routes-embedder-health.js";
 export { handleRagSettings } from "./routes-rag-settings.js";
 export { handleRagMetrics } from "./routes-rag-metrics.js";
+export { handleModelThresholds } from "./routes-model-thresholds.js";
 export { handleWiki } from "./routes-wiki.js";

@@ -16,6 +16,7 @@ export * from "./sqlite/checkpoints.js";
 export * from "./sqlite/session-state.js";
 export * from "./sqlite/stats.js";
 export * from "./sqlite/model-snapshots.js";
+export * from "./sqlite/model-thresholds.js";
 export * from "./sqlite/raptor.js";
 export * from "./sqlite/raw-transcript.js";
 export * from "./sqlite/dedup-mirror.js";

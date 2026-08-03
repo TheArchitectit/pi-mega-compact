@@ -15,9 +15,17 @@ import type { IndexesSummaryResponse } from "../multi-repo.js";
 import type { GameStateResponse } from "../game.js";
 import type { SseEvent } from "../index.js";
 import type { ProviderCacheResponse } from "../provider-cache.js";
-import type { RaptorTreeResponse, RaptorBuildHistoryResponse } from "../raptor.js";
+import type {
+	RaptorTreeResponse,
+	RaptorBuildHistoryResponse,
+} from "../raptor.js";
 import type { MemoryStatusResponse } from "../memory.js";
-import type { SetupStatusResponse, SetupDetectResponse, SetupConfigureRequest, SetupConfigureResponse } from "../setup.js";
+import type {
+	SetupStatusResponse,
+	SetupDetectResponse,
+	SetupConfigureRequest,
+	SetupConfigureResponse,
+} from "../setup.js";
 import type { EmbedderHealthResponse } from "../embedder-health.js";
 import type {
 	RagSettingsResponse,
@@ -25,6 +33,7 @@ import type {
 	RagSettingsResponsePost,
 } from "../rag-settings.js";
 import type { RagMetricsResponse } from "../rag-metrics.js";
+import type { ModelThresholdsResponse } from "../model-thresholds.js";
 import type {
 	TurnsResponse,
 	ConversationTurnsResponse,
@@ -192,7 +201,11 @@ export const ENDPOINTS = {
 		path: "/api/perf/samples",
 		description:
 			"Raw perf_samples for one kind (time-series drill-down across any perf metric).",
-	} as const satisfies EndpointDef<"GET", PerfSamplesQuery, PerfSamplesResponse>,
+	} as const satisfies EndpointDef<
+		"GET",
+		PerfSamplesQuery,
+		PerfSamplesResponse
+	>,
 
 	/** GET /api/achievements — Achievement tiles with unlock state. */
 	achievements: {
@@ -329,8 +342,7 @@ export const ENDPOINTS = {
 	topicTimeline: {
 		method: "GET",
 		path: "/api/wiki/topic/:topicId/timeline",
-		description:
-			"Per-topic memory-assignment timeline buckets for charts.",
+		description: "Per-topic memory-assignment timeline buckets for charts.",
 	} as const satisfies EndpointDef<"GET", undefined, TopicTimelineResponse>,
 
 	/** GET /api/wiki/evolution — node/edge D3 evolution graph. */
@@ -380,16 +392,15 @@ export const ENDPOINTS = {
 			"Lifetime provider prompt cache hit-rate aggregates + dollar savings estimate.",
 	} as const satisfies EndpointDef<"GET", undefined, ProviderCacheResponse>,
 
+	// ─── A3 Cache Stripes (PLAN_V2 Phase 4) ───────────────────────────
 
-		// ─── A3 Cache Stripes (PLAN_V2 Phase 4) ───────────────────────────
-
-		/** GET /api/cache-stripes — Per-stripe distribution + health score. */
-		cacheStripes: {
-			method: "GET",
-			path: "/api/cache-stripes",
-			description:
-				"Per-stripe distribution counts, average stability scores, and composite cache health.",
-		} as const satisfies EndpointDef<"GET", undefined, CacheStripesResponse>,
+	/** GET /api/cache-stripes — Per-stripe distribution + health score. */
+	cacheStripes: {
+		method: "GET",
+		path: "/api/cache-stripes",
+		description:
+			"Per-stripe distribution counts, average stability scores, and composite cache health.",
+	} as const satisfies EndpointDef<"GET", undefined, CacheStripesResponse>,
 	// ─── Memory Effectiveness (S53B) ───────────────────────────────────────
 
 	/** GET /api/memory-status — Memory store aggregate statistics. */
@@ -422,7 +433,11 @@ export const ENDPOINTS = {
 		path: "/api/setup-configure",
 		description:
 			"Write the chosen embedder configuration to .mega-compact.env (loaded at next startup). Returns whether a restart is required.",
-	} as const satisfies EndpointDef<"POST", SetupConfigureRequest, SetupConfigureResponse>,
+	} as const satisfies EndpointDef<
+		"POST",
+		SetupConfigureRequest,
+		SetupConfigureResponse
+	>,
 
 	// ─── RAPTOR tree (Part B) ───────────────────────────────────────
 
@@ -440,7 +455,11 @@ export const ENDPOINTS = {
 		path: "/api/raptor-build-history",
 		description:
 			"RAPTOR build history rows (node/leaf count, depth, coherence score, timed_out) for a session; defaults to the latest session with builds.",
-	} as const satisfies EndpointDef<"GET", undefined, RaptorBuildHistoryResponse>,
+	} as const satisfies EndpointDef<
+		"GET",
+		undefined,
+		RaptorBuildHistoryResponse
+	>,
 
 	/** GET /api/embedder-health — Round-trip a test embed through the active embedder. */
 	embedderHealth: {
@@ -466,7 +485,11 @@ export const ENDPOINTS = {
 		path: "/api/rag-settings",
 		description:
 			"Update RAG feature flag states by writing _DISABLED env vars to .mega-compact.env.",
-	} as const satisfies EndpointDef<"POST", RagSettingsRequest, RagSettingsResponsePost>,
+	} as const satisfies EndpointDef<
+		"POST",
+		RagSettingsRequest,
+		RagSettingsResponsePost
+	>,
 
 	// ─── RAG Metrics (Sprint H2) ──────────────────────────────────────
 
@@ -477,4 +500,14 @@ export const ENDPOINTS = {
 		description:
 			"HyDE invocation + recall-quality telemetry: flags, totals, recent turns, and daily series.",
 	} as const satisfies EndpointDef<"GET", undefined, RagMetricsResponse>,
+
+	// ─── Per-model compaction thresholds (S52 / v0.16.1) ───────────────
+
+	/** GET /api/model-thresholds — List known models + their thresholds. */
+	modelThresholds: {
+		method: "GET",
+		path: "/api/model-thresholds",
+		description:
+			"Every known model (from model_snapshots) with its per-model threshold override (or defaults).",
+	} as const satisfies EndpointDef<"GET", undefined, ModelThresholdsResponse>,
 } as const;

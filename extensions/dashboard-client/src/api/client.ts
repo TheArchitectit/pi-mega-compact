@@ -54,6 +54,9 @@ import type {
 	SettingsUpdateRequest,
 	SettingsResponsePost,
 	RagMetricsResponse,
+	ModelThresholdsResponse,
+	ModelThresholdPutRequest,
+	ModelThresholdPutResponse,
 	WikiIndexResponse,
 	WikiPageResponse,
 	CurationResult,
@@ -337,7 +340,9 @@ export function configureEmbedder(
 // ─── RAPTOR tree (Part B) ─────────────────────────────────────────────
 
 /** GET /api/raptor-tree — tree for a session (defaults to latest with nodes). */
-export function fetchRaptorTree(sessionId?: string): Promise<RaptorTreeResponse> {
+export function fetchRaptorTree(
+	sessionId?: string,
+): Promise<RaptorTreeResponse> {
 	return getJson<RaptorTreeResponse>(
 		`${ENDPOINTS.raptorTree.path}${query({ sessionId })}`,
 	);
@@ -398,10 +403,7 @@ export function fetchWikiIndex(): Promise<WikiIndexResponse> {
 /** GET /api/wiki/topic/:topicId — single topic page + provenance. */
 export function fetchWikiTopic(topicId: string): Promise<WikiPageResponse> {
 	return getJson<WikiPageResponse>(
-		ENDPOINTS.wikiTopic.path.replace(
-			":topicId",
-			encodeURIComponent(topicId),
-		),
+		ENDPOINTS.wikiTopic.path.replace(":topicId", encodeURIComponent(topicId)),
 	);
 }
 
@@ -411,10 +413,7 @@ export function renameTopic(
 	label: string,
 ): Promise<CurationResult> {
 	return putJson<CurationResult>(
-		ENDPOINTS.renameTopic.path.replace(
-			":topicId",
-			encodeURIComponent(topicId),
-		),
+		ENDPOINTS.renameTopic.path.replace(":topicId", encodeURIComponent(topicId)),
 		{ label } satisfies RenameTopicRequest,
 	);
 }
@@ -436,10 +435,7 @@ export function splitTopic(
 	memoryIds: string[],
 ): Promise<CurationResult> {
 	return postJson<CurationResult>(
-		ENDPOINTS.splitTopic.path.replace(
-			":topicId",
-			encodeURIComponent(topicId),
-		),
+		ENDPOINTS.splitTopic.path.replace(":topicId", encodeURIComponent(topicId)),
 		{ memoryIds } satisfies SplitTopicRequest,
 	);
 }
@@ -459,4 +455,33 @@ export function fetchTopicTimeline(
 /** GET /api/wiki/evolution — global D3 topic-evolution graph feed. */
 export function fetchTopicEvolution(): Promise<TopicEvolutionResponse> {
 	return getJson<TopicEvolutionResponse>(ENDPOINTS.topicEvolution.path);
+}
+
+// ─── Per-model compaction thresholds (S52 / v0.16.1) ────────────────────
+
+/** GET /api/model-thresholds — list known models with their thresholds. */
+export function fetchModelThresholds(): Promise<ModelThresholdsResponse> {
+	return getJson<ModelThresholdsResponse>(ENDPOINTS.modelThresholds.path);
+}
+
+/** PUT /api/model-thresholds — upsert a per-model override. */
+export function putModelThreshold(
+	body: ModelThresholdPutRequest,
+): Promise<ModelThresholdPutResponse> {
+	return putJson<ModelThresholdPutResponse>(
+		ENDPOINTS.modelThresholds.path,
+		body,
+	);
+}
+
+/** DELETE /api/model-thresholds/:modelId — delete an override (revert). */
+export async function deleteModelThreshold(
+	modelId: string,
+): Promise<{ deleted: boolean }> {
+	const res = await fetch(
+		`${ENDPOINTS.modelThresholds.path}/${encodeURIComponent(modelId)}`,
+		{ method: "DELETE" },
+	);
+	if (!res.ok) throw new Error(`deleteModelThreshold ${res.status}`);
+	return res.json() as Promise<{ deleted: boolean }>;
 }

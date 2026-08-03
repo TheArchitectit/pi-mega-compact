@@ -159,6 +159,16 @@ export const CORE_DDL = `
     );
     CREATE INDEX IF NOT EXISTS idx_model_repo ON model_snapshots(repo_root);
 
+    -- Per-model compaction thresholds (S52 / v0.16.1). User-tunable % values
+    -- that override the env tier defaults + the fix-2 safety margin. One row
+    -- per model_id; NULL fallback to env/defaults when no row exists.
+    CREATE TABLE IF NOT EXISTS model_thresholds (
+      model_id           TEXT PRIMARY KEY,
+      safety_margin_pct  REAL NOT NULL,  -- 0-20: reserve after summary+maxOutput
+      fire_point_pct     REAL NOT NULL,  -- 10-90: % of window where compaction fires
+      updated_at         INTEGER
+    );
+
     -- Lessons learned (future recall/browse feature seed).
     CREATE TABLE IF NOT EXISTS lessons (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,

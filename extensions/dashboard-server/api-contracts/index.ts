@@ -230,7 +230,14 @@ export type {
 export type { MemoryStatusResponse, MemoryStatsTopMemory } from "./memory.js";
 
 // Setup wizard — embedder configuration + backend detection
-export type { SetupStatusResponse, SetupDetectResponse, SetupConfigureRequest, SetupConfigureResponse, DetectResult, OllamaDetectResult } from "./setup.js";
+export type {
+	SetupStatusResponse,
+	SetupDetectResponse,
+	SetupConfigureRequest,
+	SetupConfigureResponse,
+	DetectResult,
+	OllamaDetectResult,
+} from "./setup.js";
 
 // Embedder health probe
 export type { EmbedderHealthResponse } from "./embedder-health.js";
@@ -245,7 +252,12 @@ export type {
 } from "./memory-map.js";
 
 // Part B — RAPTOR tree + build history
-export type { RaptorNodeDTO, RaptorTreeResponse, RaptorBuildHistoryDTO, RaptorBuildHistoryResponse } from "./raptor.js";
+export type {
+	RaptorNodeDTO,
+	RaptorTreeResponse,
+	RaptorBuildHistoryDTO,
+	RaptorBuildHistoryResponse,
+} from "./raptor.js";
 
 // A3 — cache stripe distribution + health
 export type {
@@ -288,4 +300,17 @@ export type {
 	SseWikiTopicSplit,
 	WikiSseEvent,
 } from "./wiki.js";
-export type { CurationResult, OverrideKind, WikiCurationStore } from "../../../src/wiki/curation.js";
+export type {
+	CurationResult,
+	OverrideKind,
+	WikiCurationStore,
+} from "../../../src/wiki/curation.js";
+export type {
+	ModelThresholdDTO,
+	KnownModel,
+	ModelThresholdsResponse,
+	ModelThresholdPutRequest,
+	ModelThresholdPutResponse,
+	ModelThresholdDeleteResponse,
+	ModelThresholdsError,
+} from "./model-thresholds.js";

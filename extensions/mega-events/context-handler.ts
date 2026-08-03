@@ -17,9 +17,16 @@ import type {
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
 	openStore,
+	resolveModelThreshold,
+	DEFAULT_SAFETY_MARGIN_PCT,
+	DEFAULT_FIRE_POINT_PCT,
 } from "../../src/store/sqlite.js";
 import { autoCompactCheck } from "../../src/compact.js";
-import { estimateSessionTokens, estimateBlockTokens, estimateMessageTokens } from "../../src/tokens.js";
+import {
+	estimateSessionTokens,
+	estimateBlockTokens,
+	estimateMessageTokens,
+} from "../../src/tokens.js";
 import type { MegaRuntime } from "../mega-runtime.js";
 import { runCompact, piCompactWouldNoop } from "../mega-pipeline.js";
 import {
@@ -94,59 +101,75 @@ export function registerContextHandler(
 		const view = viewForFallback ?? runtime.engineView(messages);
 
 		// S27 DB-mirror: append incoming messages to raw_transcript.
-			// Runs BEFORE fast-gate so every message is captured, even if we
-			// don't compact this turn. Append is idempotent (content_hash PK).
-			// F3: high-water mark (mirror-append.ts) skips already-processed
-			// messages on subsequent events. On fork/rewind (shorter list or
-			// boundary hash mismatch) the mark is dropped, falling back to a
-			// full reprocess.
-			if (config.dbMirror) {
-				try {
-					const db = openStore(runtime.currentStateDir);
-					appendMirrorMessages(
-						db,
-						messages,
-						runtime.rt.sessionId,
-						epochIdFor(runtime.rt.sessionId),
-						runtime.currentTurn,
+		// Runs BEFORE fast-gate so every message is captured, even if we
+		// don't compact this turn. Append is idempotent (content_hash PK).
+		// F3: high-water mark (mirror-append.ts) skips already-processed
+		// messages on subsequent events. On fork/rewind (shorter list or
+		// boundary hash mismatch) the mark is dropped, falling back to a
+		// full reprocess.
+		if (config.dbMirror) {
+			try {
+				const db = openStore(runtime.currentStateDir);
+				appendMirrorMessages(
+					db,
+					messages,
+					runtime.rt.sessionId,
+					epochIdFor(runtime.rt.sessionId),
+					runtime.currentTurn,
+				);
+				// P2.2: populate conversation_thread + tool_results tables for
+				// prompt-cache analytics and durable separation. The live-array
+				// separation (buildSeparatedPrompt / buildCacheOptimizedPrompt in
+				// tailResult above) is sufficient for the prompt-construction path;
+				// these DB writes persist the split for post-hoc analysis, dashboard
+				// queries, and future readers. Non-fatal — failure here never breaks
+				// the agent loop (PREVENT-PI-004: zero network, local SQLite only).
+				{
+					const sid = runtime.rt.sessionId;
+					const turn = runtime.currentTurn;
+					const now = Date.now();
+					const threadStmt = db.prepare(
+						"INSERT OR IGNORE INTO conversation_thread (conversation_id, role, content, turn_index, timestamp) VALUES (?, ?, ?, ?, ?)",
 					);
-					// P2.2: populate conversation_thread + tool_results tables for
-					// prompt-cache analytics and durable separation. The live-array
-					// separation (buildSeparatedPrompt / buildCacheOptimizedPrompt in
-					// tailResult above) is sufficient for the prompt-construction path;
-					// these DB writes persist the split for post-hoc analysis, dashboard
-					// queries, and future readers. Non-fatal — failure here never breaks
-					// the agent loop (PREVENT-PI-004: zero network, local SQLite only).
-					{
-						const sid = runtime.rt.sessionId;
-						const turn = runtime.currentTurn;
-						const now = Date.now();
-						const threadStmt = db.prepare(
-							"INSERT OR IGNORE INTO conversation_thread (conversation_id, role, content, turn_index, timestamp) VALUES (?, ?, ?, ?, ?)",
-						);
-						const toolStmt = db.prepare(
-							"INSERT OR IGNORE INTO tool_results (conversation_id, role, content, turn_index, timestamp) VALUES (?, ?, ?, ?, ?)",
-						);
-						for (const m of messages) {
-							const role = m.role;
-							const content = messageContentText(m);
-							if (role === "user" || role === "assistant") {
-								threadStmt.run(sid, role, content, turn, now);
-							} else if (role === "toolResult" || role === "bashExecution") {
-								toolStmt.run(sid, role, content, turn, now);
-							}
+					const toolStmt = db.prepare(
+						"INSERT OR IGNORE INTO tool_results (conversation_id, role, content, turn_index, timestamp) VALUES (?, ?, ?, ?, ?)",
+					);
+					for (const m of messages) {
+						const role = m.role;
+						const content = messageContentText(m);
+						if (role === "user" || role === "assistant") {
+							threadStmt.run(sid, role, content, turn, now);
+						} else if (role === "toolResult" || role === "bashExecution") {
+							toolStmt.run(sid, role, content, turn, now);
 						}
 					}
-				} catch (e) {
-					runtime.logger.warn("db-mirror-append-fail", { error: String(e) });
 				}
+			} catch (e) {
+				runtime.logger.warn("db-mirror-append-fail", { error: String(e) });
 			}
+		}
 
+		// S52 / v0.16.1: per-model threshold override. The user can tune the
+		// fire point + safety margin PER MODEL (different providers' models range
+		// 8K-1M+ context, so one global tier % is wrong). Falls back to env/default
+		// when no override row exists. Computed once here + reused in the tail cap
+		// below; the lookup is a single SQLite PK hit (cheap; cached after the
+		// first read in a session).
+		const _modelIdForThreshold = runtime.currentModel?.modelId ?? null;
+		const _perModelThreshold = resolveModelThreshold(_modelIdForThreshold, {
+			safetyMarginFallback: DEFAULT_SAFETY_MARGIN_PCT,
+			firePointFallback:
+				config.tierPct != null
+					? Math.round(config.tierPct * 100)
+					: DEFAULT_FIRE_POINT_PCT,
+			stateDir: runtime.currentStateDir,
+		});
 		// S29 FAST GATE: drive the auto-trigger off the context % (the number the
 		// menu bar shows), NOT the token count — the model under-reports tokens,
 		// so a token-only gate misses the overshoot that causes max-output-tokens
-		// truncation. The fire point is the tier's percent threshold (tierPct)
-		// unless overridden by MEGACOMPACT_AUTO_PCT_TRIGGER. `custom` (absolute
+		// truncation. The fire point is the per-model override when present,
+		// otherwise the tier's percent threshold (tierPct) unless overridden by
+		// MEGACOMPACT_AUTO_PCT_TRIGGER. `custom` (absolute
 		// MEGACOMPACT_THRESHOLD_TOKENS, tierPct null) is an explicit opt-out of
 		// percent scaling — it keeps the token gate. When pct is unavailable
 		// (window unknown / a model that doesn't report percent) a tiered config
@@ -154,7 +177,12 @@ export function registerContextHandler(
 		// skipping compaction — a percent-only gate would regress that.
 		let gatePassed = false;
 		if (config.tierPct != null && pct != null) {
-			const firePct = config.autoPctTrigger ?? config.tierPct;
+			// Per-model override is a % (10-90); tierPct is a fraction (0.1-1.0).
+			// Prefer the override; fall back to autoPctTrigger + tierPct.
+			const tierPctFraction = config.autoPctTrigger ?? config.tierPct;
+			const perModelFraction = _perModelThreshold.firePointPct / 100;
+			const firePct =
+				_modelIdForThreshold != null ? perModelFraction : tierPctFraction;
 			gatePassed = pct / 100 >= firePct;
 		} else {
 			// custom tier OR tiered-but-pct-unavailable → token gate (S27 fallback).
@@ -204,7 +232,10 @@ export function registerContextHandler(
 				runtime.snapshot(ctx);
 				// v0.8.7: shallow-copy the cached summary so pi's transformContext can't
 				// mutate the shared reference across replays (audit P3).
-				const replayView = [{ ...runtime.trimCache.summaryAgentMsg }, ...recent];
+				const replayView = [
+					{ ...runtime.trimCache.summaryAgentMsg },
+					...recent,
+				];
 				return tailResult(replayView) ?? { messages: replayView };
 			}
 			// else: context grew enough → fall through to re-compact (cache is stale)
@@ -324,23 +355,21 @@ export function registerContextHandler(
 				compactedFrom: ran.result.compactedFrom,
 				summary: ran.result.summary,
 				anchorUserMessages,
-			// CRITICAL-OVER ESCAPE HATCH: when context is at/over ~90% of the
-			// window, relief takes priority over the anchor floor. Without this,
-			// computeLiveTrimCut bails to null (can't satisfy the floor) and the
-			// model is fed a raw overflow that errors every turn — the
-			// "Already compacted" + overflow death-spiral (2026-08-01 incident).
-			// A thin anchor is recoverable; an overflowed session is not.
-			//
-			// CRITICAL: pct is null for OpenAI-compatible providers that don't
-			// report usage.percent (e.g. neuralwatt). Without the token-pressure
-			// fallback the hatch never armed → cut=null → raw overflow → 400
-			// "conversation too long even after compaction" (2026-08-03 incident
-			// on glm-5.2-short, 200K window). Now also fires on pressure >= 0.9
-			// (token-basis) so the hatch arms regardless of whether the provider
-			// reports pct.
-				criticalOver:
-					(pct ?? 0) >= 90 ||
-					pressure >= 0.9,
+				// CRITICAL-OVER ESCAPE HATCH: when context is at/over ~90% of the
+				// window, relief takes priority over the anchor floor. Without this,
+				// computeLiveTrimCut bails to null (can't satisfy the floor) and the
+				// model is fed a raw overflow that errors every turn — the
+				// "Already compacted" + overflow death-spiral (2026-08-01 incident).
+				// A thin anchor is recoverable; an overflowed session is not.
+				//
+				// CRITICAL: pct is null for OpenAI-compatible providers that don't
+				// report usage.percent (e.g. neuralwatt). Without the token-pressure
+				// fallback the hatch never armed → cut=null → raw overflow → 400
+				// "conversation too long even after compaction" (2026-08-03 incident
+				// on glm-5.2-short, 200K window). Now also fires on pressure >= 0.9
+				// (token-basis) so the hatch arms regardless of whether the provider
+				// reports pct.
+				criticalOver: (pct ?? 0) >= 90 || pressure >= 0.9,
 			});
 			if (cut === null) {
 				runtime.diagCtxCutNull++;
@@ -386,6 +415,8 @@ export function registerContextHandler(
 			// turn so the agent can respond). This is a last-resort HARD cap — it
 			// only fires when the preserved tail alone is oversized, which is rare.
 			const ctxWindow = runtime.lastCtxWindow;
+			// Reuse the per-model threshold resolved at the gate (single lookup).
+			const modelThreshold = _perModelThreshold;
 			// Reserve room for output tokens. Use the model's reported max output
 			// when known; fall back to 10% of the window (scales with any model —
 			// 20K for a 200K window, 100K for a 1M window) so we never let the
@@ -397,10 +428,11 @@ export function registerContextHandler(
 			let recent = recentRaw;
 			if (ctxWindow > 0 && recentRaw.length > 1) {
 				const summaryTokens = estimateBlockTokens(summaryMsg.text);
-				// Reserve: summary + max output + 10% safety margin.
-				const safetyMargin = Math.ceil(ctxWindow * 0.1);
-				const budget =
-					ctxWindow - maxOutput - safetyMargin - summaryTokens;
+				// Reserve: summary + max output + per-model safety margin (0-20%).
+				const safetyMargin = Math.ceil(
+					ctxWindow * (modelThreshold.safetyMarginPct / 100),
+				);
+				const budget = ctxWindow - maxOutput - safetyMargin - summaryTokens;
 				if (budget > 0) {
 					// Walk recent from the front, dropping oldest first until the
 					// remaining tail fits. Use the AgentMessage→engine-text estimate via
@@ -420,6 +452,7 @@ export function registerContextHandler(
 									sessionId: runtime.rt.sessionId,
 									dropped: startIdx,
 									tailTokens,
+									safetyMarginPct: modelThreshold.safetyMarginPct,
 									budget,
 									ctxWindow,
 								});
@@ -468,7 +501,11 @@ export function registerContextHandler(
 				ctxPct: pct,
 				ctxTokens: usage?.tokens ?? null,
 			});
-			return tailResult([summaryAgentMsg, ...recent]) ?? { messages: [summaryAgentMsg, ...recent] };
+			return (
+				tailResult([summaryAgentMsg, ...recent]) ?? {
+					messages: [summaryAgentMsg, ...recent],
+				}
+			);
 		} catch {
 			runtime.diagCtxThrown++;
 			return tailResult() ?? undefined; // non-fatal: no trim this call; the next context event retries
