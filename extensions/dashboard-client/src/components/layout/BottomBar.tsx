@@ -32,6 +32,7 @@ export function BottomBar({ active, onTabChange }: BottomBarProps) {
                 ? "text-neon glow-primary"
                 : "text-muted hover:text-foreground",
             )}
+            aria-current={isActive ? "page" : undefined}
           >
             <Icon className="h-5 w-5" />
             {tab.label}
@@ -43,6 +44,7 @@ export function BottomBar({ active, onTabChange }: BottomBarProps) {
         type="button"
         onClick={() => setMoreOpen((o) => !o)}
         aria-expanded={moreOpen}
+        aria-controls="bottombar-more-section"
         className={cn(
           "flex flex-col items-center gap-1 rounded-lg px-3 py-1.5 text-[11px] font-medium",
           moreOpen ? "text-neon" : "text-muted hover:text-foreground",
@@ -53,7 +55,10 @@ export function BottomBar({ active, onTabChange }: BottomBarProps) {
       </button>
 
       {moreOpen && (
-        <div className="absolute bottom-16 right-2 w-56 rounded-xl border border-border bg-bg-elevated p-2 shadow-panel">
+        <div
+          id="bottombar-more-section"
+          className="absolute bottom-16 right-2 w-56 rounded-xl border border-border bg-bg-elevated p-2 shadow-panel"
+        >
           {[...PRIMARY_TABS.slice(4), ...ADVANCED_TABS].map((tab) => {
             const Icon = tab.icon;
             return (

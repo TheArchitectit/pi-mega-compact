@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, Sparkles } from "lucide-react";
 import { cn } from "../../utils/cn";
 import {
@@ -19,6 +19,12 @@ export function Sidebar({ active, onTabChange }: SidebarProps) {
     () => ADVANCED_TAB_IDS.has(active),
   );
 
+  // Keep the advanced section expanded whenever the active tab is advanced,
+  // regardless of how the navigation happened (tab click, cross-device recalc).
+  useEffect(() => {
+    if (ADVANCED_TAB_IDS.has(active)) setAdvancedOpen(true);
+  }, [active]);
+
   const Tile = ({ tab }: { tab: (typeof PRIMARY_TABS)[number] }) => {
     const Icon = tab.icon;
     const isActive = active === tab.id;
@@ -32,6 +38,7 @@ export function Sidebar({ active, onTabChange }: SidebarProps) {
             ? "bg-primary/15 text-neon glow-primary border border-primary/40"
             : "border border-transparent text-muted hover:bg-bg-elevated hover:text-foreground",
         )}
+        aria-current={isActive ? "page" : undefined}
       >
         <Icon className="h-4 w-4 shrink-0" />
         <span className="truncate">{tab.label}</span>
@@ -57,6 +64,7 @@ export function Sidebar({ active, onTabChange }: SidebarProps) {
         onClick={() => setAdvancedOpen((o) => !o)}
         className="mt-2 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-semibold text-muted hover:text-foreground"
         aria-expanded={advancedOpen}
+        aria-controls="sidebar-advanced-section"
       >
         Advanced
         <ChevronDown
@@ -64,7 +72,7 @@ export function Sidebar({ active, onTabChange }: SidebarProps) {
         />
       </button>
       {advancedOpen && (
-        <div className="mt-1 flex flex-col gap-1">
+        <div id="sidebar-advanced-section" className="mt-1 flex flex-col gap-1">
           {ADVANCED_TABS.map((tab) => (
             <Tile key={tab.id} tab={tab} />
           ))}
