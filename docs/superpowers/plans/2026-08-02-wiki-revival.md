@@ -16,7 +16,7 @@
 | W1+W2 review fixes | DONE | `d0a45bf`, `da71d60` | FK CASCADE on topic_evolution + runtime migration; applyOverridesAfterRebuild wired into afterCompact; decodeSegment URI hardening; split ID collision fix; regression test. |
 | W3 Wiki Tab UI | DONE | `8316dbd` | Client wrappers, WikiTab list + search + badges, WikiPage with controls + timeline, registry wiring. |
 | W4 Topic Evolution Graph | DONE | `8316dbd` | Hand-rolled force sim (matching memory-map-layout pattern), scrubber, SSE refresh via wiki_rebuilt. |
-| W5 Hybrid Durability | **IN PROGRESS** | — | Full override replay (labels + merges + splits) + incremental topic assignment with silhouette-gated rebuild. |
+| W5 Hybrid Durability | DONE | `b1ad7e3`, `be78026` | Full override replay (labels + merges + splits) + incremental topic assignment with silhouette-gated rebuild. Merge durability fix: `merged_memory_ids` column on topic_overrides so merges survive full rebuilds (topic_evolution is CASCADE-deleted, but topic_overrides persists). |
 
 ## W5 Revised Scope: Hybrid Override Durability (2026-08-02 design change)
 
