@@ -247,6 +247,27 @@ export const TURNS_RETENTION_DAYS = envNum("MEGACOMPACT_TURNS_RETENTION_DAYS", 3
 
 Never inline `process.env` checks in logic files. Always go through `src/config.ts`.
 
+### Dashboard surface (MANDATORY)
+
+Every adjustable `MEGACOMPACT_*` setting in `src/config.ts`, `src/config/turns.ts`,
+`src/config/dedup.ts`, and `src/hyde.ts` MUST have a corresponding entry in the
+`SETTINGS` array in `extensions/dashboard-server/routes-rag-settings.ts`. The user
+must be able to view and adjust every setting from the dashboard Settings panel —
+no setting is config-file-only.
+
+**Exclusions** (documented in the SETTINGS array's `EXCLUDED_SETTINGS` set):
+- Embedder URL/model/key/dim (`MEGACOMPACT_EMBEDDING_*`, `MEGACOMPACT_OLLAMA_MODEL`) —
+  handled by the EmbedderSetup UI
+- Install-time paths (`STATE_DIR`, `INDEX_DIR`, `VECTOR_INDEX_DIR`, `TURNS_DB_PATH`) —
+  read-only display, not runtime-toggleable
+- Dev-only scanner paths (`EXT_SCAN_DIR`, `EXT_USER_DIR`)
+- Internal PGLite timeouts (`PGLITE_*`)
+- Security-sensitive (`ALLOW_REMOTE_EMBEDDER`)
+
+`scripts/regression_check.py` enforces this: every `MEGACOMPACT_*` env var in the
+config files must appear in either the `SETTINGS` array or the `EXCLUDED_SETTINGS`
+set. A new config flag without a dashboard entry (or exclusion) fails the gate.
+
 ---
 
 ## 8. Structured Logging

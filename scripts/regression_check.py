@@ -137,6 +137,97 @@ def print_file_size_report(size_issues: List[Dict]) -> None:
     print("=" * 70)
 
 
+# ---------------------------------------------------------------------------
+# Settings coverage check — every MEGACOMPACT_* env var in config files must
+# appear in the dashboard SETTINGS array or the EXCLUDED_SETTINGS set.
+# (ENGINEERING_PRACTICES.md §7 — Dashboard surface rule)
+# ---------------------------------------------------------------------------
+
+# Config files that define MEGACOMPACT_* env vars.
+SETTINGS_CONFIG_FILES = (
+    "src/config.ts",
+    "src/config/turns.ts",
+    "src/config/dedup.ts",
+    "src/hyde.ts",
+    "src/dedup/raptor/summarizer.ts",
+)
+
+# Regex for MEGACOMPACT_* env var names (captured group = key).
+_ENV_VAR_RE = re.compile(r'"(MEGACOMPACT_[A-Z0-9_]+)"')
+
+def _collect_env_vars(repo_root: Path) -> set:
+    """Collect all MEGACOMPACT_* env var names from config files."""
+    found: set = set()
+    for rel in SETTINGS_CONFIG_FILES:
+        path = repo_root / rel
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for m in _ENV_VAR_RE.finditer(text):
+            found.add(m.group(1))
+    return found
+
+
+def _collect_settings_keys(repo_root: Path) -> set:
+    """Collect env var keys from the dashboard SETTINGS array + EXCLUDED_SETTINGS
+    set in routes-rag-settings.ts (or a helper file)."""
+    candidates = (
+        "extensions/dashboard-server/routes-rag-settings.ts",
+        "extensions/dashboard-server/routes-rag-settings-helpers.ts",
+    )
+    text = ""
+    for rel in candidates:
+        path = repo_root / rel
+        if path.is_file():
+            try:
+                text += path.read_text(encoding="utf-8", errors="replace") + "\n"
+            except OSError:
+                pass
+    if not text:
+        return set()
+    keys: set = set()
+    # Match both `key: "MEGACOMPACT_..."` (SETTINGS array entries) and
+    # string literals inside the EXCLUDED_SETTINGS set/array.
+    for m in re.finditer(r'"(MEGACOMPACT_[A-Z0-9_]+)"', text):
+        keys.add(m.group(1))
+    return keys
+
+
+def check_settings_coverage(repo_root: Path) -> List[Dict]:
+    """Verify every MEGACOMPACT_* env var in config files has a dashboard
+    settings entry or is explicitly excluded.
+
+    Returns a list of issue dicts: {var, message}. Empty = pass.
+    """
+    config_vars = _collect_env_vars(repo_root)
+    settings_keys = _collect_settings_keys(repo_root)
+    missing = sorted(config_vars - settings_keys)
+    return [{"var": v, "message": f"{v} not in dashboard SETTINGS array or EXCLUDED_SETTINGS"} for v in missing]
+
+
+def print_settings_report(settings_issues: List[Dict]) -> None:
+    """Print formatted report of settings coverage issues."""
+    if not settings_issues:
+        print("✓ All MEGACOMPACT_* env vars have dashboard settings entries")
+        return
+
+    count = len(settings_issues)
+    print("\n" + "=" * 70)
+    print("SETTINGS COVERAGE CHECK")
+    print("=" * 70)
+
+    for issue in settings_issues:
+        print(f"  ⚠️  MISSING  {issue['var']}")
+        print(f"      {issue['message']}")
+
+    print("-" * 70)
+    print(f"  {count} setting(s) missing from dashboard (blocks commit)")
+    print("=" * 70)
+
+
 def run_git_command(args: List[str]) -> Tuple[int, str, str]:
     """Run a git command and return (returncode, stdout, stderr)."""
     try:
@@ -460,6 +551,8 @@ Examples:
                         help="Output results as JSON")
     parser.add_argument("--no-file-sizes", action="store_true",
                         help="Skip the file-size scan of src/ and extensions/")
+    parser.add_argument("--no-settings", action="store_true",
+                        help="Skip the settings coverage check")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Verbose output")
     parser.add_argument("--quiet", "-q", action="store_true",
@@ -489,13 +582,22 @@ Examples:
         size_issues = check_file_sizes(Path.cwd())
         size_hard_count = sum(1 for i in size_issues if i["kind"] == "hard")
 
+    # Settings coverage check (always on unless --no-settings).
+    settings_issues: List[Dict] = []
+    settings_count = 0
+    if not args.no_settings:
+        settings_issues = check_settings_coverage(Path.cwd())
+        settings_count = len(settings_issues)
+
     # Output results
     if args.json:
         print(json.dumps({
             "issue_count": count,
             "size_violations_hard": size_hard_count,
+            "settings_missing": settings_count,
             "issues": issues,
             "file_sizes": size_issues,
+            "settings_coverage": settings_issues,
         }, indent=2))
     else:
         if not args.quiet or count > 0:
@@ -504,10 +606,14 @@ Examples:
             print_file_size_report(size_issues)
         elif not args.quiet and not size_issues and not args.json:
             print_file_size_report(size_issues)
+        if settings_issues and (not args.quiet or settings_count > 0):
+            print_settings_report(settings_issues)
+        elif not args.no_settings and not args.quiet and not settings_issues and not args.json:
+            print_settings_report(settings_issues)
 
-    # Exit code: pre-commit fails on EITHER failure-registry issues OR any
-    # file over its hard size limit.
-    if args.pre_commit and (count > 0 or size_hard_count > 0):
+    # Exit code: pre-commit fails on ANY failure-registry issue, file over
+    # hard size limit, OR missing settings coverage.
+    if args.pre_commit and (count > 0 or size_hard_count > 0 or settings_count > 0):
         sys.exit(1)
     sys.exit(0)
 
