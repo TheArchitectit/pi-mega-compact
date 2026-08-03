@@ -11,7 +11,7 @@
 | V1 Tailwind + design tokens | DONE | `13755d7` | Tailwind v3.4, HSL tokens, dark-first theme, glass-panel + electric-hover utilities. Both reviews passed. |
 | V2 shadcn shell + NEW_UI flag | DONE | `69f77d6` | Sidebar + BottomBar + registry + App gate. Accessibility fixes in `83cb20f` (aria-current, aria-controls/expanded, sidebar resync). |
 | V3 Tab Migration (all 12 tabs) | DONE | `a92d135` | 12 tabs migrated to Tailwind + shadcn. 5 pre-existing type errors flagged (fix agent assigned). Token collision with legacy base.css is known — resolves in V4. Tab smoke selector mismatch known (uses `[role="tab"]`, new shell uses `<button>`) — smoke update is V4 scope. |
-| V4 Cleanup + Polish | **IN PROGRESS** | — | CSS audit, focus rings, a11y, flag verification, file-size check. |
+| V4 Cleanup + Polish | DONE | `02ae9b4`, `2460f2a` | Focus-visible rings added. Legacy CSS retained (flag-OFF byte-parity). Flag wiring verified. Playwright smoke fixed for sidebar layout (12/12 tabs green). |
 
 **Review fixes applied post-sprint:**
 - `83cb20f` — V2 accessibility: aria-current on active tabs, aria-controls/expanded on toggles, sidebar advancedOpen resync on cross-device nav

@@ -14,9 +14,9 @@
 | W2.3 Route dispatch | DONE | `63211d8` | Flag-gated, parameterized, SSE emit on mutations. |
 | W2.4 Handler tests | DONE | `79cea40` | 30 tests across 8 groups, all passing. |
 | W1+W2 review fixes | DONE | `d0a45bf`, `da71d60` | FK CASCADE on topic_evolution + runtime migration; applyOverridesAfterRebuild wired into afterCompact; decodeSegment URI hardening; split ID collision fix; regression test. |
-| W3 Wiki Tab UI | **IN PROGRESS** | — | Client wrappers, list tab, page view, controls, timeline. |
-| W4 Topic Evolution Graph | **IN PROGRESS** | — | D3 force graph + scrubber + SSE refresh. |
-| W5 QA + Hybrid Durability | PENDING | — | See revised scope below. |
+| W3 Wiki Tab UI | DONE | `8316dbd` | Client wrappers, WikiTab list + search + badges, WikiPage with controls + timeline, registry wiring. |
+| W4 Topic Evolution Graph | DONE | `8316dbd` | Hand-rolled force sim (matching memory-map-layout pattern), scrubber, SSE refresh via wiki_rebuilt. |
+| W5 Hybrid Durability | **IN PROGRESS** | — | Full override replay (labels + merges + splits) + incremental topic assignment with silhouette-gated rebuild. |
 
 ## W5 Revised Scope: Hybrid Override Durability (2026-08-02 design change)
 
