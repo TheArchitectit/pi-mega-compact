@@ -287,6 +287,12 @@ export const SETTINGS: ReadonlyArray<{
 				"ReplayCutV2 effective-cut (min of boundary-safe/commit/capture high-water + pair retreat + anchor floor) and M3 effective-cut-v2 migration. OFF = legacy capped replay, byte-identical.",
 				true,
 			),
+			boolDirect(
+				"MEGACOMPACT_VC1A",
+				"VC1A Canonical Byte Events",
+				"EventV2 byte-authority ledger codec (original bytes + SHA-256, strict UTF-8, derived NFC) and canonical validator (EVT_DIGEST_MISMATCH / EVT_UTF8_TAG_INVALID / EVT_DUPLICATE_ID). OFF = mode C, transcript codec unchanged, byte-identical.",
+				true,
+			),
 		],
 	},
 	{

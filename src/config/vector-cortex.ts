@@ -29,6 +29,15 @@ export const VC0A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC0A");
  */
 export const VC0B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC0B");
 
+/**
+ * VC1A — canonical byte events (EventV2 / EventCodec).
+ * Default ON. `MEGACOMPACT_VC1A=0` disables and is byte-identical to the
+ * predecessor (mode C: ledger absent, current transcript codec unchanged).
+ * The single real consumer is the ledger emit seam (`ledger/emit.ts`): flag OFF
+ * gates zero observability writes.
+ */
+export const VC1A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC1A");
+
 // ---------------------------------------------------------------------------
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker).
 // Rolled numbers for one 60s window; VC0C consumes these at its breaker seam.

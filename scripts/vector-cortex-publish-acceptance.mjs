@@ -94,6 +94,11 @@ function main() {
         name.endsWith(".js") && !name.endsWith(".test.js"),
       )
     : 0;
+  const nLedger = existsSync(join(SRC_VECTOR, "ledger"))
+    ? copyTree(join(SRC_VECTOR, "ledger"), join(DEST_VECTOR, "ledger"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
   if (existsSync(join(SRC_CONFIG, "vector-cortex.js"))) {
     mkdirSync(DEST_CONFIG, { recursive: true });
     copyFileSync(
@@ -102,7 +107,7 @@ function main() {
     );
   }
   console.log(
-    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations files`,
+    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger files`,
   );
 }
 

@@ -48,47 +48,52 @@ function patchNetwork() {
 // ── Mode scenarios (extendable modes table) ────────────────────────────────
 
 /**
- * Each mode names an exercise function that runs the VC0A runtime path under
- * the patched network. All must complete without a network throw. Mode C must
- * additionally perform zero evaluation writes.
+ * Each mode names an exercise function that runs the VC runtime path under the
+ * patched network. All must complete without a network throw. Per sprint this
+ * table exercises the newly-added runtime path — for VC1A that is the EventV2
+ * ledger triad (A = codec, B = independent raw byte record, C = current
+ * transcript codec unchanged / zero writes).
  */
 const MODES = {
-  /** Structured observer enabled: record + canonical order + histogram. */
+  /** A: EventV2 codec — encode + strict UTF-8 + NFC + byte round-trip. */
   A: () => {
-    const { createEvalObserver } = require(join(root, "dist/src/vector-cortex/eval/observer.js"));
-    const { observerMetrics } = require(join(root, "dist/src/vector-cortex/eval/observer.js"));
-    let emitted = 0;
-    const observer = createEvalObserver({
-      emit: () => {
-        emitted++;
-      },
+    const { createEventCodec } = require(join(root, "dist/src/vector-cortex/ledger/event-codec.js"));
+    const { validateEvents } = require(join(root, "dist/src/vector-cortex/ledger/validator.js"));
+    const codec = createEventCodec();
+    const env = codec.encode({
+      sessionId: "s1", seq: 1n, eventId: "e1", role: "user", kind: "message",
+      bytes: new TextEncoder().encode("network-denial-mode-A"), occurredAtMs: 0n,
     });
-    observer.record({ session: "s1", seq: 1, event: "lat", value: 5, unit: "ms", mode: "A" });
-    observer.record({ session: "s1", seq: 2, event: "lat", value: 300, unit: "ms", mode: "A" });
-    const result = observerMetrics(observer);
-    if (result.rows.length !== 2) throw new Error("mode A: unexpected row count");
-    if (result.histogram.overflow !== 1) throw new Error("mode A: overflow not separated");
-    return `emitted=${emitted}`;
+    const bytes = codec.decode(env);
+    if (Buffer.from(bytes).toString("utf8") !== "network-denial-mode-A") throw new Error("mode A: round-trip failed");
+    if (!env.utf8.valid || env.canonicalNfc !== "network-denial-mode-A") throw new Error("mode A: utf8/nfc failed");
+    const bad = { ...env, bytesDigest: "sha256:0000000000000000000000000000000000000000000000000000000000000000" };
+    const res = validateEvents([bad]);
+    if (res.ok || !res.codes.includes("EVT_DIGEST_MISMATCH")) throw new Error("mode A: validator failed to reject");
+    return `roundtrip=${bytes.length}`;
   },
 
-  /** Counters-only observer with payload access denied: buckets only. */
+  /** B: independent raw byte record — same digest, no shared subroutine. */
   B: () => {
-    const { bucketHistogram } = require(join(root, "dist/src/vector-cortex/eval/metrics.js"));
-    const rows = [
-      { session: "s1", seq: 1, event: "count", value: 4, unit: "count", mode: "B" },
-      { session: "s1", seq: 2, event: "lat", value: 1, unit: "ms", mode: "B" },
-      { session: "s1", seq: 3, event: "lat", value: 250, unit: "ms", mode: "B" },
-    ];
-    const h = bucketHistogram(rows);
-    if (h.cells[0] !== 1 || h.cells[6] !== 1) throw new Error("mode B: bucket mismatch");
-    if (h.overflow !== 0) throw new Error("mode B: unexpected overflow");
-    return `total=${h.total}`;
+    const { createEventCodec } = require(join(root, "dist/src/vector-cortex/ledger/event-codec.js"));
+    const { recordRawBytesB } = require(join(root, "dist/src/vector-cortex/ledger/event-codecB.js"));
+    const codec = createEventCodec();
+    const bytes = new TextEncoder().encode("network-denial-mode-B");
+    const a = codec.encode({
+      sessionId: "s1", seq: 1n, eventId: "e1", role: "user", kind: "message",
+      bytes, occurredAtMs: 0n,
+    });
+    const b = recordRawBytesB(bytes);
+    if (a.bytesDigest !== b.bytesDigest) throw new Error("mode B: A/B digest parity failed");
+    if (a.utf8.valid !== b.utf8.valid) throw new Error("mode B: A/B utf8 parity failed");
+    return `digest=${b.bytesDigest.slice(0, 8)}`;
   },
 
-  /** Observer absent: zero evaluation writes, no network. */
+  /** C: current transcript codec unchanged — zero writes, no network. */
   C: () => {
-    // C must leave the host transcript unchanged (no writes, no observes).
-    return "no-op: zero evaluation writes";
+    // C must leave the host transcript unchanged (the legacy transcript codec is
+    // untouched by VC1A — mode-C byte-identical predecessor, zero EventV2 writes).
+    return "no-op: zero event writes, transcript codec unchanged";
   },
 };
 
