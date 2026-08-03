@@ -132,7 +132,13 @@ describe("VC1A flag gates ledger observability (real consumer)", () => {
 
   test("flag ON emits event_decoded + validation_failed; flag OFF emits ZERO events", () => {
     const emitter: string[] = [];
-    const adapter = createLedgerAdapter((ev) => emitter.push(ev));
+    // Capture (event, fields) so we can assert the EMITTED fields directly —
+    // VC1A-I05's defect was empty locator FIELDS on the emitted event (VC1A-I09).
+    const emitted: Array<{ event: string; fields: Record<string, unknown> }> = [];
+    const adapter = createLedgerAdapter((ev, fields) => {
+      emitter.push(ev);
+      emitted.push({ event: ev, fields });
+    });
     const ev = codec.encode({
       sessionId: "s-vc1a-flag",
       seq: 1n,
@@ -151,10 +157,19 @@ describe("VC1A flag gates ledger observability (real consumer)", () => {
     assert.ok(emitter.includes("vector_cortex_event_decoded"), "flag ON emits event_decoded");
 
     emitter.length = 0;
+    emitted.length = 0;
     const bad = { ...ev, bytesDigest: "sha256:0000000000000000000000000000000000000000000000000000000000000000" } as EventV2;
     adapter.validate([bad]);
     assert.ok(emitter.includes("vector_cortex_event_validation_failed"), "flag ON emits validation_failed");
-    // VC1A-I05: the failure emission carries the REAL failing-event locator.
+    // VC1A-I09: assert the EMITTED event's fields directly (not just the returned
+    // ValidationResult) — the original VC1A-I05 bug shipped EMPTY locator fields.
+    const vf = emitted.find((e) => e.event === "vector_cortex_event_validation_failed");
+    assert.ok(vf, "a validation_failed event was emitted");
+    assert.equal(vf.fields.session, "s-vc1a-flag", "emitted session locator");
+    assert.equal(vf.fields.eventId, "e1", "emitted eventId locator");
+    assert.equal(vf.fields.seq, "1", "emitted seq locator (bigint stringified)");
+    assert.equal(vf.fields.code, "EVT_DIGEST_MISMATCH", "emitted failure code");
+    // VC1A-I05: the returned result ALSO carries the REAL failing-event locator.
     const failedRes = adapter.validate([bad]);
     assert.equal(failedRes.ok, false);
     if (!failedRes.ok) {
@@ -166,6 +181,7 @@ describe("VC1A flag gates ledger observability (real consumer)", () => {
 
     // Flag OFF — same adapter emits NOTHING while the codec still decodes.
     emitter.length = 0;
+    emitted.length = 0;
     process.env[flagEnvKey] = "0";
     assert.equal(VC1A_ENABLED(), false);
     const out2 = adapter.decode(ev);
