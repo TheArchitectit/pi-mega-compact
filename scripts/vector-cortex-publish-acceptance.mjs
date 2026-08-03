@@ -15,13 +15,15 @@
  *
  *   dist/src/vector-cortex/<sprint>-acceptance.test.js
  *     -> dist/vector-cortex/<sprint>-acceptance.test.js
- *   dist/src/vector-cortex/eval/**
- *     -> dist/vector-cortex/eval/**
+ *   dist/src/vector-cortex/eval/**            (*.js, EXCLUDING *.test.js —
+ *     -> dist/vector-cortex/eval/**             run-tests already globs the raw
+ *                                              dist/src copies; mirroring eval
+ *                                              tests would double-run them)
  *   dist/src/config/vector-cortex.js
  *     -> dist/config/vector-cortex.js
  *
- * Nothing else is copied; dist/ is never shipped (package.json `files`
- * excludes it), so this is a developer/test-tree convenience only. The
+ * Nothing else is copied. dist/ IS shipped (package.json `files` includes
+ * "dist"), so these additive slices are part of the published package. The
  * destination is deleted and recreated every build — the published copy is
  * never allowed to be an unpinned stale artifact of a previous build.
  */
@@ -73,7 +75,10 @@ function main() {
   );
   const nEval = existsSync(join(SRC_VECTOR, "eval"))
     ? copyTree(join(SRC_VECTOR, "eval"), join(DEST_VECTOR, "eval"), (name) =>
-        name.endsWith(".js"),
+        // .js only, and exclude eval *.test.js — run-tests globs dist/** and
+        // copying eval tests would double-run them (once from dist/src/...,
+        // once from the published mirror).
+        name.endsWith(".js") && !name.endsWith(".test.js"),
       )
     : 0;
   if (existsSync(join(SRC_CONFIG, "vector-cortex.js"))) {

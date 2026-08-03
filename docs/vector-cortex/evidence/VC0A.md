@@ -56,7 +56,7 @@ pure sprint — no migration (per VC0A spec).
 - `npm run build` → tsc clean (no `error TS`).
 - `node --test dist/vector-cortex/vc0a-acceptance.test.js` → `tests 8, pass 8, fail 0` (flag ON); `MEGACOMPACT_VC0A=0 node --test dist/vector-cortex/vc0a-acceptance.test.js` → `tests 8, pass 8, fail 0` (flag-off rehearsal; mode C zero writes). Single-file path reconciliation: root tsc layout (rootDir=".") emits to `dist/src/vector-cortex/...`; `scripts/vector-cortex-publish-acceptance.mjs` (npm `postbuild`) copies ONLY the `*-acceptance.test.js` single file to the mandated `dist/vector-cortex/` path — no rootDir/outDir change, no other compiled file moves.
 - `src/vector-cortex/eval/*.test.js` (metrics 7, annotations 6, persist 4) + acceptance → all pass.
-- `npm test` → `TOTAL: 1216 passed, 0 failed across 174 files` (independently re-observed at HEAD by reviewer; earlier "1252" line was an inflated copy-paste from a prior run and is corrected here).
+- `npm test` → `TOTAL: 1236 passed, 0 failed across 175 files` (measured at the final HEAD with the postbuild publish in place; files 174→175 because run-tests now globs the published `dist/vector-cortex/vc0a-acceptance.test.js` exactly once — eval `*.test.js` are excluded from the publish mirror so they are not double-run).
 - `npm run lint` → `tsc --noEmit` + `guardrails-scan` + `semantic-scan` all clean.
 - `python3 scripts/regression_check.py --all` → `✓ No potential regressions detected`; registry.ts split back under 500 (496). Sole remaining hard-limit error `extensions/mega-events/context-handler.ts` (514) is pre-existing at HEAD, untouched by this sprint.
 - `node scripts/vector-cortex-conformance.mjs --check` → ✓ (13 files canonical).
