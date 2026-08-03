@@ -62,7 +62,7 @@ function raptorSearchHits(
 		const stateDir = store.stateDir;
 		const cfg = store.cfg;
 		const embedder = store.embedder;
-		const record = store.record;
+		const record = store.record.bind(store);
 
 		// S25 gate (a): honor shadow mode at SERVE time. When RAPTOR_SHADOW_MODE=true,
 		// the tree is built + persisted but NOT merged into recall (transition/eval).
