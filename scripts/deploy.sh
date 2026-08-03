@@ -215,12 +215,23 @@ echo "[deploy] published v$NEW_VERSION to npm."
 # Now runs AFTER npm publish (the release announces the published version).
 # The tag is already pushed in step 7 — this just creates the GitHub release
 # object with auto-generated notes from the commit log.
+#
+# NOTE on the SIGPIPE bug this block used to have: the pipeline
+#   git log | grep | head -15
+# under `set -o pipefail` aborts the whole script with exit 141 AFTER npm
+# publish has already succeeded — `head -15` closes the pipe early after
+# emitting its 15 lines, SIGPIPE propagates up to `git log`/`grep`, and
+# pipefail treats that as a failure. We now use `sed -n '1,15p'` (which reads
+# its full stdin and so does not close the pipe early) and the whole notes
+# extraction is wrapped in `|| true` so any failure there cannot abort the
+# deploy after the package is already shipped.
 PREV_TAG=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
 if [ -n "$PREV_TAG" ]; then
-  RELEASE_NOTES=$(git log --pretty=format:"- %s" "$PREV_TAG..$TAG" 2>/dev/null | grep -vE "^- chore\(release\)|^- chore: (sync|clean|rebuild)" | head -15)
+  RELEASE_NOTES=$(git log --pretty=format:"- %s" "$PREV_TAG..$TAG" 2>/dev/null | grep -vE "^- chore\(release\)|^- chore: (sync|clean|rebuild)" | sed -n '1,15p' || true)
 else
-  RELEASE_NOTES=$(git log --pretty=format:"- %s" "$TAG" 2>/dev/null | head -15)
+  RELEASE_NOTES=$(git log --pretty=format:"- %s" "$TAG" 2>/dev/null | sed -n '1,15p' || true)
 fi
+RELEASE_NOTES="${RELEASE_NOTES:-(no commit notes extracted)}"
 if command -v gh >/dev/null 2>&1; then
   echo "[deploy] creating GitHub release $TAG with notes"
   gh release create "$TAG" --target "$(git rev-list -n 1 "$TAG")" \
