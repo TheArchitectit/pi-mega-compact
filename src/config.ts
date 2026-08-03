@@ -152,6 +152,7 @@ export const NEW_UI = (): boolean => ragEnabled("MEGACOMPACT_NEW_UI");
 
 export {
   VC0A_ENABLED,
+  VC0B_ENABLED,
   BREAKER_WINDOW_MS,
   BREAKER_MIN_ATTEMPTS,
   BREAKER_PERF_FAILURES,

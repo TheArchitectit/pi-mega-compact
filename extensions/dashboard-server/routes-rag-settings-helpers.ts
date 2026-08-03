@@ -281,6 +281,12 @@ export const SETTINGS: ReadonlyArray<{
 				"Structured evaluation observer (MetricEventV1 + latency histogram). OFF = mode C, byte-identical to predecessor.",
 				true,
 			),
+			boolDirect(
+				"MEGACOMPACT_VC0B",
+				"VC0B Replay Correctness",
+				"ReplayCutV2 effective-cut (min of boundary-safe/commit/capture high-water + pair retreat + anchor floor) and M3 effective-cut-v2 migration. OFF = legacy capped replay, byte-identical.",
+				true,
+			),
 		],
 	},
 	{

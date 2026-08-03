@@ -21,6 +21,14 @@ function sprintFlag(name: string): boolean {
 /** VC0A — baseline observability (MetricEventV1 / AnnotationV1). Default ON. */
 export const VC0A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC0A");
 
+/**
+ * VC0B — replay correctness (ReplayCutV2 / ReplayReportV2, M3 effective-cut-v2).
+ * Default ON. `MEGACOMPACT_VC0B=0` disables and is byte-identical to the
+ * predecessor (legacy capped-replay behavior preserved; the v2 cut/replay is
+ * only consulted on the vector-cortex path).
+ */
+export const VC0B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC0B");
+
 // ---------------------------------------------------------------------------
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker).
 // Rolled numbers for one 60s window; VC0C consumes these at its breaker seam.
