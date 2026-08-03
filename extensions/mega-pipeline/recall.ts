@@ -107,16 +107,23 @@ export function doRecall(
 		);
 		runtime.lastWhy = `why: recalled@${scorePct}% (${result.toInject.length} chkpt)`;
 	}
+	let sumTokens = 0;
+	for (const h of result.toInject) sumTokens += h.checkpoint.tokenEstimate;
 	if (result.toInject.length > 0) {
-		let sumTokens = 0;
-		for (const h of result.toInject) sumTokens += h.checkpoint.tokenEstimate;
 		runtime.rt.recallInjections += result.toInject.length;
 		runtime.rt.cacheHitTokens += sumTokens;
 		incRecallInjected(result.toInject.length, runtime.currentStateDir);
 		incCacheHitTokens(sumTokens, runtime.currentStateDir);
-		// S43: record recall provenance — which checkpoints/summaries served this
-		// turn, their score + source path. Linked to the turn row written at
-		// turn_end via the conversation+turnIndex. Best-effort + non-fatal.
+	}
+	// S43: record recall provenance — which checkpoints/summaries served this
+	// turn, their score + source path. Linked to the turn row written at
+	// turn_end via the conversation+turnIndex. Best-effort + non-fatal.
+	// Persists telemetry (HyDE + recall metrics) even when recall returned
+	// no hits, so empty-recall HyDE invocations are still visible in the
+	// dashboard Turns/Metrics tabs.
+	const hasTelemetry =
+		result.hydeInfo != null || result.recallMetrics != null;
+	if (result.toInject.length > 0 || hasTelemetry) {
 		try {
 			const convId = ensureConversationIdFor(
 				config,
@@ -136,22 +143,24 @@ export function doRecall(
 				},
 				runtime.currentStateDir,
 			);
-			recordRecallWrite(
-				config,
-				turnId,
-				result.toInject.map((h) => ({
-					checkpointId: h.checkpoint.checkpointId,
-					score: h.score,
-					source:
-						h.raptorLevel !== undefined
-							? "raptor"
-							: h.repoId
-								? "cross-repo"
-								: "flat",
-					raptorLevel: h.raptorLevel,
-				})),
-				runtime.currentStateDir,
-			);
+			if (result.toInject.length > 0) {
+				recordRecallWrite(
+					config,
+					turnId,
+					result.toInject.map((h) => ({
+						checkpointId: h.checkpoint.checkpointId,
+						score: h.score,
+						source:
+							h.raptorLevel !== undefined
+								? "raptor"
+								: h.repoId
+									? "cross-repo"
+									: "flat",
+						raptorLevel: h.raptorLevel,
+					})),
+					runtime.currentStateDir,
+				);
+			}
 		} catch {
 			/* non-fatal: recall provenance never breaks the recall path */
 		}
