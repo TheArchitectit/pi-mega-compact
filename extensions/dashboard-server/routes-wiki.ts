@@ -10,26 +10,28 @@
  * POST /api/wiki/topic/:topicId/split      — split (emits wiki_topic_split)
  *
  * Flag-gated by MEGACOMPACT_WIKI_ENHANCED (flag-OFF → 404 for all /api/wiki/*).
+ * Read/build helpers live in routes-wiki-helpers.ts (pointer-file split).
  * Loopback-only (PREVENT-PI-004); parameterized (PREVENT-002); no `any`.
  */
 
-import { appendFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { DatabaseSync } from "node:sqlite";
 import type { RouteContext } from "./routes-core.js";
 import { TurnsConfig } from "../../src/config/turns.js";
 import { openTurnStore } from "../../src/store/turns/connection.js";
-import { openStore } from "../../src/store/sqlite.js";
 import { createTopicStore } from "../../src/topics/store.js";
-import { buildTopicModel } from "../../src/topics/cluster.js";
 import { extractiveSummary } from "../../src/wiki.js";
 import { createWikiCuration } from "../../src/wiki/curation.js";
-import type { TopicAssignment, Topic } from "../../src/topics/types.js";
+import {
+	emitWikiEvent,
+	ensureWikiBuilt,
+	toIndexEntry,
+	toProvenance,
+	bucketize,
+	memberContent,
+} from "./routes-wiki-helpers.js";
 import type {
-	WikiIndexEntry,
 	WikiIndexResponse,
 	WikiPageResponse,
-	MemoryProvenance,
 	TopicEvolutionResponse,
 	TopicTimelineResponse,
 	CurationResult,
@@ -73,109 +75,6 @@ function readJsonBody(
 	});
 }
 
-/** Append a JSONL SSE line to events.log (best-effort, non-fatal). */
-function emitWikiEvent(
-	ctx: RouteContext,
-	event: { type: string } & Record<string, unknown>,
-): void {
-	try {
-		appendFileSync(
-			ctx.eventsPath,
-			JSON.stringify({ ts: new Date().toISOString(), ...event }) + "\n",
-		);
-	} catch {
-		/* non-fatal: SSE push best-effort */
-	}
-}
-
-/** Lazy-build the topic model when the topics table is empty (best-effort). */
-function ensureWikiBuilt(ctx: RouteContext, tdb: DatabaseSync): void {
-	const topicCount = (
-		tdb.prepare("SELECT COUNT(*) AS c FROM topics").get() as { c: number }
-	).c;
-	if (topicCount > 0) return;
-	try {
-		const mainDb = openStore(ctx.stateDir);
-		const model = buildTopicModel(mainDb);
-		if (model.k > 0 && model.totalChunks > 0) {
-			createTopicStore(ctx.stateDir).replaceTopicModel(model);
-		}
-	} catch {
-		/* non-fatal: lazy wiki build is best-effort */
-	}
-}
-
-/** Build a topic index entry with resolved label + override badges. */
-function toIndexEntry(
-	topic: Topic,
-	curation: ReturnType<typeof createWikiCuration>,
-): WikiIndexEntry {
-	const resolved = curation.resolveLabel(topic.id, topic.label);
-	return {
-		id: topic.id,
-		label: resolved.label,
-		memoryCount: topic.memoryCount,
-		lastUpdated: topic.lastUpdated,
-		edited: resolved.edited,
-		overrideKinds: curation.overrideKinds(topic.id),
-	};
-}
-
-/** Convert a member assignment into contract provenance. */
-function toProvenance(member: TopicAssignment): MemoryProvenance {
-	return {
-		memoryId: member.memoryId,
-		sessionId: member.sessionId ?? "",
-		assignedAt: member.assignedAt,
-		method: member.method,
-	};
-}
-
-/** Bucket epoch-ms values by day; returns ascending [{bucket, count}]. */
-function bucketize(values: number[]): Array<{ bucket: number; count: number }> {
-	const DAY = 86_400_000;
-	const counts = new Map<number, number>();
-	for (const v of values) {
-		if (!Number.isFinite(v) || v <= 0) continue;
-		const b = Math.floor(v / DAY) * DAY;
-		counts.set(b, (counts.get(b) ?? 0) + 1);
-	}
-	return [...counts.entries()]
-		.sort((a, b) => a[0] - b[0])
-		.map(([bucket, count]) => ({ bucket, count }));
-}
-
-/** Fetch member content (text + timestamp) from the main DB. */
-function memberContent(
-	ctx: RouteContext,
-	members: TopicAssignment[],
-): Map<string, { text: string; timestamp: number }> {
-	const out = new Map<string, { text: string; timestamp: number }>();
-	if (members.length === 0) return out;
-	try {
-		const mainDb = openStore(ctx.stateDir);
-		for (const m of members) {
-			const row = mainDb
-				.prepare(
-					`SELECT COALESCE(normalized_text, summary, topic_summary) AS text, timestamp
-					 FROM context_chunks WHERE session_id = ? AND id = ?`,
-				)
-				.get(m.sessionId ?? "", m.memoryId) as
-				| { text: string | null; timestamp: number | null }
-				| undefined;
-			if (row) {
-				out.set(m.memoryId, {
-					text: (row.text ?? "").trim(),
-					timestamp: row.timestamp ?? 0,
-				});
-			}
-		}
-	} catch {
-		/* content fetch is best-effort */
-	}
-	return out;
-}
-
 export function handleWiki(
 	req: IncomingMessage,
 	res: ServerResponse,
@@ -197,8 +96,7 @@ export function handleWiki(
 			ensureWikiBuilt(ctx, tdb);
 			const store = createTopicStore(ctx.stateDir);
 			const curation = createWikiCuration(ctx.stateDir);
-			const topics = store.getTopics();
-			const entries = topics.map((t) => toIndexEntry(t, curation));
+			const entries = store.getTopics().map((t) => toIndexEntry(t, curation));
 			const totalMemories = entries.reduce((s, e) => s + e.memoryCount, 0);
 			const lastRebuildAt =
 				entries.length > 0 ? Math.max(...entries.map((e) => e.lastUpdated)) : null;
@@ -219,12 +117,14 @@ export function handleWiki(
 	if (req.method === "GET" && url === "/api/wiki/evolution") {
 		try {
 			const tdb = openTurnStore(ctx.stateDir);
-			const topics = createTopicStore(ctx.stateDir).getTopics();
-			const nodes = topics.map((t) => ({
-				id: t.id,
-				label: createWikiCuration(ctx.stateDir).resolveLabel(t.id, t.label).label,
-				memoryCount: t.memoryCount,
-			}));
+			const curation = createWikiCuration(ctx.stateDir);
+			const nodes = createTopicStore(ctx.stateDir)
+				.getTopics()
+				.map((t) => ({
+					id: t.id,
+					label: curation.resolveLabel(t.id, t.label).label,
+					memoryCount: t.memoryCount,
+				}));
 			const overrides = tdb
 				.prepare(
 					`SELECT kind, topic_id, merged_into, split_from, overridden_at
@@ -237,29 +137,31 @@ export function handleWiki(
 				split_from: string | null;
 				overridden_at: number;
 			}>;
-			const edges = overrides.flatMap((o): TopicEvolutionResponse["edges"][number][] => {
-				if (o.kind === "merge" && o.merged_into) {
-					return [
-						{
-							source: o.topic_id,
-							target: o.merged_into,
-							kind: "merge",
-							at: o.overridden_at,
-						},
-					];
-				}
-				if (o.kind === "split" && o.split_from) {
-					return [
-						{
-							source: o.split_from,
-							target: o.topic_id,
-							kind: "split",
-							at: o.overridden_at,
-						},
-					];
-				}
-				return [];
-			});
+			const edges = overrides.flatMap(
+				(o): TopicEvolutionResponse["edges"][number][] => {
+					if (o.kind === "merge" && o.merged_into) {
+						return [
+							{
+								source: o.topic_id,
+								target: o.merged_into,
+								kind: "merge",
+								at: o.overridden_at,
+							},
+						];
+					}
+					if (o.kind === "split" && o.split_from) {
+						return [
+							{
+								source: o.split_from,
+								target: o.topic_id,
+								kind: "split",
+								at: o.overridden_at,
+							},
+						];
+					}
+					return [];
+				},
+			);
 			const evoRows = tdb
 				.prepare("SELECT assigned_at FROM topic_evolution")
 				.all() as Array<{ assigned_at: number }>;
@@ -300,7 +202,8 @@ export function handleWiki(
 	}
 
 	// ── GET /api/wiki/topic/:topicId ─────────────────────────────────
-	const topicMatch = req.method === "GET" ? url.match(/^\/api\/wiki\/topic\/([^/?]+)$/) : null;
+	const topicMatch =
+		req.method === "GET" ? url.match(/^\/api\/wiki\/topic\/([^/?]+)$/) : null;
 	if (topicMatch) {
 		try {
 			const topicId = decodeURIComponent(topicMatch[1]);
@@ -316,21 +219,23 @@ export function handleWiki(
 			const summary = extractiveSummary(topic, members, getText);
 			const present = members.filter((m) => content.has(m.memoryId));
 			const keyMemories = [...present]
-				.sort((a, b) => (content.get(b.memoryId)?.text.length ?? 0) - (content.get(a.memoryId)?.text.length ?? 0))
+				.sort(
+					(a, b) =>
+						(content.get(b.memoryId)?.text.length ?? 0) -
+						(content.get(a.memoryId)?.text.length ?? 0),
+				)
 				.slice(0, 10)
 				.map((m) => ({
 					memoryId: m.memoryId,
 					content: content.get(m.memoryId)?.text ?? "",
 					timestamp: content.get(m.memoryId)?.timestamp ?? 0,
-					importance: Math.round((content.get(m.memoryId)?.text.length ?? 0) / 40),
+					importance: Math.round(
+						(content.get(m.memoryId)?.text.length ?? 0) / 40,
+					),
 				}));
-			const allTopics = store.getTopics();
-			const relatedTopicIds = allTopics
-				.filter(
-					(t) =>
-						t.id !== topicId &&
-						t.memoryCount > 0,
-				)
+			const relatedTopicIds = store
+				.getTopics()
+				.filter((t) => t.id !== topicId && t.memoryCount > 0)
 				.slice(0, 3)
 				.map((t) => t.id);
 			const body: WikiPageResponse = {
