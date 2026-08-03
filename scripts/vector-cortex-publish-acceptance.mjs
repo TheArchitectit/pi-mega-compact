@@ -81,6 +81,19 @@ function main() {
         name.endsWith(".js") && !name.endsWith(".test.js"),
       )
     : 0;
+  // VC0B added the replay + migrations subtrees; mirror their runtime .js too so
+  // the vc0b-acceptance aggregator's `./replay/...` / `./migrations/...`
+  // imports resolve at the published dist/vector-cortex/ offset.
+  const nReplay = existsSync(join(SRC_VECTOR, "replay"))
+    ? copyTree(join(SRC_VECTOR, "replay"), join(DEST_VECTOR, "replay"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
+  const nMigrations = existsSync(join(SRC_VECTOR, "migrations"))
+    ? copyTree(join(SRC_VECTOR, "migrations"), join(DEST_VECTOR, "migrations"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
   if (existsSync(join(SRC_CONFIG, "vector-cortex.js"))) {
     mkdirSync(DEST_CONFIG, { recursive: true });
     copyFileSync(
@@ -89,7 +102,7 @@ function main() {
     );
   }
   console.log(
-    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval files`,
+    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations files`,
   );
 }
 

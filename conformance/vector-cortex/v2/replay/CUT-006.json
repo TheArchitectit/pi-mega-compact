@@ -1,0 +1,1 @@
+{"assertion":"requestedSeq caps the cut when every source exceeds it","expected":{"effectiveSeq":6,"ok":true,"retreatCodes":[]},"id":"CUT-006","input":{"anchorFloor":0,"boundarySafeSeq":30,"capturedHighWater":50,"committedSeq":40,"pairs":[],"requestedSeq":6},"kind":"cut","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/replay-fixture.schema.json"}

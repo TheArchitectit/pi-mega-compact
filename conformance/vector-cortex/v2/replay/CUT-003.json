@@ -1,0 +1,1 @@
+{"assertion":"CUT-HIGHWATER-003: captured high-water below committed seq wins","expected":{"effectiveSeq":4,"ok":true,"retreatCodes":[]},"id":"CUT-003","input":{"anchorFloor":0,"boundarySafeSeq":10,"capturedHighWater":4,"committedSeq":9,"pairs":[],"requestedSeq":10},"kind":"cut","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/replay-fixture.schema.json"}
