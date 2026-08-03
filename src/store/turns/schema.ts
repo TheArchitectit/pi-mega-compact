@@ -185,6 +185,50 @@ export function initTurnSchema(db: DatabaseSync): void {
 	ensureCol("recall_diversity", "recall_diversity REAL DEFAULT 0");
 	ensureCol("recall_specificity", "recall_specificity REAL DEFAULT 0");
 
+	// ── Wiki Revival (Spec 3): user curation + topic evolution ────────
+	const sessionCol = (
+		db.prepare("PRAGMA table_info(memory_topics)").all() as Array<{ name: string }>
+	).some((c) => c.name === "session_id");
+	if (!sessionCol) {
+		db.exec("ALTER TABLE memory_topics ADD COLUMN session_id TEXT");
+	}
+	db.exec(
+		`CREATE INDEX IF NOT EXISTS idx_memory_topics_session ON memory_topics(session_id)`,
+	);
+
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS topic_overrides (
+      topic_id      TEXT NOT NULL,
+      kind          TEXT NOT NULL CHECK(kind IN ('label','merge','split')),
+      custom_label  TEXT,
+      merged_into   TEXT,
+      split_from    TEXT,
+      split_memory_ids TEXT,
+      overridden_at INTEGER NOT NULL,
+      PRIMARY KEY (topic_id, kind)
+    )
+  `);
+	db.exec(
+		`CREATE INDEX IF NOT EXISTS idx_topic_overrides_topic ON topic_overrides(topic_id)`,
+	);
+
+	db.exec(`
+    CREATE TABLE IF NOT EXISTS topic_evolution (
+      topic_id     TEXT NOT NULL REFERENCES topics(id),
+      memory_id    TEXT NOT NULL,
+      session_id   TEXT,
+      assigned_at  INTEGER NOT NULL,
+      method       TEXT NOT NULL CHECK(method IN ('kmeans+tfidf','merge','split','manual')),
+      PRIMARY KEY (topic_id, memory_id)
+    )
+  `);
+	db.exec(
+		`CREATE INDEX IF NOT EXISTS idx_topic_evolution_topic ON topic_evolution(topic_id, assigned_at)`,
+	);
+	db.exec(
+		`CREATE INDEX IF NOT EXISTS idx_topic_evolution_ts   ON topic_evolution(assigned_at)`,
+	);
+
 	// Stamp schema version once.
 	const existing = db
 		.prepare("SELECT value FROM turns_meta WHERE key = 'schema_version'")

@@ -159,3 +159,22 @@ test("flag OFF → legacy tables untouched, no marker write from hook", () => {
 	assert.ok(tableExists(main, "conversation_branches"));
 	main.close();
 });
+
+test("wiki revival: topic_overrides + topic_evolution tables and memory_topics.session_id column exist", () => {
+	const dir = stateDir();
+	const db = openTurnStore(dir);
+	const tables = (
+		db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>
+	).map((r) => r.name);
+	assert.ok(tables.includes("topic_overrides"), "topic_overrides table created");
+	assert.ok(tables.includes("topic_evolution"), "topic_evolution table created");
+
+	const cols = (
+		db.prepare("PRAGMA table_info(memory_topics)").all() as Array<{ name: string }>
+	).map((c) => c.name);
+	assert.ok(cols.includes("session_id"), "memory_topics.session_id column added");
+
+	const v = db.prepare("SELECT value FROM turns_meta WHERE key = 'schema_version'").get() as { value: string };
+	assert.equal(v.value, "3");
+	closeTurnStore(dir);
+});
