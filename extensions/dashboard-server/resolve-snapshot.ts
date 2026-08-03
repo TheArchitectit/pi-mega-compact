@@ -55,7 +55,8 @@ function mostRecentRepoStateDir(_staticStateDir: string): string | null {
 	if (!existsSync(indexPath)) return null;
 	let db;
 	try {
-		const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
+		const { DatabaseSync } =
+			require("node:sqlite") as typeof import("node:sqlite");
 		db = new DatabaseSync(indexPath, { readOnly: true });
 		const rows = db
 			.prepare(
@@ -107,4 +108,3 @@ export function resolveSnapshot(
 		stateDir: staticStateDir,
 	};
 }
-
