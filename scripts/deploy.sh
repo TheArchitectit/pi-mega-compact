@@ -18,7 +18,8 @@
 #     1. Clean git tree (no uncommitted changes).
 #     1.5. Pre-flight: verify @mongodb-js/zstd native binding loads (fail fast
 #          with the rebuild command instead of a mysterious mid-gate crash).
-#     2. Full gate: build + test + lint + regression_check + guardrails-scan.
+#     2. Full gate: build + test + lint + regression_check (incl. npm audit for
+#        runtime HIGH/CRITICAL vulns) + guardrails-scan.
 #     3. Build the React dashboard (npm run build:dashboard).
 #     4. CRITICAL VERIFY: confirm extensions/dashboard-client/dist/index.html
 #        exists AND is listed by `npm pack --dry-run` — fail with exit 1 if
@@ -96,7 +97,12 @@ fi
 echo "[deploy] @mongodb-js/zstd loadable."
 
 # --- 2. full gate -------------------------------------------------------------
-echo "[deploy] running gate: build + test + lint + regression + guardrails"
+# regression_check.py --all now includes the npm audit gate: it runs
+# `npm audit --json`, classifies findings by severity × scope, and exits
+# non-zero on RUNTIME HIGH/CRITICAL vulnerabilities (reachable from
+# package.json `dependencies` — i.e. shipped to users). Dev-only / moderate
+# warnings (e.g. the openclaw peer host + transitive deps) are non-blocking.
+echo "[deploy] running gate: build + test + lint + regression (incl. npm audit) + guardrails"
 npm run build
 npm test
 npm run lint

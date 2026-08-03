@@ -15,6 +15,7 @@ Environment Variables:
 """
 
 import argparse
+import contextlib
 import fnmatch
 import json
 import os
@@ -22,7 +23,6 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional
 
 DEFAULT_REGISTRY_PATH = Path(".guardrails/failure-registry.jsonl")
 DEFAULT_RULES_PATH = Path(".guardrails/prevention-rules")
@@ -40,7 +40,7 @@ EXT_HARD = 500
 TEST_HARD = 600
 
 
-def _classify_file(rel_path: str) -> Tuple[Optional[int], Optional[int]]:
+def _classify_file(rel_path: str) -> tuple[int | None, int | None]:
     """Return (soft, hard) line limits for a repo-relative .ts/.tsx path, or
     (None, None) if the file should be skipped."""
     parts = rel_path.split(os.sep)
@@ -50,7 +50,7 @@ def _classify_file(rel_path: str) -> Tuple[Optional[int], Optional[int]]:
     for suf in FILE_SIZE_SKIP_SUFFIXES:
         if rel_path.endswith(suf):
             return (None, None)
-    is_test = rel_path.endswith(".test.ts") or rel_path.endswith(".test.tsx")
+    is_test = rel_path.endswith((".test.ts", ".test.tsx"))
     if rel_path.startswith("extensions" + os.sep):
         return (EXT_SOFT, TEST_HARD if is_test else EXT_HARD)
     if rel_path.startswith("src" + os.sep):
@@ -58,15 +58,15 @@ def _classify_file(rel_path: str) -> Tuple[Optional[int], Optional[int]]:
     return (None, None)
 
 
-def check_file_sizes(repo_root: Path) -> List[Dict]:
+def check_file_sizes(repo_root: Path) -> list[dict]:
     """Scan src/ and extensions/ for files over soft/hard line limits.
 
     Returns a list of issue dicts: {file, lines, soft, hard, severity,
     kind}. severity is 'error' (over hard) or 'warning' (over soft only).
     Sorted: hard-limit violations first (by line count desc), then warnings.
     """
-    violations: List[Dict] = []
-    warnings: List[Dict] = []
+    violations: list[dict] = []
+    warnings: list[dict] = []
 
     for top in FILE_SIZE_DIRS:
         base = repo_root / top
@@ -74,7 +74,7 @@ def check_file_sizes(repo_root: Path) -> List[Dict]:
             continue
         for dirpath, _dirnames, filenames in os.walk(base):
             for name in filenames:
-                if not (name.endswith(".ts") or name.endswith(".tsx")):
+                if not (name.endswith((".ts", ".tsx"))):
                     continue
                 abs_path = Path(dirpath) / name
                 try:
@@ -85,7 +85,7 @@ def check_file_sizes(repo_root: Path) -> List[Dict]:
                 if hard is None:
                     continue
                 try:
-                    with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+                    with open(abs_path, encoding="utf-8", errors="replace") as f:
                         line_count = sum(1 for _ in f)
                 except OSError:
                     continue
@@ -113,7 +113,7 @@ def check_file_sizes(repo_root: Path) -> List[Dict]:
     return violations + warnings
 
 
-def print_file_size_report(size_issues: List[Dict]) -> None:
+def print_file_size_report(size_issues: list[dict]) -> None:
     """Print formatted report of file-size issues."""
     if not size_issues:
         print("✓ All source files within soft/hard line limits")
@@ -183,10 +183,8 @@ def _collect_settings_keys(repo_root: Path) -> set:
     for rel in candidates:
         path = repo_root / rel
         if path.is_file():
-            try:
+            with contextlib.suppress(OSError):
                 text += path.read_text(encoding="utf-8", errors="replace") + "\n"
-            except OSError:
-                pass
     if not text:
         return set()
     keys: set = set()
@@ -197,7 +195,161 @@ def _collect_settings_keys(repo_root: Path) -> set:
     return keys
 
 
-def check_settings_coverage(repo_root: Path) -> List[Dict]:
+def _npm_audit_available() -> bool:
+    """True if `npm audit --json` is available in PATH."""
+    try:
+        result = subprocess.run(
+            ["npm", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
+def _npm_audit_title(info: dict) -> str:
+    """Extract a short human-readable advisory title from an npm audit vuln entry."""
+    via = info.get("via") or []
+    for v in via:
+        if isinstance(v, dict) and v.get("title"):
+            return str(v["title"])
+    if isinstance(via, list) and via:
+        return str(via[0])
+    return "(no advisory title)"
+
+
+def check_npm_audit(repo_root: Path) -> tuple[int, int, list[dict]]:
+    """Run `npm audit` and classify vulnerabilities by severity × scope.
+
+    Returns ``(blocking_count, warning_count, issues)`` where ``issues`` is a
+    list of dicts: ``{name, severity, is_runtime, advisory, fix_available,
+    effects}``.
+
+    Runtime vulnerabilities (reachable from ``package.json`` ``dependencies``,
+    i.e. shipped to users via ``npm install``) at HIGH or CRITICAL severity are
+    the only BLOCKING findings — they ship to every downstream device. Dev-only
+    / moderate / low findings (reachable solely from devDependencies or
+    peerDependencies, e.g. the openclaw plugin host + its transitive deps) are
+    returned as non-blocking warnings: they live in the build toolchain and
+    often can't be fixed without a breaking peer upgrade.
+
+    Tooling failures (npm missing, JSON unparseable, npm audit errored) are
+    themselves BLOCKING — a deploy gate must not silently skip the audit
+    because ``npm audit`` errored. Callers can skip deliberately via
+    ``--no-audit``.
+    """
+    if not _npm_audit_available():
+        return 1, 0, [{
+            "name": "(npm)",
+            "severity": "critical",
+            "is_runtime": True,
+            "advisory": "npm not found in PATH — cannot run `npm audit`",
+            "fix_available": False,
+            "effects": [],
+        }]
+    try:
+        result = subprocess.run(
+            ["npm", "audit", "--json"],
+            capture_output=True,
+            text=True,
+            cwd=str(repo_root),
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        return 1, 0, [{
+            "name": "(npm)",
+            "severity": "critical",
+            "is_runtime": True,
+            "advisory": "`npm audit --json` timed out after 120s",
+            "fix_available": False,
+            "effects": [],
+        }]
+    # npm audit exits 0 when clean, 1 when vulns are found, >1 on tool error.
+    raw = result.stdout.strip()
+    if not raw:
+        msg = result.stderr.strip() or f"npm audit exited {result.returncode} with no JSON output"
+        return 1, 0, [{
+            "name": "(npm)",
+            "severity": "critical",
+            "is_runtime": True,
+            "advisory": msg,
+            "fix_available": False,
+            "effects": [],
+        }]
+    try:
+        audit = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return 1, 0, [{
+            "name": "(npm)",
+            "severity": "critical",
+            "is_runtime": True,
+            "advisory": f"npm audit JSON unparseable: {exc}",
+            "fix_available": False,
+            "effects": [],
+        }]
+
+    # Load package.json to classify runtime vs dev scope. A vulnerable package
+    # is RUNTIME if any of its `effects` (direct deps that pull it in) is in
+    # package.json `dependencies`; otherwise it is dev-only (reachable only
+    # via devDependencies / peerDependencies / optionalDependencies).
+    pkg_path = repo_root / "package.json"
+    runtime_deps: set[str] | None = set()
+    try:
+        pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
+        runtime_deps = set((pkg.get("dependencies") or {}).keys())
+    except (OSError, json.JSONDecodeError):
+        # If package.json is unreadable, treat ALL findings as runtime so we
+        # fail safe (never silently downgrade a real vuln to a warning).
+        runtime_deps = None
+
+    vuln_map = audit.get("vulnerabilities") or {}
+    issues: list[dict] = []
+    for name, info in vuln_map.items():
+        severity = str(info.get("severity", "unknown")).lower()
+        effects = info.get("effects") or []
+        if runtime_deps is None:
+            is_runtime = True
+        else:
+            is_runtime = any(eff in runtime_deps for eff in effects)
+        issues.append({
+            "name": name,
+            "severity": severity,
+            "is_runtime": is_runtime,
+            "advisory": _npm_audit_title(info),
+            "fix_available": bool(info.get("fixAvailable")),
+            "effects": effects,
+        })
+    blocking = [i for i in issues if i["is_runtime"] and i["severity"] in ("high", "critical")]
+    warning = [i for i in issues if not (i["is_runtime"] and i["severity"] in ("high", "critical"))]
+    return len(blocking), len(warning), issues
+
+
+def print_npm_audit_report(blocking: int, warnings: int, issues: list[dict]) -> None:
+    """Print formatted report of npm audit findings."""
+    if not issues:
+        print("✓ npm audit clean — no vulnerabilities")
+        return
+    print("\n" + "=" * 70)
+    print("NPM AUDIT (runtime HIGH/CRITICAL = blocking; dev-only = warning)")
+    print("=" * 70)
+    for i in sorted(issues, key=lambda x: (not x["is_runtime"], x["severity"])):
+        scope = "RUNTIME" if i["is_runtime"] else "dev-only"
+        fix = "fix available" if i["fix_available"] else "NO fix"
+        print(f"  {i['severity'].upper():8s} {scope:8s} {i['name']:<32s} {fix}")
+        if i["advisory"]:
+            print(f"           → {i['advisory']}")
+    print("-" * 70)
+    print(f"  {blocking} blocking (runtime high/critical) | {warnings} warning(s) (dev-only/moderate/low)")
+    if blocking:
+        print("  ❌ resolve blocking vulns before deploy: `npm audit fix` (non-breaking)")
+    else:
+        print("  ⓘ  no blocking vulns; warnings are dev-toolchain-only")
+    print("=" * 70)
+
+
+def check_settings_coverage(repo_root: Path) -> list[dict]:
     """Verify every MEGACOMPACT_* env var in config files has a dashboard
     settings entry or is explicitly excluded.
 
@@ -209,7 +361,7 @@ def check_settings_coverage(repo_root: Path) -> List[Dict]:
     return [{"var": v, "message": f"{v} not in dashboard SETTINGS array or EXCLUDED_SETTINGS"} for v in missing]
 
 
-def print_settings_report(settings_issues: List[Dict]) -> None:
+def print_settings_report(settings_issues: list[dict]) -> None:
     """Print formatted report of settings coverage issues."""
     if not settings_issues:
         print("✓ All MEGACOMPACT_* env vars have dashboard settings entries")
@@ -229,7 +381,7 @@ def print_settings_report(settings_issues: List[Dict]) -> None:
     print("=" * 70)
 
 
-def run_git_command(args: List[str]) -> Tuple[int, str, str]:
+def run_git_command(args: list[str]) -> tuple[int, str, str]:
     """Run a git command and return (returncode, stdout, stderr)."""
     try:
         result = subprocess.run(
@@ -243,7 +395,7 @@ def run_git_command(args: List[str]) -> Tuple[int, str, str]:
         return 1, "", "git command not found"
 
 
-def get_changed_files(staged: bool = True, unstaged: bool = False) -> List[str]:
+def get_changed_files(staged: bool = True, unstaged: bool = False) -> list[str]:
     """Get list of changed files from git."""
     files = []
 
@@ -257,7 +409,7 @@ def get_changed_files(staged: bool = True, unstaged: bool = False) -> List[str]:
         if rc == 0:
             files.extend(stdout.strip().split("\n") if stdout.strip() else [])
 
-    return list(set(f for f in files if f))
+    return list({f for f in files if f})
 
 
 def get_diff_content(file_path: str, staged: bool = True) -> str:
@@ -267,13 +419,13 @@ def get_diff_content(file_path: str, staged: bool = True) -> str:
     return stdout if rc in (0, 1) else ""
 
 
-def load_failure_registry(registry_path: Path) -> List[Dict]:
+def load_failure_registry(registry_path: Path) -> list[dict]:
     """Load failure entries from registry."""
     if not registry_path.exists():
         return []
 
     entries = []
-    with open(registry_path, "r") as f:
+    with open(registry_path) as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith("#"):
@@ -286,7 +438,7 @@ def load_failure_registry(registry_path: Path) -> List[Dict]:
     return entries
 
 
-def validate_rule_regex(rule: Dict) -> bool:
+def validate_rule_regex(rule: dict) -> bool:
     """Validate regex patterns in a rule."""
     pattern = rule.get("pattern", "")
     if pattern:
@@ -307,33 +459,32 @@ def validate_rule_regex(rule: Dict) -> bool:
     return True
 
 
-def load_prevention_rules(rules_path: Path) -> List[Dict]:
+def load_prevention_rules(rules_path: Path) -> list[dict]:
     """Load prevention rules from rules directory."""
     rules = []
 
     pattern_rules_file = rules_path / "pattern-rules.json"
     if pattern_rules_file.exists():
         try:
-            with open(pattern_rules_file, "r") as f:
+            with open(pattern_rules_file) as f:
                 data = json.load(f)
                 for rule in data.get("rules", []):
-                    if rule.get("enabled", True):
-                        if validate_rule_regex(rule):
+                    if rule.get("enabled", True) and validate_rule_regex(rule):
                             rule["rule_type"] = "pattern"
                             rules.append(rule)
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             pass
 
     semantic_rules_file = rules_path / "semantic-rules.json"
     if semantic_rules_file.exists():
         try:
-            with open(semantic_rules_file, "r") as f:
+            with open(semantic_rules_file) as f:
                 data = json.load(f)
                 for rule in data.get("rules", []):
                     if rule.get("enabled", True):
                         rule["rule_type"] = "semantic"
                         rules.append(rule)
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             pass
 
     return rules
@@ -341,8 +492,8 @@ def load_prevention_rules(rules_path: Path) -> List[Dict]:
 
 def check_file_against_failures(
     file_path: str,
-    failures: List[Dict]
-) -> List[Dict]:
+    failures: list[dict]
+) -> list[dict]:
     """Check if file is in affected_files of any active failure."""
     matching_failures = []
 
@@ -359,8 +510,8 @@ def check_file_against_failures(
 
 def check_diff_against_patterns(
     diff_content: str,
-    rules: List[Dict]
-) -> List[Dict]:
+    rules: list[dict]
+) -> list[dict]:
     """Check diff content against pattern rules."""
     violations = []
 
@@ -424,7 +575,7 @@ def run_regression_check(
     staged: bool = True,
     unstaged: bool = False,
     verbose: bool = False
-) -> Tuple[int, List[Dict]]:
+) -> tuple[int, list[dict]]:
     """
     Run full regression check.
     Returns (issue_count, issues_details).
@@ -475,7 +626,7 @@ def run_regression_check(
     return len(issues), issues
 
 
-def print_report(issues: List[Dict], verbose: bool = False):
+def print_report(issues: list[dict], verbose: bool = False):
     """Print formatted report of issues."""
     if not issues:
         print("\n✓ No potential regressions detected")
@@ -554,6 +705,8 @@ Examples:
                         help="Skip the file-size scan of src/ and extensions/")
     parser.add_argument("--no-settings", action="store_true",
                         help="Skip the settings coverage check")
+    parser.add_argument("--no-audit", action="store_true",
+                        help="Skip the npm audit (runtime HIGH/CRITICAL vuln) check")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Verbose output")
     parser.add_argument("--quiet", "-q", action="store_true",
@@ -577,18 +730,28 @@ Examples:
     )
 
     # File-size check (always on unless --no-file-sizes).
-    size_issues: List[Dict] = []
+    size_issues: list[dict] = []
     size_hard_count = 0
     if not args.no_file_sizes:
         size_issues = check_file_sizes(Path.cwd())
         size_hard_count = sum(1 for i in size_issues if i["kind"] == "hard")
 
     # Settings coverage check (always on unless --no-settings).
-    settings_issues: List[Dict] = []
+    settings_issues: list[dict] = []
     settings_count = 0
     if not args.no_settings:
         settings_issues = check_settings_coverage(Path.cwd())
         settings_count = len(settings_issues)
+
+    # npm audit check (always on unless --no-audit). Blocks on runtime
+    # HIGH/CRITICAL vulnerabilities that ship to users via `npm install`;
+    # warns on dev-only / moderate / low. This is the deploy gate's defense
+    # against shipping known-vulnerable runtime deps.
+    audit_blocking = 0
+    audit_warnings = 0
+    audit_issues: list[dict] = []
+    if not args.no_audit:
+        audit_blocking, audit_warnings, audit_issues = check_npm_audit(Path.cwd())
 
     # Output results
     if args.json:
@@ -596,25 +759,27 @@ Examples:
             "issue_count": count,
             "size_violations_hard": size_hard_count,
             "settings_missing": settings_count,
+            "npm_audit_blocking": audit_blocking,
+            "npm_audit_warnings": audit_warnings,
             "issues": issues,
             "file_sizes": size_issues,
             "settings_coverage": settings_issues,
+            "npm_audit": audit_issues,
         }, indent=2))
     else:
         if not args.quiet or count > 0:
             print_report(issues, verbose=args.verbose)
-        if size_issues and (not args.quiet or size_hard_count > 0):
+        if size_issues and (not args.quiet or size_hard_count > 0) or not args.quiet and not size_issues and not args.json:
             print_file_size_report(size_issues)
-        elif not args.quiet and not size_issues and not args.json:
-            print_file_size_report(size_issues)
-        if settings_issues and (not args.quiet or settings_count > 0):
+        if settings_issues and (not args.quiet or settings_count > 0) or not args.no_settings and not args.quiet and not settings_issues and not args.json:
             print_settings_report(settings_issues)
-        elif not args.no_settings and not args.quiet and not settings_issues and not args.json:
-            print_settings_report(settings_issues)
+        if not args.no_audit and (not args.quiet or audit_blocking > 0 or not audit_issues):
+            print_npm_audit_report(audit_blocking, audit_warnings, audit_issues)
 
     # Exit code: pre-commit fails on ANY failure-registry issue, file over
-    # hard size limit, OR missing settings coverage.
-    if args.pre_commit and (count > 0 or size_hard_count > 0 or settings_count > 0):
+    # hard size limit, missing settings coverage, OR a runtime HIGH/CRITICAL
+    # npm vulnerability.
+    if args.pre_commit and (count > 0 or size_hard_count > 0 or settings_count > 0 or audit_blocking > 0):
         sys.exit(1)
     sys.exit(0)
 

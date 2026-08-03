@@ -124,7 +124,9 @@ export default function OverviewTab({
 	// which widget's modal is open (null = none)
 	const [openWidget, setOpenWidget] = useState<string | null>(null);
 	// perf samples fetched for the opened perf-backed widget
-	const [perfData, setPerfData] = useState<Array<{ ts: number; value: number }>>([]);
+	const [perfData, setPerfData] = useState<
+		Array<{ ts: number; value: number }>
+	>([]);
 	const [perfLoading, setPerfLoading] = useState(false);
 	const [perfError, setPerfError] = useState<Error | null>(null);
 
@@ -148,9 +150,7 @@ export default function OverviewTab({
 			})
 			.catch((err) => {
 				if (!cancelled) {
-					setPerfError(
-						err instanceof Error ? err : new Error(String(err)),
-					);
+					setPerfError(err instanceof Error ? err : new Error(String(err)));
 				}
 			})
 			.finally(() => {
@@ -181,7 +181,8 @@ export default function OverviewTab({
 			<div className="tab-stub">
 				<p>Error loading snapshot: {error.message}</p>
 				<p className="text-xs text-muted-foreground mt-2">
-					Auto-retried with backoff and will re-poll every 5s — no action needed.
+					Auto-retried with backoff and will re-poll every 5s — no action
+					needed.
 				</p>
 			</div>
 		);
@@ -396,15 +397,15 @@ export default function OverviewTab({
 				onClose={() => setOpenWidget(null)}
 			>
 				{perfLoading ? (
-					<p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
+					<p className="py-8 text-center text-sm text-muted-foreground">
+						Loading…
+					</p>
 				) : perfError ? (
-					<p className="py-8 text-center text-sm text-red-400">{perfError.message}</p>
+					<p className="py-8 text-center text-sm text-red-400">
+						{perfError.message}
+					</p>
 				) : (
-					<PerfLineChart
-						data={perfData}
-						label="Cache hit %"
-						color="#58a6ff"
-					/>
+					<PerfLineChart data={perfData} label="Cache hit %" color="#58a6ff" />
 				)}
 			</WidgetDetailModal>
 
@@ -414,9 +415,13 @@ export default function OverviewTab({
 				onClose={() => setOpenWidget(null)}
 			>
 				{perfLoading ? (
-					<p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
+					<p className="py-8 text-center text-sm text-muted-foreground">
+						Loading…
+					</p>
 				) : perfError ? (
-					<p className="py-8 text-center text-sm text-red-400">{perfError.message}</p>
+					<p className="py-8 text-center text-sm text-red-400">
+						{perfError.message}
+					</p>
 				) : (
 					<PerfLineChart
 						data={perfData}
@@ -432,9 +437,13 @@ export default function OverviewTab({
 				onClose={() => setOpenWidget(null)}
 			>
 				{perfLoading ? (
-					<p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
+					<p className="py-8 text-center text-sm text-muted-foreground">
+						Loading…
+					</p>
 				) : perfError ? (
-					<p className="py-8 text-center text-sm text-red-400">{perfError.message}</p>
+					<p className="py-8 text-center text-sm text-red-400">
+						{perfError.message}
+					</p>
 				) : (
 					<PerfLineChart
 						data={perfData}

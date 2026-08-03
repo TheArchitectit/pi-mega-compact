@@ -19,7 +19,12 @@
 
 import type React from "react";
 import type { ActiveSession, SessionsResponse } from "@contracts";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import {
+	Card,
+	CardContent,
+	CardHeader,
+	CardTitle,
+} from "../components/ui/card";
 
 export interface SessionContextGaugesProps {
 	/** Active sessions from /api/sessions (may be null while loading). */
@@ -107,7 +112,11 @@ function SessionGauge({ data }: { data: GaugeData }): React.ReactElement {
 				<div className="gauge-fill" style={{ width: `${fillWidth}%` }} />
 			</div>
 			<p className="gauge-label session-gauge-sub">{sublabel}</p>
-			{data.sublabel && <p className="session-gauge-meta truncate" title={data.sublabel}>{data.sublabel}</p>}
+			{data.sublabel && (
+				<p className="session-gauge-meta truncate" title={data.sublabel}>
+					{data.sublabel}
+				</p>
+			)}
 		</div>
 	);
 }
@@ -178,21 +187,21 @@ export function SessionContextGauges({
 				<CardTitle>Context per Session (live)</CardTitle>
 			</CardHeader>
 			<CardContent>
-			{hasError ? (
-				<div className="text-sm text-muted-foreground">
-					Error loading sessions: {error!.message}
-				</div>
-			) : showLoading ? (
-				<div className="text-sm text-muted-foreground">Loading sessions…</div>
-			) : (
-				<div className="session-gauges-scroll">
-					<div className="session-gauges-grid">
-						{gauges.map((g) => (
-							<SessionGauge key={g.key} data={g} />
-						))}
+				{hasError ? (
+					<div className="text-sm text-muted-foreground">
+						Error loading sessions: {error!.message}
 					</div>
-				</div>
-			)}
+				) : showLoading ? (
+					<div className="text-sm text-muted-foreground">Loading sessions…</div>
+				) : (
+					<div className="session-gauges-scroll">
+						<div className="session-gauges-grid">
+							{gauges.map((g) => (
+								<SessionGauge key={g.key} data={g} />
+							))}
+						</div>
+					</div>
+				)}
 			</CardContent>
 		</Card>
 	);
