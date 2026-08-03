@@ -5,11 +5,17 @@
  * active pi session may be running in a different repo. This module queries
  * the repo registry to find the most recently active repo's dashboard.json,
  * so the Overview always shows live data from the repo pi is actually running
- * in — not the stale launcher dir.
+ * in.
+ *
+ * The launch stateDir is a candidate like any other (NOT excluded): when
+ * `/dashboard` was run in the repo you are still coding in, the launch dir
+ * IS the most-recently-active repo and must win. Excluding it would serve a
+ * stale other-repo snapshot, surfacing a phantom 0% "this session" gauge
+ * plus a duplicate live-session gauge.
  *
  * Resolution order:
- * 1. Most recently seen repo (by last_seen in repo_registry) whose
- *    dashboard.json exists and has a non-null updatedAt
+ * 1. Most recently seen repo (by last_seen in repo_registry, launch dir
+ *    included) whose dashboard.json exists and has a non-null updatedAt
  * 2. The static launch stateDir's dashboard.json (original behavior)
  */
 
@@ -35,10 +41,16 @@ interface RepoRegistryRow {
 
 /**
  * Find the most recently active repo's stateDir by scanning the repo registry
- * for repos whose dashboard.json exists and was written recently. Returns null
- * if no suitable repo is found.
+ * for the repo with the highest last_seen whose dashboard.json exists and has
+ * a non-null updatedAt. Returns null if no suitable repo is found.
+ *
+ * The launch stateDir is NOT excluded: if it is itself the most-recently-active
+ * repo (the common case — `/dashboard` was run in the repo you are still
+ * coding in), its live dashboard.json must be served. Excluding it would cause
+ * a stale *other*-repo snapshot to win, producing a phantom 0% "this session"
+ * gauge + a duplicate live-session gauge.
  */
-function mostRecentRepoStateDir(staticStateDir: string): string | null {
+function mostRecentRepoStateDir(_staticStateDir: string): string | null {
 	const indexPath = join(getIndexDir(), "index.sqlite");
 	if (!existsSync(indexPath)) return null;
 	let db;
@@ -48,10 +60,10 @@ function mostRecentRepoStateDir(staticStateDir: string): string | null {
 		const rows = db
 			.prepare(
 				`SELECT state_dir, last_seen FROM repo_registry
-				 WHERE state_dir IS NOT NULL AND state_dir != ?
+				 WHERE state_dir IS NOT NULL AND last_seen IS NOT NULL
 				 ORDER BY last_seen DESC`,
 			)
-			.all(staticStateDir) as unknown as RepoRegistryRow[];
+			.all() as unknown as RepoRegistryRow[];
 		for (const r of rows) {
 			const dashPath = join(r.state_dir, "dashboard.json");
 			if (!existsSync(dashPath)) continue;
