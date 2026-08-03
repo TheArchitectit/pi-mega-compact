@@ -14,6 +14,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { buildRouteContext } from "./routes-core.js";
 import { handleRagSettings } from "./routes-rag-settings.js";
 import { SETTINGS } from "./routes-rag-settings-helpers.js";
+import { VC0A_ENABLED } from "../../src/config/vector-cortex.js";
 
 let testDir: string;
 let savedMegacompact: [string, string | undefined][];
@@ -192,6 +193,36 @@ describe("handleRagSettings — comprehensive settings", () => {
 		const envPath = join(testDir, ".mega-compact.env");
 		const content = readFileSync(envPath, "utf-8");
 		assert.match(content, /export MEGACOMPACT_AUTO_WIKI="false"/);
+	});
+
+	it("VC0A flag round-trips through settings (boolDirect, not EXCLUDED)", async () => {
+		// Surface: default ON, type boolean.
+		const getBody = JSON.parse(get().body) as {
+			categories: { name: string; settings: { key: string; value: unknown; type: string }[] }[];
+		};
+		const vc = getBody.categories
+			.flatMap((c) => c.settings)
+			.find((s) => s.key === "MEGACOMPACT_VC0A");
+		assert.ok(vc, "MEGACOMPACT_VC0A must be a dashboard setting");
+		assert.equal(vc.type, "boolean");
+		assert.equal(vc.value, true);
+
+		// Toggle OFF: settings handler writes the direct "false" line.
+		const off = await post({ key: "MEGACOMPACT_VC0A", value: "false" });
+		assert.equal(off.statusCode, 200);
+		const envOff = readFileSync(join(testDir, ".mega-compact.env"), "utf-8");
+		assert.match(envOff, /export MEGACOMPACT_VC0A="false"/);
+		// Env line drives VC0A_ENABLED() off.
+		process.env.MEGACOMPACT_VC0A = "false";
+		assert.equal(VC0A_ENABLED(), false);
+
+		// Toggle ON: settings handler writes the direct "true" line.
+		const on = await post({ key: "MEGACOMPACT_VC0A", value: "true" });
+		assert.equal(on.statusCode, 200);
+		const envOn = readFileSync(join(testDir, ".mega-compact.env"), "utf-8");
+		assert.match(envOn, /export MEGACOMPACT_VC0A="true"/);
+		process.env.MEGACOMPACT_VC0A = "true";
+		assert.equal(VC0A_ENABLED(), true);
 	});
 
 	it("POST re-enabling a _DISABLED flag strips the opt-out line", async () => {
