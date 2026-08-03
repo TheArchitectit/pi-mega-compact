@@ -164,7 +164,12 @@ export function SessionContextGauges({
 		// Also skip rows where percent is 0 but tokens are present — these are
 		// stale heartbeats whose token_samples join returned a 0 percent
 		// (a transient state during session startup). A 0% gauge is noise.
-		if (s.percent != null && s.percent === 0 && s.tokens != null && s.tokens > 0)
+		if (
+			s.percent != null &&
+			s.percent === 0 &&
+			s.tokens != null &&
+			s.tokens > 0
+		)
 			return false;
 		const repoKey = s.repoRoot ?? `(pid:${s.pid})`;
 		if (seenRepo.has(repoKey)) return false;

@@ -19,7 +19,7 @@ import {
 	openStore,
 } from "../../src/store/sqlite.js";
 import { autoCompactCheck } from "../../src/compact.js";
-import { estimateSessionTokens } from "../../src/tokens.js";
+import { estimateSessionTokens, estimateBlockTokens, estimateMessageTokens } from "../../src/tokens.js";
 import type { MegaRuntime } from "../mega-runtime.js";
 import { runCompact, piCompactWouldNoop } from "../mega-pipeline.js";
 import {
@@ -324,13 +324,23 @@ export function registerContextHandler(
 				compactedFrom: ran.result.compactedFrom,
 				summary: ran.result.summary,
 				anchorUserMessages,
-				// CRITICAL-OVER ESCAPE HATCH: when context is at/over ~90% of the
-				// window, relief takes priority over the anchor floor. Without this,
-				// computeLiveTrimCut bails to null (can't satisfy the floor) and the
-				// model is fed a raw overflow that errors every turn — the
-				// "Already compacted" + overflow death-spiral (2026-08-01 incident).
-				// A thin anchor is recoverable; an overflowed session is not.
-				criticalOver: (pct ?? 0) >= 90,
+			// CRITICAL-OVER ESCAPE HATCH: when context is at/over ~90% of the
+			// window, relief takes priority over the anchor floor. Without this,
+			// computeLiveTrimCut bails to null (can't satisfy the floor) and the
+			// model is fed a raw overflow that errors every turn — the
+			// "Already compacted" + overflow death-spiral (2026-08-01 incident).
+			// A thin anchor is recoverable; an overflowed session is not.
+			//
+			// CRITICAL: pct is null for OpenAI-compatible providers that don't
+			// report usage.percent (e.g. neuralwatt). Without the token-pressure
+			// fallback the hatch never armed → cut=null → raw overflow → 400
+			// "conversation too long even after compaction" (2026-08-03 incident
+			// on glm-5.2-short, 200K window). Now also fires on pressure >= 0.9
+			// (token-basis) so the hatch arms regardless of whether the provider
+			// reports pct.
+				criticalOver:
+					(pct ?? 0) >= 90 ||
+					pressure >= 0.9,
 			});
 			if (cut === null) {
 				runtime.diagCtxCutNull++;
@@ -357,7 +367,69 @@ export function registerContextHandler(
 				// on every replay within the same compaction epoch.
 				timestamp: runtime.rt.lastCompactAt ?? Date.now(),
 			} as unknown as AgentMessage;
-			const recent = messages.slice(cut); // guardrails-allow PREVENT-PI-002: `cut` is the pre-sanitized `compactedFrom` produced by src/boundary.ts computeDropRange, so the preserved run begins on a toolPair-safe index.
+			const recentRaw = messages.slice(cut); // guardrails-allow PREVENT-PI-002: `cut` is the pre-sanitized `compactedFrom` produced by src/boundary.ts computeDropRange, so the preserved run begins on a toolPair-safe index.
+
+			// FIX 2 (2026-08-03 incident): TOKEN-BUDGET CAP on the live-trim view.
+			// Compaction fires at tier% of the window (140K for a 200K window),
+			// but a SINGLE turn can inject a huge tool output (file read, bash) that
+			// jumps context from 139K → 199K+ before the next gate fires. When that
+			// happens [summary + preserved tail] can STILL exceed the model window,
+			// and the provider rejects with 400 "conversation too long even after
+			// compaction". The anchor floor (PREVENT-PI-001) keeps ≥N user messages
+			// but has NO token cap, so a 2-message tail of two 80K bash outputs sails
+			// right past the window.
+			//
+			// Cap: when the model context window is known, reserve room for the
+			// summary + the model's max output tokens + a 10% safety margin, then
+			// drop oldest preserved messages from the front of `recentRaw` until the
+			// tail fits. Never drops below the FINAL message (always keep the latest
+			// turn so the agent can respond). This is a last-resort HARD cap — it
+			// only fires when the preserved tail alone is oversized, which is rare.
+			const ctxWindow = runtime.lastCtxWindow;
+			// Reserve room for output tokens. Use the model's reported max output
+			// when known; fall back to 10% of the window (scales with any model —
+			// 20K for a 200K window, 100K for a 1M window) so we never let the
+			// preserved tail eat the model's output budget when maxTokens is unknown.
+			const maxOutput =
+				runtime.currentModel?.maxTokens && runtime.currentModel.maxTokens > 0
+					? runtime.currentModel.maxTokens
+					: Math.ceil(ctxWindow * 0.1);
+			let recent = recentRaw;
+			if (ctxWindow > 0 && recentRaw.length > 1) {
+				const summaryTokens = estimateBlockTokens(summaryMsg.text);
+				// Reserve: summary + max output + 10% safety margin.
+				const safetyMargin = Math.ceil(ctxWindow * 0.1);
+				const budget =
+					ctxWindow - maxOutput - safetyMargin - summaryTokens;
+				if (budget > 0) {
+					// Walk recent from the front, dropping oldest first until the
+					// remaining tail fits. Use the AgentMessage→engine-text estimate via
+					// messageContentText (already imported) + estimateMessageTokens.
+					let tailTokens = 0;
+					for (let i = recentRaw.length - 1; i >= 0; i--) {
+						const m = recentRaw[i];
+						tailTokens += estimateMessageTokens({
+							text: messageContentText(m),
+						});
+						if (tailTokens > budget) {
+							// Keep from i+1 onward; but never fewer than the final message.
+							const startIdx = Math.min(i + 1, recentRaw.length - 1);
+							if (startIdx > 0) {
+								recent = recentRaw.slice(startIdx);
+								runtime.logger.warn("live-trim-tail-cap", {
+									sessionId: runtime.rt.sessionId,
+									dropped: startIdx,
+									tailTokens,
+									budget,
+									ctxWindow,
+								});
+							}
+							break;
+						}
+					}
+				}
+			}
+
 			// v0.8.6: cache the trim view so subsequent gated calls in this epoch
 			// replay it verbatim (stabilizing the KV-cache prefix) instead of
 			// regenerating a fresh summary + sentinel every fire.

@@ -55,7 +55,7 @@ function mostRecentOtherRepoStateDir(launchStateDir: string): string | null {
 		const { DatabaseSync } =
 			require("node:sqlite") as typeof import("node:sqlite");
 		db = new DatabaseSync(indexPath, { readOnly: true });
-			const rows = db
+		const rows = db
 			.prepare(
 				`SELECT state_dir, last_seen FROM repo_registry
 				 WHERE state_dir IS NOT NULL AND last_seen IS NOT NULL
