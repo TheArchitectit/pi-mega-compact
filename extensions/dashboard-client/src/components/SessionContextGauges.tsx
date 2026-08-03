@@ -144,24 +144,31 @@ export function SessionContextGauges({
 	];
 
 	// Other active sessions (exclude the launcher by sessionId to avoid dup).
-	// Also dedup BY PID: the heartbeat schema PK is (pid, session_id), so a
-	// process that restarted into a new session_id leaves a stale
-	// (pid, old_session_id) row. That stale row has a different sessionId so
-	// the launcher filter above doesn't catch it, and it surfaces as a
-	// phantom 0% box (null tokens). Keep only the most-recently-seen row per
-	// pid (rows are sorted by lastSeen DESC below before the loop).
+	// Dedup BY REPO (not just pid): two different pi processes can share the
+	// same session_id (e.g. a resumed session across restarts leaves stale
+	// heartbeat rows under different pids), and multiple distinct sessions can
+	// run in the same repo. Either way the user wants ONE gauge per repo
+	// (the most-recently-seen), not a fan-out of stale rows. Rows are sorted
+	// by lastSeen DESC below before the loop so the first row seen for a repo
+	// wins.
 	const othersRaw: ActiveSession[] = (sessions?.sessions ?? []).filter(
 		(s) => s.sessionId !== launcherSessionId,
 	);
 	othersRaw.sort((a, b) => b.lastSeen - a.lastSeen);
-	const seenPid = new Set<number>();
+	const seenRepo = new Set<string>();
 	const others: ActiveSession[] = othersRaw.filter((s) => {
 		// Skip stale rows with no token sample — they have nothing to gauge
 		// and are always either a fresh session (briefly) or a dead lingering
 		// row. Either way a 0% / "?" gauge is noise.
 		if (s.tokens == null && s.percent == null) return false;
-		if (seenPid.has(s.pid)) return false;
-		seenPid.add(s.pid);
+		// Also skip rows where percent is 0 but tokens are present — these are
+		// stale heartbeats whose token_samples join returned a 0 percent
+		// (a transient state during session startup). A 0% gauge is noise.
+		if (s.percent != null && s.percent === 0 && s.tokens != null && s.tokens > 0)
+			return false;
+		const repoKey = s.repoRoot ?? `(pid:${s.pid})`;
+		if (seenRepo.has(repoKey)) return false;
+		seenRepo.add(repoKey);
 		return true;
 	});
 	for (const s of others) {

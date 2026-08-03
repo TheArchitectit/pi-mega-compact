@@ -90,23 +90,27 @@ def check_file_sizes(repo_root: Path) -> list[dict]:
                 except OSError:
                     continue
                 if line_count > hard:
-                    violations.append({
-                        "file": rel_path,
-                        "lines": line_count,
-                        "soft": soft,
-                        "hard": hard,
-                        "severity": "error",
-                        "kind": "hard",
-                    })
+                    violations.append(
+                        {
+                            "file": rel_path,
+                            "lines": line_count,
+                            "soft": soft,
+                            "hard": hard,
+                            "severity": "error",
+                            "kind": "hard",
+                        }
+                    )
                 elif soft is not None and line_count > soft:
-                    warnings.append({
-                        "file": rel_path,
-                        "lines": line_count,
-                        "soft": soft,
-                        "hard": hard,
-                        "severity": "warning",
-                        "kind": "soft",
-                    })
+                    warnings.append(
+                        {
+                            "file": rel_path,
+                            "lines": line_count,
+                            "soft": soft,
+                            "hard": hard,
+                            "severity": "warning",
+                            "kind": "soft",
+                        }
+                    )
 
     violations.sort(key=lambda d: d["lines"], reverse=True)
     warnings.sort(key=lambda d: d["lines"], reverse=True)
@@ -129,11 +133,15 @@ def print_file_size_report(size_issues: list[dict]) -> None:
     for issue in size_issues:
         severity = format_severity(issue["severity"])
         tag = "OVER HARD LIMIT" if issue["kind"] == "hard" else "over soft limit"
-        print(f"  {severity}  {issue['file']}  ({issue['lines']} lines, "
-              f"limit {issue['hard'] if issue['kind'] == 'hard' else issue['soft']})  {tag}")
+        print(
+            f"  {severity}  {issue['file']}  ({issue['lines']} lines, "
+            f"limit {issue['hard'] if issue['kind'] == 'hard' else issue['soft']})  {tag}"
+        )
 
     print("-" * 70)
-    print(f"  {hard_count} over hard limit (blocks commit), {soft_count} over soft limit (warning)")
+    print(
+        f"  {hard_count} over hard limit (blocks commit), {soft_count} over soft limit (warning)"
+    )
     print("=" * 70)
 
 
@@ -155,6 +163,7 @@ SETTINGS_CONFIG_FILES = (
 
 # Regex for MEGACOMPACT_* env var names (captured group = key).
 _ENV_VAR_RE = re.compile(r'"(MEGACOMPACT_[A-Z0-9_]+)"')
+
 
 def _collect_env_vars(repo_root: Path) -> set:
     """Collect all MEGACOMPACT_* env var names from config files."""
@@ -241,14 +250,20 @@ def check_npm_audit(repo_root: Path) -> tuple[int, int, list[dict]]:
     ``--no-audit``.
     """
     if not _npm_audit_available():
-        return 1, 0, [{
-            "name": "(npm)",
-            "severity": "critical",
-            "is_runtime": True,
-            "advisory": "npm not found in PATH — cannot run `npm audit`",
-            "fix_available": False,
-            "effects": [],
-        }]
+        return (
+            1,
+            0,
+            [
+                {
+                    "name": "(npm)",
+                    "severity": "critical",
+                    "is_runtime": True,
+                    "advisory": "npm not found in PATH — cannot run `npm audit`",
+                    "fix_available": False,
+                    "effects": [],
+                }
+            ],
+        )
     try:
         result = subprocess.run(
             ["npm", "audit", "--json"],
@@ -258,37 +273,58 @@ def check_npm_audit(repo_root: Path) -> tuple[int, int, list[dict]]:
             timeout=120,
         )
     except subprocess.TimeoutExpired:
-        return 1, 0, [{
-            "name": "(npm)",
-            "severity": "critical",
-            "is_runtime": True,
-            "advisory": "`npm audit --json` timed out after 120s",
-            "fix_available": False,
-            "effects": [],
-        }]
+        return (
+            1,
+            0,
+            [
+                {
+                    "name": "(npm)",
+                    "severity": "critical",
+                    "is_runtime": True,
+                    "advisory": "`npm audit --json` timed out after 120s",
+                    "fix_available": False,
+                    "effects": [],
+                }
+            ],
+        )
     # npm audit exits 0 when clean, 1 when vulns are found, >1 on tool error.
     raw = result.stdout.strip()
     if not raw:
-        msg = result.stderr.strip() or f"npm audit exited {result.returncode} with no JSON output"
-        return 1, 0, [{
-            "name": "(npm)",
-            "severity": "critical",
-            "is_runtime": True,
-            "advisory": msg,
-            "fix_available": False,
-            "effects": [],
-        }]
+        msg = (
+            result.stderr.strip()
+            or f"npm audit exited {result.returncode} with no JSON output"
+        )
+        return (
+            1,
+            0,
+            [
+                {
+                    "name": "(npm)",
+                    "severity": "critical",
+                    "is_runtime": True,
+                    "advisory": msg,
+                    "fix_available": False,
+                    "effects": [],
+                }
+            ],
+        )
     try:
         audit = json.loads(raw)
     except json.JSONDecodeError as exc:
-        return 1, 0, [{
-            "name": "(npm)",
-            "severity": "critical",
-            "is_runtime": True,
-            "advisory": f"npm audit JSON unparseable: {exc}",
-            "fix_available": False,
-            "effects": [],
-        }]
+        return (
+            1,
+            0,
+            [
+                {
+                    "name": "(npm)",
+                    "severity": "critical",
+                    "is_runtime": True,
+                    "advisory": f"npm audit JSON unparseable: {exc}",
+                    "fix_available": False,
+                    "effects": [],
+                }
+            ],
+        )
 
     # Load package.json to classify runtime vs dev scope. A vulnerable package
     # is RUNTIME if any of its `effects` (direct deps that pull it in) is in
@@ -313,16 +349,24 @@ def check_npm_audit(repo_root: Path) -> tuple[int, int, list[dict]]:
             is_runtime = True
         else:
             is_runtime = any(eff in runtime_deps for eff in effects)
-        issues.append({
-            "name": name,
-            "severity": severity,
-            "is_runtime": is_runtime,
-            "advisory": _npm_audit_title(info),
-            "fix_available": bool(info.get("fixAvailable")),
-            "effects": effects,
-        })
-    blocking = [i for i in issues if i["is_runtime"] and i["severity"] in ("high", "critical")]
-    warning = [i for i in issues if not (i["is_runtime"] and i["severity"] in ("high", "critical"))]
+        issues.append(
+            {
+                "name": name,
+                "severity": severity,
+                "is_runtime": is_runtime,
+                "advisory": _npm_audit_title(info),
+                "fix_available": bool(info.get("fixAvailable")),
+                "effects": effects,
+            }
+        )
+    blocking = [
+        i for i in issues if i["is_runtime"] and i["severity"] in ("high", "critical")
+    ]
+    warning = [
+        i
+        for i in issues
+        if not (i["is_runtime"] and i["severity"] in ("high", "critical"))
+    ]
     return len(blocking), len(warning), issues
 
 
@@ -341,9 +385,13 @@ def print_npm_audit_report(blocking: int, warnings: int, issues: list[dict]) -> 
         if i["advisory"]:
             print(f"           → {i['advisory']}")
     print("-" * 70)
-    print(f"  {blocking} blocking (runtime high/critical) | {warnings} warning(s) (dev-only/moderate/low)")
+    print(
+        f"  {blocking} blocking (runtime high/critical) | {warnings} warning(s) (dev-only/moderate/low)"
+    )
     if blocking:
-        print("  ❌ resolve blocking vulns before deploy: `npm audit fix` (non-breaking)")
+        print(
+            "  ❌ resolve blocking vulns before deploy: `npm audit fix` (non-breaking)"
+        )
     else:
         print("  ⓘ  no blocking vulns; warnings are dev-toolchain-only")
     print("=" * 70)
@@ -358,7 +406,13 @@ def check_settings_coverage(repo_root: Path) -> list[dict]:
     config_vars = _collect_env_vars(repo_root)
     settings_keys = _collect_settings_keys(repo_root)
     missing = sorted(config_vars - settings_keys)
-    return [{"var": v, "message": f"{v} not in dashboard SETTINGS array or EXCLUDED_SETTINGS"} for v in missing]
+    return [
+        {
+            "var": v,
+            "message": f"{v} not in dashboard SETTINGS array or EXCLUDED_SETTINGS",
+        }
+        for v in missing
+    ]
 
 
 def print_settings_report(settings_issues: list[dict]) -> None:
@@ -385,10 +439,7 @@ def run_git_command(args: list[str]) -> tuple[int, str, str]:
     """Run a git command and return (returncode, stdout, stderr)."""
     try:
         result = subprocess.run(
-            ["git"] + args,
-            capture_output=True,
-            text=True,
-            cwd=Path.cwd()
+            ["git"] + args, capture_output=True, text=True, cwd=Path.cwd()
         )
         return result.returncode, result.stdout, result.stderr
     except FileNotFoundError:
@@ -453,7 +504,9 @@ def validate_rule_regex(rule: dict) -> bool:
         try:
             re.compile(forbidden)
         except re.error as e:
-            print(f"Warning: Invalid forbidden_context in rule {rule.get('rule_id')}: {e}")
+            print(
+                f"Warning: Invalid forbidden_context in rule {rule.get('rule_id')}: {e}"
+            )
             return False
 
     return True
@@ -470,8 +523,8 @@ def load_prevention_rules(rules_path: Path) -> list[dict]:
                 data = json.load(f)
                 for rule in data.get("rules", []):
                     if rule.get("enabled", True) and validate_rule_regex(rule):
-                            rule["rule_type"] = "pattern"
-                            rules.append(rule)
+                        rule["rule_type"] = "pattern"
+                        rules.append(rule)
         except (OSError, json.JSONDecodeError):
             pass
 
@@ -490,10 +543,7 @@ def load_prevention_rules(rules_path: Path) -> list[dict]:
     return rules
 
 
-def check_file_against_failures(
-    file_path: str,
-    failures: list[dict]
-) -> list[dict]:
+def check_file_against_failures(file_path: str, failures: list[dict]) -> list[dict]:
     """Check if file is in affected_files of any active failure."""
     matching_failures = []
 
@@ -508,10 +558,7 @@ def check_file_against_failures(
     return matching_failures
 
 
-def check_diff_against_patterns(
-    diff_content: str,
-    rules: list[dict]
-) -> list[dict]:
+def check_diff_against_patterns(diff_content: str, rules: list[dict]) -> list[dict]:
     """Check diff content against pattern rules."""
     violations = []
 
@@ -538,14 +585,16 @@ def check_diff_against_patterns(
                 if forbidden and re.search(forbidden, added_content, re.MULTILINE):
                     continue  # Context suggests this is OK
 
-                violations.append({
-                    "rule_id": rule.get("rule_id"),
-                    "name": rule.get("name"),
-                    "message": rule.get("message"),
-                    "severity": rule.get("severity", "warning"),
-                    "suggestion": rule.get("suggestion"),
-                    "failure_id": rule.get("failure_id"),
-                })
+                violations.append(
+                    {
+                        "rule_id": rule.get("rule_id"),
+                        "name": rule.get("name"),
+                        "message": rule.get("message"),
+                        "severity": rule.get("severity", "warning"),
+                        "suggestion": rule.get("suggestion"),
+                        "failure_id": rule.get("failure_id"),
+                    }
+                )
         except re.error:
             continue  # Invalid regex, skip
 
@@ -556,9 +605,9 @@ def format_severity(severity: str) -> str:
     """Format severity with color codes (if terminal supports it)."""
     colors = {
         "critical": "\033[91m",  # Red
-        "high": "\033[93m",      # Yellow
-        "medium": "\033[94m",    # Blue
-        "low": "\033[90m",       # Gray
+        "high": "\033[93m",  # Yellow
+        "medium": "\033[94m",  # Blue
+        "low": "\033[90m",  # Gray
         "error": "\033[91m",
         "warning": "\033[93m",
     }
@@ -574,7 +623,7 @@ def run_regression_check(
     rules_path: Path,
     staged: bool = True,
     unstaged: bool = False,
-    verbose: bool = False
+    verbose: bool = False,
 ) -> tuple[int, list[dict]]:
     """
     Run full regression check.
@@ -647,7 +696,9 @@ def print_report(issues: list[dict], verbose: bool = False):
             print(f"\n  ⚠️  {severity} - Known Bug History")
             print(f"      Failure ID: {failure['failure_id']}")
             print(f"      Category: {failure.get('category', 'unknown')}")
-            print(f"      Previous Error: {failure.get('error_message', 'N/A')[:80]}...")
+            print(
+                f"      Previous Error: {failure.get('error_message', 'N/A')[:80]}..."
+            )
             print(f"      Prevention: {failure.get('prevention_rule', 'N/A')}")
 
         # Print pattern violations
@@ -677,40 +728,65 @@ Examples:
     %(prog)s --unstaged         # Check unstaged changes
     %(prog)s --all              # Check all changes
     %(prog)s --pre-commit       # Exit with error if issues found
-        """
+        """,
     )
 
-    parser.add_argument("--registry", "-r", type=Path,
-                        default=Path(os.getenv("FAILURE_REGISTRY_PATH", DEFAULT_REGISTRY_PATH)),
-                        help="Path to failure registry")
-    parser.add_argument("--rules", type=Path,
-                        default=Path(os.getenv("PREVENTION_RULES_PATH", DEFAULT_RULES_PATH)),
-                        help="Path to prevention rules directory")
+    parser.add_argument(
+        "--registry",
+        "-r",
+        type=Path,
+        default=Path(os.getenv("FAILURE_REGISTRY_PATH", DEFAULT_REGISTRY_PATH)),
+        help="Path to failure registry",
+    )
+    parser.add_argument(
+        "--rules",
+        type=Path,
+        default=Path(os.getenv("PREVENTION_RULES_PATH", DEFAULT_RULES_PATH)),
+        help="Path to prevention rules directory",
+    )
 
     # What to check
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--staged", action="store_true", default=True,
-                       help="Check staged changes (default)")
-    group.add_argument("--unstaged", "-u", action="store_true",
-                       help="Check unstaged changes")
-    group.add_argument("--all", "-a", action="store_true",
-                       help="Check both staged and unstaged changes")
+    group.add_argument(
+        "--staged",
+        action="store_true",
+        default=True,
+        help="Check staged changes (default)",
+    )
+    group.add_argument(
+        "--unstaged", "-u", action="store_true", help="Check unstaged changes"
+    )
+    group.add_argument(
+        "--all",
+        "-a",
+        action="store_true",
+        help="Check both staged and unstaged changes",
+    )
 
     # Output options
-    parser.add_argument("--pre-commit", action="store_true",
-                        help="Exit with non-zero code if issues found (for pre-commit hooks)")
-    parser.add_argument("--json", action="store_true",
-                        help="Output results as JSON")
-    parser.add_argument("--no-file-sizes", action="store_true",
-                        help="Skip the file-size scan of src/ and extensions/")
-    parser.add_argument("--no-settings", action="store_true",
-                        help="Skip the settings coverage check")
-    parser.add_argument("--no-audit", action="store_true",
-                        help="Skip the npm audit (runtime HIGH/CRITICAL vuln) check")
-    parser.add_argument("--verbose", "-v", action="store_true",
-                        help="Verbose output")
-    parser.add_argument("--quiet", "-q", action="store_true",
-                        help="Only output on issues found")
+    parser.add_argument(
+        "--pre-commit",
+        action="store_true",
+        help="Exit with non-zero code if issues found (for pre-commit hooks)",
+    )
+    parser.add_argument("--json", action="store_true", help="Output results as JSON")
+    parser.add_argument(
+        "--no-file-sizes",
+        action="store_true",
+        help="Skip the file-size scan of src/ and extensions/",
+    )
+    parser.add_argument(
+        "--no-settings", action="store_true", help="Skip the settings coverage check"
+    )
+    parser.add_argument(
+        "--no-audit",
+        action="store_true",
+        help="Skip the npm audit (runtime HIGH/CRITICAL vuln) check",
+    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+    parser.add_argument(
+        "--quiet", "-q", action="store_true", help="Only output on issues found"
+    )
 
     args = parser.parse_args()
 
@@ -726,7 +802,7 @@ Examples:
         rules_path=args.rules,
         staged=staged,
         unstaged=unstaged,
-        verbose=args.verbose and not args.quiet
+        verbose=args.verbose and not args.quiet,
     )
 
     # File-size check (always on unless --no-file-sizes).
@@ -755,31 +831,53 @@ Examples:
 
     # Output results
     if args.json:
-        print(json.dumps({
-            "issue_count": count,
-            "size_violations_hard": size_hard_count,
-            "settings_missing": settings_count,
-            "npm_audit_blocking": audit_blocking,
-            "npm_audit_warnings": audit_warnings,
-            "issues": issues,
-            "file_sizes": size_issues,
-            "settings_coverage": settings_issues,
-            "npm_audit": audit_issues,
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "issue_count": count,
+                    "size_violations_hard": size_hard_count,
+                    "settings_missing": settings_count,
+                    "npm_audit_blocking": audit_blocking,
+                    "npm_audit_warnings": audit_warnings,
+                    "issues": issues,
+                    "file_sizes": size_issues,
+                    "settings_coverage": settings_issues,
+                    "npm_audit": audit_issues,
+                },
+                indent=2,
+            )
+        )
     else:
         if not args.quiet or count > 0:
             print_report(issues, verbose=args.verbose)
-        if size_issues and (not args.quiet or size_hard_count > 0) or not args.quiet and not size_issues and not args.json:
+        if (
+            size_issues
+            and (not args.quiet or size_hard_count > 0)
+            or not args.quiet
+            and not size_issues
+            and not args.json
+        ):
             print_file_size_report(size_issues)
-        if settings_issues and (not args.quiet or settings_count > 0) or not args.no_settings and not args.quiet and not settings_issues and not args.json:
+        if (
+            settings_issues
+            and (not args.quiet or settings_count > 0)
+            or not args.no_settings
+            and not args.quiet
+            and not settings_issues
+            and not args.json
+        ):
             print_settings_report(settings_issues)
-        if not args.no_audit and (not args.quiet or audit_blocking > 0 or not audit_issues):
+        if not args.no_audit and (
+            not args.quiet or audit_blocking > 0 or not audit_issues
+        ):
             print_npm_audit_report(audit_blocking, audit_warnings, audit_issues)
 
     # Exit code: pre-commit fails on ANY failure-registry issue, file over
     # hard size limit, missing settings coverage, OR a runtime HIGH/CRITICAL
     # npm vulnerability.
-    if args.pre_commit and (count > 0 or size_hard_count > 0 or settings_count > 0 or audit_blocking > 0):
+    if args.pre_commit and (
+        count > 0 or size_hard_count > 0 or settings_count > 0 or audit_blocking > 0
+    ):
         sys.exit(1)
     sys.exit(0)
 
