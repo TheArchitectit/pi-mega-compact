@@ -1,2 +1,0 @@
-import{j as a,M as m}from"./index-BN-VujKT.js";function u({pressed:r,onPressedChange:t,className:e,onClick:n,...o}){return a.jsx("button",{type:"button","aria-pressed":r,onClick:i=>{n?.(i),t?.(!r)},className:m("inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium transition-all",r?"border-primary/50 bg-primary/15 text-neon glow-primary":"border-border bg-transparent text-muted hover:text-foreground",e),...o})}export{u as T};
-//# sourceMappingURL=toggle-BkzAODNk.js.map
