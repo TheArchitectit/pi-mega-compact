@@ -25,6 +25,28 @@
 
 ---
 
+## VECTOR CORTEX
+
+| Keyword | Document |
+| --- | --- |
+| read order, decisions, status | [vector-cortex/README.md](vector-cortex/README.md) |
+| readiness checklist | [vector-cortex/IMPLEMENTATION_READINESS.md](vector-cortex/IMPLEMENTATION_READINESS.md) |
+| EventV2, PromptDagV1, provider profiles, downgrade | [vector-cortex/CONTRACTS.md](vector-cortex/CONTRACTS.md) |
+| authority/data flow | [vector-cortex/ARCHITECTURE.md](vector-cortex/ARCHITECTURE.md) |
+| learned architecture/training/package | [vector-cortex/MODEL_ASSET.md](vector-cortex/MODEL_ASSET.md) |
+| exact residual/parity math | [vector-cortex/RESIDUAL_CODEC.md](vector-cortex/RESIDUAL_CODEC.md) |
+| permissions/privacy/consent | [vector-cortex/SECURITY_PRIVACY.md](vector-cortex/SECURITY_PRIVACY.md) |
+| breakers/spool/outage | [vector-cortex/TRIAD_RESILIENCE.md](vector-cortex/TRIAD_RESILIENCE.md) |
+| fixtures/migrations | [vector-cortex/CONFORMANCE.md](vector-cortex/CONFORMANCE.md) |
+| annotations/power/rollout | [vector-cortex/EVALUATION.md](vector-cortex/EVALUATION.md) |
+| 27-sprint roadmap/gates | [vector-cortex/SPRINT_PLAN.md](vector-cortex/SPRINT_PLAN.md) |
+| durable sprint evidence | [vector-cortex/EVIDENCE_TEMPLATE.md](vector-cortex/EVIDENCE_TEMPLATE.md) |
+| 9 phases / 27 sprint specifications | [vector-cortex/phases/](vector-cortex/phases/) / [vector-cortex/sprints/](vector-cortex/sprints/) |
+
+**Read order:** README → readiness → contracts/architecture → model/codec/privacy → triad/conformance/evaluation → plan → active phase/sprint.
+
+---
+
 ## PLANNING
 
 | Keyword | Document | Location |
