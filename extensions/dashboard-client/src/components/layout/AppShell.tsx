@@ -17,7 +17,7 @@ export function AppShell({ active, onTabChange, snapshot, children }: AppShellPr
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto flex max-w-[1600px] gap-6 px-4 py-4">
+      <div className="mx-auto flex w-full gap-6 px-4 py-4 xl:px-6">
         <Sidebar active={active} onTabChange={onTabChange} />
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="mb-4 flex items-center gap-3">

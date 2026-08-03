@@ -209,6 +209,7 @@ export class MegaRuntime {
 	// (already-registered) widget factory is refreshed. Kills the per-event
 	// main-thread block during typing/idle streaming with no material change.
 	lastSnapshotSig: string | null = null;
+	lastHeartbeatAt: number = 0;
 	// v0.8.5: bumped whenever the cached game-state memo is evicted (bumpGameState
 	// for in-process /mega-game writes, the fs.watch callback for cross-process
 	// dashboard-server writes, and bindRepo on repo switch) so the snapshot gate

@@ -72,6 +72,9 @@ export interface RuntimeSnapshotContext extends RuntimeHelpersContext {
 	lastSnapshotSig: string | null;
 	lastWidgetCtx?: ExtensionContext;
 	lastActivityAt: number;
+	/** Timestamp (ms) of the last session heartbeat write. Used by the
+	 *  material-change gate fast path to refresh heartbeats on a cadence. */
+	lastHeartbeatAt: number;
 	lastLevel: number;
 	diagCtxFastGate: number;
 	diagLiveTrimFires: number;
@@ -117,6 +120,12 @@ export function snapshotImpl(
 	const sig = materialSigImpl(self);
 	if (ctx && self.widgetData && self.lastSnapshotSig === sig) {
 		self.renderWidget(ctx);
+		// Refresh heartbeat on a time cadence even when material state hasn't
+		// changed, so the session doesn't appear stale and get pruned by the
+		// dashboard's 30-min cutoff. The full snapshot recompute is still gated
+		// (expensive SQLite opens + writeFileSync), but a heartbeat row is
+		// cheap (single INSERT OR REPLACE on the index DB).
+		refreshHeartbeatIfStale(self, ctx, 10_000);
 		return;
 	}
 	const perfT0 = performance.now();
@@ -313,4 +322,35 @@ export function snapshotImpl(
 		/* non-fatal: perf instrumentation never blocks the agent */
 	}
 	self.lastSnapshotSig = sig;
+	self.lastHeartbeatAt = Date.now();
+}
+
+// ----------------------------------------------------------- heartbeat refresh
+
+/** Refresh the session heartbeat if enough time has elapsed since the last
+ *  write. Called from the material-change gate fast path (where the full
+ *  snapshot recompute is skipped) so the session stays visible in the
+ *  dashboard during idle/typing periods. Non-fatal — best-effort like the
+ *  main heartbeat write. */
+function refreshHeartbeatIfStale(
+	self: RuntimeSnapshotContext,
+	ctx: ExtensionContext | undefined,
+	intervalMs: number,
+): void {
+	const now = Date.now();
+	if (now - self.lastHeartbeatAt < intervalMs) return;
+	try {
+		const repo =
+			resolveRepoRoot(ctx?.cwd ?? self.currentStateDir) ?? self.currentStateDir;
+		recordSessionHeartbeat(
+			process.pid,
+			self.rt.sessionId,
+			repo,
+			self.currentStateDir,
+			self.lastCtxWindow || 0,
+		);
+		self.lastHeartbeatAt = now;
+	} catch {
+		/* non-fatal: heartbeat refresh must never block the snapshot path */
+	}
 }

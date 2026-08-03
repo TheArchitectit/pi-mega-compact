@@ -13,7 +13,8 @@ import { createRequire } from "node:module";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { RouteContext } from "./routes-core.js";
-import { computeCacheSavings } from "../../src/pricing.js";
+import { computeCacheSavings, lookupModelInputRate } from "../../src/pricing.js";
+import { costApiConfig, lookupCostApiPricing } from "../../src/costApi.js";
 
 // ---------------------------------------------------------------------------
 // handleProviderCache — "/api/provider-cache"
@@ -118,18 +119,29 @@ export function handleProviderCache(
 			} | null = null;
 			try {
 				const snap = latestModelSnapshot(stateDir); // guardrails-allow PREVENT-PI-004: local SQLite read (loopback dashboard)
-				if (snap && snap.inputRate > 0) {
+				let rate = snap?.inputRate ?? 0;
+				let modelName = snap?.modelName ?? snap?.modelId ?? "unknown";
+				// Fallback chain: SQLite snapshot → local pricing table → cost API
+				if (rate <= 0 && modelName !== "unknown") {
+					rate = lookupModelInputRate(modelName) ?? 0;
+				}
+				if (rate <= 0 && costApiConfig().enabled && modelName !== "unknown") {
+					// guardrails-allow PREVENT-PI-004: cost API pricing lookup (user-opted-in)
+					const apiPricing = lookupCostApiPricing(modelName);
+					rate = apiPricing?.inputRate ?? 0;
+				}
+				if (rate > 0) {
 					const s = computeCacheSavings(
 						lifetime.totalCacheRead,
 						lifetime.totalCacheWrite,
-						snap.inputRate,
+						rate,
 					);
 					savings = {
 						cacheReadSaved: s.cacheReadSaved,
 						cacheWriteCost: s.cacheWriteCost,
 						netSaved: s.netSaved,
-						model: snap.modelName ?? snap.modelId ?? "unknown",
-						inputRate: snap.inputRate,
+						model: modelName,
+						inputRate: rate,
 					};
 				}
 			} catch {

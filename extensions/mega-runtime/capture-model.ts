@@ -11,6 +11,7 @@ import { resolveRepoRoot } from "../mega-config.js";
 import { recordModelSnapshot, recordRepoModel } from "../../src/store/sqlite.js";
 import type { ModelSnapshot } from "../../src/store/sqlite.js";
 import { lookupModelInputRate } from "../../src/pricing.js";
+import { costApiConfig, lookupCostApiPricing } from "../../src/costApi.js";
 
 // ---------------------------------------------------------------------- types
 
@@ -45,13 +46,24 @@ export function captureModelImpl(ctx: CaptureModelContext, ectx: ExtensionContex
 	}
 	const modelId = m.id;
 	const fallbackInput = lookupModelInputRate(modelId);
+	let inputRate = m.cost?.input || fallbackInput || 0;
+	let outputRate = m.cost?.output ?? 0;
+	// Cost API last-resort fallback for models not in the local pricing table
+	if (inputRate <= 0 && costApiConfig().enabled) {
+		// guardrails-allow PREVENT-PI-004: cost API pricing lookup (user-opted-in)
+		const apiPricing = lookupCostApiPricing(modelId);
+		if (apiPricing) {
+			inputRate = apiPricing.inputRate ?? 0;
+			if (outputRate <= 0) outputRate = apiPricing.outputRate ?? 0;
+		}
+	}
 	const snap: Omit<ModelSnapshot, "capturedAt"> = {
 		provider: m.provider,
 		providerName,
 		modelId,
 		modelName: m.name ?? null,
-		inputRate: m.cost?.input || fallbackInput || 0,
-		outputRate: m.cost?.output ?? 0,
+		inputRate,
+		outputRate,
 		contextWindow: m.contextWindow ?? 0,
 		maxTokens: m.maxTokens ?? 0,
 		reasoning: !!m.reasoning,
