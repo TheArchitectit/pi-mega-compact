@@ -13,6 +13,7 @@ export interface TurnTelemetryRow {
 	role: string;
 	endedAt: number;
 	hydeRan: number;
+	hydeReason: string;
 	hydeDoc: string;
 	hydeRawCount: number;
 	hydeHydeCount: number;
@@ -36,7 +37,7 @@ export function listTelemetryTurns(
 		.prepare(
 			`SELECT id AS turnId, conversation_id AS conversationId,
 			        turn_index AS turnIndex, role, ended_at AS endedAt,
-			        hyde_ran AS hydeRan, hyde_doc AS hydeDoc,
+			        hyde_ran AS hydeRan, hyde_reason AS hydeReason, hyde_doc AS hydeDoc,
 			        hyde_raw_count AS hydeRawCount, hyde_hyde_count AS hydeHydeCount,
 			        hyde_fused_count AS hydeFusedCount, hyde_lift AS hydeLift,
 			        hyde_generation_ms AS hydeGenerationMs,

@@ -38,6 +38,7 @@ export function rowToEntry(r: Record<string, unknown>): TurnEntry {
 				? undefined
 				: {
 						ran: r.hyde_ran === 1,
+						reason: (r.hyde_reason as string) ?? "",
 						hypotheticalDoc: (r.hyde_doc as string) ?? "",
 						rawHitCount: (r.hyde_raw_count as number) ?? 0,
 						hydeHitCount: (r.hyde_hyde_count as number) ?? 0,

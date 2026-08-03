@@ -11,9 +11,11 @@ import { useCallback } from "react";
 import { useApi } from "../hooks/useApi";
 import { fetchPerf, fetchSnapshot } from "../api/client";
 import type { PerfResponse, SnapshotResponse } from "@contracts";
+import { NEW_UI } from "../config";
 import { PerfChart } from "../components/PerfChart";
 import { PerfCards } from "../components/PerfCards";
 import { ModelBadge } from "../components/ModelBadge";
+import { RagDashboard } from "../components/RagDashboard";
 
 export default function MetricsTab(): React.ReactElement {
 	const { data: perf, error: perfErr } = useApi<PerfResponse>(
@@ -50,6 +52,7 @@ export default function MetricsTab(): React.ReactElement {
 			<div className="text-xs text-muted-foreground">
 				{perf.sampleCount} samples · updated {perf.updatedAt}
 			</div>
+			{NEW_UI() && <RagDashboard />}
 		</div>
 	);
 }

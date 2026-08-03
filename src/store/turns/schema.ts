@@ -178,6 +178,7 @@ export function initTurnSchema(db: DatabaseSync): void {
 	ensureCol("hyde_fused_count", "hyde_fused_count INTEGER DEFAULT 0");
 	ensureCol("hyde_lift", "hyde_lift REAL DEFAULT 0");
 	ensureCol("hyde_generation_ms", "hyde_generation_ms INTEGER DEFAULT 0");
+	ensureCol("hyde_reason", "hyde_reason TEXT DEFAULT ''");
 	ensureCol("recall_score", "recall_score REAL DEFAULT 0");
 	ensureCol("recall_pass", "recall_pass INTEGER DEFAULT 0");
 	ensureCol("recall_relevance", "recall_relevance REAL DEFAULT 0");

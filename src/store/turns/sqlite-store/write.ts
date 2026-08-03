@@ -24,10 +24,10 @@ export function appendTurn(ctx: SqliteTurnStoreCtx, entry: TurnEntry): TurnId {
 				`INSERT INTO turns (conversation_id, session_id, turn_index, role, ended_at,
 	                           ctx_tokens, ctx_percent, pressure_band, model, epoch_id,
 	                           hyde_ran, hyde_doc, hyde_raw_count, hyde_hyde_count,
-	                           hyde_fused_count, hyde_lift, hyde_generation_ms,
+	                           hyde_fused_count, hyde_lift, hyde_generation_ms, hyde_reason,
 	                           recall_score, recall_pass, recall_relevance, recall_coverage,
 	                           recall_diversity, recall_specificity)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			)
 			.run(
 				entry.conversationId,
@@ -47,6 +47,7 @@ export function appendTurn(ctx: SqliteTurnStoreCtx, entry: TurnEntry): TurnId {
 				entry.hyde?.fusedHitCount ?? null,
 				entry.hyde?.lift ?? null,
 				entry.hyde?.generationMs ?? null,
+				entry.hyde?.reason ?? null,
 				entry.recallMetrics?.score ?? null,
 				entry.recallMetrics?.pass == null ? null : entry.recallMetrics.pass ? 1 : 0,
 				entry.recallMetrics?.relevance ?? null,

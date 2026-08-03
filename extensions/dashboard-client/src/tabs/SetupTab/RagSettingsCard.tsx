@@ -9,13 +9,15 @@
  */
 import type React from "react";
 import { useState, useEffect, useCallback } from "react";
-import type { RagSettingsResponse } from "@contracts";
-import { fetchRagSettings, postRagSettings } from "../../api/client";
+import type { RagSettingsResponse, RagMetricsResponse } from "@contracts";
+import { fetchRagSettings, postRagSettings, fetchRagMetrics } from "../../api/client";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Switch } from "../../components/ui/switch";
+import { Badge } from "../../components/ui/badge";
 
 export default function RagSettingsCard(): React.ReactElement {
 	const [settings, setSettings] = useState<RagSettingsResponse | null>(null);
+	const [ragMetrics, setRagMetrics] = useState<RagMetricsResponse | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [restartBanner, setRestartBanner] = useState(false);
@@ -36,6 +38,27 @@ export default function RagSettingsCard(): React.ReactElement {
 		const id = setInterval(load, 30000);
 		return () => clearInterval(id);
 	}, [load]);
+
+	// Live HyDE runtime flag from /api/rag-metrics (vs the persisted _DISABLED
+	// env intent in `settings`). Re-poll every 30s alongside the settings load.
+	useEffect(() => {
+		let alive = true;
+		const poll = () => {
+			fetchRagMetrics()
+				.then((m) => {
+					if (alive) setRagMetrics(m);
+				})
+				.catch(() => {
+					/* non-fatal: the metrics endpoint may not be up yet */
+				});
+		};
+		poll();
+		const id = setInterval(poll, 30000);
+		return () => {
+			alive = false;
+			clearInterval(id);
+		};
+	}, []);
 
 	const toggle = useCallback(
 		(key: string, enabled: boolean) => {
@@ -87,6 +110,18 @@ export default function RagSettingsCard(): React.ReactElement {
 									<div className="mt-0.5 text-xs text-warning">
 										Requires an LLM embedder (Ollama/HTTP). Configure one in
 										the Embedder section above first.
+									</div>
+								)}
+								{flag.key === "MEGACOMPACT_HYDE" && ragMetrics && (
+									<div className="mt-0.5 flex items-center gap-1.5 text-xs">
+										<span
+											className={`inline-block h-1.5 w-1.5 rounded-full ${ragMetrics.flags.hydeEnabled ? "bg-success" : "bg-danger"}`}
+											aria-hidden="true"
+										/>
+										<span className="text-muted-foreground">Runtime:</span>{" "}
+										<Badge variant={ragMetrics.flags.hydeEnabled ? "success" : "danger"}>
+											{ragMetrics.flags.hydeEnabled ? "active" : "inactive"}
+										</Badge>
 									</div>
 								)}
 							</div>

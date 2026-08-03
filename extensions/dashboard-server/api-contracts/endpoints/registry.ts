@@ -24,6 +24,7 @@ import type {
 	RagSettingsRequest,
 	RagSettingsResponsePost,
 } from "../rag-settings.js";
+import type { RagMetricsResponse } from "../rag-metrics.js";
 import type {
 	TurnsResponse,
 	ConversationTurnsResponse,
@@ -448,4 +449,14 @@ export const ENDPOINTS = {
 		description:
 			"Update RAG feature flag states by writing _DISABLED env vars to .mega-compact.env.",
 	} as const satisfies EndpointDef<"POST", RagSettingsRequest, RagSettingsResponsePost>,
+
+	// ─── RAG Metrics (Sprint H2) ──────────────────────────────────────
+
+	/** GET /api/rag-metrics — HyDE + recall-quality telemetry aggregates. */
+	ragMetrics: {
+		method: "GET",
+		path: "/api/rag-metrics",
+		description:
+			"HyDE invocation + recall-quality telemetry: flags, totals, recent turns, and daily series.",
+	} as const satisfies EndpointDef<"GET", undefined, RagMetricsResponse>,
 } as const;

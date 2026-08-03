@@ -42,6 +42,8 @@ import { CacheHitsCard } from "../components/CacheHitsCard";
 import { TimeSavedCard } from "../components/TimeSavedCard";
 import { LegendCard } from "../components/LegendCard";
 import { Badge } from "../components/ui/badge";
+import { NEW_UI } from "../config";
+import RagHealthCard from "./SetupTab/RagHealthCard";
 
 /** Type guard: narrows an SSE event to a session_sample event. */
 function isSessionSample(e: SseEvent): e is SseSessionSample {
@@ -212,6 +214,7 @@ export default function OverviewTab({
 					cacheHitSessionSec={timeSaved.cacheHit.sessionSec}
 					cacheHitTotalSec={timeSaved.cacheHit.totalSec}
 				/>
+				{NEW_UI() && <RagHealthCard />}
 				<LegendCard />
 			</div>
 		</div>

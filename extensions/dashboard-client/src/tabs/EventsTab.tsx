@@ -32,6 +32,11 @@ const CONFIG_TYPES = new Set([
 	"anchors_updated",
 	"checkpoint_persisted",
 ]);
+const RECALL_TYPES = new Set([
+	"recall_inject",
+	"hyde_executed",
+	"recall_metrics",
+]);
 const CREW_TYPES = new Set([
 	"crew_presence_changed",
 	"crew_turn_changed",
@@ -49,7 +54,7 @@ function matchesCategory(ev: SseEvent, cat: EventCategory): boolean {
 	if (cat === "all") return true;
 	const t = ev.type;
 	if (cat === "compact") return COMPACT_TYPES.has(t);
-	if (cat === "recall") return t === "recall_inject";
+	if (cat === "recall") return RECALL_TYPES.has(t);
 	if (cat === "config") return CONFIG_TYPES.has(t);
 	if (cat === "crew") return CREW_TYPES.has(t);
 	return GAME_TYPES.has(t); // cat === "game"

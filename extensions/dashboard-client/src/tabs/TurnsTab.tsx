@@ -33,6 +33,7 @@ import type {
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { HydeDetailPanel } from "../components/HydeDetailPanel";
 
 function fmtTs(ms: number): string {
 	if (!ms) return "—";
@@ -291,6 +292,7 @@ function TurnDetail({
 					<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Band</th>
 					<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Epoch</th>
 					<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Recalled checkpoints (memory recall)</th>
+					<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">HyDE</th>
 					<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Ended</th>
 					<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Actions</th>
 				</tr>
@@ -334,6 +336,12 @@ function TurnDetail({
 									))}
 								</ul>
 							)}
+						</td>
+						<td className="px-3 py-2 align-top">
+							<HydeDetailPanel
+								conversationId={t.conversationId}
+								turnIndex={t.turnIndex}
+							/>
 						</td>
 						<td className="px-3 py-2">{fmtTs(t.endedAt)}</td>
 						<td className="px-3 py-2">

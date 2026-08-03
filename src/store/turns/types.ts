@@ -71,6 +71,8 @@ export interface TurnEntry {
  */
 export interface TurnHydeTelemetry {
 	ran: boolean;
+	/** Skip reason when HyDE didn't run: "disabled" | "no-llm" | "generation-failed". */
+	reason: string;
 	hypotheticalDoc: string;
 	rawHitCount: number;
 	hydeHitCount: number;
