@@ -1,9 +1,13 @@
 /**
- * dashboard-server/routes-rag-settings.ts — RAG Settings route handler.
+ * dashboard-server/routes-rag-settings.ts — comprehensive settings route handler.
  *
- * GET /api/rag-settings  — Returns the state of all RAG feature flags (B1–B5).
- * POST /api/rag-settings — Toggles flags by writing MEGACOMPACT_*_DISABLED
- *                          lines to the per-repo .mega-compact.env file.
+ * GET /api/rag-settings  — Returns every adjustable MEGACOMPACT_* setting,
+ *                          grouped by category, with live values from env.
+ * POST /api/rag-settings — Updates a single setting by writing its line to the
+ *                          per-repo .mega-compact.env file.
+ *
+ * The SETTINGS inventory lives in routes-rag-settings-helpers.ts so this file
+ * stays within the line budget.
  *
  * Guardrails: PREVENT-PI-004 (loopback-only), PREVENT-001 (null-safe JSON),
  * PREVENT-011 (no `any`). Each JSON write carries a guardrails-allow annotation.
@@ -14,67 +18,100 @@ import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
 import { detectCurrentEmbedder } from "./routes-setup.js";
+import { SETTINGS, SETTING_BY_KEY } from "./routes-rag-settings-helpers.js";
+import type { SettingSpec } from "./routes-rag-settings-helpers.js";
 import type {
-	RagFlagState,
-	RagSettingsResponse,
-	RagSettingsRequest,
-	RagSettingsResponsePost,
+	SettingState,
+	SettingsResponse,
+	SettingsUpdateRequest,
+	SettingsResponsePost,
 } from "./api-contracts/rag-settings.js";
 
 // ---------------------------------------------------------------------------
-// RAG_FLAGS — the five feature flags surfaced by this panel.
+// Env-reading helpers — one per setting type.
 // ---------------------------------------------------------------------------
-
-const RAG_FLAGS: {
-	key: string;
-	label: string;
-	description: string;
-	requiresLlm: boolean;
-}[] = [
-	{
-		key: "MEGACOMPACT_QUERY_REFORMULATION",
-		label: "Query Reformulation",
-		description:
-			"TF-IDF keyword expansion for vague recall queries (TrigramEmbedder path)",
-		requiresLlm: false,
-	},
-	{
-		key: "MEGACOMPACT_TIERED_ROUTER",
-		label: "Tiered Recall Router",
-		description:
-			"L0 cache → L1 FTS5 → L2 HNSW routing for faster recall",
-		requiresLlm: false,
-	},
-	{
-		key: "MEGACOMPACT_RECALL_METRICS",
-		label: "Recall Quality Metrics",
-		description:
-			"Precision/recall scoring and logging for recall evaluation",
-		requiresLlm: false,
-	},
-	{
-		key: "MEGACOMPACT_MEMORY_GRAPH",
-		label: "Memory Graph",
-		description:
-			"Dashboard-oriented memory graph traversal across sessions",
-		requiresLlm: false,
-	},
-	{
-		key: "MEGACOMPACT_HYDE",
-		label: "HyDE (Hypothetical Document Embeddings)",
-		description:
-			"Generate hypothetical answer via LLM, embed it, RRF-fuse with raw-query results",
-		requiresLlm: true,
-	},
-];
-
-/** Strip any MEGACOMPACT_*_DISABLED assignment lines from env file content. */
-const DISABLED_LINE = /^export\s+MEGACOMPACT_\w+_DISABLED=/;
 
 function isDisabled(key: string): boolean {
 	const v = process.env[key + "_DISABLED"];
 	return v === "true" || v === "1";
 }
+
+function isEnabled(key: string, def: boolean): boolean {
+	const v = process.env[key];
+	if (v === undefined) return def;
+	return v === "true" || v === "1";
+}
+
+function readNumber(key: string, def: number): number {
+	const v = process.env[key];
+	if (v === undefined) return def;
+	const n = Number(v);
+	return Number.isNaN(n) ? def : n;
+}
+
+function resolveValue(spec: SettingSpec): string | number | boolean {
+	if (spec.type === "boolean") {
+		return spec.disabledConvention
+			? !isDisabled(spec.key)
+			: isEnabled(spec.key, spec.default as boolean);
+	}
+	if (spec.type === "number") {
+		return readNumber(spec.key, spec.default as number);
+	}
+	return process.env[spec.key] ?? spec.default;
+}
+
+function toSettingState(spec: SettingSpec, category: string): SettingState {
+	return {
+		key: spec.key,
+		label: spec.label,
+		description: spec.description,
+		category,
+		type: spec.type,
+		value: resolveValue(spec),
+		default: spec.default,
+		disabledConvention: spec.disabledConvention,
+		requiresLlm: spec.requiresLlm,
+		...(spec.unit !== undefined ? { unit: spec.unit } : {}),
+		...(spec.min !== undefined ? { min: spec.min } : {}),
+		...(spec.max !== undefined ? { max: spec.max } : {}),
+	};
+}
+
+// ---------------------------------------------------------------------------
+// Env file I/O.
+// ---------------------------------------------------------------------------
+
+/** Strip lines assigning KEY or KEY_DISABLED from env file content. */
+const keyLinePattern = (key: string): RegExp =>
+	new RegExp(`^export\\s+${key}(_DISABLED)?=`);
+
+function envPathOf(ctx: RouteContext): string {
+	return join(ctx.stateDir, ".mega-compact.env");
+}
+
+function readEnvLines(envPath: string, key: string): string[] {
+	if (!existsSync(envPath)) return [];
+	return readFileSync(envPath, "utf-8")
+		.split("\n")
+		.filter((l) => !keyLinePattern(key).test(l));
+}
+
+function writeSetting(envPath: string, key: string, line: string): void {
+	const lines = readEnvLines(envPath, key);
+	lines.push(line);
+	if (lines[lines.length - 1] !== "") lines.push("");
+	writeFileSync(envPath, lines.join("\n"), "utf-8");
+}
+
+/** Strip KEY/KEY_DISABLED lines, leaving the file otherwise intact. */
+function removeSetting(envPath: string, key: string): void {
+	writeFileSync(envPath, readEnvLines(envPath, key).join("\n"), "utf-8");
+}
+
+// ---------------------------------------------------------------------------
+// Request body parsing.
+// ---------------------------------------------------------------------------
 
 function readJsonBody(
 	req: IncomingMessage,
@@ -96,7 +133,7 @@ function readJsonBody(
 	req.on("end", () => {
 		if (tooBig) return cb({ ok: false, error: "body_too_large" });
 		try {
-			const v = body ? JSON.parse(body) : {}; // PREVENT-001: parsed value type-checked below
+			const v: unknown = body ? JSON.parse(body) : {}; // PREVENT-001: parsed value type-checked below
 			if (typeof v !== "object" || v === null || Array.isArray(v)) {
 				return cb({ ok: false, error: "invalid_object" });
 			}
@@ -120,15 +157,12 @@ export function handleRagSettings(
 	if (req.url !== "/api/rag-settings") return false;
 
 	if (req.method === "GET") {
-		const flags: RagFlagState[] = RAG_FLAGS.map((f) => ({
-			key: f.key,
-			label: f.label,
-			description: f.description,
-			enabled: !isDisabled(f.key),
-			requiresLlm: f.requiresLlm,
+		const categories = SETTINGS.map((cat) => ({
+			name: cat.name,
+			settings: cat.settings.map((s) => toSettingState(s, cat.name)),
 		}));
-		const body: RagSettingsResponse = {
-			flags,
+		const body: SettingsResponse = {
+			categories,
 			llmActive: detectCurrentEmbedder() === "http",
 		};
 		// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
@@ -145,51 +179,60 @@ export function handleRagSettings(
 				res.end(JSON.stringify({ error: parsed.error }));
 				return;
 			}
-			const body = parsed.value as unknown as RagSettingsRequest;
-			const desired = body.flags;
-			if (typeof desired !== "object" || desired === null || Array.isArray(desired)) {
+			const reqBody = parsed.value as unknown as SettingsUpdateRequest;
+			const key = reqBody.key;
+			const value = reqBody.value;
+			if (typeof key !== "string" || typeof value !== "string") {
 				// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
 				res.writeHead(400, { "Content-Type": "application/json" });
-				res.end(JSON.stringify({ error: "invalid_flags" }));
+				res.end(JSON.stringify({ error: "invalid_body" }));
 				return;
 			}
-			// Only accept known RAG flag keys.
-			const known = new Set(RAG_FLAGS.map((f) => f.key));
-			for (const key of Object.keys(desired)) {
-				if (!known.has(key)) {
-					// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
-					res.writeHead(400, { "Content-Type": "application/json" });
-					res.end(JSON.stringify({ error: `unknown_flag: ${key}` }));
-					return;
-				}
+			const spec = SETTING_BY_KEY.get(key);
+			if (!spec) {
+				// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
+				res.writeHead(400, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: `unknown_setting: ${key}` }));
+				return;
 			}
 
-			const envPath = join(ctx.stateDir, ".mega-compact.env");
-			let lines: string[] = [];
-			if (existsSync(envPath)) {
-				const content = readFileSync(envPath, "utf-8");
-				lines = content.split("\n").filter((line) => !DISABLED_LINE.test(line));
-			}
-			for (const key of Object.keys(desired)) {
-				if (desired[key] === false) {
-					lines.push(`export ${key}_DISABLED="true"`);
-				}
-			}
-			if (lines.length > 0 && lines[lines.length - 1] !== "") lines.push("");
+			const envPath = envPathOf(ctx);
 			try {
 				mkdirSync(ctx.stateDir, { recursive: true });
-				writeFileSync(envPath, lines.join("\n"), "utf-8");
+				if (spec.type === "boolean") {
+					if (value !== "true" && value !== "false") {
+						throw new SettingError("boolean_value_required");
+					}
+					if (spec.disabledConvention) {
+						// false → opt out via KEY_DISABLED="true"; true → strip the line.
+						if (value === "false") {
+							writeSetting(envPath, spec.key, `export ${spec.key}_DISABLED="true"`);
+						} else {
+							removeSetting(envPath, spec.key);
+						}
+					} else {
+						writeSetting(envPath, spec.key, `export ${spec.key}="${value}"`);
+					}
+				} else if (spec.type === "number") {
+					const n = Number(value);
+					if (Number.isNaN(n)) throw new SettingError("invalid_number");
+					if (spec.min !== undefined && n < spec.min) throw new SettingError("below_min");
+					if (spec.max !== undefined && n > spec.max) throw new SettingError("above_max");
+					writeSetting(envPath, spec.key, `export ${spec.key}="${n}"`);
+				} else {
+					writeSetting(envPath, spec.key, `export ${spec.key}="${value}"`);
+				}
 			} catch (e) {
+				const msg =
+					e instanceof SettingError
+						? e.message
+						: `write_failed: ${e instanceof Error ? e.message : String(e)}`;
 				// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
-				res.writeHead(500, { "Content-Type": "application/json" });
-				res.end(
-					JSON.stringify({
-						error: `write_failed: ${e instanceof Error ? e.message : String(e)}`,
-					}),
-				);
+				res.writeHead(400, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: msg }));
 				return;
 			}
-			const resp: RagSettingsResponsePost = {
+			const resp: SettingsResponsePost = {
 				envPath,
 				restartRequired: true,
 			};
@@ -204,4 +247,11 @@ export function handleRagSettings(
 	res.writeHead(405, { "Content-Type": "application/json" });
 	res.end(JSON.stringify({ error: "method_not_allowed" }));
 	return true;
+}
+
+class SettingError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "SettingError";
+	}
 }
