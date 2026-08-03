@@ -6,6 +6,7 @@
  */
 
 import type React from "react";
+import { Card, CardContent } from "../components/ui/card";
 
 const LEGEND_ITEMS: ReadonlyArray<React.ReactNode> = [
 	<li key="1">
@@ -36,14 +37,20 @@ const LEGEND_ITEMS: ReadonlyArray<React.ReactNode> = [
 
 export function LegendCard(): React.ReactElement {
 	return (
-		<div className="card legend-card">
-			<details>
-				<summary>What these numbers mean</summary>
-				<ol className="legend-list">{LEGEND_ITEMS}</ol>
-				<p className="legend-note">
-					Hover any label above for a quick explanation.
-				</p>
-			</details>
-		</div>
+		<Card>
+			<CardContent>
+				<details>
+					<summary className="cursor-pointer text-sm font-semibold">
+						What these numbers mean
+					</summary>
+					<ol className="mt-2 list-decimal space-y-1 pl-5 text-sm">
+						{LEGEND_ITEMS}
+					</ol>
+					<p className="mt-2 text-xs text-muted-foreground">
+						Hover any label above for a quick explanation.
+					</p>
+				</details>
+			</CardContent>
+		</Card>
 	);
 }

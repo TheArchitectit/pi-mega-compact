@@ -12,6 +12,8 @@ import { useCallback, useMemo, useState } from "react";
 import { useApi } from "../hooks/useApi";
 import { fetchTopics, fetchTopicMemories } from "../api/client";
 import type { TopicsResponse, TopicMemoriesResponse } from "@contracts";
+import { Badge } from "../components/ui/badge";
+import { Card } from "../components/ui/card";
 
 function fmtTs(ms: number | null): string {
 	if (!ms) return "—";
@@ -48,33 +50,45 @@ export default function TopicsTab(): React.ReactElement {
 
 	if (error && !data) {
 		return (
-			<div className="tab-stub">Error loading topics: {error.message}</div>
+			<div className="rounded-lg border border-border bg-bg-card p-4 text-sm text-foreground">
+				Error loading topics: {error.message}
+			</div>
 		);
 	}
 	if (loading && !data) {
-		return <div className="tab-stub">Loading topics…</div>;
+		return (
+			<div className="rounded-lg border border-border bg-bg-card p-4 text-sm text-muted-foreground">
+				Loading topics…
+			</div>
+		);
 	}
 	if (!data) {
-		return <div className="tab-stub">No topic data available.</div>;
-	}
-
-	if (data.totalTopics === 0) {
 		return (
-			<div className="tab-stub">
-				<h3>Wiki</h3>
-				<p>
-					No topics yet. Topics are auto-generated after every 3rd compaction
-					from real memory embeddings (k-means + TF-IDF).
-				</p>
-				<p>Check back after a few more compaction cycles.</p>
+			<div className="rounded-lg border border-border bg-bg-card p-4 text-sm text-muted-foreground">
+				No topic data available.
 			</div>
 		);
 	}
 
+	if (data.totalTopics === 0) {
+		return (
+			<Card className="p-4">
+				<h3 className="font-heading text-lg font-semibold">Wiki</h3>
+				<p className="mt-2 text-sm">
+					No topics yet. Topics are auto-generated after every 3rd compaction
+					from real memory embeddings (k-means + TF-IDF).
+				</p>
+				<p className="mt-2 text-sm text-muted-foreground">
+					Check back after a few more compaction cycles.
+				</p>
+			</Card>
+		);
+	}
+
 	return (
-		<div className="tab-content topics-tab">
-			<h3>Wiki</h3>
-			<p className="subtitle">
+		<div className="flex flex-col gap-4">
+			<h3 className="font-heading text-lg font-semibold">Wiki</h3>
+			<p className="text-sm text-muted-foreground">
 				{data.totalTopics} topic{data.totalTopics !== 1 ? "s" : ""} ·{" "}
 				{data.totalAssigned} assigned memori
 				{data.totalAssigned !== 1 ? "es" : "y"}
@@ -85,87 +99,105 @@ export default function TopicsTab(): React.ReactElement {
 
 			<input
 				type="search"
-				className="topics-search"
+				className="mb-1 w-full max-w-sm rounded-md border border-border bg-bg-elevated/50 px-3 py-2 text-sm outline-none transition-colors focus:border-primary"
 				placeholder="Filter topics by label or term…"
 				value={query}
 				onChange={(e) => setQuery(e.target.value)}
 			/>
 
 			{drillTopicId && (
-				<section className="topic-drilldown">
-					<h4>
+				<Card>
+					<h4 className="flex items-center gap-2 font-heading text-base font-semibold">
 						<button
 							type="button"
-							className="link-btn"
+							className="text-sm text-muted-foreground transition-colors hover:text-foreground"
 							onClick={() => setDrillTopicId(null)}
 						>
 							← back
-						</button>{" "}
+						</button>
 						Topic <code>{drillTopicId}</code>
 						{drill.data && <> · {drill.data.label}</>}
 						{drill.data && <> · {drill.data.assignments.length} memories</>}
 					</h4>
 					{drill.error ? (
-						<div className="tab-stub">
+						<div className="mt-2 text-sm text-foreground">
 							Error: {(drill.error as Error).message}
 						</div>
 					) : drill.loading && !drill.data ? (
-						<div className="tab-stub">Loading memories…</div>
+						<div className="mt-2 text-sm text-muted-foreground">
+							Loading memories…
+						</div>
 					) : drill.data ? (
-						<table className="data-table">
+						<table className="mt-2 w-full border-collapse text-sm">
 							<thead>
 								<tr>
-									<th>Memory id</th>
-									<th>Confidence</th>
-									<th>Assigned</th>
+									<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">
+										Memory id
+									</th>
+									<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">
+										Confidence
+									</th>
+									<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">
+										Assigned
+									</th>
 								</tr>
 							</thead>
 							<tbody>
 								{drill.data.assignments.map((a) => (
-									<tr key={a.memoryId}>
-										<td>
+									<tr key={a.memoryId} className="border-b border-border/50">
+										<td className="px-3 py-2">
 											<code>{a.memoryId}</code>
 										</td>
-										<td>
+										<td className="px-3 py-2">
 											{a.confidence != null ? a.confidence.toFixed(2) : "—"}
 										</td>
-										<td>{fmtTs(a.assignedAt)}</td>
+										<td className="px-3 py-2">{fmtTs(a.assignedAt)}</td>
 									</tr>
 								))}
 							</tbody>
 						</table>
 					) : null}
-				</section>
+				</Card>
 			)}
 
 			{!drillTopicId && (
-				<table className="data-table">
+				<table className="w-full border-collapse text-sm">
 					<thead>
 						<tr>
-							<th>Label</th>
-							<th>Memories</th>
-							<th>Top Terms</th>
-							<th></th>
+							<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">
+								Label
+							</th>
+							<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">
+								Memories
+							</th>
+							<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">
+								Top Terms
+							</th>
+							<th className="border-b border-border px-3 py-2 text-right font-medium text-muted-foreground"></th>
 						</tr>
 					</thead>
 					<tbody>
 						{filtered.map((t) => (
 							<tr
 								key={t.id}
-								className="topic-row"
+								className="cursor-pointer border-b border-border/50 transition-colors hover:bg-bg-elevated/40"
 								onClick={() => setDrillTopicId(t.id)}
-								style={{ cursor: "pointer" }}
 							>
-								<td className="topic-label">{t.label}</td>
-								<td className="topic-count">{t.memoryCount}</td>
-								<td className="topic-terms">
+								<td className="px-3 py-2 font-semibold">{t.label}</td>
+								<td className="px-3 py-2">
+									<Badge variant="accent">{t.memoryCount}</Badge>
+								</td>
+								<td className="px-3 py-2 text-muted-foreground">
 									{t.termScore
 										.slice(0, 8)
 										.map((s) => s.term)
 										.join(", ")}
 								</td>
-								<td>
-									<button type="button" className="mini-btn">
+								<td className="px-3 py-2 text-right">
+									<button
+										type="button"
+										className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-bg-elevated/40 hover:text-foreground"
+									>
 										drill
 									</button>
 								</td>
@@ -173,7 +205,10 @@ export default function TopicsTab(): React.ReactElement {
 						))}
 						{filtered.length === 0 && (
 							<tr>
-								<td colSpan={4} className="muted">
+								<td
+									colSpan={4}
+									className="px-3 py-2 text-sm text-muted-foreground"
+								>
 									No topics match “{query}”.
 								</td>
 							</tr>

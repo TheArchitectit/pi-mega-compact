@@ -6,6 +6,12 @@
  */
 import type React from "react";
 import type { DbStatsResponse } from "@contracts";
+import {
+	Card,
+	CardHeader,
+	CardTitle,
+	CardContent,
+} from "../../components/ui/card";
 
 // ---------------------------------------------------------------------------
 // Format helpers (local — matches html.ts fmtBytes)
@@ -34,37 +40,47 @@ function FileSizesCard({
 }): React.ReactElement {
 	const total = files.dbBytes + files.walBytes + files.shmBytes;
 	return (
-		<div className="stat-section">
-			<div className="stat-label">File Sizes</div>
-			<table className="compact-table">
+		<div className="mt-3">
+			<div className="text-xs font-semibold text-muted-foreground">File Sizes</div>
+			<table className="mt-1 w-full border-collapse text-sm">
 				<tbody>
-					<tr>
-						<td>sqlite.db</td>
-						<td className="num">{fmtBytes(files.dbBytes)}</td>
+					<tr className="border-b border-border/50">
+						<td className="px-2 py-1">sqlite.db</td>
+						<td className="px-2 py-1 text-right font-semibold">
+							{fmtBytes(files.dbBytes)}
+						</td>
 					</tr>
 					{files.walBytes > 0 && (
-						<tr>
-							<td>.wal</td>
-							<td className="num">{fmtBytes(files.walBytes)}</td>
+						<tr className="border-b border-border/50">
+							<td className="px-2 py-1">.wal</td>
+							<td className="px-2 py-1 text-right font-semibold">
+								{fmtBytes(files.walBytes)}
+							</td>
 						</tr>
 					)}
 					{files.shmBytes > 0 && (
-						<tr>
-							<td>.shm</td>
-							<td className="num">{fmtBytes(files.shmBytes)}</td>
+						<tr className="border-b border-border/50">
+							<td className="px-2 py-1">.shm</td>
+							<td className="px-2 py-1 text-right font-semibold">
+								{fmtBytes(files.shmBytes)}
+							</td>
 						</tr>
 					)}
-					<tr>
-						<td>Total</td>
-						<td className="num">{fmtBytes(total)}</td>
+					<tr className="border-b border-border/50">
+						<td className="px-2 py-1">Total</td>
+						<td className="px-2 py-1 text-right font-semibold">
+							{fmtBytes(total)}
+						</td>
+					</tr>
+					<tr className="border-b border-border/50">
+						<td className="px-2 py-1">Page size</td>
+						<td className="px-2 py-1 text-right font-semibold">
+							{fmtBytes(pageSize)}
+						</td>
 					</tr>
 					<tr>
-						<td>Page size</td>
-						<td className="num">{fmtBytes(pageSize)}</td>
-					</tr>
-					<tr>
-						<td>Pages</td>
-						<td className="num">
+						<td className="px-2 py-1">Pages</td>
+						<td className="px-2 py-1 text-right font-semibold">
 							{pageCount.toLocaleString()} ({freelistPages.toLocaleString()}{" "}
 							free)
 						</td>
@@ -82,22 +98,26 @@ function TableRowCountsCard({
 }): React.ReactElement {
 	const totalRows = tables.reduce((s, t) => s + Math.max(0, t.rowCount), 0);
 	return (
-		<div className="stat-section">
-			<div className="stat-label">
+		<div className="mt-3">
+			<div className="text-xs font-semibold text-muted-foreground">
 				Table Row Counts ({totalRows.toLocaleString()} total)
 			</div>
-			<table className="compact-table">
+			<table className="mt-1 w-full border-collapse text-sm">
 				<thead>
 					<tr>
-						<th>Table</th>
-						<th className="num">Rows</th>
+						<th className="border-b border-border px-2 py-1 text-left font-medium text-muted-foreground">
+							Table
+						</th>
+						<th className="border-b border-border px-2 py-1 text-right font-medium text-muted-foreground">
+							Rows
+						</th>
 					</tr>
 				</thead>
 				<tbody>
 					{tables.map((t) => (
-						<tr key={t.table}>
-							<td>{t.table}</td>
-							<td className="num">
+						<tr key={t.table} className="border-b border-border/50">
+							<td className="px-2 py-1">{t.table}</td>
+							<td className="px-2 py-1 text-right">
 								{t.rowCount >= 0 ? t.rowCount.toLocaleString() : "—"}
 							</td>
 						</tr>
@@ -118,11 +138,17 @@ export function DbStatsCard({
 	error: Error | null;
 }): React.ReactElement {
 	return (
-		<div className="card">
-			<div className="card-header">DB Stats</div>
-			<div className="card-body">
-				{loading && !data && <span className="text-muted">Loading…</span>}
-				{error && !data && <span className="text-error">{error.message}</span>}
+		<Card>
+			<CardHeader>
+				<CardTitle>DB Stats</CardTitle>
+			</CardHeader>
+			<CardContent>
+				{loading && !data && (
+					<span className="text-sm text-muted-foreground">Loading…</span>
+				)}
+				{error && !data && (
+					<span className="text-sm text-red-400">{error.message}</span>
+				)}
 				{data && (
 					<>
 						<FileSizesCard
@@ -134,7 +160,7 @@ export function DbStatsCard({
 						<TableRowCountsCard tables={data.tables} />
 					</>
 				)}
-			</div>
-		</div>
+			</CardContent>
+		</Card>
 	);
 }

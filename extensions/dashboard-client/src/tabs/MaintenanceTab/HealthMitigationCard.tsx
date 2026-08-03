@@ -7,6 +7,13 @@
  */
 import type React from "react";
 import { useState, useCallback, useEffect } from "react";
+import { Switch } from "../../components/ui/switch";
+import {
+	Card,
+	CardHeader,
+	CardTitle,
+	CardContent,
+} from "../../components/ui/card";
 
 // ---------------------------------------------------------------------------
 // Health Mitigation card — toggle auto-mitigation for degraded context
@@ -48,51 +55,63 @@ export function HealthMitigationCard(): React.ReactElement {
 	}, [mitigate]);
 
 	return (
-		<div className="stat-section maintenance-card">
-			<div className="stat-label">Context Health Mitigation</div>
-			{loading ? (
-				<p className="repo-none">Loading…</p>
-			) : (
-				<>
-					<div className="health-mitigate-row">
-						<label className="health-mitigate-toggle">
-							<input
-								type="checkbox"
+		<Card>
+			<CardHeader>
+				<CardTitle>Context Health Mitigation</CardTitle>
+			</CardHeader>
+			<CardContent>
+				{loading ? (
+					<p className="text-sm text-muted-foreground">Loading…</p>
+				) : (
+					<>
+						<div className="flex items-center gap-2">
+							<Switch
 								checked={mitigate}
-								onChange={toggle}
+								onCheckedChange={toggle}
 								disabled={saving}
+								aria-label="Context health auto-mitigation"
 							/>
-							<span>Auto-mitigation {mitigate ? "ON" : "OFF"}</span>
-						</label>
-					</div>
-					<div className="health-mitigate-info">
-						<p>
-							When <strong>ON</strong>, the extension automatically intervenes when
-							context health degrades:
-						</p>
-						<ul>
-							<li><strong>Forced compaction</strong> — when the composite health score
-							drops below 0.4 (severe drift or garbled output), a compaction is
-							triggered to flush the degraded context and rebuild from clean
-							checkpoints, even if the context window isn&apos;t full.</li>
-							<li><strong>Prefix break</strong> — when KV cache poison is detected
-							(score &lt; 0.3), the cached prefix is invalidated to force a cache
-							miss on the next turn, bypassing the corrupted KV state.</li>
-						</ul>
-						<p className="health-mitigate-warning">
-							WARNING: both interventions have costs — forced compaction discards
-							live context, and prefix breaks kill cache savings. Only enable when
-							you&apos;re seeing degraded output (garbled text, hallucinations,
-							loss of coherence) and the Health tab confirms low scores.
-						</p>
-						<p>
-							Also settable via env var: <code>MEGACOMPACT_CONTEXT_HEALTH_MITIGATE=1</code>.
-							The dashboard toggle persists to the store and takes precedence.
-						</p>
-						{error && <p className="health-mitigate-error">Error: {error}</p>}
-					</div>
-				</>
-			)}
-		</div>
+							<span className="text-sm">
+								Auto-mitigation {mitigate ? "ON" : "OFF"}
+							</span>
+						</div>
+						<div className="mt-3 space-y-2 text-sm">
+							<p>
+								When <strong>ON</strong>, the extension automatically intervenes
+								when context health degrades:
+							</p>
+							<ul className="list-disc space-y-1 pl-5">
+								<li>
+									<strong>Forced compaction</strong> — when the composite health
+									score drops below 0.4 (severe drift or garbled output), a
+									compaction is triggered to flush the degraded context and
+									rebuild from clean checkpoints, even if the context window
+									isn&apos;t full.
+								</li>
+								<li>
+									<strong>Prefix break</strong> — when KV cache poison is
+									detected (score &lt; 0.3), the cached prefix is invalidated to
+									force a cache miss on the next turn, bypassing the corrupted KV
+									state.
+								</li>
+							</ul>
+							<p className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-amber-400">
+								WARNING: both interventions have costs — forced compaction discards
+								live context, and prefix breaks kill cache savings. Only enable
+								when you&apos;re seeing degraded output (garbled text,
+								hallucinations, loss of coherence) and the Health tab confirms low
+								scores.
+							</p>
+							<p className="text-muted-foreground">
+								Also settable via env var:{" "}
+								<code>MEGACOMPACT_CONTEXT_HEALTH_MITIGATE=1</code>. The dashboard
+								toggle persists to the store and takes precedence.
+							</p>
+							{error && <p className="text-sm text-red-400">Error: {error}</p>}
+						</div>
+					</>
+				)}
+			</CardContent>
+		</Card>
 	);
 }

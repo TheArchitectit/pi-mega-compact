@@ -15,6 +15,7 @@ import {
 	EventCategoryFilter,
 	type EventCategory,
 } from "../components/EventCategoryFilter";
+import { Badge } from "../components/ui/badge";
 
 const COMPACT_TYPES = new Set([
 	"compact_start",
@@ -63,7 +64,14 @@ export default function EventsTab(): React.ReactElement {
 		[events, category],
 	);
 
-	const statusCls = `sse-status sse-${status}`;
+	const statusVariant =
+		status === "connected"
+			? ("success" as const)
+			: status === "error"
+				? ("danger" as const)
+				: status === "connecting"
+					? ("warning" as const)
+					: ("outline" as const);
 	const statusLabel =
 		status === "connected"
 			? "connected"
@@ -74,13 +82,15 @@ export default function EventsTab(): React.ReactElement {
 					: "disconnected";
 
 	return (
-		<div className="events-tab">
-			<div className="events-header">
-				<span className={statusCls} role="status">
-					<span className="sse-dot" aria-hidden="true" />
+		<div className="flex flex-col gap-4">
+			<div className="flex items-center justify-between">
+				<Badge variant={statusVariant} role="status">
+					<span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
 					{statusLabel}
+				</Badge>
+				<span className="text-xs text-muted-foreground">
+					{eventCount} events received
 				</span>
-				<span className="event-count">{eventCount} events received</span>
 			</div>
 			<EventCategoryFilter active={category} onFilter={setCategory} />
 			<EventStream events={filtered} />

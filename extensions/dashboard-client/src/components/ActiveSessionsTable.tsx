@@ -10,6 +10,7 @@
 
 import type React from "react";
 import type { ActiveSession, SessionSeries } from "@contracts";
+import { Card, CardContent } from "../components/ui/card";
 
 export interface ActiveSessionsTableProps {
 	/** Active sessions, sorted by lastSeen descending (from /api/sessions). */
@@ -123,63 +124,74 @@ export function ActiveSessionsTable({
 	const now = Date.now();
 
 	return (
-		<div className="sessions-table-scroll">
-			<table className="sessions-table">
-				<thead>
-					<tr>
-						{HEADERS.map((h, i) => (
-							<th
-								key={h}
-								className={i >= 3 && i !== 6 ? "num" : undefined}
-							>
-								{h}
-							</th>
-						))}
-					</tr>
-				</thead>
-				<tbody>
-					{sessions.length === 0 && (
-						<tr className="sessions-empty-row">
-							<td colSpan={HEADERS.length}>No active sessions.</td>
-						</tr>
-					)}
-					{sessions.map((s) => {
-						const srs = seriesById.get(s.sessionId);
-						const sparkPts =
-							srs?.data.map((d) => d.tokens) ?? [];
-						const color = srs?.color ?? "#58a6ff";
-						return (
-							<tr key={`${s.pid}:${s.sessionId}`}>
-								<td className="num">{s.pid}</td>
-								<td title={s.repoRoot ?? undefined}>
-									{s.displayName || s.repoRoot || "\u2014"}
-								</td>
-								<td>{s.model ?? "\u2014"}</td>
-								<td className="num">
-									<span className={`sessions-pct-pill ${pctClass(s.percent)}`}>
-										{fmtPct(s.percent)}
-									</span>
-								</td>
-								<td className="num">
-									{fmtWindow(s.tokens, s.ctxWindow)}
-								</td>
-								<td className="num">{fmtAge(now - s.lastSeen)}</td>
-								<td
-									title={s.stateDir ?? undefined}
-									className="sessions-meta"
+		<Card>
+			<CardContent>
+			<div className="overflow-x-auto">
+				<table className="w-full border-collapse text-sm">
+					<thead>
+						<tr>
+							{HEADERS.map((h, i) => (
+								<th
+									key={h}
+									className={`border-b border-border px-3 py-2 text-left font-medium text-muted-foreground${
+										i >= 3 && i !== 6 ? " text-right" : ""
+									}`}
 								>
-									{s.stateDir
-										? s.stateDir.split("/").pop() || s.stateDir
-										: "\u2014"}
-								</td>
-								<td>
-									<Sparkline points={sparkPts} color={color} />
+									{h}
+								</th>
+							))}
+						</tr>
+					</thead>
+					<tbody>
+						{sessions.length === 0 && (
+							<tr>
+								<td colSpan={HEADERS.length} className="px-3 py-4 text-muted-foreground">
+									No active sessions.
 								</td>
 							</tr>
-						);
-					})}
-				</tbody>
-			</table>
-		</div>
+						)}
+						{sessions.map((s) => {
+							const srs = seriesById.get(s.sessionId);
+							const sparkPts =
+								srs?.data.map((d) => d.tokens) ?? [];
+							const color = srs?.color ?? "#58a6ff";
+							return (
+								<tr
+									key={`${s.pid}:${s.sessionId}`}
+									className="border-b border-border/50 hover:bg-bg-elevated/40"
+								>
+									<td className="px-3 py-2 text-right font-mono">{s.pid}</td>
+									<td className="px-3 py-2" title={s.repoRoot ?? undefined}>
+										{s.displayName || s.repoRoot || "\u2014"}
+									</td>
+									<td className="px-3 py-2">{s.model ?? "\u2014"}</td>
+									<td className="px-3 py-2 text-right">
+										<span className={`sessions-pct-pill ${pctClass(s.percent)}`}>
+											{fmtPct(s.percent)}
+										</span>
+									</td>
+									<td className="px-3 py-2 text-right">
+										{fmtWindow(s.tokens, s.ctxWindow)}
+									</td>
+									<td className="px-3 py-2 text-right">{fmtAge(now - s.lastSeen)}</td>
+									<td
+										title={s.stateDir ?? undefined}
+										className="px-3 py-2 font-mono text-muted-foreground"
+									>
+										{s.stateDir
+											? s.stateDir.split("/").pop() || s.stateDir
+											: "\u2014"}
+									</td>
+									<td className="px-3 py-2">
+										<Sparkline points={sparkPts} color={color} />
+									</td>
+								</tr>
+							);
+						})}
+					</tbody>
+				</table>
+			</div>
+			</CardContent>
+		</Card>
 	);
 }

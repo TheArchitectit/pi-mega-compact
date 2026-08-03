@@ -18,6 +18,7 @@
 
 import type React from "react";
 import type { ActiveSession, SessionsResponse } from "@contracts";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 
 export interface RepoContextStackProps {
 	/** Active sessions from /api/sessions (may be null while loading). */
@@ -135,6 +136,17 @@ function fmtTokens(n: number): string {
 	return n.toLocaleString();
 }
 
+function StackCard({ children }: { children: React.ReactNode }): React.ReactElement {
+	return (
+		<Card className="electric-hover">
+			<CardHeader>
+				<CardTitle>Context per Repo (live)</CardTitle>
+			</CardHeader>
+			<CardContent>{children}</CardContent>
+		</Card>
+	);
+}
+
 export function RepoContextStack({
 	sessions,
 	loading,
@@ -142,21 +154,19 @@ export function RepoContextStack({
 }: RepoContextStackProps): React.ReactElement | null {
 	if (error) {
 		return (
-			<div className="card repo-stack-card">
-				<h3>Context per Repo (live)</h3>
-				<div className="sessions-empty">
+			<StackCard>
+				<span className="text-sm text-muted-foreground">
 					Error loading sessions: {error.message}
-				</div>
-			</div>
+				</span>
+			</StackCard>
 		);
 	}
 
 	if (loading && !sessions) {
 		return (
-			<div className="card repo-stack-card">
-				<h3>Context per Repo (live)</h3>
-				<div className="sessions-empty">Loading sessions…</div>
-			</div>
+			<StackCard>
+				<span className="text-sm text-muted-foreground">Loading sessions…</span>
+			</StackCard>
 		);
 	}
 
@@ -166,10 +176,9 @@ export function RepoContextStack({
 
 	if (repos.length === 0) {
 		return (
-			<div className="card repo-stack-card">
-				<h3>Context per Repo (live)</h3>
-				<div className="sessions-empty">No active sessions.</div>
-			</div>
+			<StackCard>
+				<span className="text-sm text-muted-foreground">No active sessions.</span>
+			</StackCard>
 		);
 	}
 
@@ -177,8 +186,7 @@ export function RepoContextStack({
 		maxWindow > 0 ? Math.round((totalTokens / maxWindow) * 100) : 0;
 
 	return (
-		<div className="card repo-stack-card">
-			<h3>Context per Repo (live)</h3>
+		<StackCard>
 			<div
 				className="repo-stack-bar"
 				role="group"
@@ -233,6 +241,6 @@ export function RepoContextStack({
 					);
 				})}
 			</div>
-		</div>
+		</StackCard>
 	);
 }

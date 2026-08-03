@@ -8,6 +8,7 @@
 
 import type React from "react";
 import type { PerfResponse } from "@contracts";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 
 export interface PerfChartProps {
 	perf: PerfResponse;
@@ -50,13 +51,14 @@ export function PerfChart({ perf }: PerfChartProps): React.ReactElement {
 	const tpsRef = Math.max(perf.tps.avg, 1);
 
 	return (
-		<div className="perf-chart">
-			<div className="perf-header">
-				<h3>Performance</h3>
-				<span className="perf-window">
+		<Card>
+			<CardHeader className="flex-row items-center justify-between space-y-0">
+				<CardTitle>Performance</CardTitle>
+				<span className="text-xs text-muted-foreground">
 					{perf.windowMinutes}min window · {perf.sampleCount} samples
 				</span>
-			</div>
+			</CardHeader>
+			<CardContent>
 			<div className="perf-grid">
 				<div className="perf-metric">
 					<span className="perf-label">Turn latency p50 / p95</span>
@@ -155,6 +157,7 @@ export function PerfChart({ perf }: PerfChartProps): React.ReactElement {
 					</span>
 				</div>
 			)}
-		</div>
+			</CardContent>
+		</Card>
 	);
 }

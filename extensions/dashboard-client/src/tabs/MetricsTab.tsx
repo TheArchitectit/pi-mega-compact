@@ -35,7 +35,7 @@ export default function MetricsTab(): React.ReactElement {
 	}
 
 	return (
-		<div className="metrics-tab">
+		<div className="flex flex-col gap-4">
 			{snapshot?.model && (
 				<ModelBadge
 					name={snapshot.model.name}
@@ -47,7 +47,7 @@ export default function MetricsTab(): React.ReactElement {
 			)}
 			<PerfChart perf={perf} />
 			<PerfCards perf={perf} />
-			<div className="perf-footer">
+			<div className="text-xs text-muted-foreground">
 				{perf.sampleCount} samples · updated {perf.updatedAt}
 			</div>
 		</div>

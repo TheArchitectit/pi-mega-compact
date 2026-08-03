@@ -41,6 +41,7 @@ import { SessionInfo } from "../components/SessionInfo";
 import { CacheHitsCard } from "../components/CacheHitsCard";
 import { TimeSavedCard } from "../components/TimeSavedCard";
 import { LegendCard } from "../components/LegendCard";
+import { Badge } from "../components/ui/badge";
 
 /** Type guard: narrows an SSE event to a session_sample event. */
 function isSessionSample(e: SseEvent): e is SseSessionSample {
@@ -111,12 +112,14 @@ export default function OverviewTab({
 	const model = d.model;
 
 	return (
-		<div className="overview-tab">
-			<div className="overview-header">
-				<span className="tier-pill">{tier}</span>
-				<span className="updated">updated {formatUpdatedAt(updatedAt)}</span>
+		<div className="flex flex-col gap-4">
+			<div className="flex items-center justify-between">
+				<Badge variant="accent">{tier}</Badge>
+				<span className="text-xs text-muted-foreground">
+					updated {formatUpdatedAt(updatedAt)}
+				</span>
 			</div>
-			<div className="card-grid overview-card-grid">
+			<div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
 				<SessionContextGauges
 					sessions={sessionsData}
 					loading={sessionsLoading}

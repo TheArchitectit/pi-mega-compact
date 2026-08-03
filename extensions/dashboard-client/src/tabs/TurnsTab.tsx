@@ -30,17 +30,20 @@ import type {
 	TurnRow,
 	ConversationSummary,
 } from "@contracts";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
 
 function fmtTs(ms: number): string {
 	if (!ms) return "—";
 	return new Date(ms).toLocaleString();
 }
 
-function bandClass(band: TurnRow["pressureBand"]): string {
-	if (band === "green") return "band band-green";
-	if (band === "yellow") return "band band-yellow";
-	if (band === "red") return "band band-red";
-	return "band";
+function bandVariant(band: TurnRow["pressureBand"]): "success" | "warning" | "danger" | "default" {
+	if (band === "green") return "success";
+	if (band === "yellow") return "warning";
+	if (band === "red") return "danger";
+	return "default";
 }
 
 function sourceLabel(s: TurnRow["recall"][number]["source"]): string {
@@ -145,70 +148,88 @@ export default function TurnsTab(): React.ReactElement {
 	}
 
 	return (
-		<div className="turns-tab">
-			<h3>Turn-by-turn memory tracking + recall</h3>
-			{notice && <div className="turns-notice">{notice}</div>}
+		<div className="flex flex-col gap-4">
+			<h3 className="font-heading text-lg font-semibold">
+				Turn-by-turn memory tracking + recall
+			</h3>
+			{notice && <Badge variant="warning">{notice}</Badge>}
 
 			{intents && intents.intents.length > 0 && (
-				<section className="turns-intents">
-					<h4>Pending rewind intents ({intents.intents.length})</h4>
-					<ul>
-						{intents.intents.map((i) => (
-							<li key={i.id}>
-								{fmtTs(i.createdAt)} — rewind <code>{i.conversationId}</code> to
-								turn {i.targetTurnIndex}
-							</li>
-						))}
-					</ul>
-				</section>
+				<Card>
+					<CardHeader>
+						<CardTitle>
+							Pending rewind intents ({intents.intents.length})
+						</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<ul className="list-disc space-y-1 pl-5">
+							{intents.intents.map((i) => (
+								<li key={i.id}>
+									{fmtTs(i.createdAt)} — rewind{" "}
+									<code>{i.conversationId}</code> to turn {i.targetTurnIndex}
+								</li>
+							))}
+						</ul>
+					</CardContent>
+				</Card>
 			)}
 
-			<section className="turns-conv-list">
-				<h4>Conversations ({turns.conversations.length})</h4>
-				<table className="turns-table">
-					<thead>
-						<tr>
-							<th>Conversation</th>
-							<th>Turns</th>
-							<th>Recall</th>
-							<th>Epochs</th>
-							<th>Avg ctx%</th>
-							<th>Last turn</th>
-							<th></th>
-						</tr>
-					</thead>
-					<tbody>
-						{turns.conversations.map((c: ConversationSummary) => (
-							<ConversationRow
-								key={c.conversationId}
-								c={c}
-								active={turns.activeConversationId === c.conversationId}
-								expanded={expanded === c.conversationId}
-								onExpand={() => expand(c.conversationId)}
-							/>
-						))}
-					</tbody>
-				</table>
-			</section>
+			<Card>
+				<CardHeader>
+					<CardTitle>
+						Conversations ({turns.conversations.length})
+					</CardTitle>
+				</CardHeader>
+				<CardContent>
+					<table className="w-full border-collapse text-sm">
+						<thead>
+							<tr>
+								<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Conversation</th>
+								<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Turns</th>
+								<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Recall</th>
+								<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Epochs</th>
+								<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Avg ctx%</th>
+								<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Last turn</th>
+								<th className="border-b border-border px-3 py-2"></th>
+							</tr>
+						</thead>
+						<tbody>
+							{turns.conversations.map((c: ConversationSummary) => (
+								<ConversationRow
+									key={c.conversationId}
+									c={c}
+									active={turns.activeConversationId === c.conversationId}
+									expanded={expanded === c.conversationId}
+									onExpand={() => expand(c.conversationId)}
+								/>
+							))}
+						</tbody>
+					</table>
+				</CardContent>
+			</Card>
 
 			{expanded && (
-				<section className="turns-detail">
-					<h4>
-						Turns in <code>{expanded}</code>
-					</h4>
-					{detailLoading ? (
-						<div className="tab-stub">Loading turns…</div>
-					) : detail ? (
-						<TurnDetail
-							detail={detail}
-							busy={busy}
-							onFork={onFork}
-							onRewind={onRewind}
-						/>
-					) : (
-						<div className="tab-stub">No detail.</div>
-					)}
-				</section>
+				<Card>
+					<CardHeader>
+						<CardTitle>
+							Turns in <code>{expanded}</code>
+						</CardTitle>
+					</CardHeader>
+					<CardContent>
+						{detailLoading ? (
+							<div className="text-sm text-muted-foreground">Loading turns…</div>
+						) : detail ? (
+							<TurnDetail
+								detail={detail}
+								busy={busy}
+								onFork={onFork}
+								onRewind={onRewind}
+							/>
+						) : (
+							<div className="text-sm text-muted-foreground">No detail.</div>
+						)}
+					</CardContent>
+				</Card>
 			)}
 		</div>
 	);
@@ -228,20 +249,22 @@ function ConversationRow({
 	return (
 		<>
 			<tr
-				className={active ? "turns-row active" : "turns-row"}
+				className={`border-b border-border/50 hover:bg-bg-elevated/40 ${
+					active ? "bg-primary/10" : ""
+				}`}
 				onClick={onExpand}
 				style={{ cursor: "pointer" }}
 			>
-				<td>
+				<td className="px-3 py-2">
 					{expanded ? "▾" : "▸"} <code>{c.conversationId}</code>
-					{active && <span className="pill">active</span>}
+					{active && <Badge variant="accent" className="ml-2">active</Badge>}
 				</td>
-				<td>{c.turnCount}</td>
-				<td>{c.totalRecall}</td>
-				<td>{c.epochCount}</td>
-				<td>{c.avgCtxPercent.toFixed(0)}%</td>
-				<td>{fmtTs(c.lastTurnAt)}</td>
-				<td />
+				<td className="px-3 py-2 text-right">{c.turnCount}</td>
+				<td className="px-3 py-2 text-right">{c.totalRecall}</td>
+				<td className="px-3 py-2 text-right">{c.epochCount}</td>
+				<td className="px-3 py-2 text-right">{c.avgCtxPercent.toFixed(0)}%</td>
+				<td className="px-3 py-2">{fmtTs(c.lastTurnAt)}</td>
+				<td className="px-3 py-2" />
 			</tr>
 		</>
 	);
@@ -259,48 +282,51 @@ function TurnDetail({
 	onRewind: (conversationId: string, turnIndex: number) => void;
 }): React.ReactElement {
 	return (
-		<table className="turns-detail-table">
+		<table className="w-full border-collapse text-sm">
 			<thead>
 				<tr>
-					<th>#</th>
-					<th>Role</th>
-					<th>Ctx</th>
-					<th>Band</th>
-					<th>Epoch</th>
-					<th>Recalled checkpoints (memory recall)</th>
-					<th>Ended</th>
-					<th>Actions</th>
+					<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">#</th>
+					<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Role</th>
+					<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Ctx</th>
+					<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Band</th>
+					<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Epoch</th>
+					<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Recalled checkpoints (memory recall)</th>
+					<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Ended</th>
+					<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Actions</th>
 				</tr>
 			</thead>
 			<tbody>
 				{detail.turns.map((t) => (
-					<tr key={`${t.conversationId}:${t.turnIndex}`}>
-						<td>{t.turnIndex}</td>
-						<td>{t.role}</td>
-						<td>
+					<tr
+						key={`${t.conversationId}:${t.turnIndex}`}
+						className="border-b border-border/50 hover:bg-bg-elevated/40"
+					>
+						<td className="px-3 py-2 text-right">{t.turnIndex}</td>
+						<td className="px-3 py-2">{t.role}</td>
+						<td className="px-3 py-2">
 							{t.ctxTokens ?? "—"}
 							{t.ctxPercent != null && (
-								<span className="muted">
+								<span className="text-muted-foreground">
 									{" "}
 									· {t.ctxPercent.toFixed(0)}%
 								</span>
 							)}
 						</td>
-						<td>
-							<span className={bandClass(t.pressureBand)}>
+						<td className="px-3 py-2">
+							<Badge variant={bandVariant(t.pressureBand)}>
 								{t.pressureBand ?? "—"}
-							</span>
+							</Badge>
 						</td>
-						<td>{t.epochId ? <code>{t.epochId.slice(0, 8)}</code> : "—"}</td>
-						<td className="recall-cell">
+						<td className="px-3 py-2">{t.epochId ? <code>{t.epochId.slice(0, 8)}</code> : "—"}</td>
+						<td className="px-3 py-2">
 							{t.recall.length === 0 ? (
-								<span className="muted">—</span>
+								<span className="text-muted-foreground">—</span>
 							) : (
-								<ul className="recall-list">
+								<ul className="space-y-1">
 									{t.recall.map((r) => (
 										<li key={r.checkpointId}>
 											<code>{r.checkpointId.slice(0, 12)}</code>{" "}
-											<span className="muted">
+											<span className="text-muted-foreground">
 												{sourceLabel(r.source)} · {r.score.toFixed(2)}
 												{r.raptorLevel != null ? ` · L${r.raptorLevel}` : ""}
 											</span>
@@ -309,24 +335,28 @@ function TurnDetail({
 								</ul>
 							)}
 						</td>
-						<td>{fmtTs(t.endedAt)}</td>
-						<td className="actions-cell">
-							<button
-								type="button"
-								className="mini-btn"
-								disabled={busy !== null}
-								onClick={() => onFork(t.conversationId, t.turnIndex)}
-							>
-								fork
-							</button>
-							<button
-								type="button"
-								className="mini-btn"
-								disabled={busy !== null}
-								onClick={() => onRewind(t.conversationId, t.turnIndex)}
-							>
-								rewind
-							</button>
+						<td className="px-3 py-2">{fmtTs(t.endedAt)}</td>
+						<td className="px-3 py-2">
+							<div className="flex gap-2">
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									disabled={busy !== null}
+									onClick={() => onFork(t.conversationId, t.turnIndex)}
+								>
+									fork
+								</Button>
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									disabled={busy !== null}
+									onClick={() => onRewind(t.conversationId, t.turnIndex)}
+								>
+									rewind
+								</Button>
+							</div>
 						</td>
 					</tr>
 				))}

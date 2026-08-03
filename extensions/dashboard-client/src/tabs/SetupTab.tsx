@@ -13,73 +13,35 @@ import GameTab from "./GameTab";
 import AchievementsTab from "./AchievementsTab";
 import ConfigTab from "./ConfigTab";
 import EmbedderSetup from "./SetupTab/EmbedderSetup";
-
-const containerStyle: React.CSSProperties = {
-	padding: "1rem",
-	maxWidth: "720px",
-	margin: "0 auto",
-	fontFamily: "system-ui, sans-serif",
-	color: "#e0e0e0",
-};
+import { Toggle } from "../components/ui/toggle";
 
 type SetupSubTab = "embedder" | "config" | "game" | "achievements";
 
-const subTabNavStyle: React.CSSProperties = {
-	display: "flex",
-	gap: "0.5rem",
-	marginBottom: "1rem",
-	borderBottom: "1px solid #2a2a4e",
-	paddingBottom: "0.5rem",
-};
-
-function subTabBtnStyle(active: boolean): React.CSSProperties {
-	return {
-		background: active ? "#3a5a9f" : "transparent",
-		color: active ? "#fff" : "#a0a0c0",
-		border: "1px solid",
-		borderColor: active ? "#3a5a9f" : "#2a2a4e",
-		borderRadius: "6px",
-		padding: "0.4rem 0.8rem",
-		cursor: "pointer",
-		fontSize: "0.9rem",
-		fontWeight: active ? 600 : 400,
-	};
-}
+const SUB_TABS: ReadonlyArray<{ id: SetupSubTab; label: string }> = [
+	{ id: "embedder", label: "Embedder" },
+	{ id: "config", label: "Config" },
+	{ id: "game", label: "Game Mode" },
+	{ id: "achievements", label: "Achievements" },
+];
 
 export default function SetupTab(): React.ReactElement {
 	const [subTab, setSubTab] = useState<SetupSubTab>("embedder");
 
 	return (
-		<div style={containerStyle}>
-			<nav style={subTabNavStyle} aria-label="Setup sections">
-				<button
-					type="button"
-					style={subTabBtnStyle(subTab === "embedder")}
-					onClick={() => setSubTab("embedder")}
-				>
-					Embedder
-				</button>
-				<button
-					type="button"
-					style={subTabBtnStyle(subTab === "config")}
-					onClick={() => setSubTab("config")}
-				>
-					Config
-				</button>
-				<button
-					type="button"
-					style={subTabBtnStyle(subTab === "game")}
-					onClick={() => setSubTab("game")}
-				>
-					Game Mode
-				</button>
-				<button
-					type="button"
-					style={subTabBtnStyle(subTab === "achievements")}
-					onClick={() => setSubTab("achievements")}
-				>
-					Achievements
-				</button>
+		<div className="mx-auto flex max-w-3xl flex-col gap-4 p-4">
+			<nav
+				className="flex gap-2 border-b border-border pb-2"
+				aria-label="Setup sections"
+			>
+				{SUB_TABS.map((t) => (
+					<Toggle
+						key={t.id}
+						pressed={subTab === t.id}
+						onClick={() => setSubTab(t.id)}
+					>
+						{t.label}
+					</Toggle>
+				))}
 			</nav>
 
 			{subTab === "embedder" && <EmbedderSetup />}

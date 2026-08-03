@@ -6,6 +6,7 @@
  */
 
 import type React from "react";
+import { Card, CardContent } from "../components/ui/card";
 
 export interface SummaryTilesProps {
 	/** Total repos in the registry. */
@@ -39,23 +40,31 @@ export function SummaryTiles({
 	compressedOriginalBytes,
 }: SummaryTilesProps): React.ReactElement {
 	return (
-		<div className="summary-tiles">
-			<div className="tile">
-				<span className="tile-label">Repositories</span>
-				<span className="tile-value">{totalRepos.toLocaleString()}</span>
-			</div>
-			<div className="tile">
-				<span className="tile-label">Total Checkpoints</span>
-				<span className="tile-value">{totalCheckpoints.toLocaleString()}</span>
-			</div>
-			<div className="tile tile-highlight">
-				<span className="tile-label">Total Tokens Saved</span>
-				<span className="tile-value">{fmt(totalTokensSaved)}</span>
-			</div>
-			<div className="tile">
-				<span className="tile-label">Compressed-Original</span>
-				<span className="tile-value">{fmtBytesTop(compressedOriginalBytes)}</span>
-			</div>
+		<div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+			<Card className="electric-hover">
+				<CardContent>
+					<span className="tile-label">Repositories</span>
+					<div className="text-xl font-semibold">{totalRepos.toLocaleString()}</div>
+				</CardContent>
+			</Card>
+			<Card className="electric-hover">
+				<CardContent>
+					<span className="tile-label">Total Checkpoints</span>
+					<div className="text-xl font-semibold">{totalCheckpoints.toLocaleString()}</div>
+				</CardContent>
+			</Card>
+			<Card className="electric-hover">
+				<CardContent>
+					<span className="tile-label">Total Tokens Saved</span>
+					<div className="text-xl font-semibold">{fmt(totalTokensSaved)}</div>
+				</CardContent>
+			</Card>
+			<Card className="electric-hover">
+				<CardContent>
+					<span className="tile-label">Compressed-Original</span>
+					<div className="text-xl font-semibold">{fmtBytesTop(compressedOriginalBytes)}</div>
+				</CardContent>
+			</Card>
 		</div>
 	);
 }

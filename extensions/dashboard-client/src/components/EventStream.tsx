@@ -9,6 +9,7 @@
 import type React from "react";
 import { useState, useMemo } from "react";
 import type { SseEvent } from "@contracts";
+import { Toggle } from "../components/ui/toggle";
 
 export interface EventStreamProps {
 	events: SseEvent[];
@@ -114,37 +115,38 @@ export function EventStream({ events }: EventStreamProps): React.ReactElement {
 	}, [events, filter]);
 
 	return (
-		<div className="event-stream">
-			<div className="event-filters" role="toolbar">
+		<div className="flex flex-col gap-3">
+			<div className="flex flex-wrap items-center gap-2" role="toolbar">
 				{FILTER_TYPES.map((t) => (
-					<button
+					<Toggle
 						key={t}
-						type="button"
-						className={`filter-chip ${filter === t ? "active" : ""}`}
+						pressed={filter === t}
 						onClick={() => setFilter(t)}
 					>
 						{t === "all" ? "all" : t.replace(/_/g, " ")}
-					</button>
+					</Toggle>
 				))}
-				<span className="event-count">{events.length} buffered</span>
+				<span className="text-xs text-muted-foreground">{events.length} buffered</span>
 			</div>
-			<ul className="event-list">
+			<ul className="flex flex-col gap-1 font-mono text-xs">
 				{filtered.length === 0 && (
-					<li className="event-empty">No events yet.</li>
+					<li className="text-muted-foreground">No events yet.</li>
 				)}
 				{filtered.map((ev, idx) => {
 					const cls = TYPE_COLORS[ev.type] ?? "ev-default";
 					return (
 						<li
 							key={`${ev.ts}-${idx}`}
-							className={`event-row ${cls}`}
+							className={`rounded-md px-2 py-1.5 transition-colors hover:bg-bg-elevated/40 ${cls}`}
 							onClick={() => setExpanded(expanded === idx ? null : idx)}
 						>
-							<span className="ev-time">{formatTs(ev.ts)}</span>
-							<span className="ev-type">{ev.type}</span>
+							<span className="ev-time">{formatTs(ev.ts)}</span>{" "}
+							<span className="ev-type">{ev.type}</span>{" "}
 							<span className="ev-summary">{summarize(ev)}</span>
 							{expanded === idx && (
-								<pre className="ev-detail">{JSON.stringify(ev, null, 2)}</pre>
+								<pre className="mt-2 overflow-x-auto rounded-md bg-bg-elevated/60 p-2 text-xs">
+									{JSON.stringify(ev, null, 2)}
+								</pre>
 							)}
 						</li>
 					);

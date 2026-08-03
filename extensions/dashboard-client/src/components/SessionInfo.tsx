@@ -5,6 +5,7 @@
  */
 
 import type React from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 
 export interface SessionInfoProps {
 	/** Number of active crew agents. */
@@ -21,20 +22,24 @@ export function SessionInfo(
 		activeAgents > 0 ? `▶ ${activeAgents} running` : "idle";
 
 	return (
-		<div className="card crew-card">
-			<h3>Crew / Agents</h3>
-			<div className="ov-stat-row">
-				<span className="ov-stat-label">Active Agents</span>
-				<span className="ov-stat-value">{activeAgents}</span>
-			</div>
-			<div className="ov-stat-row">
-				<span className="ov-stat-label">Current Turn</span>
-				<span className="ov-stat-value">{currentTurn}</span>
-			</div>
-			<div className="ov-stat-row">
-				<span className="ov-stat-label">Status</span>
-				<span className="ov-stat-value">{status}</span>
-			</div>
-		</div>
+		<Card className="electric-hover">
+			<CardHeader>
+				<CardTitle>Crew / Agents</CardTitle>
+			</CardHeader>
+			<CardContent>
+				<div className="flex items-baseline justify-between border-b border-border py-1 text-sm">
+					<span className="text-xs text-muted-foreground">Active Agents</span>
+					<span className="font-semibold">{activeAgents}</span>
+				</div>
+				<div className="flex items-baseline justify-between border-b border-border py-1 text-sm">
+					<span className="text-xs text-muted-foreground">Current Turn</span>
+					<span className="font-semibold">{currentTurn}</span>
+				</div>
+				<div className="flex items-baseline justify-between py-1 text-sm">
+					<span className="text-xs text-muted-foreground">Status</span>
+					<span className="font-semibold">{status}</span>
+				</div>
+			</CardContent>
+		</Card>
 	);
 }

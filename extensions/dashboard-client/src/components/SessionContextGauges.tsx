@@ -19,6 +19,7 @@
 
 import type React from "react";
 import type { ActiveSession, SessionsResponse } from "@contracts";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 
 export interface SessionContextGaugesProps {
 	/** Active sessions from /api/sessions (may be null while loading). */
@@ -153,29 +154,25 @@ export function SessionContextGauges({
 	const showLoading = loading && !sessions;
 
 	return (
-		<div className="card session-gauges-card">
-			<h3>Context per Session (live)</h3>
+		<Card className="electric-hover">
+			<CardHeader>
+				<CardTitle>Context per Session (live)</CardTitle>
+			</CardHeader>
+			<CardContent>
 			{hasError ? (
-				<div className="sessions-empty">
+				<div className="text-sm text-muted-foreground">
 					Error loading sessions: {error!.message}
 				</div>
 			) : showLoading ? (
-				<div className="sessions-empty">Loading sessions…</div>
-			) : gauges.length <= 1 && others.length === 0 ? (
-				// Launcher-only: just render the one self gauge (no "no sessions"
-				// message — the launcher always has a gauge).
-				<div className="session-gauges-grid">
-					{gauges.map((g) => (
-						<SessionGauge key={g.key} data={g} />
-					))}
-				</div>
+				<div className="text-sm text-muted-foreground">Loading sessions…</div>
 			) : (
-				<div className="session-gauges-grid">
+				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 					{gauges.map((g) => (
 						<SessionGauge key={g.key} data={g} />
 					))}
 				</div>
 			)}
-		</div>
+			</CardContent>
+		</Card>
 	);
 }

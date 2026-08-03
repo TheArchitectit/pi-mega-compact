@@ -25,6 +25,7 @@ import {
 	Legend,
 } from "recharts";
 import type { SessionSeries } from "@contracts";
+import { Card, CardContent } from "../components/ui/card";
 
 export interface SessionsMemoryChartProps {
 	/** Per-session series with stable colors (from /api/sessions/timeseries). */
@@ -110,14 +111,15 @@ export function SessionsMemoryChart({
 
 	if (series.length === 0) {
 		return (
-			<div className="sessions-chart-empty">
-				No token samples in this window yet.
-			</div>
+			<Card>
+				<CardContent>No token samples in this window yet.</CardContent>
+			</Card>
 		);
 	}
 
 	return (
-		<div className="sessions-chart">
+		<Card>
+			<CardContent>
 			<ResponsiveContainer width="100%" height={360}>
 				<AreaChart
 					data={data}
@@ -194,6 +196,7 @@ export function SessionsMemoryChart({
 					/>
 				</AreaChart>
 			</ResponsiveContainer>
-		</div>
+			</CardContent>
+		</Card>
 	);
 }

@@ -9,53 +9,33 @@ import type React from "react";
 import { useState } from "react";
 import MemoryMapView from "./MemoryMapTab/MemoryMapView.js";
 import RaptorTreeView from "./MemoryMapTab/RaptorTreeView.js";
+import { Toggle } from "../components/ui/toggle";
 
 type MemoryMapSubTab = "map" | "raptor";
-
-const subTabNavStyle: React.CSSProperties = {
-	display: "flex",
-	gap: "0.5rem",
-	marginBottom: "1rem",
-	borderBottom: "1px solid #2a2a4e",
-	paddingBottom: "0.5rem",
-	paddingTop: "0.5rem",
-	width: "100%",
-};
-
-function subTabBtnStyle(active: boolean): React.CSSProperties {
-	return {
-		background: active ? "#3a5a9f" : "transparent",
-		color: active ? "#fff" : "#a0a0c0",
-		border: "1px solid",
-		borderColor: active ? "#3a5a9f" : "#2a2a4e",
-		borderRadius: "6px",
-		padding: "0.4rem 0.8rem",
-		cursor: "pointer",
-		fontSize: "0.9rem",
-		fontWeight: active ? 600 : 400,
-	};
-}
 
 const MemoryMapTab: React.FC = () => {
 	const [subTab, setSubTab] = useState<MemoryMapSubTab>("map");
 
 	return (
-		<div className="memory-map-tab">
-			<nav style={subTabNavStyle} aria-label="Memory map sections">
-				<button
-					type="button"
-					style={subTabBtnStyle(subTab === "map")}
+		<div className="flex flex-col gap-4">
+			<nav
+				className="flex gap-2 border-b border-border pb-2 pt-2"
+				aria-label="Memory map sections"
+			>
+				<Toggle
+					pressed={subTab === "map"}
 					onClick={() => setSubTab("map")}
+					aria-label="Memory Map view"
 				>
 					Memory Map
-				</button>
-				<button
-					type="button"
-					style={subTabBtnStyle(subTab === "raptor")}
+				</Toggle>
+				<Toggle
+					pressed={subTab === "raptor"}
 					onClick={() => setSubTab("raptor")}
+					aria-label="RAPTOR Tree view"
 				>
 					RAPTOR Tree
-				</button>
+				</Toggle>
 			</nav>
 			{subTab === "map" && <MemoryMapView />}
 			{subTab === "raptor" && <RaptorTreeView />}

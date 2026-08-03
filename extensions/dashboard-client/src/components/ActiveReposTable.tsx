@@ -10,6 +10,7 @@
 import type React from "react";
 import type { ServerEntry } from "@contracts";
 import { fmtTokens } from "@/utils/format.ts";
+import { Card, CardContent } from "../components/ui/card";
 
 export interface ActiveReposTableProps {
 	servers: ServerEntry[];
@@ -44,18 +45,24 @@ export function ActiveReposTable({
 	servers,
 }: ActiveReposTableProps): React.ReactElement {
 	return (
-		<div className="active-repos-section">
-			<p className="legend-note">
+		<Card>
+			<CardContent>
+			<p className="mb-3 text-xs text-muted-foreground">
 				Repos seen within the last 30 minutes, with their per-repo cache-hit,
 				compaction, and time-saved (est.) totals pulled live from each
 				repo&apos;s dashboard.json.
 			</p>
-			<div className="table-scroll">
-				<table className="active-repos-table">
+			<div className="overflow-x-auto">
+				<table className="w-full border-collapse text-sm">
 					<thead>
 						<tr>
 							{HEADERS.map((h, i) => (
-								<th key={h} className={i >= 3 && i !== 4 ? "num" : undefined}>
+								<th
+									key={h}
+									className={`border-b border-border px-3 py-2 text-left font-medium text-muted-foreground${
+										i >= 3 && i !== 4 ? " text-right" : ""
+									}`}
+								>
 									{h}
 								</th>
 							))}
@@ -64,7 +71,7 @@ export function ActiveReposTable({
 					<tbody>
 						{servers.length === 0 && (
 							<tr>
-								<td colSpan={HEADERS.length} className="repo-empty">
+								<td colSpan={HEADERS.length} className="px-3 py-4 text-muted-foreground">
 									No active repositories.
 								</td>
 							</tr>
@@ -132,6 +139,7 @@ export function ActiveReposTable({
 					</tbody>
 				</table>
 			</div>
-		</div>
+			</CardContent>
+		</Card>
 	);
 }

@@ -12,6 +12,9 @@ import type {
 	MaintenanceActionResult,
 } from "@contracts";
 import { postMaintenanceAction } from "../../api/client";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Card, CardHeader, CardTitle } from "../../components/ui/card";
 
 // ---------------------------------------------------------------------------
 // Action config
@@ -120,59 +123,66 @@ export function ActionsCard(): React.ReactElement {
 	);
 
 	return (
-		<div className="card">
-			<div className="card-header">Actions</div>
-			<div className="card-body">
-				<div className="action-grid">
-					{ACTIONS.map((def) => {
-						const isRunning = running === def.key;
-						const lastResult = results.find((r) => r.operation === def.key);
-						return (
-							<div key={def.key} className="action-item">
-								<div className="action-info">
-									<div className="action-label">
-										{def.label}
-										{def.dangerous && (
-											<span className="badge badge-warn">DESTRUCTIVE</span>
-										)}
-									</div>
-									<div className="action-desc">{def.desc}</div>
-									{lastResult && (
-										<div
-											className={`action-result ${lastResult.success ? "text-ok" : "text-error"}`}
-										>
-											{lastResult.summary}
-										</div>
-									)}
+		<Card>
+			<CardHeader>
+				<CardTitle>Actions</CardTitle>
+			</CardHeader>
+			<div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+				{ACTIONS.map((def) => {
+					const isRunning = running === def.key;
+					const lastResult = results.find((r) => r.operation === def.key);
+					return (
+						<div
+							key={def.key}
+							className="flex items-start justify-between gap-3 rounded-lg border border-border/60 p-3"
+						>
+							<div className="min-w-0">
+								<div className="flex flex-wrap items-center gap-2">
+									<span className="font-semibold">{def.label}</span>
+									{def.dangerous && <Badge variant="danger">DESTRUCTIVE</Badge>}
 								</div>
-								<div className="action-controls">
-									{def.daysOld && (
-										<input
-											type="number"
-											min={1}
-											max={365}
-											value={days}
-											onChange={(e) => setDays(e.target.value)}
-											className="days-input"
-											disabled={isRunning}
-										/>
-									)}
-									<button
-										className={`btn ${def.dangerous ? "btn-danger" : "btn-primary"}`}
-										disabled={running !== null}
-										onClick={() => {
-											if (def.confirm && !window.confirm(def.confirm)) return;
-											handleAction(def);
-										}}
+								<div className="mt-1 text-xs text-muted-foreground">{def.desc}</div>
+								{lastResult && (
+									<div
+										className={`mt-1 text-xs ${lastResult.success ? "text-emerald-400" : "text-red-400"}`}
 									>
-										{isRunning ? "Running…" : "Run"}
-									</button>
-								</div>
+										{lastResult.summary}
+									</div>
+								)}
 							</div>
-						);
-					})}
-				</div>
+							<div className="flex shrink-0 items-center gap-2">
+								{def.daysOld && (
+									<input
+										type="number"
+										min={1}
+										max={365}
+										value={days}
+										onChange={(e) => setDays(e.target.value)}
+										className="w-16 rounded-md border border-border bg-bg-elevated/50 px-2 py-1 text-sm outline-none focus:border-primary"
+										disabled={isRunning}
+									/>
+								)}
+								<Button
+									type="button"
+									variant={def.dangerous ? "ghost" : "default"}
+									className={
+										def.dangerous
+											? "border border-red-500/50 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+											: undefined
+									}
+									disabled={running !== null}
+									onClick={() => {
+										if (def.confirm && !window.confirm(def.confirm)) return;
+										handleAction(def);
+									}}
+								>
+									{isRunning ? "Running…" : "Run"}
+								</Button>
+							</div>
+						</div>
+					);
+				})}
 			</div>
-		</div>
+		</Card>
 	);
 }

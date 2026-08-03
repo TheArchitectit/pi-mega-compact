@@ -10,6 +10,7 @@
 
 import type React from "react";
 import { fmtPctFromFraction } from "../utils/format";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 
 export interface RepoAllSessionsCardProps {
 	checkpointCount: number;
@@ -45,9 +46,9 @@ function StatRow({
 	value: string | number;
 }): React.ReactElement {
 	return (
-		<div className="ov-stat-row">
-			<span className="ov-stat-label">{label}</span>
-			<span className="ov-stat-value">{value}</span>
+		<div className="flex items-baseline justify-between border-b border-border py-1 text-sm">
+			<span className="text-xs text-muted-foreground">{label}</span>
+			<span className="font-semibold">{value}</span>
 		</div>
 	);
 }
@@ -61,8 +62,11 @@ export function RepoAllSessionsCard(
 	const compressSub = `${fmtPctFromFraction(sp)} tokens saved · dedup: ${fmtPctFromFraction(props.dedupPct)}`;
 
 	return (
-		<div className="card repo-sessions-card">
-			<h3>Repo (all sessions)</h3>
+		<Card className="electric-hover">
+			<CardHeader>
+				<CardTitle>Repo (all sessions)</CardTitle>
+			</CardHeader>
+			<CardContent>
 			<StatRow
 				label="Checkpoints"
 				value={props.checkpointCount.toLocaleString()}
@@ -88,15 +92,16 @@ export function RepoAllSessionsCard(
 				label="Storage Dedup"
 				value={fmtPctFromFraction(props.storageDedupRate)}
 			/>
-			<div className="ov-compression-meter">
-				<div className="meter-track">
+			<div>
+				<div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-bg-elevated">
 					<div
-						className={`meter-fill ${barCls}`}
+						className={`meter-fill h-full ${barCls}`}
 						style={{ width: `${barWidth}%` }}
 					/>
 				</div>
-				<span className="meter-sub">{compressSub}</span>
+				<span className="mt-1 block text-xs text-muted-foreground">{compressSub}</span>
 			</div>
-		</div>
+			</CardContent>
+		</Card>
 	);
 }

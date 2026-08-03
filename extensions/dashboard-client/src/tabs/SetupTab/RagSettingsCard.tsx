@@ -11,60 +11,8 @@ import type React from "react";
 import { useState, useEffect, useCallback } from "react";
 import type { RagSettingsResponse } from "@contracts";
 import { fetchRagSettings, postRagSettings } from "../../api/client";
-
-const styles: Record<string, React.CSSProperties> = {
-	section: {
-		background: "#1a1a2e",
-		borderRadius: "8px",
-		padding: "1rem",
-		marginBottom: "1rem",
-		border: "1px solid #2a2a4e",
-	},
-	sectionTitle: {
-		fontSize: "1.1rem",
-		fontWeight: 700,
-		marginTop: 0,
-		marginBottom: "0.75rem",
-		color: "#e0e0e0",
-		borderBottom: "1px solid #333",
-		paddingBottom: "0.5rem",
-	},
-	flagRow: {
-		display: "flex",
-		alignItems: "flex-start",
-		gap: "0.5rem",
-		padding: "0.5rem 0",
-		borderBottom: "1px solid #2a2a4e",
-	},
-	checkbox: {
-		marginTop: "0.15rem",
-		cursor: "pointer",
-	},
-	label: {
-		fontWeight: 600,
-		color: "#e0e0e0",
-		fontSize: "0.9rem",
-	},
-	description: {
-		fontSize: "0.8rem",
-		color: "#a0a0c0",
-		marginTop: "0.15rem",
-	},
-	hint: {
-		fontSize: "0.75rem",
-		color: "#ff9800",
-		marginTop: "0.15rem",
-	},
-	banner: {
-		background: "#3a2a00",
-		border: "1px solid #665500",
-		borderRadius: "6px",
-		padding: "0.5rem 0.75rem",
-		marginTop: "0.5rem",
-		color: "#ffcc00",
-		fontSize: "0.8rem",
-	},
-};
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { Switch } from "../../components/ui/switch";
 
 export default function RagSettingsCard(): React.ReactElement {
 	const [settings, setSettings] = useState<RagSettingsResponse | null>(null);
@@ -110,51 +58,50 @@ export default function RagSettingsCard(): React.ReactElement {
 	);
 
 	return (
-		<div style={styles.section}>
-			<h3 style={styles.sectionTitle}>RAG Settings</h3>
-			<p style={{ fontSize: "0.8rem", color: "#a0a0c0", marginTop: 0 }}>
-				Recall pipeline features. All default ON — toggle off to disable.
-				Changes take effect after restart.
-			</p>
-			{error && (
-				<p style={{ color: "#f44336", fontSize: "0.85rem" }}>Error: {error}</p>
-			)}
-			{settings?.flags.map((flag) => {
-				const locked = flag.requiresLlm && !settings.llmActive;
-				return (
-					<div key={flag.key} style={styles.flagRow}>
-						<input
-							type="checkbox"
-							style={{
-								...styles.checkbox,
-								opacity: locked ? 0.4 : 1,
-								cursor: locked ? "not-allowed" : "pointer",
-							}}
-							checked={flag.enabled && !locked}
-							disabled={locked || saving}
-							onChange={(e) => toggle(flag.key, e.currentTarget.checked)}
-						/>
-						<div>
-							<div style={styles.label}>{flag.label}</div>
-							<div style={styles.description}>{flag.description}</div>
-							{locked && (
-								<div style={styles.hint}>
-									Requires an LLM embedder (Ollama/HTTP). Configure one in
-									the Embedder section above first.
-								</div>
-							)}
+		<Card className="electric-hover">
+			<CardHeader>
+				<CardTitle>RAG Settings</CardTitle>
+			</CardHeader>
+			<CardContent>
+				<p className="mt-0 text-xs text-muted-foreground">
+					Recall pipeline features. All default ON — toggle off to disable.
+					Changes take effect after restart.
+				</p>
+				{error && (
+					<p className="text-sm text-danger">Error: {error}</p>
+				)}
+				{settings?.flags.map((flag) => {
+					const locked = flag.requiresLlm && !settings.llmActive;
+					return (
+						<div key={flag.key} className="flex items-start gap-3 border-b border-border py-2">
+							<Switch
+								checked={flag.enabled && !locked}
+								disabled={locked || saving}
+								onCheckedChange={(checked) => toggle(flag.key, checked)}
+								aria-label={flag.label}
+							/>
+							<div>
+								<div className="text-sm font-semibold">{flag.label}</div>
+								<div className="text-xs text-muted-foreground">{flag.description}</div>
+								{locked && (
+									<div className="mt-0.5 text-xs text-warning">
+										Requires an LLM embedder (Ollama/HTTP). Configure one in
+										the Embedder section above first.
+									</div>
+								)}
+							</div>
 						</div>
+					);
+				})}
+				{!settings && !error && (
+					<p className="text-sm text-muted-foreground">Loading...</p>
+				)}
+				{restartBanner && (
+					<div className="mt-2 rounded-md border border-warning/40 bg-warning/10 p-2 text-xs text-warning">
+						Settings saved. <strong>Restart pi</strong> to apply changes.
 					</div>
-				);
-			})}
-			{!settings && !error && (
-				<p style={{ color: "#888", fontSize: "0.85rem" }}>Loading...</p>
-			)}
-			{restartBanner && (
-				<div style={styles.banner}>
-					Settings saved. <strong>Restart pi</strong> to apply changes.
-				</div>
-			)}
-		</div>
+				)}
+			</CardContent>
+		</Card>
 	);
 }

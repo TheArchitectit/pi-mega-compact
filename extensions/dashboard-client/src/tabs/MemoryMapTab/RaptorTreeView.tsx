@@ -22,34 +22,6 @@ function formatDate(ts: number): string {
 	return new Date(ts).toLocaleString();
 }
 
-const containerStyle: React.CSSProperties = {
-	padding: "1rem",
-	width: "100%",
-	boxSizing: "border-box",
-};
-
-const headerStyle: React.CSSProperties = {
-	display: "flex",
-	gap: "1.5rem",
-	alignItems: "center",
-	marginBottom: "1rem",
-	color: "#a0a0c0",
-	fontSize: "0.9rem",
-};
-
-const emptyStyle: React.CSSProperties = {
-	padding: "2rem",
-	border: "1px dashed #2a2a4e",
-	borderRadius: "8px",
-	color: "#a0a0c0",
-	textAlign: "center",
-};
-
-const loadingStyle: React.CSSProperties = {
-	padding: "1rem",
-	color: "#a0a0c0",
-};
-
 function NodeCard({ node }: { node: RaptorNodeDTO }): React.ReactElement {
 	const border = levelColor(node.level);
 	const childrenLabel =
@@ -122,20 +94,24 @@ export default function RaptorTreeView(): React.ReactElement {
 	}, []);
 
 	if (loading) {
-		return <div style={loadingStyle}>Loading RAPTOR tree...</div>;
+		return (
+			<div className="rounded-lg border border-border bg-bg-card p-6 text-center text-sm text-muted-foreground">
+				Loading RAPTOR tree...
+			</div>
+		);
 	}
 
 	if (error) {
 		return (
-			<div style={emptyStyle}>
-				<p>Failed to load RAPTOR tree: {error}</p>
+			<div className="rounded-lg border border-dashed border-border bg-bg-card p-8 text-center text-sm">
+				<p className="text-red-400">Failed to load RAPTOR tree: {error}</p>
 			</div>
 		);
 	}
 
 	if (!data || data.empty || data.nodes.length === 0) {
 		return (
-			<div style={emptyStyle}>
+			<div className="rounded-lg border border-dashed border-border bg-bg-card p-8 text-center text-sm text-muted-foreground">
 				<p>
 					No RAPTOR tree built yet — run a compaction (the tree builds during
 					compaction).
@@ -145,8 +121,8 @@ export default function RaptorTreeView(): React.ReactElement {
 	}
 
 	return (
-		<div style={containerStyle}>
-			<div style={headerStyle}>
+		<div className="w-full p-4">
+			<div className="mb-4 flex items-center gap-6 text-sm text-muted-foreground">
 				<span>
 					<strong>{data.nodes.length}</strong> nodes
 				</span>

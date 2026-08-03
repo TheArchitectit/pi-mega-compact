@@ -6,6 +6,7 @@
  */
 
 import type React from "react";
+import { Toggle } from "../components/ui/toggle";
 
 export type EventCategory =
 	| "all"
@@ -36,17 +37,15 @@ export function EventCategoryFilter({
 	onFilter,
 }: EventCategoryFilterProps): React.ReactElement {
 	return (
-		<div className="event-category-filter" role="toolbar" aria-label="Event category filter">
+		<div className="flex flex-wrap gap-2" role="toolbar" aria-label="Event category filter">
 			{CATEGORIES.map((cat) => (
-				<button
+				<Toggle
 					key={cat}
-					type="button"
-					className={`category-chip${active === cat ? " active" : ""}`}
+					pressed={active === cat}
 					onClick={() => onFilter(cat)}
-					aria-pressed={active === cat}
 				>
 					{cat}
-				</button>
+				</Toggle>
 			))}
 		</div>
 	);

@@ -7,6 +7,7 @@
  */
 
 import type React from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 
 export interface CacheHitsCardProps {
 	/** Cache hits in the current session. */
@@ -31,9 +32,9 @@ function StatRow({
 	value: string | number;
 }): React.ReactElement {
 	return (
-		<div className="ov-stat-row">
-			<span className="ov-stat-label">{label}</span>
-			<span className="ov-stat-value">{value}</span>
+		<div className="flex items-baseline justify-between border-b border-border py-1 text-sm">
+			<span className="text-xs text-muted-foreground">{label}</span>
+			<span className="font-semibold">{value}</span>
 		</div>
 	);
 }
@@ -42,32 +43,36 @@ export function CacheHitsCard(
 	props: CacheHitsCardProps,
 ): React.ReactElement {
 	return (
-		<div className="card cache-hits-card">
-			<h3>💾 Cache Hits &amp; Compactions</h3>
-			<StatRow
-				label="Cache Hits (session)"
-				value={props.cacheHitsSession.toLocaleString()}
-			/>
-			<StatRow
-				label="Cache Hits (total)"
-				value={props.cacheHitsTotal.toLocaleString()}
-			/>
-			<StatRow
-				label="Tokens Saved (session)"
-				value={props.tokensSavedSession.toLocaleString()}
-			/>
-			<StatRow
-				label="Tokens Saved (total)"
-				value={props.tokensSavedTotal.toLocaleString()}
-			/>
-			<StatRow
-				label="Compactions (session)"
-				value={props.compactionsSession.toLocaleString()}
-			/>
-			<StatRow
-				label="Compactions (total)"
-				value={props.compactionsTotal.toLocaleString()}
-			/>
-		</div>
+		<Card className="electric-hover">
+			<CardHeader>
+				<CardTitle>💾 Cache Hits &amp; Compactions</CardTitle>
+			</CardHeader>
+			<CardContent>
+				<StatRow
+					label="Cache Hits (session)"
+					value={props.cacheHitsSession.toLocaleString()}
+				/>
+				<StatRow
+					label="Cache Hits (total)"
+					value={props.cacheHitsTotal.toLocaleString()}
+				/>
+				<StatRow
+					label="Tokens Saved (session)"
+					value={props.tokensSavedSession.toLocaleString()}
+				/>
+				<StatRow
+					label="Tokens Saved (total)"
+					value={props.tokensSavedTotal.toLocaleString()}
+				/>
+				<StatRow
+					label="Compactions (session)"
+					value={props.compactionsSession.toLocaleString()}
+				/>
+				<StatRow
+					label="Compactions (total)"
+					value={props.compactionsTotal.toLocaleString()}
+				/>
+			</CardContent>
+		</Card>
 	);
 }

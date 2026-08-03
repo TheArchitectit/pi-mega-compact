@@ -72,7 +72,7 @@ export default function ReposTab(): React.ReactElement {
 
 	if (repos.length === 0) {
 		return (
-			<div className="repos-tab">
+			<div className="flex flex-col gap-4">
 				<SummaryTiles
 					totalRepos={0}
 					totalCheckpoints={0}
@@ -92,20 +92,20 @@ export default function ReposTab(): React.ReactElement {
 	}
 
 	return (
-		<div className="repos-tab">
+		<div className="flex flex-col gap-4">
 			<SummaryTiles
 				totalRepos={summary?.totalRepos ?? 0}
 				totalCheckpoints={summary?.totalCheckpoints ?? 0}
 				totalTokensSaved={summary?.totalTokensSaved ?? 0}
 				compressedOriginalBytes={summary?.totalCompressedOriginalBytes ?? 0}
 			/>
-			<h2 className="section-header">All Repositories</h2>
+			<h2 className="font-heading text-lg font-semibold">All Repositories</h2>
 			<RepoTable repos={repos} onSelect={setSelected} />
-			<h2 className="section-header">
+			<h2 className="font-heading text-lg font-semibold">
 				Active Repos — Live Cache Hits &amp; Compactions
 			</h2>
 			<ActiveReposTable servers={servers} />
-			<h2 className="section-header">Savings by Model</h2>
+			<h2 className="font-heading text-lg font-semibold">Savings by Model</h2>
 			<SavingsByModelTable repos={repos} />
 			{selected && (
 				<RepoDetailModal repo={selected} onClose={() => setSelected(null)} />

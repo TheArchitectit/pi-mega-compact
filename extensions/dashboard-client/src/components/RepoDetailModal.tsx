@@ -51,81 +51,84 @@ export function RepoDetailModal({
 
 	return (
 		<div
-			className="modal-backdrop"
+			className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
 			onClick={onClose}
 			role="dialog"
 			aria-modal="true"
 		>
-			<div className="modal-card" onClick={(e) => e.stopPropagation()}>
-				<header className="modal-header">
-					<h2>{repo.displayName}</h2>
+			<div
+				className="max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-xl border border-border bg-bg-card p-5 shadow-panel"
+				onClick={(e) => e.stopPropagation()}
+			>
+				<header className="mb-2 flex items-start justify-between gap-4">
+					<h2 className="font-heading text-lg font-semibold">{repo.displayName}</h2>
 					<button
 						type="button"
-						className="modal-close"
+						className="text-2xl leading-none text-muted-foreground hover:text-foreground"
 						onClick={onClose}
 						aria-label="Close"
 					>
 						×
 					</button>
 				</header>
-				<p className="modal-path">{repo.repoRoot}</p>
-				<div className="modal-grid">
-					<div className="modal-stat">
-						<span className="modal-label">Checkpoints</span>
-						<span className="modal-value">
+				<p className="mb-4 break-all font-mono text-xs text-muted-foreground">{repo.repoRoot}</p>
+				<div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+					<div className="rounded-md border border-border/50 bg-bg-elevated/40 p-3">
+						<span className="block text-xs text-muted-foreground">Checkpoints</span>
+						<span className="text-xl font-semibold">
 							{repo.checkpointCount.toLocaleString()}
 						</span>
 					</div>
-					<div className="modal-stat">
-						<span className="modal-label">Sessions</span>
-						<span className="modal-value">
+					<div className="rounded-md border border-border/50 bg-bg-elevated/40 p-3">
+						<span className="block text-xs text-muted-foreground">Sessions</span>
+						<span className="text-xl font-semibold">
 							{repo.sessions.toLocaleString()}
 						</span>
 					</div>
-					<div className="modal-stat modal-highlight">
-						<span className="modal-label">Tokens saved</span>
-						<span className="modal-value">{fmt(repo.tokensSaved)}</span>
+					<div className="rounded-md border border-border/50 bg-primary/10 p-3">
+						<span className="block text-xs text-muted-foreground">Tokens saved</span>
+						<span className="text-xl font-semibold">{fmt(repo.tokensSaved)}</span>
 					</div>
-					<div className="modal-stat">
-						<span className="modal-label">Tokens kept</span>
-						<span className="modal-value">{fmt(repo.tokensKept)}</span>
+					<div className="rounded-md border border-border/50 bg-bg-elevated/40 p-3">
+						<span className="block text-xs text-muted-foreground">Tokens kept</span>
+						<span className="text-xl font-semibold">{fmt(repo.tokensKept)}</span>
 					</div>
-					<div className="modal-stat">
-						<span className="modal-label">Tokens dropped</span>
-						<span className="modal-value">{fmt(repo.tokensDropped)}</span>
+					<div className="rounded-md border border-border/50 bg-bg-elevated/40 p-3">
+						<span className="block text-xs text-muted-foreground">Tokens dropped</span>
+						<span className="text-xl font-semibold">{fmt(repo.tokensDropped)}</span>
 					</div>
-					<div className="modal-stat">
-						<span className="modal-label">Dedup rate</span>
-						<span className="modal-value">—</span>
+					<div className="rounded-md border border-border/50 bg-bg-elevated/40 p-3">
+						<span className="block text-xs text-muted-foreground">Dedup rate</span>
+						<span className="text-xl font-semibold">—</span>
 					</div>
 				</div>
-				<h3>Model</h3>
-				<dl className="modal-dl">
-					<dt>Provider</dt>
-					<dd>{repo.providerName ?? "—"}</dd>
-					<dt>Model</dt>
-					<dd>{repo.modelName ?? "—"}</dd>
-					<dt>Input rate</dt>
-					<dd>{repo.inputRate !== null ? `${repo.inputRate} tok/s` : "—"}</dd>
-					<dt>Output rate</dt>
-					<dd>{repo.outputRate !== null ? `${repo.outputRate} tok/s` : "—"}</dd>
-					<dt>Context window</dt>
-					<dd>{repo.contextWindow !== null ? fmt(repo.contextWindow) : "—"}</dd>
-					<dt>Max tokens</dt>
-					<dd>{repo.maxTokens !== null ? fmt(repo.maxTokens) : "—"}</dd>
-					<dt>Reasoning</dt>
-					<dd>
+				<h3 className="mb-2 font-heading text-sm font-semibold">Model</h3>
+				<dl className="mb-4 grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
+					<dt className="text-muted-foreground">Provider</dt>
+					<dd className="text-right">{repo.providerName ?? "—"}</dd>
+					<dt className="text-muted-foreground">Model</dt>
+					<dd className="text-right">{repo.modelName ?? "—"}</dd>
+					<dt className="text-muted-foreground">Input rate</dt>
+					<dd className="text-right">{repo.inputRate !== null ? `${repo.inputRate} tok/s` : "—"}</dd>
+					<dt className="text-muted-foreground">Output rate</dt>
+					<dd className="text-right">{repo.outputRate !== null ? `${repo.outputRate} tok/s` : "—"}</dd>
+					<dt className="text-muted-foreground">Context window</dt>
+					<dd className="text-right">{repo.contextWindow !== null ? fmt(repo.contextWindow) : "—"}</dd>
+					<dt className="text-muted-foreground">Max tokens</dt>
+					<dd className="text-right">{repo.maxTokens !== null ? fmt(repo.maxTokens) : "—"}</dd>
+					<dt className="text-muted-foreground">Reasoning</dt>
+					<dd className="text-right">
 						{repo.reasoning === null ? "—" : repo.reasoning ? "on" : "off"}
 					</dd>
 				</dl>
-				<h3>Activity</h3>
-				<dl className="modal-dl">
-					<dt>Last compacted</dt>
-					<dd>{formatTs(repo.lastCompactedAt)}</dd>
-					<dt>Last seen</dt>
-					<dd>{formatTs(repo.lastSeen)}</dd>
-					<dt>Compressed-Original</dt>
-					<dd>{fmtBytesTop(repo.compressedOriginalBytes)}</dd>
+				<h3 className="mb-2 font-heading text-sm font-semibold">Activity</h3>
+				<dl className="grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
+					<dt className="text-muted-foreground">Last compacted</dt>
+					<dd className="text-right">{formatTs(repo.lastCompactedAt)}</dd>
+					<dt className="text-muted-foreground">Last seen</dt>
+					<dd className="text-right">{formatTs(repo.lastSeen)}</dd>
+					<dt className="text-muted-foreground">Compressed-Original</dt>
+					<dd className="text-right">{fmtBytesTop(repo.compressedOriginalBytes)}</dd>
 				</dl>
 			</div>
 		</div>

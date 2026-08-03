@@ -6,6 +6,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { fetchContextHealth, type ContextHealthResponse } from "../api/health";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Badge } from "../components/ui/badge";
 
 function healthColor(score: number): string {
 	if (score > 0.8) return "#4ade80";
@@ -105,60 +107,89 @@ export default function HealthTab(): React.ReactElement {
 	const composite = latest?.composite ?? 0;
 
 	return (
-		<div className="health-tab">
-			<div className="health-top-row">
-				<HealthGauge score={composite} />
-				<div className="health-subscores">
-					<h3>Sub-Scores</h3>
-					<SubScoreBar label="Drift" value={latest?.driftScore ?? 0} />
-					<SubScoreBar label="Output Quality" value={latest?.outputQuality ?? 0} />
-					<SubScoreBar label="Error Rate" value={latest?.errorScore ?? 0} />
-					<SubScoreBar label="Cache Health" value={latest?.cacheHealth ?? 0} />
-					<SubScoreBar label="Cache Poison" value={latest?.cachePoison ?? 0} />
-				</div>
+		<div className="flex flex-col gap-4">
+			<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+				<Card>
+					<CardContent className="flex justify-center">
+						<HealthGauge score={composite} />
+					</CardContent>
+				</Card>
+				<Card>
+					<CardHeader>
+						<CardTitle>Sub-Scores</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<SubScoreBar label="Drift" value={latest?.driftScore ?? 0} />
+						<SubScoreBar label="Output Quality" value={latest?.outputQuality ?? 0} />
+						<SubScoreBar label="Error Rate" value={latest?.errorScore ?? 0} />
+						<SubScoreBar label="Cache Health" value={latest?.cacheHealth ?? 0} />
+						<SubScoreBar label="Cache Poison" value={latest?.cachePoison ?? 0} />
+					</CardContent>
+				</Card>
 			</div>
 
-			<div className="health-trend-section">
-				<h3>Health Trend (last {data.trend.length} turns)</h3>
-				<HealthSparkline trend={data.trend} />
-			</div>
+			<Card>
+				<CardHeader>
+					<CardTitle>Health Trend (last {data.trend.length} turns)</CardTitle>
+				</CardHeader>
+				<CardContent>
+					<HealthSparkline trend={data.trend} />
+				</CardContent>
+			</Card>
 
 			{data.alerts.length > 0 && (
-				<div className="health-alerts">
-					<h3>Recent Alerts ({data.alerts.length})</h3>
-					<div className="health-alert-list">
-						{data.alerts.slice(-10).map((a) => (
-							<div key={`${a.ts}-${a.turnIndex}`} className="health-alert-row">
-								<span className="health-alert-time">{new Date(a.ts).toLocaleTimeString()}</span>
-								<span className="health-alert-model">{a.modelId ?? "(unknown)"}</span>
-								<span className="health-alert-score" style={{ color: healthColor(a.composite) }}>
-									{(a.composite * 100).toFixed(0)}
-								</span>
-								{a.cachePoison < 0.3 && <span className="health-alert-tag">CACHE POISON</span>}
-							</div>
-						))}
-					</div>
-				</div>
+				<Card>
+					<CardHeader>
+						<CardTitle>Recent Alerts ({data.alerts.length})</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<div className="flex flex-col gap-1">
+							{data.alerts.slice(-10).map((a) => (
+								<div
+									key={`${a.ts}-${a.turnIndex}`}
+									className="flex items-center gap-3 border-b border-border/50 py-1 text-sm"
+								>
+									<span className="text-xs text-muted-foreground">{new Date(a.ts).toLocaleTimeString()}</span>
+									<span className="text-muted-foreground">{a.modelId ?? "(unknown)"}</span>
+									<span style={{ color: healthColor(a.composite) }}>
+										{(a.composite * 100).toFixed(0)}
+									</span>
+									{a.cachePoison < 0.3 && <Badge variant="danger">CACHE POISON</Badge>}
+								</div>
+							))}
+						</div>
+					</CardContent>
+				</Card>
 			)}
 
 			{data.perModel.length > 0 && (
-				<div className="health-per-model">
-					<h3>Health by Model</h3>
-					<table className="health-model-table">
-						<thead><tr><th>Model</th><th>Avg Health</th><th>Samples</th></tr></thead>
-						<tbody>
-							{data.perModel.map((m) => (
-								<tr key={m.modelId}>
-									<td>{m.modelId}</td>
-									<td style={{ color: healthColor(m.avgComposite) }}>
-										{(m.avgComposite * 100).toFixed(0)}%
-									</td>
-									<td>{m.sampleCount}</td>
+				<Card>
+					<CardHeader>
+						<CardTitle>Health by Model</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<table className="w-full border-collapse text-sm">
+							<thead>
+								<tr>
+									<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Model</th>
+									<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Avg Health</th>
+									<th className="border-b border-border px-3 py-2 text-left font-medium text-muted-foreground">Samples</th>
 								</tr>
-							))}
-						</tbody>
-					</table>
-				</div>
+							</thead>
+							<tbody>
+								{data.perModel.map((m) => (
+									<tr key={m.modelId} className="border-b border-border/50">
+										<td className="px-3 py-2">{m.modelId}</td>
+										<td className="px-3 py-2" style={{ color: healthColor(m.avgComposite) }}>
+											{(m.avgComposite * 100).toFixed(0)}%
+										</td>
+										<td className="px-3 py-2">{m.sampleCount}</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</CardContent>
+				</Card>
 			)}
 		</div>
 	);

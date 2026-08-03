@@ -17,6 +17,7 @@ import {
 	fmtRelativeTime,
 } from "../utils/format";
 import { lookupModelInputRate } from "@pricing";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 
 // ---------------------------------------------------------------------------
 // Per-model breakdown type (mirrors the API contract).
@@ -90,11 +91,11 @@ function StatRow({
 	title?: string;
 }): React.ReactElement {
 	return (
-		<div className="ov-stat-row">
-			<span className="ov-stat-label" title={title}>
+		<div className="flex items-baseline justify-between border-b border-border py-1 text-sm">
+			<span className="text-xs text-muted-foreground" title={title}>
 				{label}
 			</span>
-			<span className={`ov-stat-value${className ? ` ${className}` : ""}`}>
+			<span className={`font-semibold${className ? ` ${className}` : ""}`}>
 				{value}
 			</span>
 		</div>
@@ -109,7 +110,11 @@ export function ProviderCacheCard(
 	props: ProviderCacheCardProps,
 ): React.ReactElement {
 	return (
-		<div className="card provider-cache-card">
+		<Card className="electric-hover">
+			<CardHeader>
+				<CardTitle>Provider Prompt Cache</CardTitle>
+			</CardHeader>
+			<CardContent>
 			{/* --- Hit Rate + Turns --- */}
 			<StatRow
 				label="Cache Hit Rate"
@@ -155,7 +160,9 @@ export function ProviderCacheCard(
 			{/* --- Per-model breakdown (F4) --- */}
 			{props.byModel.length > 0 && (
 				<>
-					<div className="ov-stat-section-label">Per Model</div>
+					<div className="mt-2 text-xs font-semibold text-muted-foreground">
+						Per Model
+					</div>
 					{props.byModel.map((m) => {
 						const rate = lookupModelInputRate(m.model);
 						const cr =
@@ -163,7 +170,7 @@ export function ProviderCacheCard(
 						const cw =
 							rate != null ? (m.totalCacheWrite / 1_000_000) * rate : null;
 						return (
-							<div key={m.model} className="ov-stat-group">
+							<div key={m.model} className="mt-2">
 								<StatRow label="Model" value={m.model} />
 								<StatRow
 									label="Hit Rate"
@@ -192,6 +199,7 @@ export function ProviderCacheCard(
 					})}
 				</>
 			)}
-		</div>
+			</CardContent>
+		</Card>
 	);
 }

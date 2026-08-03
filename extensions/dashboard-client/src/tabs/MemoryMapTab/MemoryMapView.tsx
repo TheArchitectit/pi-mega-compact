@@ -287,17 +287,21 @@ const MemoryMapView: React.FC = () => {
   // Loading state
 
   if (loading) {
-    return <div className="memory-map-loading">Loading memory graph...</div>;
+    return (
+      <div className="rounded-lg border border-border bg-bg-card p-6 text-center text-sm text-muted-foreground">
+        Loading memory graph...
+      </div>
+    );
   }
 
   // Error state
 
   if (error) {
     return (
-      <div className="memory-map-error">
-        <p>Failed to load memory map: {error}</p>
+      <div className="rounded-lg border border-border bg-bg-card p-6 text-center text-sm">
+        <p className="text-red-400">Failed to load memory map: {error}</p>
         <button
-          className="memory-map-retry-btn"
+          className="mt-3 rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-bg-elevated hover:text-foreground"
           onClick={() => setFrame((s) => s + 1)}
         >
           Retry
@@ -310,7 +314,7 @@ const MemoryMapView: React.FC = () => {
 
   if (!data || !layoutRef.current || allSourcesEmpty) {
     return (
-      <div className="memory-map-empty">
+      <div className="rounded-lg border border-border bg-bg-card p-6 text-sm text-muted-foreground">
         <p>Memories appear after your first compaction. The graph shows checkpoints (compaction summaries) linked by semantic similarity and time. Run a longer session or lower the compaction tier to see it sooner.</p>
       </div>
     );
@@ -321,9 +325,9 @@ const MemoryMapView: React.FC = () => {
   // Render
 
   return (
-    <div className="memory-map-container">
+    <div className="flex flex-col gap-3">
       {/* Toolbar */}
-      <div className="memory-map-toolbar">
+      <div className="flex flex-wrap items-center gap-3">
         <input
           type="text"
           placeholder="Search memories..."
@@ -331,26 +335,17 @@ const MemoryMapView: React.FC = () => {
           onInput={(e: React.FormEvent<HTMLInputElement>) =>
             setSearchQuery((e.target as HTMLInputElement).value)
           }
-          className="memory-map-search"
+          className="w-56 rounded-md border border-border bg-bg-elevated/50 px-3 py-2 text-sm outline-none transition-colors focus:border-primary"
         />
-        <span className="memory-map-stats">
-          {/* Count badge */}
-          <span className="memory-map-count-badge">{countBadge}</span>
-          <br />
-          <span className="memory-map-edges">{data.edges.length} edges</span>
+        <span className="text-xs text-muted-foreground">
+          <span>{countBadge}</span>
+          {" · "}
+          <span>{data.edges.length} edges</span>
         </span>
         {/* Graph-health indicator */}
         <span
-          className="memory-map-health-badge"
-          style={{
-            backgroundColor: healthColor[graphHealth.level] ?? "#6b7280",
-            color: "#fff",
-            padding: "2px 8px",
-            borderRadius: "10px",
-            fontSize: "11px",
-            fontWeight: 600,
-            marginLeft: "8px",
-          }}
+          className="ml-auto rounded-full px-2 py-1 text-[11px] font-semibold text-white"
+          style={{ backgroundColor: healthColor[graphHealth.level] ?? "#6b7280" }}
           title={`Validation: ${graphHealth.label}`}
         >
           {graphHealth.level === "green" ? "Healthy" : graphHealth.level === "yellow" ? "Warnings" : "Critical"}
@@ -359,20 +354,17 @@ const MemoryMapView: React.FC = () => {
 
       {/* Source availability indicators */}
       {sourceAvail ? (
-        <div className="memory-map-source-avail" style={{ fontSize: "11px", padding: "2px 12px", color: "#6b7280" }}>
-          {sourceAvail}
-        </div>
+        <div className="text-[11px] text-muted-foreground">{sourceAvail}</div>
       ) : null}
 
       {/* Legend — node types + edge types */}
-      <div className="memory-map-legend">
-        <span className="memory-map-legend-section">Nodes:</span>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-border/60 bg-bg-card px-3 py-2 text-xs">
+        <span className="font-semibold text-muted-foreground">Nodes:</span>
         <Swatch type="node" color={NODE_COLORS.checkpoint} shape="filled-circle" label="Checkpoint" />
         <Swatch type="node" color={NODE_COLORS.turn} shape="hollow-circle" label="Turn" />
         <Swatch type="node" color={NODE_COLORS["turn-content"]} shape="hollow-ring" label="Turn Content" />
         <Swatch type="node" color={NODE_COLORS.memory} shape="diamond" label="Memory" />
-        <span className="memory-map-legend-sep">|</span>
-        <span className="memory-map-legend-section">Edges:</span>
+        <span className="font-semibold text-muted-foreground">Edges:</span>
         <Swatch type="edge" color={edgeColor("semantic")} shape="line" label="Semantic" />
         <Swatch type="edge" color={edgeColor("temporal")} shape="line" label="Temporal" />
         <Swatch type="edge" color={edgeColor("raptor_parent")} shape="line" label="Raptor" />
@@ -441,32 +433,23 @@ const MemoryMapView: React.FC = () => {
 
       {/* Node detail panel */}
       {selectedNode ? (
-        <div className="memory-map-detail">
-          <h3>
-            <span
-              className="memory-map-detail-type"
-              style={{
-                display: "inline-block",
-                fontSize: "12px",
-                fontWeight: 400,
-                color: "#6b7280",
-                marginRight: "6px",
-              }}
-            >
+        <div className="rounded-lg border border-border/60 bg-bg-card p-4 text-sm">
+          <h3 className="font-heading text-base font-semibold">
+            <span className="mr-1.5 text-xs font-normal text-muted-foreground">
               {NODE_TYPE_LABELS[selectedNode.nodeType]}
             </span>
             {selectedNode.label}
           </h3>
-          <p>{selectedNode.summaryTruncated}</p>
+          <p className="mt-1">{selectedNode.summaryTruncated}</p>
           {selectedNode.topicSummary ? (
-            <p className="memory-map-topic">Topic: {selectedNode.topicSummary}</p>
+            <p className="mt-1">Topic: {selectedNode.topicSummary}</p>
           ) : null}
-          <p>
+          <p className="mt-1">
             Tokens: {selectedNode.tokenEstimate} | Decisions: {selectedNode.decisionCount}
           </p>
           <p>Session: {selectedNode.sessionId}</p>
           <p>Raptor Level: {selectedNode.raptorLevel}</p>
-          <p className="memory-map-snippet">{selectedNode.textSnippet}</p>
+          <p className="mt-1 text-muted-foreground">{selectedNode.textSnippet}</p>
         </div>
       ) : null}
     </div>

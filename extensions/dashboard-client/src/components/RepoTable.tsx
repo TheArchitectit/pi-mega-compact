@@ -10,6 +10,7 @@
 import type React from "react";
 import { useState, useMemo } from "react";
 import type { IndexesIndexRow } from "@contracts";
+import { Card, CardContent } from "../components/ui/card";
 
 export interface RepoTableProps {
 	repos: IndexesIndexRow[];
@@ -99,30 +100,32 @@ export function RepoTable({
 	};
 
 	return (
-		<div className="repo-table-wrap">
+		<Card>
+			<CardContent>
 			<input
 				type="search"
-				className="repo-search"
+				className="mb-3 w-full rounded-md border border-border bg-bg-elevated/50 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/60"
 				placeholder="Search repos…"
 				value={search}
 				onChange={(e) => setSearch(e.target.value)}
 				aria-label="Search repos"
 			/>
-			<table className="repo-table">
+			<div className="overflow-x-auto">
+			<table className="w-full border-collapse text-sm">
 				<thead>
 					<tr>
 						{COLUMNS.map((col) => (
-							<th key={col.key}>
+							<th key={col.key} className="border-b border-border px-3 py-2 text-left">
 								<button
 									type="button"
-									className={`sort-header ${sortKey === col.key ? `active-${sortDir}` : ""}`}
+									className={`font-medium text-muted-foreground transition-colors hover:text-foreground ${
+										sortKey === col.key ? "text-neon" : ""
+									}`}
 									onClick={() => handleSort(col.key)}
 								>
 									{col.label}
 									{sortKey === col.key && (
-										<span className="sort-arrow">
-											{sortDir === "asc" ? " ▲" : " ▼"}
-										</span>
+										<span>{sortDir === "asc" ? " ▲" : " ▼"}</span>
 									)}
 								</button>
 							</th>
@@ -132,7 +135,7 @@ export function RepoTable({
 				<tbody>
 					{filtered.length === 0 && (
 						<tr>
-							<td colSpan={COLUMNS.length} className="repo-empty">
+							<td colSpan={COLUMNS.length} className="px-3 py-4 text-muted-foreground">
 								{repos.length === 0
 									? "No repositories registered yet."
 									: "No repos match your search."}
@@ -140,19 +143,25 @@ export function RepoTable({
 						</tr>
 					)}
 					{filtered.map((repo) => (
-						<tr key={repo.stateDir} onClick={() => onSelect(repo)}>
-							<td className="repo-name" title={repo.repoRoot}>
+						<tr
+							key={repo.stateDir}
+							onClick={() => onSelect(repo)}
+							className="cursor-pointer border-b border-border/50 transition-colors hover:bg-bg-elevated/40"
+						>
+							<td className="px-3 py-2 font-medium" title={repo.repoRoot}>
 								{repo.displayName}
 							</td>
-							<td className="repo-model">{repo.modelName ?? "\u2014"}</td>
-							<td className="num">{repo.checkpointCount.toLocaleString()}</td>
-							<td className="num">{repo.tokensSaved.toLocaleString()}</td>
-							<td className="num">{fmtBytesTop(repo.compressedOriginalBytes)}</td>
-							<td className="num">{formatTs(repo.lastCompactedAt)}</td>
+							<td className="px-3 py-2 text-muted-foreground">{repo.modelName ?? "\u2014"}</td>
+							<td className="px-3 py-2 text-right">{repo.checkpointCount.toLocaleString()}</td>
+							<td className="px-3 py-2 text-right">{repo.tokensSaved.toLocaleString()}</td>
+							<td className="px-3 py-2 text-right">{fmtBytesTop(repo.compressedOriginalBytes)}</td>
+							<td className="px-3 py-2 text-right">{formatTs(repo.lastCompactedAt)}</td>
 						</tr>
 					))}
 				</tbody>
 			</table>
-		</div>
+			</div>
+			</CardContent>
+		</Card>
 	);
 }

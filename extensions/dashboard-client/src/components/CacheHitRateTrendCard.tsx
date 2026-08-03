@@ -12,6 +12,7 @@
 
 import type React from "react";
 import type { PerfResponse, CacheHitSample } from "@contracts";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 
 export interface CacheHitRateTrendCardProps {
 	perf: PerfResponse;
@@ -45,19 +46,21 @@ export const CacheHitRateTrendCard: React.FC<CacheHitRateTrendCardProps> = ({
 		c.samples && c.samples.length > 0 ? c.samples : [];
 
 	return (
-		<div className="ov-card cache-trend-card">
-			<h3 className="ov-card-title">Cache Hit-Rate Trend</h3>
-
+		<Card className="electric-hover">
+			<CardHeader>
+				<CardTitle>Cache Hit-Rate Trend</CardTitle>
+			</CardHeader>
+			<CardContent>
 			{/* Metric summary */}
-			<div className="ov-perf-summary">
-				<div className="ov-perf-stat">
-					Avg: <strong>{fmtPct(c.avg)}</strong>
+			<div className="mb-3 flex gap-4 text-sm text-muted-foreground">
+				<div>
+					Avg: <strong className="text-foreground">{fmtPct(c.avg)}</strong>
 				</div>
-				<div className="ov-perf-stat">
-					Latest: <strong>{fmtPct(c.latest)}</strong>
+				<div>
+					Latest: <strong className="text-foreground">{fmtPct(c.latest)}</strong>
 				</div>
-				<div className="ov-perf-stat">
-					Samples: <strong>{c.n}</strong>
+				<div>
+					Samples: <strong className="text-foreground">{c.n}</strong>
 				</div>
 			</div>
 
@@ -83,7 +86,7 @@ export const CacheHitRateTrendCard: React.FC<CacheHitRateTrendCardProps> = ({
 							);
 						})}
 					</div>
-					<div className="ov-card-footer">
+					<div className="mt-1 text-xs text-muted-foreground">
 						{samples.length} sample{samples.length !== 1 ? "s" : ""} over{" "}
 						{samples.length > 1
 							? `${Math.round(
@@ -93,8 +96,9 @@ export const CacheHitRateTrendCard: React.FC<CacheHitRateTrendCardProps> = ({
 					</div>
 				</>
 			) : (
-				<div className="ov-empty-state">No cache-hit samples yet</div>
+				<div className="text-sm text-muted-foreground">No cache-hit samples yet</div>
 			)}
-		</div>
+			</CardContent>
+		</Card>
 	);
 };

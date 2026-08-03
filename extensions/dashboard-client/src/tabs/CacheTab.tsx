@@ -30,6 +30,8 @@ import { TimeSavedCard } from "../components/TimeSavedCard";
 import { ProviderCacheCard } from "../components/ProviderCacheCard";
 import { StripeDistributionCard } from "../components/StripeDistributionCard";
 import { CacheHitRateTrendCard } from "../components/CacheHitRateTrendCard";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 
 export default function CacheTab(): React.ReactElement {
 	const [infoExpanded, setInfoExpanded] = useState(false);
@@ -74,38 +76,42 @@ export default function CacheTab(): React.ReactElement {
 	);
 
 	return (
-		<div className="cache-tab">
-			<div className="card-section">
-				<button
+		<div className="flex flex-col gap-4">
+			<div>
+				<Button
 					type="button"
-					className="info-toggle"
+					variant="outline"
 					onClick={() => setInfoExpanded(!infoExpanded)}
 				>
 					{infoExpanded ? "Hide Guidance" : "Show Cache-Friendly Prompt Ordering Guidance"}
-				</button>
+				</Button>
 				{infoExpanded && (
-					<div className="info-panel">
-						<h3>Cache-Friendly Prompt Ordering</h3>
-						<ul>
-							<li>Keep system prompts and stable context at the top of your conversation — the provider caches the leading prefix.</li>
-							<li>Tool results and volatile content are automatically moved to the tail by message separation (<code>MEGACOMPACT_MESSAGE_SEPARATION</code>) so they don't invalidate the cache prefix.</li>
-							<li>Cache striping (<code>MEGACOMPACT_CACHE_STRIPING</code>) further orders stable context by a stability score so the most durable chunks lead.</li>
-							<li>Avoid inserting new instructions mid-conversation — prepend them instead.</li>
-						</ul>
-						{snapshot && (
-							<div className="cache-status-indicator">
-								<strong>Status:</strong>{" "}
-								{snapshot.config.messageSeparation ? "Separation Enabled" : "Separation Disabled (Check env)"} |{" "}
-								{snapshot.config.cacheStriping ? "Striping Enabled" : "Striping Disabled (Check env)"}
-							</div>
-						)}
-					</div>
+					<Card className="mt-3">
+						<CardHeader>
+							<CardTitle>Cache-Friendly Prompt Ordering</CardTitle>
+						</CardHeader>
+						<CardContent>
+							<ul className="list-disc space-y-1 pl-5">
+								<li>Keep system prompts and stable context at the top of your conversation — the provider caches the leading prefix.</li>
+								<li>Tool results and volatile content are automatically moved to the tail by message separation (<code>MEGACOMPACT_MESSAGE_SEPARATION</code>) so they don't invalidate the cache prefix.</li>
+								<li>Cache striping (<code>MEGACOMPACT_CACHE_STRIPING</code>) further orders stable context by a stability score so the most durable chunks lead.</li>
+								<li>Avoid inserting new instructions mid-conversation — prepend them instead.</li>
+							</ul>
+							{snapshot && (
+								<div className="mt-2 text-sm">
+									<strong>Status:</strong>{" "}
+									{snapshot.config.messageSeparation ? "Separation Enabled" : "Separation Disabled (Check env)"} |{" "}
+									{snapshot.config.cacheStriping ? "Striping Enabled" : "Striping Disabled (Check env)"}
+								</div>
+							)}
+						</CardContent>
+					</Card>
 				)}
 			</div>
 			{/* ==============================================================
 			    Section 1 -- Provider Prompt Cache
 			    ============================================================== */}
-			<h2>Provider Prompt Cache</h2>
+			<h2 className="font-heading text-lg font-semibold">Provider Prompt Cache</h2>
 			{pcLoading ? (
 				<p className="tab-stub">Loading...</p>
 			) : pcError ? (
@@ -132,7 +138,7 @@ export default function CacheTab(): React.ReactElement {
 			{/* ==============================================================
 			    Section 2 -- Cache Stripe Distribution
 			    ============================================================== */}
-			<h2>Cache Stripe Distribution</h2>
+			<h2 className="font-heading text-lg font-semibold">Cache Stripe Distribution</h2>
 			{stripesLoading ? (
 				<p className="tab-stub">Loading...</p>
 			) : stripesError ? (
@@ -146,7 +152,7 @@ export default function CacheTab(): React.ReactElement {
 			{/* ==============================================================
 			    Section 3 -- Cache Hit-Rate Trend
 			    ============================================================== */}
-			<h2>Cache Hit-Rate Trend</h2>
+			<h2 className="font-heading text-lg font-semibold">Cache Hit-Rate Trend</h2>
 			{perfLoading ? (
 				<p className="tab-stub">Loading...</p>
 			) : perfError ? (
@@ -160,7 +166,7 @@ export default function CacheTab(): React.ReactElement {
 			{/* ==============================================================
 			    Section 4 -- Mega-Compact Dedup Cache
 			    ============================================================== */}
-			<h2>Mega-Compact Dedup Cache</h2>
+			<h2 className="font-heading text-lg font-semibold">Mega-Compact Dedup Cache</h2>
 			{snapLoading ? (
 				<p className="tab-stub">Loading...</p>
 			) : snapError ? (
@@ -170,7 +176,7 @@ export default function CacheTab(): React.ReactElement {
 				(() => {
 					const { cacheHits, compacts, timeSaved } = snapshot;
 					return (
-						<div className="card-grid overview-card-grid">
+						<div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
 							<CacheHitsCard
 								cacheHitsSession={cacheHits.session}
 								cacheHitsTotal={cacheHits.total}
