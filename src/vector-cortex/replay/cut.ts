@@ -100,6 +100,10 @@ function retreatAgainstPairs(
         hit = true;
         const target = p.callSeq - 1n;
         if (target < floor) {
+          // No-progress guard (VC0B-I12): the retreat target lies below the
+          // floor. If the floor itself still splits a pair we must not loop
+          // back onto it (that hangs the synchronous agent loop) — clamp AT
+          // the floor once and stop. The floor is taken as the legal cut.
           e = floor;
           floorClamped = true;
         } else {
@@ -109,7 +113,10 @@ function retreatAgainstPairs(
         break;
       }
     }
-    if (!hit) return { effective: e, split, floorClamped };
+    // Terminate when no pair splits e, OR when we have already clamped to the
+    // floor (the floor is an absolute lower bound; we never retreat past it
+    // even if it is not itself pair-safe).
+    if (!hit || floorClamped) return { effective: e, split, floorClamped };
   }
 }
 

@@ -47,11 +47,17 @@ export function extractToolPairs(
 ): ReplayToolPair[] {
   const calls = new Map<string, bigint>();
   const pairs: ReplayToolPair[] = [];
+  let maxSeq = -1n;
   for (const o of occurrences) {
+    if (o.seq > maxSeq) maxSeq = o.seq;
     if (o.role === "tool" && o.toolCallId !== undefined) {
       const callSeq = calls.get(o.toolCallId);
       if (callSeq !== undefined && callSeq < o.seq) {
         pairs.push({ callSeq, resultSeq: o.seq });
+        // Matched: remove so only genuinely-unclosed calls remain for the
+        // synthetic dangling-call pairs below (otherwise a matched call would
+        // also get a synthetic pair and force an over-retreat).
+        calls.delete(o.toolCallId);
       }
       continue;
     }
@@ -60,6 +66,17 @@ export function extractToolPairs(
     if (o.toolCallId !== undefined) {
       calls.set(o.toolCallId, o.seq);
     }
+  }
+  // VC0B-I11: a call with NO observed result (dangling / unclosed) must still
+  // bound the cut. Mode B's open-call tracker retreats below such a call; to
+  // keep A and B in lockstep we surface each dangling call as a synthetic pair
+  // whose "result" lies one past the last observed seq. Any cut at/after the
+  // call then splits it, so A retreats to the call boundary exactly like B —
+  // and the synthetic unmatched marker also makes finalizeReplay count the
+  // dangling call as an orphan instead of reporting a false 0.
+  const pastEnd = maxSeq + 1n;
+  for (const callSeq of calls.values()) {
+    pairs.push({ callSeq, resultSeq: pastEnd });
   }
   return pairs;
 }

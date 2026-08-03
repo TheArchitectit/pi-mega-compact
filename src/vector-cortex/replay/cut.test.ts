@@ -88,3 +88,28 @@ describe("cutIsPairSafe", () => {
     assert.equal(cutIsPairSafe(2n, pairs), true); // whole pair dropped
   });
 });
+
+describe("retreat no-progress guard (VC0B-I12)", () => {
+  test("anchor floor sitting inside a tool pair terminates instead of hanging", () => {
+    // Floor 7 lies strictly inside pair (call 6, result 10); candidate 9 splits
+    // it. The retreat target (call-1 = 5) is below the floor, so without the
+    // no-progress guard the loop re-finds the same pair forever. With the guard
+    // it clamps AT the floor once and returns.
+    const { cut: c, retreats } = cut(9, 9, 9, 9, 7, [{ callSeq: 6, resultSeq: 10 }]);
+    assert.equal(c.effectiveSeq, 7n, "clamps at the floor, never below it");
+    assert.ok(retreats.some((r) => r.code === "CUT_ANCHOR_FLOOR"));
+  });
+
+  test("floor inside pair with a lower pair also terminates", () => {
+    // Floor 7 splits pair (6,10) — a malformed input (a legal floor must be
+    // pair-safe), but the no-progress guard must still terminate rather than
+    // re-find the same pair forever. Retreat lands on the lower pair boundary
+    // (10), which is above the floor, so it stops there without hanging.
+    const { cut: c } = cut(12, 12, 12, 12, 7, [
+      { callSeq: 6, resultSeq: 10 },
+      { callSeq: 11, resultSeq: 13 },
+    ]);
+    assert.equal(c.effectiveSeq, 10n, "terminates at the pair boundary, no hang");
+    assert.ok(c.effectiveSeq >= 7n, "never retreats below the floor");
+  });
+});

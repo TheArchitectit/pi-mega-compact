@@ -205,6 +205,25 @@ describe("runReplayV2", () => {
     assert.equal(report.counts.orphanToolEvents, 0);
   });
 
+  test("modes A and B agree on a stream ending in an unclosed tool call (VC0B-I11)", () => {
+    // Trailing dangling call (call d with no result) must bound the cut
+    // identically in both modes: both retreat to the last pair-complete seq.
+    const sessionId = "s-vc0b-dangling";
+    const enc = new TextEncoder();
+    const occurrences: ReplayOccurrenceV2[] = [
+      { sessionId, seq: 1n, eventId: "m1", role: "assistant", kind: "message", originalBytes: enc.encode("msg") },
+      { sessionId, seq: 2n, eventId: "cc", role: "assistant", kind: "tool_call", toolCallId: "c", originalBytes: enc.encode("callc") },
+      { sessionId, seq: 3n, eventId: "rc", role: "tool", kind: "tool_result", toolCallId: "c", originalBytes: enc.encode("resc") },
+      { sessionId, seq: 4n, eventId: "cd", role: "assistant", kind: "tool_call", toolCallId: "d", originalBytes: enc.encode("calld") },
+    ];
+    const base = { sessionId, occurrences, requestedSeq: 4n, committedSeq: 4n, capturedHighWater: 4n, anchorFloor: 0n };
+    const a = runReplayV2({ ...base, mode: "A" });
+    const b = runReplayV2({ ...base, mode: "B" });
+    assert.equal(a.report.cut.effectiveSeq, b.report.cut.effectiveSeq, "A and B agree on the cut");
+    assert.equal(a.report.cut.effectiveSeq, 3n, "both retreat below the dangling call");
+    assert.ok(Buffer.from(a.bytes).equals(Buffer.from(b.bytes)), "byte-identical replayed prefix");
+  });
+
   test("ascending (seq,eventId) comparator is total and matches source order", () => {
     const a: ReplayOccurrenceV2 = { sessionId: "s", seq: 1n, eventId: "a", role: "user", kind: "m" };
     const b: ReplayOccurrenceV2 = { sessionId: "s", seq: 1n, eventId: "b", role: "user", kind: "m" };
