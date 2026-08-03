@@ -135,6 +135,7 @@ export type {
 	PerfPercentile,
 	PerfAverage,
 	PerfLatest,
+	CacheHitSample,
 	PerfCacheHit,
 	PerfDiag,
 	PerfQuery,

@@ -91,6 +91,8 @@ function summarize(ev: SseEvent): string {
 		case "game_mode_changed":
 		case "game_render":
 			return `stage=${ev.type}`;
+		default:
+			return `event=${ev.type}`;
 	}
 }
 

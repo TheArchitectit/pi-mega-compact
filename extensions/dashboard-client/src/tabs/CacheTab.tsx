@@ -100,8 +100,9 @@ export default function CacheTab(): React.ReactElement {
 							{snapshot && (
 								<div className="mt-2 text-sm">
 									<strong>Status:</strong>{" "}
-									{snapshot.config.messageSeparation ? "Separation Enabled" : "Separation Disabled (Check env)"} |{" "}
-									{snapshot.config.cacheStriping ? "Striping Enabled" : "Striping Disabled (Check env)"}
+									{snapshot.config.auto ? "Auto-compaction Enabled" : "Auto-compaction Disabled"} |{" "}
+									fast-gate {snapshot.config.fastGatePct}% / threshold{" "}
+									{snapshot.config.thresholdTokens.toLocaleString()} tokens
 								</div>
 							)}
 						</CardContent>

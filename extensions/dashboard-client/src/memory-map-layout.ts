@@ -48,7 +48,7 @@ export interface LayoutEdge {
   source: number;
   target: number;
   weight: number;
-  type: GraphEdge["type"];
+  type: GraphEdgeMin["type"];
 }
 
 export interface Layout {
@@ -135,7 +135,6 @@ export function applyForces(layout: Layout): void {
       else continue;
       const dx = nodes[other].pos.x - nodes[i].pos.x;
       const dy = nodes[other].pos.y - nodes[i].pos.y;
-      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
       fx += dx * ATTRACTION * e.weight;
       fy += dy * ATTRACTION * e.weight;
     }

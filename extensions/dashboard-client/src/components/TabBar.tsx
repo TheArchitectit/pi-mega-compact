@@ -27,8 +27,6 @@ export function TabBar({
 		() => advancedTabIds.has(active), // start open if an advanced tab is active
 	);
 
-	const isAdvancedActive = advancedTabIds.has(active);
-
 	return (
 		<nav className="tab-bar" role="tablist">
 			{primaryTabs.map((tab) => (
