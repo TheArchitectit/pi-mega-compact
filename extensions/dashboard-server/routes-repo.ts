@@ -7,6 +7,7 @@ import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { readSnapshot } from "./snapshot.js";
+import { resolveSnapshot } from "./resolve-snapshot.js";
 import { dashboardHtml } from "./html.js";
 import { readIndex, getIndexDir } from "./index-reader.js";
 import { ACTIVE_WINDOW_SEC } from "./types.js";
@@ -41,7 +42,10 @@ export function handleIndex(
 	}
 
 	if (req.url === "/api/snapshot") {
-		const snap = readSnapshot(snapshotPath);
+		// Dynamically resolve the most recently active session's dashboard.json
+		// so the Overview shows live data from the repo pi is running in — not
+		// the stale launcher dir the server was started with.
+		const { snapshot: snap } = resolveSnapshot(snapshotPath, ctx.stateDir);
 		res.writeHead(200, { "Content-Type": "application/json" });
 		res.end(JSON.stringify(snap));
 		return true;

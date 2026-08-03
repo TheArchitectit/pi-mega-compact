@@ -8,7 +8,7 @@
 
 import type { ServerResponse } from "node:http";
 
-import { readSnapshot } from "./snapshot.js";
+import { resolveSnapshot } from "./resolve-snapshot.js";
 import type { IndexIndex, Snapshot } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -53,14 +53,19 @@ function makeOverlayCurrentRepo(
 ): (idx: IndexIndex | null) => void {
 	return (idx: IndexIndex | null): void => {
 		if (!idx || !idx.repos.length) return;
+		// Dynamically resolve the most recently active repo's snapshot so the
+		// overlay matches what /api/snapshot serves (not the stale launch dir).
 		let snap: Snapshot | null = null;
+		let activeStateDir = stateDir;
 		try {
-			snap = readSnapshot(snapshotPath);
+			const resolved = resolveSnapshot(snapshotPath, stateDir);
+			snap = resolved.snapshot;
+			activeStateDir = resolved.stateDir;
 		} catch {
 			return;
 		}
 		if (!snap || !snap.repo) return;
-		const cur = idx.repos.find((r) => r.stateDir === stateDir);
+		const cur = idx.repos.find((r) => r.stateDir === activeStateDir);
 		if (!cur) return;
 		const prevSaved = cur.tokensSaved;
 		const prevCp = cur.checkpointCount;

@@ -10,6 +10,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { resolveRepoRoot } from "../mega-config.js";
 import { recordModelSnapshot, recordRepoModel } from "../../src/store/sqlite.js";
 import type { ModelSnapshot } from "../../src/store/sqlite.js";
+import { lookupModelInputRate } from "../../src/pricing.js";
 
 // ---------------------------------------------------------------------- types
 
@@ -42,12 +43,14 @@ export function captureModelImpl(ctx: CaptureModelContext, ectx: ExtensionContex
 	} catch {
 		/* optional */
 	}
+	const modelId = m.id;
+	const fallbackInput = lookupModelInputRate(modelId);
 	const snap: Omit<ModelSnapshot, "capturedAt"> = {
 		provider: m.provider,
 		providerName,
-		modelId: m.id,
+		modelId,
 		modelName: m.name ?? null,
-		inputRate: m.cost?.input ?? 0,
+		inputRate: m.cost?.input || fallbackInput || 0,
 		outputRate: m.cost?.output ?? 0,
 		contextWindow: m.contextWindow ?? 0,
 		maxTokens: m.maxTokens ?? 0,

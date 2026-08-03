@@ -92,7 +92,7 @@ function summarize(ev: SseEvent): string {
 		case "game_render":
 			return `stage=${ev.type}`;
 		default:
-			return `event=${ev.type}`;
+			return `event=${ev.type ?? "unknown"}`;
 	}
 }
 

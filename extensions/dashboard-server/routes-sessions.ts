@@ -28,10 +28,13 @@ export function handleEvents(
 		Connection: "keep-alive",
 	});
 
-	// Drain existing events so the client starts with history
+	// Drain existing events so the client starts with history.
+	// Only stream events with a "type" field — events.log also contains
+	// internal monitoring rows (e.g. captureModel:recorded) that use "event"
+	// instead of "type" and aren't part of the SseEvent contract.
 	const { data: existing, offset: initialOffset } = readFrom(eventsPath, 0);
 	eventOffsetRef.value = initialOffset;
-	const lines = existing.split("\n").filter((l: string) => l.trim());
+	const lines = existing.split("\n").filter((l: string) => l.trim() && l.includes('"type"'));
 	for (const line of lines) {
 		res.write(`data: ${line}\n\n`);
 	}
@@ -44,7 +47,7 @@ export function handleEvents(
 			watchTimer = null;
 			const { data, offset } = readFrom(eventsPath, eventOffsetRef.value);
 			eventOffsetRef.value = offset;
-			const newLines = data.split("\n").filter((l: string) => l.trim());
+			const newLines = data.split("\n").filter((l: string) => l.trim() && l.includes('"type"'));
 			for (const line of newLines) {
 				res.write(`data: ${line}\n\n`);
 			}

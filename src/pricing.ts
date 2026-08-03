@@ -30,6 +30,8 @@ export const MODEL_INPUT_RATES: Record<string, number> = {
 	"claude-3-opus": 15e-6,
 	"claude-3-haiku": 0.25e-6,
 	"claude-3.5-haiku": 0.8e-6,
+	"claude-mythos-5": 15e-6, // Opus-class custom alias
+	"claude-fable": 5e-6, // Claude 5 mid-tier
 	"gpt-4o": 2.5e-6,
 	"gpt-4o-mini": 0.15e-6,
 	"gpt-4-turbo": 10e-6,
@@ -39,11 +41,17 @@ export const MODEL_INPUT_RATES: Record<string, number> = {
 	"gemini-2.0-flash": 0.1e-6,
 	"deepseek-chat": 0.14e-6,
 	"deepseek-reasoner": 0.55e-6,
+	"deepseek-v4-flash": 0.14e-6, // DeepSeek v4 flash-tier
 	codestral: 0.3e-6,
 	"mistral-large": 2e-6,
 	"llama-3.1-405b": 1.33e-6,
 	"llama-3.1-70b": 0.8e-6,
 	"llama-3.1-8b": 0.05e-6,
+	// GLM models (zai-org) — approximate open-weights pricing
+	"zai-org/GLM-5.1-FP8": 0.15e-6,
+	"zai-org/GLM-4.7-Flash": 0.1e-6,
+	"hf:zai-org/GLM-4.7-Flash": 0.1e-6,
+	"ozore/mimo-v2.5-pro": 0.5e-6,
 };
 
 /**

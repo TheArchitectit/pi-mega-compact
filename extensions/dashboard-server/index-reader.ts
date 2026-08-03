@@ -17,6 +17,7 @@ import type { IndexRepo, IndexIndex } from "./types.js";
 import {
 	readProviderCacheForRepo,
 } from "../../src/store/sqlite/perf-samples.js";
+import { lookupModelInputRate } from "../../src/pricing.js";
 
 export function getIndexDir(): string {
 	const override = process.env.MEGACOMPACT_INDEX_DIR;
@@ -51,7 +52,8 @@ export function readIndex(): IndexIndex | null {
 			provider: (r.provider as string | null) ?? null,
 			providerName: (r.provider_name as string | null) ?? null,
 			modelName: (r.model_name as string | null) ?? null,
-			inputRate: (r.input_rate as number | null) ?? null,
+			inputRate: ((r.input_rate as number | null) ||
+				lookupModelInputRate(String(r.model_name ?? ""))) ?? null,
 			outputRate: (r.output_rate as number | null) ?? null,
 			lastSeen: Number(r.last_seen ?? 0),
 			// Defaults — enriched below from each repo's own store.
