@@ -174,6 +174,26 @@ export default function OverviewTab({
 		[moveCard],
 	);
 
+	// Per-model cost breakdown for the Model & Cost drill-down, derived from
+	// snapshot data already in the component (no snapshot.byModel exists).
+	// MUST be called before the early returns below — Rules of Hooks: hooks
+	// cannot be after a conditional return (would cause React error #310
+	// "Rendered more hooks than during the previous render" when the snapshot
+	// transitions from null → loaded). Guard the null case inline.
+	const modelBarData = useMemo(
+		() => {
+			const ds = snapshot as RuntimeSnapshot | null;
+			const compression = ds?.compression;
+			const model = ds?.model;
+			return [
+				{ label: "Tokens freed", value: compression?.repo.tokensFreed ?? 0 },
+				{ label: "Input rate", value: model ? model.inputRate : 0 },
+				{ label: "Output rate", value: model ? model.outputRate : 0 },
+			];
+		},
+		[snapshot],
+	);
+
 	if (loading && !snapshot)
 		return <div className="tab-stub">Loading snapshot…</div>;
 	if (error && !snapshot)
@@ -199,17 +219,6 @@ export default function OverviewTab({
 	const timeSaved = d.timeSaved;
 	const repo = d.repo;
 	const model = d.model;
-
-	// Per-model cost breakdown for the Model & Cost drill-down, derived from
-	// snapshot data already in the component (no snapshot.byModel exists).
-	const modelBarData = useMemo(
-		() => [
-			{ label: "Tokens freed", value: compression.repo.tokensFreed },
-			{ label: "Input rate", value: model ? model.inputRate : 0 },
-			{ label: "Output rate", value: model ? model.outputRate : 0 },
-		],
-		[compression, model],
-	);
 
 	// Renders a single card (wrapped in SortableCard) by its CardId. Cards
 	// with a drill-down get an onClick; the rest are plain sortable items.
