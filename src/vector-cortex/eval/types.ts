@@ -56,7 +56,8 @@ export interface AnnotationV1 {
   readonly redactions: ReadonlyArray<{
     /** Field name in the original annotation that was redacted. */
     readonly field: string;
-    /** SHA-256 digest of the redacted bytes (unpadded base64 per conformance). */
+    /** SHA-256 digest of the redacted bytes (standard base64; decodes to the
+     *  same hash as the conformance fixture's `digestHex` — see annotations.test). */
     readonly digest: string;
     /** Byte length of the redacted content, when known. */
     readonly bytes: number;

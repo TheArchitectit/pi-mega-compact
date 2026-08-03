@@ -40,6 +40,8 @@ Docs: `docs/vector-cortex/evidence/VC0A.md` (this record). `scripts/regression_c
 
 Asserts: `EVAL-005` = EVAL-BUCKET-001 (1ms/250ms inclusive); `EVAL-007` = EVAL-REDACT-002 (prompt bytes never in JSONL); `EVAL-009` = EVAL-ORDER-003 (equal-seq → event-name order).
 
+**Digest format (pinned):** conformance fixtures EVAL-007/008 assert the expected digest as `digestHex` (hex SHA-256), while the runtime `AnnotationV1.digest` is standard base64 (`createHash("sha256").digest("base64")`, may be padded). These are the same SHA-256 in two encodings. Pinned by `annotations.test.ts` "runtime base64 digest decodes to the conformance digestHex (EVAL-007)": it decodes the runtime digest back to hex and requires it to equal the fixture's `digestHex`. The type docstring (`AnnotationV1.digest`) notes this equivalence.
+
 ## Migration
 
 pure sprint — no migration (per VC0A spec).
@@ -54,9 +56,17 @@ pure sprint — no migration (per VC0A spec).
 ## Commands and verbatim summaries
 
 - `npm run build` → tsc clean (no `error TS`).
-- `node --test dist/vector-cortex/vc0a-acceptance.test.js` → `tests 8, pass 8, fail 0` (flag ON); `MEGACOMPACT_VC0A=0 node --test dist/vector-cortex/vc0a-acceptance.test.js` → `tests 8, pass 8, fail 0` (flag-off rehearsal; mode C zero writes). Single-file path reconciliation: root tsc layout (rootDir=".") emits to `dist/src/vector-cortex/...`; `scripts/vector-cortex-publish-acceptance.mjs` (npm `postbuild`) copies ONLY the `*-acceptance.test.js` single file to the mandated `dist/vector-cortex/` path — no rootDir/outDir change, no other compiled file moves.
-- `src/vector-cortex/eval/*.test.js` (metrics 7, annotations 6, persist 4) + acceptance → all pass.
-- `npm test` → `TOTAL: 1236 passed, 0 failed across 175 files` (measured at the final HEAD with the postbuild publish in place; files 174→175 because run-tests now globs the published `dist/vector-cortex/vc0a-acceptance.test.js` exactly once — eval `*.test.js` are excluded from the publish mirror so they are not double-run).
+- Mandated command, verbatim:
+  ```bash
+  node --test dist/vector-cortex/vc0a-acceptance.test.js
+  # → ℹ tests 8, ℹ pass 8, ℹ fail 0   (flag ON)
+  MEGACOMPACT_VC0A=0 node --test dist/vector-cortex/vc0a-acceptance.test.js
+  # → ℹ tests 8, ℹ pass 8, ℹ fail 0   (flag-off rehearsal; mode C zero writes)
+  ```
+  Path reconciliation: the root tsc layout (single `tsconfig.json`, `rootDir="."`) stays canonical, emitting to `dist/src/...` + `dist/extensions/...`. The mandated `dist/vector-cortex/` path (contractual across 27 sprints) is produced additively by `scripts/vector-cortex-publish-acceptance.mjs` (npm `postbuild`): it mirrors the compiled `vector-cortex/` subtree (the acceptance aggregator + the `eval/` runtime modules it imports) to `dist/vector-cortex/`, and `dist/src/config/vector-cortex.js` to `dist/config/vector-cortex.js`. The `eval/*.test.js` files are excluded from the mirror so run-tests does not double-run them. The controller-prescribed `rootDir:"src"` split was NOT adopted: extension source imports `../../src/*` are required by pi (which loads `extensions/mega-compact.ts` as TS source) and by the OpenClaw adapter + dashboard server (compiled `dist/extensions/*` resolving `../../src/*` → `dist/src/*`), so moving src off `dist/src/` would break all of them.
+- `src/vector-cortex/eval/*.test.js` (metrics 7, annotations **7**, persist 4) + acceptance → all pass.
+- `npm test` → green, `0 failed`, exit 0 across every observed run at this HEAD (rerun measurements recorded during review: 1236/175, 1238/175, 1240/178; the reviewer's independent reads of the same tree: 1145/175, 1257/178; eval `*.test.js` excluded from the publish mirror so they are not double-run). The exact pass total drifts run-to-run because `scripts/run-tests.mjs` adjudicates pool-flaky files via a solo lane and its TAP-stream pass capture is timing-sensitive (the harness itself documents "pass counts to drift between runs" — `scripts/run-tests.mjs:141`). The stable invariant across every run is `0 failed` and a constant file count per tree state.
+- Mandated single-file aggregator: `node --test dist/vector-cortex/vc0a-acceptance.test.js` → `tests 8, pass 8, fail 0` (flag ON and `MEGACOMPACT_VC0A=0`), confirmed directly, independent of the drifting harness total.
 - `npm run lint` → `tsc --noEmit` + `guardrails-scan` + `semantic-scan` all clean.
 - `python3 scripts/regression_check.py --all` → `✓ No potential regressions detected`; registry.ts split back under 500 (496). Sole remaining hard-limit error `extensions/mega-events/context-handler.ts` (514) is pre-existing at HEAD, untouched by this sprint.
 - `node scripts/vector-cortex-conformance.mjs --check` → ✓ (13 files canonical).
@@ -85,7 +95,7 @@ Zero runtime network egress verified under full `net/tls/http/https/dns.lookup/f
 
 ## File sizes and baseline exceptions
 
-All new files within limits (src < 300, extensions < 400, tests < 600). `extensions/dashboard-server/api-contracts/endpoints/registry.ts` split into `registry-ext.ts` (delegate-shell) to hold VC0A's endpoint entry and keep the registry under the 500-line hard limit while staying additive for VC0C. Pre-existing over-hard-limit file `extensions/mega-events/context-handler.ts` (514 @ HEAD) is out of scope.
+All new files within limits (src < 300, extensions < 400, tests < 600). `extensions/dashboard-server/api-contracts/endpoints/registry.ts` split into `registry-ext.ts` (delegate-shell) to hold VC0A's endpoint entry and keep the registry under the 500-line hard limit while staying additive for VC0C. Pre-existing over-hard-limit file `extensions/mega-events/context-handler.ts` (514 @ HEAD) is out of scope. `src/vector-cortex/vc0a-acceptance.test.ts` is 321 lines — it trips the 300-line *soft* warning but is well under the 600-line test hard limit; it is a single cohesive aggregator (no natural split), so it is kept as-is and documented.
 
 ## Rollback / downgrade rehearsal
 
@@ -95,6 +105,7 @@ All new files within limits (src < 300, extensions < 400, tests < 600). `extensi
 
 - dashboard-client `npm run typecheck` is pre-existing broken in this repo (client tsconfig `types: []` while `@contracts`/`@pricing` aliases pull server `src/` modules needing Node types). VC0A client files themselves typecheck clean; the shipping pipeline gate (`npm run build:dashboard`) passes. Fix is a cross-cutting client tsconfig change, out of VC0A scope.
 - `rejects` array in the GET response is static `[]` this sprint; VC0C wires live breaker/failure telemetry into it.
+- **Deferred producer wiring:** the live loop is not yet connected — `extensions/mega-compact.ts` / `src/engine.ts` do NOT call `createEvalObserver` this sprint. The `MEGACOMPACT_VC0A` flag currently gates emission readiness + dashboard visibility only; the actual `record()` producer hook-up in the live compaction/recall loop is deferred to the VC1 integration sprint. Mode C (flag off) remains byte-identical to the predecessor regardless.
 - `log_failure.py --list` reports 2 pre-existing active runtime failures unrelated to VC0A.
 
 ## Reviewer attestation

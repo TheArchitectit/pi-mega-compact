@@ -26,6 +26,19 @@ describe("digestBytes", () => {
   test("different bytes differ", () => {
     assert.notEqual(digestBytes(bytes("a")), digestBytes(bytes("b")));
   });
+  // Conformance fixtures (EVAL-007/008) assert the expected digest as hex
+  // (`digestHex`), while the runtime emits standard base64. Both encode the
+  // same SHA-256 over the redacted bytes: decode the runtime base64 to hex and
+  // require it to equal the pinned fixture digestHex. This pins the two
+  // representations to the same hash so either may be consumed downstream.
+  test("runtime base64 digest decodes to the conformance digestHex (EVAL-007)", () => {
+    const promptB64 =
+      "dGhlIHF1aWNrIGJyb3duIGZveCBqdW1wcyBvdmVyIHRoZSBsYXp5IHByb21wdA==";
+    const expectedHex =
+      "d0adfb2158ce763a5e178092aeb701891088b8cccfe2329791102c48ee066ef1";
+    const digest = digestBytes(Buffer.from(promptB64, "base64"));
+    assert.equal(Buffer.from(digest, "base64").toString("hex"), expectedHex);
+  });
 });
 
 describe("redactAnnotation", () => {
