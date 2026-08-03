@@ -29,3 +29,4 @@ export { handleContextHealth, handleCachePoison, handleHealthSettings } from "./
 export { handleEmbedderHealth } from "./routes-embedder-health.js";
 export { handleRagSettings } from "./routes-rag-settings.js";
 export { handleRagMetrics } from "./routes-rag-metrics.js";
+export { handleWiki } from "./routes-wiki.js";
