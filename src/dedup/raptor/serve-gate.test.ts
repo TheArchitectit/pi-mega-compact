@@ -3,7 +3,7 @@
  *
  * Five gates that must ALL pass before the RAPTOR tree is trusted as the live
  * recall surface:
- *   1. Shadow gate (RAPTOR_SHADOW_MODE != false → no RAPTOR merge)
+ *   1. Shadow gate (RAPTOR_SHADOW_MODE=true → no RAPTOR merge; default is now live)
  *   2. Stale tree fallback (builtAt < max checkpoint timestamp → flat)
  *   3. timedOut fallback (extractive-fallback root → flat)
  *   4. Coverage breadth (2-topic fixture, RAPTOR hits both vs flat misses one)
@@ -105,14 +105,14 @@ function buildTree(store: VectorStore, sid: string) {
 
 // ─── Gate 1: shadow mode ────────────────────────────────────────────────────
 
-test("gate 1: shadow mode (default) → search does NOT use RAPTOR merge", () => {
+test("gate 1: shadow mode (opt-in) → search does NOT use RAPTOR merge", () => {
 	const sd = stateDir();
 	const s = new VectorStore({ dedupSim: 0.9, stateDir: sd, config: cfg() });
 	const sid = "shadow";
 	seedSession(s, sid, 5, "shadows");
 	buildTree(s, sid);
 
-	// Shadow mode is the default when env is not explicitly "false".
+	// Shadow mode is opt-in (RAPTOR_SHADOW_MODE=true); default is now live.
 	const orig = process.env.RAPTOR_SHADOW_MODE;
 	process.env.RAPTOR_SHADOW_MODE = "true";
 	try {

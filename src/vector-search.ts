@@ -64,9 +64,9 @@ function raptorSearchHits(
 		const embedder = store.embedder;
 		const record = store.record;
 
-		// S25 gate (a): honor the shadow contract at SERVE time. The tree is still
-		// built + persisted (logging-only) but NOT merged into recall while
-		// RAPTOR_SHADOW_MODE is anything other than "false".
+		// S25 gate (a): honor shadow mode at SERVE time. When RAPTOR_SHADOW_MODE=true,
+		// the tree is built + persisted but NOT merged into recall (transition/eval).
+		// Default is live: shadow mode is opt-in, not the default.
 		if (isShadowMode()) return [];
 		// S25 gate (b): freshness + fallback guards with per-session cache.
 		// The cache avoids O(n·leaves) rehydrate on every search when the tree

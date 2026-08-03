@@ -1,10 +1,10 @@
 /**
- * index.ts — RAPTOR orchestrator (Sprint 13, Phase 6).
+ * index.ts — RAPTOR orchestrator (Sprint 13, Phase 6 → promoted to live in S42B).
  *
  * Entry point that turns a session's leaves into a hierarchical summary tree.
- * Shadow mode (RAPTOR_SHADOW_MODE default true): the tree is BUILT and PERSISTED
- * to raptor_nodes + logged, but is NOT used to serve retrieval. The live
- * vectorStore.search path is untouched until Sprint 14 promotes RAPTOR.
+ * The tree is BUILT, PERSISTED to raptor_nodes, and SERVED in recall queries
+ * when RAPTOR_ENABLED=true (default). Set RAPTOR_SHADOW_MODE=true to build +
+ * persist only without serving (transition/eval use).
  *
  * PREVENT-PI-004: no network here. Any Ollama call lives in summarizer.ts
  * (localhost-only, annotated). This module is pure orchestration.
@@ -20,9 +20,13 @@ import { saveRaptorTree, listRaptorNodes } from "../../store/sqlite.js";
 import { insertBuildHistory, computeCoherenceScore } from "./buildHistory.js";
 import { loadDedupConfig } from "../../config/dedup.js";
 
-/** Shadow mode is on by default; set RAPTOR_SHADOW_MODE=false to serve live. */
+/**
+ * Shadow mode default OFF: the tree is built, persisted, AND served when
+ * RAPTOR_ENABLED=true (the Setup tab toggle). Set RAPTOR_SHADOW_MODE=true to
+ * build + persist only (transition/eval use without serving live recall).
+ */
 export function isShadowMode(): boolean {
-  return process.env.RAPTOR_SHADOW_MODE !== "false";
+  return process.env.RAPTOR_SHADOW_MODE === "true";
 }
 
 export interface RaptorOrchestratorOptions {
