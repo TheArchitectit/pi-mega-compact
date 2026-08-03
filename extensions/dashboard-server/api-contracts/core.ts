@@ -206,6 +206,65 @@ export interface SseRecallInject {
 }
 
 /**
+ * SSE event emitted on a recall pass when HyDE was considered (H1). Streamed
+ * via `GET /api/events`. Mirrors the metrics carried up from the recall core's
+ * `HydeInvocationInfo`.
+ */
+export interface SseHydeExecuted {
+  /** Discriminator. Always `'hyde_executed'`. */
+  type: 'hyde_executed';
+  /** ISO 8601 timestamp of the event. */
+  ts: string;
+  /** Session identifier the recall ran in. */
+  sessionId: string;
+  /** True when HyDE ran (hypothetical doc generated + embedded + searched). */
+  ran: boolean;
+  /** True when HyDE was considered but explicitly skipped. */
+  skipped: boolean;
+  /** Human-readable reason: "ran" | "disabled" | "no-llm" | "generation-failed". */
+  reason: string;
+  /** The hypothetical answer document the LLM produced (truncated). */
+  hypotheticalDoc: string;
+  /** ms spent generating + embedding the hypothetical doc (0 when skipped). */
+  generationMs: number;
+  /** Hit count from the raw-query search before fusion. */
+  rawHitCount: number;
+  /** Hit count from the hypothetical-doc search before fusion. */
+  hydeHitCount: number;
+  /** Hit count of the RRF-fused result actually injected. */
+  fusedHitCount: number;
+  /** Lift = fusedHitCount / max(1, rawHitCount). */
+  lift: number;
+}
+
+/**
+ * SSE event emitted per recall pass with the recall-quality metrics (H1).
+ * Streamed via `GET /api/events`.
+ */
+export interface SseRecallMetrics {
+  /** Discriminator. Always `'recall_metrics'`. */
+  type: 'recall_metrics';
+  /** ISO 8601 timestamp of the event. */
+  ts: string;
+  /** Session identifier the recall ran in. */
+  sessionId: string;
+  /** Number of hits injected for the turn. */
+  hitCount: number;
+  /** Weighted composite recall-quality score (0–1). */
+  score: number;
+  /** Whether the recall quality passed its thresholds. */
+  pass: boolean;
+  /** Relevance breakdown (0–1). */
+  relevance: number;
+  /** Coverage breakdown (0–1). */
+  coverage: number;
+  /** Diversity breakdown (0–1). */
+  diversity: number;
+  /** Specificity breakdown (0–1). */
+  specificity: number;
+}
+
+/**
  * SSE event emitted when anchor messages are updated.
  *
  * Served via `GET /api/events` (Server-Sent Events stream).

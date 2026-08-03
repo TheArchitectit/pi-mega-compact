@@ -20,6 +20,8 @@ export type {
 	SsePressureLifted,
 	SseCheckpointPersisted,
 	SseRecallInject,
+	SseHydeExecuted,
+	SseRecallMetrics,
 	SseAnchorsUpdated,
 	SseConfigUpdated,
 	SseConfigPreset,
@@ -98,6 +100,8 @@ import type {
 	SsePressureLifted,
 	SseCheckpointPersisted,
 	SseRecallInject,
+	SseHydeExecuted,
+	SseRecallMetrics,
 	SseAnchorsUpdated,
 	SseConfigUpdated,
 	SseConfigPreset,
@@ -169,6 +173,8 @@ export type SseEvent =
 	| SseCrewPresenceChanged
 	| SseCrewTurnChanged
 	| SseCrewBanditChosen
+	| SseHydeExecuted
+	| SseRecallMetrics
 	| SseGameRitualStart
 	| SseGameRitualStage
 	| SseGameRitualEnd
@@ -240,3 +246,6 @@ export type {
 	RagSettingsRequest,
 	RagSettingsResponsePost,
 } from "./rag-settings.js";
+
+// RAG metrics — HyDE + recall-quality aggregations (H1/H2)
+export type { RagMetricsResponse } from "./rag-metrics.js";
