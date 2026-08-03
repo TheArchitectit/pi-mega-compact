@@ -1,5 +1,63 @@
 # Release Notes — pi-mega-compact
 
+## v0.13.7 (2026-08-03) — per-repo snapshot resolution + Events SSE filter + costing fallback
+
+Three fixes from the Playwright metric audit of all 12 dashboard tabs:
+
+- **Per-repo snapshot resolution** — the dashboard server was launched with the launcher dir as its static stateDir, but the active pi session runs in a different repo. `/api/snapshot` now dynamically resolves the most recently active repo's `dashboard.json` from the repo registry, so the Overview tab always shows live data (6 compactions, 68M tokens saved, 96% dedup rate) instead of zeros from a stale launcher-dir snapshot. The `/api/index` overlay also uses the resolved stateDir so the current-repo row matches.
+- **Events tab `event=undefined`** — `events.log` contains internal monitoring rows (e.g. `captureModel:recorded`) that use `"event"` instead of `"type"` as their discriminator field. The SSE handler passed them through raw, causing `event=undefined` in the UI. Fixed by filtering SSE to only stream lines with a `"type"` field, plus a defensive `ev.type ?? "unknown"` in `EventStream.tsx`.
+- **Costing $0 everywhere** — all models showed `inputRate=0` because pi's `ectx.model.cost?.input` returns 0 for custom models. Added `lookupModelInputRate()` fallback in `capture-model.ts` and `index-reader.ts`, plus added missing models (claude-mythos-5, claude-fable, deepseek-v4-flash, GLM variants, ozore/mimo-v2.5-pro) to `MODEL_INPUT_RATES` in `pricing.ts`.
+
+## v0.13.6 (2026-08-02) — comprehensive SettingsPanel
+
+- **SettingsPanel** — replaces the narrow `RagSettingsCard` (5 RAG flags) with a full panel surfacing all ~45 adjustable `MEGACOMPACT_*` settings grouped by category (RAG Pipeline, Wiki/Turns, Dedup Tiers, Dedup Thresholds, RAPTOR Tuning, Storage). Each setting renders an appropriate control (Switch for booleans, number Input with unit for numerics, text Input for strings). POST on change writes to `.mega-compact.env`.
+- **Dashboard surface rule** — engineering practices now enforce that every `MEGACOMPACT_*` env var in config files MUST have a corresponding entry in the `SETTINGS` array. The regression checker enforces this — a new config flag without a dashboard entry fails the gate.
+
+## v0.13.5 (2026-08-01) — README + docs refresh
+
+- Updated README for local-by-default + RAG auto-ON messaging.
+- Added 3 design specs for the dashboard overhaul work (visual, HyDE/RAG, wiki).
+- Added 3 implementation plans with sprint/sub-sprint breakdown.
+
+## v0.13.4 (2026-08-01) — Ollama embedder request body fix
+
+- **Ollama embedder** was sending the wrong request body format to `/api/embeddings`. Fixed to use Ollama's expected format.
+
+## v0.13.3 (2026-08-01) — auto-ON RAG flags + HyDE auto-enable
+
+- **RAG suite auto-ON** — query reformulation (TF-IDF + RRF), tiered router (L0→L1→L2), recall-quality metrics (CRAG), memory graph, and HyDE are all default ON with graceful fallback. Opt out via `MEGACOMPACT_<NAME>_DISABLED=true`.
+- **HyDE auto-activation** — only activates when an LLM embedder (Ollama/HTTP) is configured; it's a no-op with the default TrigramEmbedder.
+- **Dashboard RAG settings panel** — toggle any RAG flag from the Setup tab.
+
+## v0.13.2 (2026-08-01) — file-size regression gate
+
+- **All >500-line files split** — a comprehensive refactor splitting every `src/` and `extensions/` file that exceeded the 500-line hard limit into pointer-shell + impl file pairs.
+- **File-size regression gate** — `scripts/regression_check.py` now enforces file limits at gate time. `src/` 300 soft / 500 hard; `extensions/` 400 soft / 500 hard; `tests/` 600 hard.
+
+## v0.13.1 (2026-08-01) — per-repo stateDir + tab consolidation
+
+- **Per-repo stateDir** — `.mega-compact.env` is now written to the per-repo dir, not the global dir. Loaders use `repoStateDir()` so they read the correct env file. Fixes the embedder-activation root cause (was reading the wrong empty dir).
+- **Tab consolidation** — moved the Config tab under Setup (13→12 top-level tabs).
+
+## v0.13.0 (2026-08-01) — dashboard overhaul: Tailwind + shadcn + Playwright smoke
+
+- **Tailwind v3 + design-token layer** (V1) — the dashboard client gets a proper design system with CSS custom properties for light/dark theming.
+- **shadcn shell + NEW_UI flag** (V2) — a new `AppShell` layout with a sidebar navigation pattern. Accessibility improvements: aria attributes, sidebar resync, 5 pre-existing type errors fixed.
+- **V3 tab shell migration** — all 12 tabs migrated to Tailwind + shadcn components.
+- **V4 polish** — universal focus-visible rings, flag verification, dead legacy CSS removed.
+- **Playwright dashboard tab-smoke** — the deploy gate now includes a headless-Chromium drive that clicks every tab and asserts non-empty content. Catches missing-render-branch regressions.
+- **Dashboard overhaul sprint bundle** includes:
+  - **HyDE/RAG visibility UI** (H3+H4) — detail panel, metrics dashboard, health card on the Overview tab.
+  - **Wiki tab UI** — list/page/curation views + topic evolution graph + `wiki_rebuilt` SSE.
+  - **Wiki enhanced** (W1+W2) — `topic_overrides` + `topic_evolution` tables, curation module (rename/merge/split), API contracts + registry + SSE, route handlers with flag gating.
+  - **W5 hybrid override durability** — merge durability across full rebuild via `merged_memory_ids` on override rows.
+
+## v0.12.7 (2026-08-01) — Turns tab render fix + embedder + tab smoke
+
+- **Turns tab blank** — the tab rendered empty because `App.tsx` was missing the render branch for the Turns tab in the NewDashboard layout.
+- **Embedder activation fix** — the setup wizard detects Ollama/llama.cpp and suggests upgrades when recall quality is low. Remote embedder support added.
+- **Playwright tab-smoke** added to the deploy gate.
+
 ## v0.12.6 (2026-08-02) — deploy.sh friction fixes
 
 Resolves the three recurring `scripts/deploy.sh` friction points that forced manual repair mid-release through v0.12.5.

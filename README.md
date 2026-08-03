@@ -13,13 +13,14 @@ A local-first context compressor for the [pi coding agent](https://github.com/ea
 - **Durable memory** — on a cadence the store auto-reviews and safe-keeps decisions, facts, and preferences as first-class RAG memories, so long-running projects remember what mattered.
 - **Prompt-cache optimization** — message separation + cache striping (default OFF, opt-in). Targets 82-90% cache hit rate by structuring context around provider cache boundaries. Enables with `MEGACOMPACT_MESSAGE_SEPARATION` and `MEGACOMPACT_CACHE_STRIPING`.
 - **Context health + KV cache poison validation** (v0.12) — a real-time composite 0-1 health score per turn from five sub-scores (drift, output quality, error rate, cache health, cache poison). Catches garbled/hallucinated output and provider-side KV-cache corruption *before* they waste tokens — the failure mode where a large-context model (e.g. DeepSeek V4 Flash, 1M window) degrades at <1% usage. Tri-layer cache poison validation: prefix hash (L1 FNV-1a), output-quality-by-cache-hit (L2 semantic), error-rate correlation (L3 behavioral). The dashboard **Health tab** shows a gauge, sparkline, sub-score bars, alerts, and per-model breakdown. Auto-mitigation (force compaction on degraded context, prefix break on poisoned cache) is default OFF — toggle it in the Maintenance tab.
-- **RAG suite** — query reformulation (TF-IDF + RRF), tiered routing (L0 cache -> L1 FTS5 -> L2 PGlite), recall-quality metrics (CRAG), memory graph, and HyDE (hypothetical document embeddings). All default ON with graceful fallback — opt out via `MEGACOMPACT_<NAME>_DISABLED=true`. HyDE auto-activates only when an LLM embedder (Ollama/HTTP) is configured — it's a no-op with the default TrigramEmbedder. Toggle any flag from the dashboard Setup tab.
-- **Stacked memory graph** — the dashboard shows memory composition over time from 3 content sources (turns, durable memories, wiki) with a 9-gate validation system and a graph-health indicator. Per-model provider cache breakdown in the Cache tab.
+- **RAG suite** — query reformulation (TF-IDF + RRF), tiered routing (L0 cache -> L1 FTS5 -> L2 PGlite), recall-quality metrics (CRAG), memory graph, and HyDE (hypothetical document embeddings). All default ON with graceful fallback — opt out via `MEGACOMPACT_<NAME>_DISABLED=true`. HyDE auto-activates only when an LLM embedder (Ollama/HTTP) is configured — it's a no-op with the default TrigramEmbedder. The dashboard **Metrics tab** (v0.13) shows RAG recall-quality metrics (pass rate, avg lift, telemetry turns, HyDE runs) and the Overview tab has a RAG health card. Toggle any flag from the dashboard Setup tab.
 - **Debug bundle** — Maintenance tab in the dashboard has a **Gather Debug Logs** button that collects events, config, and store state into a shareable archive for bug reports.
 - **Local-first by default** — node:sqlite + trigram embeddings by default, zero calls off your machine. Bring your own localhost embedder (Ollama, ONNX, TEI) for better semantic matches — the embedder endpoint is loopback-only by default (`MEGACOMPACT_ALLOW_REMOTE_EMBEDDER=1` opts in to a remote/third-party endpoint). The optional dashboard is localhost-only. No cloud, no API calls, no telemetry.
 - **Team-run aware** — fine-grained durable trim fires at agent settle during sub-agent runs, so long multi-agent work doesn't just collapse at the end.
-- **Multi-pi dashboard** — one dashboard tab per active pi process with the context stack, per-repo stats, and a live SSE feed across all of them. The React SPA has 15 lazy-loaded tabs — **Overview**, **Cache**, **Sessions**, **Turns** (per-turn memory + recall + rewind), and **Health** (context-health gauge + cache-poison alerts) are primary; **Repos**, **Events**, **Config**, **Setup** (embedding wizard), **Metrics** (perf latency/TPS/CPU), **Game**, **Achievements**, **Topics** (wiki), **Memory Map** (D3 graph), and **Maintenance** (debug bundle) are advanced.
-- **Auto-categorizing wiki.** Every 3 compactions (seeds from turns before that), the store clusters your real memory embeddings (k-means) and labels each cluster with its most discriminative terms (TF-IDF) — no LLM, no Ollama, fully local. The dashboard **Wiki tab** browses topics, searches by label or term, and drills down into the member memories of each cluster.
+- **Multi-pi dashboard** — one dashboard tab per active pi process with the context stack, per-repo stats, and a live SSE feed across all of them. The React SPA (Tailwind v3 + shadcn/ui, v0.13) has 12 lazy-loaded tabs — **Overview**, **Cache**, **Sessions**, and **Turns** (per-turn memory + recall + rewind) are primary; **Repos**, **Events**, **Setup** (embedding wizard + comprehensive settings panel), **Metrics** (perf latency/TPS/CPU + RAG recall quality), **Wiki** (auto-categorizing topic browser + evolution graph), **Memory Map** (D3 graph), **Maintenance** (debug bundle), and **Health** (context-health gauge + cache-poison alerts) are advanced. The Overview tab dynamically resolves the most recently active repo's snapshot so it always shows live data.
+- **Auto-categorizing wiki.** Every 3 compactions (seeds from turns before that), the store clusters your real memory embeddings (k-means) and labels each cluster with its most discriminative terms (TF-IDF) — no LLM, no Ollama, fully local. The dashboard **Wiki tab** (v0.13) browses topics, searches by label or term, drills down into the member memories of each cluster, and shows a topic evolution graph over time. Curation supports rename/merge/split operations with durable overrides that survive full rebuilds.
+- **Comprehensive settings panel** (v0.13.6) — every adjustable `MEGACOMPACT_*` env var is surfaced in the dashboard Setup tab, grouped by category (RAG Pipeline, Wiki/Turns, Dedup Tiers, Dedup Thresholds, RAPTOR Tuning). Toggle booleans, edit numerics with units, change strings — all write to `.mega-compact.env` via POST. The regression gate enforces that no new config flag ships without a dashboard entry.
+- **Stacked memory graph** — the dashboard shows memory composition over time from 3 content sources (turns, durable memories, wiki) with a 9-gate validation system and a graph-health indicator. Per-model provider cache breakdown in the Cache tab.
 
 ## Install
 
@@ -85,6 +86,10 @@ Set env vars before starting pi. Defaults are in `src/config/dedup.ts`.
 | `MEGACOMPACT_CONTEXT_HEALTH_OUTPUT_QUALITY` | `true` | Sub-score: repetition, coherence, token-salad detection |
 | `MEGACOMPACT_CONTEXT_HEALTH_CACHE_POISON` | `true` | Sub-score: tri-layer KV cache poison validation |
 | `MEGACOMPACT_CONTEXT_HEALTH_MITIGATE` | `false` | Opt-in: auto-compaction on degraded context, prefix break on poisoned cache |
+| `MEGACOMPACT_WIKI_ENHANCED` | `true` | Enhanced wiki with topic overrides + evolution tracking |
+| `MEGACOMPACT_WIKI_INCREMENTAL` | `true` | Incremental wiki updates (no full rebuild) |
+| `MEGACOMPACT_AUTO_WIKI` | `true` | Auto-generate wiki from turns |
+| `MEGACOMPACT_NEW_UI` | `true` | Use the new Tailwind/shadcn dashboard shell |
 
 Full config reference: [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)
 
@@ -107,7 +112,7 @@ Detailed architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
 ```bash
 npm run build     # TypeScript compile
-npm test          # Build + 1145 tests
+npm test          # Build + 1197 tests
 npm run lint      # Type check + guardrails scan
 ```
 
