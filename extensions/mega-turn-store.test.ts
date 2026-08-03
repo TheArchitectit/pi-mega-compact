@@ -82,6 +82,7 @@ test("flag ON → hyde + recall telemetry round-trips into turns.db row", () => 
 			endedAt: Date.now(),
 			hyde: {
 				ran: true,
+				reason: "ran",
 				hypotheticalDoc: "hypo doc",
 				rawHitCount: 4,
 				hydeHitCount: 6,
