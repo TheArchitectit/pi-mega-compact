@@ -80,7 +80,9 @@ export type CortexRebuildCode =
   /** A record's payloadDigest does not match its payloadBytes (authority corrupt). */
   | "CTX_PAYLOAD_DIGEST_MISMATCH"
   /** A record exceeds the caller's declared generation source high-water. */
-  | "CTX_HIGH_WATER_EXCEEDED";
+  | "CTX_HIGH_WATER_EXCEEDED"
+  /** The generation INSERT/activate write did not persist (storage failure, e.g. SQLITE_FULL). */
+  | "CTX_REBUILD_FAILED";
 
 /**
  * Reader capability: query-only. The dashboard's reader-only GET
@@ -124,8 +126,17 @@ export interface CortexAdmin {
    * Deterministically rebuild a generation from ALL accepted records: sorts keys,
    * verifies each payload digest, computes ONE root digest, writes + activates a
    * new generation. Idempotent with respect to unchanged accepted inputs.
+   *
+   * `authorityHighWater` (optional) is the contiguous durable authority high-water
+   * the rebuild must not outrun. When supplied and the derived frontier (max
+   * record sourceHighWater) exceeds it, the rebuild is rejected with
+   * `CTX_HIGH_WATER_EXCEEDED` and NO generation is written — the derived frontier
+   * cannot exceed the durable authority high-water (normative in CONTRACTS.md).
+   * Omit it to rebuild without an authority bound.
    */
-  rebuild(): { ok: true; generation: CortexGenerationV1 } | { ok: false; code: CortexRebuildCode };
+  rebuild(authorityHighWater?: bigint):
+    | { ok: true; generation: CortexGenerationV1 }
+    | { ok: false; code: CortexRebuildCode };
   /** Switch the active generation pointer without deleting evidence. */
   switchGeneration(generationId: string): { ok: boolean; code?: string };
   /** List every generation id in ascending ordinal order (evidence retained). */

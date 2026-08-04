@@ -127,16 +127,10 @@ export function createCortexStore(
     [_capability]: "writer" as const,
     append(input) {
       const result = insertCortexRecord(db, input);
-      if (!result.ok && result.code === "CTX_APPEND_FAILED") {
-        fire("vector_cortex_record_append_failed", {
-          sourceHighWater: input.sourceHighWater.toString(),
-          algorithmVersion: input.algorithmVersion,
-          id: input.id,
-          kind: input.kind,
-          code: result.code,
-        });
-      }
-      if (!result.ok && result.code === "CTX_KEY_CONFLICT") {
+      // Any rejected/failed append (CTX_KEY_CONFLICT, CTX_APPEND_FAILED, or any
+      // future code) surfaces the SAME event; the `code` field distinguishes a
+      // key-conflict (rejected append) from a storage failure (CTX_APPEND_FAILED).
+      if (!result.ok) {
         fire("vector_cortex_record_append_failed", {
           sourceHighWater: input.sourceHighWater.toString(),
           algorithmVersion: input.algorithmVersion,
@@ -152,8 +146,8 @@ export function createCortexStore(
   const asAdmin = (): CortexAdmin & AdminToken => ({
     kind: "CortexAdmin",
     [_capability]: "admin" as const,
-    rebuild() {
-      const result = rebuildCortexGeneration(db);
+    rebuild(authorityHighWater?: bigint) {
+      const result = rebuildCortexGeneration(db, { authorityHighWater });
       if (result.ok) {
         fire("vector_cortex_generation_rebuilt", {
           generationId: result.generation.id,

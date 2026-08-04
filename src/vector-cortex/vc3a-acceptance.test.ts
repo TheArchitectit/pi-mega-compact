@@ -520,10 +520,6 @@ function cmpRecordKeyManual(a: Keyish, b: Keyish): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
-// ---------------------------------------------------------------------------
-// Flag-off parity + emit seam (mode C)
-// ---------------------------------------------------------------------------
-
 describe("VC3A flag-off parity + capability gating", () => {
   const flagEnvKey = "MEGACOMPACT_VC3A";
 

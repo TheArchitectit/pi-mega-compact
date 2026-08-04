@@ -36,7 +36,8 @@ import type {
 
 /** DB row shape for cortex_record_v1 (snake_case columns). */
 interface CortexRecordRow {
-  source_high_water: number;
+  /** INTEGER — small values return as number, >MAX_SAFE_INTEGER as bigint (readBigInts). */
+  source_high_water: number | bigint;
   algorithm_version: number;
   id: string;
   kind: string;
@@ -47,8 +48,8 @@ interface CortexRecordRow {
 /** DB row shape for cortex_generation_v1 (snake_case columns). */
 interface CortexGenerationRow {
   id: string;
-  ordinal: number;
-  source_high_water: number;
+  ordinal: number | bigint;
+  source_high_water: number | bigint;
   record_count: number;
   root_digest: string;
   active: number;
@@ -95,7 +96,10 @@ export function setStoreReadOnly(db: DatabaseSync, readOnly: boolean): void {
 export function openCortexStore(dbPath: string): DatabaseSync {
   const dir = dirname(dbPath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  const db = new DatabaseSync(dbPath);
+  // readBigInts: return INTEGER columns exceeding Number.MAX_SAFE_INTEGER as BigInt
+  // so a caller's `bigint` sourceHighWater/ordinal round-trips exactly (Q06 —
+  // never truncate through a `Number()` double).
+  const db = new DatabaseSync(dbPath, { readBigInts: true });
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
   db.exec(SCHEMA);
@@ -106,7 +110,7 @@ function rowToRecord(row: CortexRecordRow): CortexRecordV1 {
   return {
     schema: "cortex-record-v1",
     sourceHighWater: BigInt(row.source_high_water),
-    algorithmVersion: row.algorithm_version,
+    algorithmVersion: Number(row.algorithm_version),
     id: row.id,
     kind: row.kind,
     payloadDigest: row.payload_digest,
@@ -116,8 +120,8 @@ function rowToRecord(row: CortexRecordRow): CortexRecordV1 {
 
 /** Count accepted derived records. */
 export function countCortexRecords(db: DatabaseSync): number {
-  const row = db.prepare(`SELECT COUNT(*) AS cnt FROM cortex_record_v1`).get() as { cnt: number };
-  return row.cnt;
+  const row = db.prepare(`SELECT COUNT(*) AS cnt FROM cortex_record_v1`).get() as { cnt: number | bigint };
+  return typeof row.cnt === "bigint" ? Number(row.cnt) : row.cnt;
 }
 
 /** Accepted records in ascending (sourceHighWater, algorithmVersion, id). */
@@ -146,7 +150,7 @@ export function readCortexRecord(
        WHERE source_high_water = @hw AND algorithm_version = @av AND id = @id LIMIT 1`,
     )
     .get({
-      "@hw": Number(sourceHighWater),
+      "@hw": sourceHighWater,
       "@av": algorithmVersion,
       "@id": id,
     }) as CortexRecordRow | undefined;
@@ -207,7 +211,7 @@ export function insertCortexRecord(
          (source_high_water, algorithm_version, id, kind, payload_digest, payload_bytes)
        VALUES (@hw, @av, @id, @kind, @digest, @bytes)`,
     ).run({
-      "@hw": Number(input.sourceHighWater),
+      "@hw": input.sourceHighWater,
       "@av": input.algorithmVersion,
       "@id": input.id,
       "@kind": input.kind,
@@ -284,7 +288,7 @@ function rowToGeneration(row: CortexGenerationRow): CortexGenerationV1 {
     schema: "cortex-generation-v1",
     id: row.id,
     sourceHighWater: BigInt(row.source_high_water),
-    recordCount: row.record_count,
+    recordCount: typeof row.record_count === "bigint" ? Number(row.record_count) : row.record_count,
     rootDigest: row.root_digest,
     ordinal: BigInt(row.ordinal),
   };
@@ -295,10 +299,25 @@ function rowToGeneration(row: CortexGenerationRow): CortexGenerationV1 {
  * verifies each payload digest (CTX_PAYLOAD_DIGEST_MISMATCH on corruption),
  * computes ONE root digest, and writes + activates a new generation with an
  * incrementing ordinal. Does NOT delete prior generations (evidence retained).
+ *
+ * When `opts.authorityHighWater` is supplied, the derived frontier (max record
+ * sourceHighWater) must not exceed the contiguous durable authority high-water
+ * (normative in CONTRACTS.md); an over-run is rejected with
+ * `CTX_HIGH_WATER_EXCEEDED` and NO generation is written.
+ *
+ * A rebuild only reports `ok:true` when the generation INSERT + activate actually
+ * persisted. If the write degrades (any storage failure, e.g. SQLITE_FULL via
+ * `PRAGMA query_only`), it returns `ok:false, code:"CTX_REBUILD_FAILED"` — never
+ * a fabricated generation that has no durable row. That non-ok result is what
+ * prevents the caller from emitting a misleading `vector_cortex_generation_rebuilt`
+ * event or exposing a generation id that does not exist.
  */
 export function rebuildCortexGeneration(
   db: DatabaseSync,
-  opts: { readonly generationOrdinal?: bigint } = {},
+  opts: {
+    readonly generationOrdinal?: bigint;
+    readonly authorityHighWater?: bigint;
+  } = {},
 ): { ok: true; generation: CortexGenerationV1 } | { ok: false; code: CortexRebuildCode } {
   const records = readCortexRecords(db);
   const sorted = [...records].sort(cmpRecordKey);
@@ -311,6 +330,13 @@ export function rebuildCortexGeneration(
   const rootDigest = generationRootDigest(sorted);
   const sourceHighWater = sorted.length > 0 ? sorted[sorted.length - 1]!.sourceHighWater : 0n;
 
+  // Normative derived-frontier invariant (CONTRACTS.md): the derived frontier can
+  // never exceed the contiguous durable authority high-water. Reject the rebuild
+  // (write nothing) when a bound is supplied and the derived records outrun it.
+  if (opts.authorityHighWater !== undefined && sourceHighWater > opts.authorityHighWater) {
+    return { ok: false, code: "CTX_HIGH_WATER_EXCEEDED" };
+  }
+
   const existing = listCortexGenerations(db);
   const base = opts.generationOrdinal ?? (existing.length ? existing[existing.length - 1]!.ordinal + 1n : 1n);
   const ordinal = base > 0n ? base : 1n;
@@ -318,7 +344,7 @@ export function rebuildCortexGeneration(
 
   const confirmed = generationById(db, generationId);
   if (confirmed && confirmed.rootDigest === rootDigest) {
-    // Idempotent rebuild of an identical generation already recorded.
+    // Idempotent rebuild of an identical generation already recorded durably.
     activateGeneration(db, generationId);
     return { ok: true, generation: confirmed };
   }
@@ -331,21 +357,32 @@ export function rebuildCortexGeneration(
        VALUES (@id, @ordinal, @hw, @count, @digest, 0)`,
     ).run({
       "@id": generationId,
-      "@ordinal": Number(ordinal),
-      "@hw": Number(sourceHighWater),
+      "@ordinal": ordinal,
+      "@hw": sourceHighWater,
       "@count": sorted.length,
       "@digest": rootDigest,
     });
     activateGeneration(db, generationId);
     db.exec("RELEASE mc_cortex_gen");
   } catch {
-    db.exec("ROLLBACK TO mc_cortex_gen");
-    db.exec("RELEASE mc_cortex_gen");
-    // Non-fatal: return a generation summary even if the write degraded.
+    try {
+      db.exec("ROLLBACK TO mc_cortex_gen");
+    } catch {
+      /* savepoint may already be gone on a failed exec */
+    }
+    try {
+      db.exec("RELEASE mc_cortex_gen");
+    } catch {
+      /* savepoint may already be gone */
+    }
+    // The generation INSERT/activate did not persist. Report the non-fatal
+    // storage failure — never a fabricated generation that has no durable row.
+    return { ok: false, code: "CTX_REBUILD_FAILED" };
   }
   const gen = generationById(db, generationId);
   if (!gen) {
-    return { ok: true, generation: idempotentGeneration(generationId, ordinal, sourceHighWater, sorted.length, rootDigest) };
+    // Defensive: no durable row is visible, so this rebuild did not persist.
+    return { ok: false, code: "CTX_REBUILD_FAILED" };
   }
   return { ok: true, generation: gen };
 }
@@ -362,28 +399,10 @@ function activateGeneration(db: DatabaseSync, generationId: string): void {
   db.prepare(`UPDATE cortex_generation_v1 SET active = 1 WHERE id = @id`).run({ "@id": generationId });
 }
 
-/** Fallback generation summary when the write degraded (still truthful). */
-function idempotentGeneration(
-  id: string,
-  ordinal: bigint,
-  sourceHighWater: bigint,
-  recordCount: number,
-  rootDigest: string,
-): CortexGenerationV1 {
-  return {
-    schema: "cortex-generation-v1",
-    id,
-    sourceHighWater,
-    recordCount,
-    rootDigest,
-    ordinal,
-  };
-}
-
 /** Highest sourceHighWater across all accepted records (the derived frontier). */
 export function maxSourceHighWater(db: DatabaseSync): bigint {
   const row = db
     .prepare(`SELECT MAX(source_high_water) AS m FROM cortex_record_v1`)
-    .get() as { m: number | null };
+    .get() as { m: number | bigint | null };
   return row.m === null ? 0n : BigInt(row.m);
 }
