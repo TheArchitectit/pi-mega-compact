@@ -34,6 +34,7 @@ import { fileURLToPath } from "node:url";
 import { TRI_IDS } from "./resilience/types.js";
 import { createBreaker } from "./resilience/breaker.js";
 import { createSpool, type AuthorityInsert } from "./resilience/spool.js";
+import type { ConcreteBreaker } from "./resilience/breaker-core.js";
 import { createResilienceReporter } from "./resilience/emit.js";
 import { VC0C_ENABLED } from "../config/vector-cortex.js";
 import {
@@ -90,15 +91,47 @@ function triRows(manifest: Manifest): ManifestRow[] {
   return manifest.fixtures.filter((f) => f.path.startsWith("resilience/"));
 }
 
-// ── Fake monotonic clock ────────────────────────────────────────────────────
-function makeClock() {
+// ── Fake monotonic clock + compact breaker-driver helpers ──────────────────
+interface Clock {
+  now(): number;
+  advance(ms: number): void;
+}
+function makeClock(): Clock {
   let now = 0;
-  return {
-    now: () => now,
-    advance: (ms: number) => {
-      now += ms;
-    },
-  };
+  return { now: () => now, advance: (ms: number) => { now += ms; } };
+}
+const failA = (): never => { throw new Error("x"); };
+const failB = (): never => { throw new Error("b"); };
+/** The `provider`/`d` execute shape used throughout: A throws, B/C return. */
+function pd(): { A: () => never; B: () => string; C: () => string } {
+  return { A: failA, B: () => "b", C: () => "c" };
+}
+// Trip the A gate: BREAKER_MIN_ATTEMPTS consecutive A-throws (validate C).
+function tripA(b: ConcreteBreaker, clk: Clock): void {
+  for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
+    clk.advance(1);
+    b.execute("provider", "d", pd(), (v) => v === "c");
+  }
+}
+// One B-throw execute (breaker already tripped; C stays healthy + validated).
+function bThrow(b: ConcreteBreaker, clk: Clock): void {
+  clk.advance(1);
+  b.execute("provider", "d", { A: failA, B: failB, C: () => "c" }, (v) => v === "c");
+}
+// One successful execute in the given fallback mode (B or C).
+function okExec(b: ConcreteBreaker, clk: Clock, mode: "b" | "c"): void {
+  clk.advance(1);
+  const want = mode === "b" ? "b" : "c";
+  b.execute("provider", "d", { A: failA, B: () => "b", C: () => "c" }, (v) => v === want);
+}
+// 19 ok A-executes then one A-throw (correctness trip; C validated).
+function tripACorrectness(b: ConcreteBreaker, clk: Clock): void {
+  for (let i = 0; i < BREAKER_MIN_ATTEMPTS - 1; i++) {
+    clk.advance(1);
+    b.execute("provider", "d", { A: () => "a", B: () => "b", C: () => "c" }, (v) => v === "a");
+  }
+  clk.advance(1);
+  b.execute("provider", "d", { A: failA, B: () => "b", C: () => "c" }, (v) => v === "c");
 }
 
 // ── Real breaker scenario drivers (TRI-001..015) ───────────────────────────
@@ -107,149 +140,87 @@ function makeClock() {
 function breakerCase(id: string): string {
   const clk = makeClock();
   const b = createBreaker({ now: clk.now });
-  const ok = <T>(v: T) => () => v;
 
   switch (id) {
     case "TRI-001":
-    case "TRI-014": {
+    case "TRI-014":
       // 20 A-executes that throw, inside the 60s window -> OPEN_B.
-      for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
-        clk.advance(1);
-        b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: ok("b"), C: ok("c") as () => string }, (v) => v === "c");
-      }
+      tripA(b, clk);
       return b.snapshot("provider").state;
-    }
-    case "TRI-004": {
+    case "TRI-004":
       // 19 ok A-executes + a 20th failing A -> correctness trip (rate < 10%).
+      tripACorrectness(b, clk);
+      return b.snapshot("provider").state;
+    case "TRI-012":
+      // The 20th A returns but FAILS validation -> OPEN_B with TRI_OUTPUT_INVALID.
       for (let i = 0; i < BREAKER_MIN_ATTEMPTS - 1; i++) {
         clk.advance(1);
-        b.execute("provider", "d", { A: ok("a"), B: ok("b"), C: ok("c") as () => string }, (v) => v === "a");
+        b.execute("provider", "d", { A: () => "a", B: () => "b", C: () => "c" }, (v) => v === "a");
       }
       clk.advance(1);
-      b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: ok("b"), C: ok("c") as () => string }, (v) => v === "c");
+      b.execute("provider", "d", { A: () => "bad", B: () => "b", C: () => "c" }, (v) => v === "a");
       return b.snapshot("provider").state;
-    }
-    case "TRI-012": {
-      // 19 ok A-executes; the 20th A returns but FAILS validation -> OPEN_B with
-      // TRI_OUTPUT_INVALID.
-      for (let i = 0; i < BREAKER_MIN_ATTEMPTS - 1; i++) {
-        clk.advance(1);
-        b.execute("provider", "d", { A: ok("a"), B: ok("b"), C: ok("c") as () => string }, (v) => v === "a");
-      }
-      clk.advance(1);
-      b.execute("provider", "d", { A: () => "bad", B: ok("b"), C: ok("c") as () => string }, (v) => v === "a");
-      return b.snapshot("provider").state;
-    }
     case "TRI-003":
-    case "TRI-013": {
+    case "TRI-013":
       // Trip A -> OPEN_B (20 throws), then a B failure -> OPEN_C.
-      for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
-        clk.advance(1);
-        b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: ok("b"), C: ok("c") as () => string }, (v) => v === "c");
-      }
-      clk.advance(1);
-      b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: () => { throw new Error("b"); }, C: ok("c") as () => string }, (v) => v === "c");
+      tripA(b, clk);
+      bThrow(b, clk);
       return b.snapshot("provider").state;
-    }
-    case "TRI-002": {
-      // Trip A -> OPEN_B, advance past cooldown + healthy residence, then THREE
-      // successful B probes -> CLOSED_A.
-      for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
-        clk.advance(1);
-        b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: ok("b"), C: ok("c") as () => string }, (v) => v === "c");
-      }
+    case "TRI-002":
+      // Trip A -> OPEN_B, past cooldown + residence, then THREE successful B
+      // probes -> CLOSED_A.
+      tripA(b, clk);
       clk.advance(BREAKER_MIN_HEALTHY_RESIDENCE_MS + BREAKER_COOLDOWN_MS + 1);
-      for (let i = 0; i < BREAKER_PROBE_COUNT; i++) {
-        clk.advance(1);
-        b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: ok("b"), C: ok("c") as () => string }, (v) => v === "b");
-      }
+      for (let i = 0; i < BREAKER_PROBE_COUNT; i++) okExec(b, clk, "b");
       return b.snapshot("provider").state;
-    }
-    case "TRI-005": {
-      // Trip A -> OPEN_B, advance past cooldown + healthy residence, then ONE
-      // successful B probe: enters PROBE_A (expired cooldown may PROBE, never
-      // directly promote).
-      for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
-        clk.advance(1);
-        b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: ok("b"), C: ok("c") as () => string }, (v) => v === "c");
-      }
+    case "TRI-005":
+      // Past cooldown + residence, ONE successful B probe -> PROBE_A (expired
+      // cooldown may PROBE, never directly promote).
+      tripA(b, clk);
       clk.advance(BREAKER_MIN_HEALTHY_RESIDENCE_MS + BREAKER_COOLDOWN_MS + 1);
-      b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: ok("b"), C: ok("c") as () => string }, (v) => v === "b");
+      okExec(b, clk, "b");
       return b.snapshot("provider").state;
-    }
-    case "TRI-015": {
-      // Open B, B fails -> OPEN_C; advance past cooldown; 3 C-successful probes
-      // -> OPEN_B (PROBE_B restage promotes to OPEN_B, never CLOSED_A).
-      for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
-        clk.advance(1);
-        b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: ok("b"), C: ok("c") as () => string }, (v) => v === "c");
-      }
-      clk.advance(1);
-      b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: () => { throw new Error("b"); }, C: ok("c") as () => string }, (v) => v === "c");
-      // Advance past cooldown AND the 60s window so hysteresis clears and the
-      // probes may actually promote PROBE_B -> OPEN_B.
+    case "TRI-015":
+      // Open B, B fails -> OPEN_C; past cooldown AND window (hysteresis clears);
+      // 3 C-successful probes -> OPEN_B (PROBE_B restage promotes to OPEN_B).
+      tripA(b, clk);
+      bThrow(b, clk);
       clk.advance(BREAKER_COOLDOWN_MS + BREAKER_WINDOW_MS + 1);
-      for (let i = 0; i < BREAKER_PROBE_COUNT; i++) {
-        clk.advance(1);
-        b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: () => { throw new Error("b"); }, C: ok("c") as () => string }, (v) => v === "c");
-      }
+      for (let i = 0; i < BREAKER_PROBE_COUNT; i++) okExec(b, clk, "c");
       return b.snapshot("provider").state;
-    }
-    case "TRI-009": {
-      // Manual halt requires a reason and degrades every subsystem; without an
-      // admin reset the breaker stays MANUAL_HALT.
-      for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
-        clk.advance(1);
-        b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: ok("b"), C: ok("c") as () => string }, (v) => v === "c");
-      }
+    case "TRI-009":
+      // Manual halt requires a reason; without reset stays MANUAL_HALT.
+      tripA(b, clk);
       b.manualHalt("authority corruption");
       return b.snapshot("provider").state;
-    }
-    case "TRI-010": {
-      // Manual reset unwires MANUAL_HALT -> OPEN_B; evidence is NEVER cleared.
-      for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
-        clk.advance(1);
-        b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: ok("b"), C: ok("c") as () => string }, (v) => v === "c");
-      }
+    case "TRI-010":
+      // Admin reset unwires MANUAL_HALT -> OPEN_B; evidence is NEVER cleared.
+      tripA(b, clk);
       b.manualHalt("authority corruption");
       b.reset("provider");
       return b.snapshot("provider").state;
-    }
     case "TRI-006":
-    case "TRI-007": {
-      // Hysteresis: probes succeed but canPromote blocks promotion (window
-      // failure rate >= 2% and/or p95 over budget) -> stays in a PROBE state.
-      // Via OPEN_C->PROBE_B path so the failures linger within the window.
-      for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
-        clk.advance(1);
-        b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: ok("b"), C: ok("c") as () => string }, (v) => v === "c");
-      }
-      b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: () => { throw new Error("b"); }, C: ok("c") as () => string }, (v) => v === "c");
-      // Advance past cooldown but keep the high failure window (TRI-006) / budget
-      // (TRI-007 uses the same p95>50ms latency via a slow C probe).
+    case "TRI-007":
+      // Hysteresis: probes succeed but canPromote blocks (window failure rate /
+      // p95 over budget) -> stays in a PROBE state via OPEN_C->PROBE_B.
+      tripA(b, clk);
+      bThrow(b, clk);
       clk.advance(BREAKER_COOLDOWN_MS + 1);
       for (let i = 0; i < BREAKER_PROBE_COUNT; i++) {
         clk.advance(1);
-        b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: () => { throw new Error("b"); }, C: () => "c" }, () => true);
+        b.execute("provider", "d", { A: failA, B: failB, C: () => "c" }, () => true);
       }
       return b.snapshot("provider").state;
-    }
-    case "TRI-008": {
+    case "TRI-008":
       // Backoff: exponential 30s*2^attempt capped at 15min with deterministic
-      // +-10% jitter. Assert the retry delay is within [cap, 2*base] after trips.
-      for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
-        clk.advance(1);
-        b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: ok("b"), C: ok("c") as () => string }, (v) => v === "c");
-      }
-      clk.advance(1);
-      b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: () => { throw new Error("b"); }, C: ok("c") as () => string }, (v) => v === "c");
-      return "OPEN_C"; // backoff exposed via retryDelayMs; state is OPEN_C
-    }
-    case "TRI-011": {
+      // +-10% jitter. Exposed via retryDelayMs; the state is OPEN_C.
+      tripA(b, clk);
+      bThrow(b, clk);
+      return "OPEN_C";
+    case "TRI-011":
       // Rolling window prunes old attempts; a single old failure does not keep
       // the breaker tripped after the window elapses.
       return "CLOSED_A";
-    }
     default:
       return "UNKNOWN";
   }
@@ -289,8 +260,7 @@ function spoolCase(fx: TriFixtureBody): SpoolOutcome {
     if (prequeue) seed.push({ id: "e1", digest: digestOf(enc.encode("x")) });
     const a = makeAuthority(seed);
     const spool = createSpool({ dir, authorityOutage: () => outage });
-    const session = fx.input.session ?? "s";
-    const s = spool.session(session);
+    const s = spool.session(fx.input.session ?? "s");
 
     let committedSeq = 0n;
     let lastCode = "SPOOL_COMMITTED";
@@ -403,10 +373,7 @@ describe("VC0C conformance corpus (manifest-indexed, TRI-001..030)", () => {
     // Explicit: all 20 attempts land inside the 60s window.
     const clk = makeClock();
     const b = createBreaker({ now: clk.now });
-    for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
-      clk.advance(1);
-      b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: () => "b", C: () => "c" }, (v) => v === "c");
-    }
+    tripA(b, clk);
     const rec = b.snapshot("provider");
     assert.equal(rec.state, "OPEN_B", "must open after the 20th failed attempt");
     assert.equal(rec.failures, BREAKER_MIN_ATTEMPTS, "all 20 failures retained");
@@ -418,47 +385,35 @@ describe("VC0C invariant: promotion never precedes cooldown, 3 probes, 5min resi
   test("a single success NEVER promotes CLOSED_A directly after a trip", () => {
     const clk = makeClock();
     const b = createBreaker({ now: clk.now });
-    for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
-      clk.advance(1);
-      b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: () => "b", C: () => "c" }, (v) => v === "c");
-    }
+    tripA(b, clk);
     assert.equal(b.snapshot("provider").state, "OPEN_B");
     // Even past cooldown, ONE success only enters PROBE_A — never CLOSED_A.
     clk.advance(BREAKER_MIN_HEALTHY_RESIDENCE_MS + BREAKER_COOLDOWN_MS + 1);
-    b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: () => "b", C: () => "c" }, (v) => v === "b");
+    okExec(b, clk, "b");
     assert.equal(b.snapshot("provider").state, "PROBE_A");
   });
 
   test("promotion requires exactly 3 probes AND a cleared 5min residence (edited)", () => {
     const clk = makeClock();
     const b = createBreaker({ now: clk.now });
-    for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
-      clk.advance(1);
-      b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: () => "b", C: () => "c" }, (v) => v === "c");
-    }
+    tripA(b, clk);
     clk.advance(BREAKER_MIN_HEALTHY_RESIDENCE_MS + BREAKER_COOLDOWN_MS + 1);
     // Not yet promoted with only 1-2 successes.
-    b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: () => "b", C: () => "c" }, (v) => v === "b");
-    b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: () => "b", C: () => "c" }, (v) => v === "b");
+    okExec(b, clk, "b");
+    okExec(b, clk, "b");
     assert.equal(b.snapshot("provider").probeCount, 2, "probeCount 2, not promoted");
     assert.equal(b.snapshot("provider").state, "PROBE_A", "still probing after 2");
     // A failing probe resets to OPEN_B (never promotes on a failure).
-    b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: () => { throw new Error("probe-fail"); }, C: () => "c" }, (v) => v === "c");
+    bThrow(b, clk);
     assert.equal(b.snapshot("provider").probeCount, 0, "probe failure resets the count");
   });
 
   test("3 successful probes AFTER 5min residence promote to CLOSED_A", () => {
     const clk = makeClock();
     const b = createBreaker({ now: clk.now });
-    for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
-      clk.advance(1);
-      b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: () => "b", C: () => "c" }, (v) => v === "c");
-    }
+    tripA(b, clk);
     clk.advance(BREAKER_MIN_HEALTHY_RESIDENCE_MS + BREAKER_COOLDOWN_MS + 1);
-    for (let i = 0; i < BREAKER_PROBE_COUNT; i++) {
-      clk.advance(1);
-      b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: () => "b", C: () => "c" }, (v) => v === "b");
-    }
+    for (let i = 0; i < BREAKER_PROBE_COUNT; i++) okExec(b, clk, "b");
     assert.equal(b.snapshot("provider").state, "CLOSED_A");
   });
 });
@@ -469,18 +424,14 @@ describe("VC0C unique failure injection", () => {
     const enc = new TextEncoder();
     try {
       const a = makeAuthority([]);
-      let s1 = createSpool({ dir }).session("killS");
-      s1.append({ seq: 1n, eventId: "e1", bytes: enc.encode("payload") });
+      createSpool({ dir }).session("killS").append({ seq: 1n, eventId: "e1", bytes: enc.encode("payload") });
       // Durable high-water before the ack is still 0 — the frame is unacknowledged.
-      assert.equal(s1.highWater(), 0n);
+      assert.equal(createSpool({ dir }).session("killS").highWater(), 0n);
       // "Restart": a fresh spool over the same dir re-reads the durable file.
-      let s2 = createSpool({ dir }).session("killS");
-      const d = s2.drain(a.insert);
+      const d = createSpool({ dir }).session("killS").drain(a.insert);
       assert.equal(d.verdict, "SPOOL_COMMITTED");
       assert.equal(d.committedSeq, 1n);
-      s1 = createSpool({ dir }).session("killS");
-      s2 = createSpool({ dir }).session("killS");
-      assert.equal(s2.highWater(), 1n);
+      assert.equal(createSpool({ dir }).session("killS").highWater(), 1n);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -492,21 +443,13 @@ describe("VC0C unique failure injection", () => {
     // invocations and assert cooldown/eligibility still follow monotonic time.
     let wall = new Date("2026-01-01T00:00:00Z");
     const clk = makeClock();
-    const b = createBreaker({
-      now: clk.now,
-      wallNow: () => wall.toISOString(),
-    });
-    for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
-      clk.advance(1);
-      b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: () => "b", C: () => "c" }, (v) => v === "c");
-    }
+    const b = createBreaker({ now: clk.now, wallNow: () => wall.toISOString() });
+    tripA(b, clk);
     const before = b.snapshot("provider").updatedAt;
     // Jump wall time backward 90s; cooldown already set; eligibility is monotonic.
     wall = new Date(Date.parse(before) - 90_000);
     clk.advance(BREAKER_COOLDOWN_MS - 1);
-    const stillOpen = b.snapshot("provider").state;
-    // Backward wall jump must not have cleared the cooldown.
-    assert.equal(stillOpen, "OPEN_B");
+    assert.equal(b.snapshot("provider").state, "OPEN_B", "backward wall jump must not clear cooldown");
     // Records still carry a wall timestamp (even if behind) — never undefined.
     assert.ok(typeof b.snapshot("provider").updatedAt === "string");
   });
@@ -518,10 +461,7 @@ describe("VC0C unique failure injection", () => {
     // monotonic interval, an expired cooldown may PROBE but never directly promote.
     const clk = makeClock();
     const rm = createBreaker({ now: clk.now });
-    for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
-      clk.advance(1);
-      rm.execute("provider", "d", { A: () => { throw new Error("x"); }, B: () => "b", C: () => "c" }, (v) => v === "c");
-    }
+    tripA(rm, clk);
     const elapsed = clk.now();
     // Restart with a fresh instance whose monotonic clock is seeded past the
     // breaker state (simulates process restart where elapsed is monotonic).
@@ -529,12 +469,11 @@ describe("VC0C unique failure injection", () => {
     const b2 = createBreaker({ now: () => restartedNow, wallNow: () => "2026-01-01T00:00:00Z" });
     // Reconstruct by events is a separate wire; here we drive it once to the
     // post-cooldown PROBE on a reopened instance and assert it may PROBE only.
-    const rec = b2.snapshot("provider");
-    assert.equal(rec.state, "CLOSED_A", "fresh instance starts CLOSED_A");
+    assert.equal(b2.snapshot("provider").state, "CLOSED_A", "fresh instance starts CLOSED_A");
     // After 'restart', replaying the same 20 failures at the new monotonic time:
     restartedNow += 1;
     for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
-      b2.execute("provider", "d", { A: () => { throw new Error("x"); }, B: () => "b", C: () => "c" }, (v) => v === "c");
+      b2.execute("provider", "d", pd(), (v) => v === "c");
     }
     assert.equal(b2.snapshot("provider").state, "OPEN_B");
   });
@@ -546,8 +485,7 @@ describe("VC0C forced triad (A healthy, B forced by A exception, C when both una
     bThrows?: boolean;
     cThrows?: boolean;
   }): { mode: string; ok: boolean; code: string } {
-    const clk = makeClock();
-    const b = createBreaker({ now: clk.now });
+    const b = createBreaker({ now: makeClock().now });
     const r = b.execute(
       "provider",
       "d",
@@ -570,17 +508,11 @@ describe("VC0C forced triad (A healthy, B forced by A exception, C when both una
   });
 
   test("B=spool replay forced by an A exception: breaker demotes to B", () => {
-    // A healthy path must carry A's outcomes: prime with successes, then force an
-    // A exception AFTER the breaker is healthy and observe B fallback only once A
-    // is unavailable (here we exercise the independent B path).
+    // Trip A so the breaker demotes to an independent mode-B provider.
     const clk = makeClock();
     const b = createBreaker({ now: clk.now });
-    // Trip A so the breaker demotes to mode B.
-    for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
-      clk.advance(1);
-      b.execute("provider", "d", { A: () => { throw new Error("A-down"); }, B: () => "b", C: () => "c" }, (v) => v === "c");
-    }
-    const r = b.execute("provider", "d", { A: () => { throw new Error("A-down"); }, B: () => "b", C: () => "c" }, (v) => v === "b");
+    tripA(b, clk);
+    const r = b.execute("provider", "d", { A: failA, B: () => "b", C: () => "c" }, (v) => v === "b");
     assert.equal(r.mode, "B", "A unavailable -> independent B serves");
     assert.equal(r.ok, true);
   });
@@ -590,12 +522,9 @@ describe("VC0C forced triad (A healthy, B forced by A exception, C when both una
     const b = createBreaker({ now: clk.now });
     // A trip then B trip -> OPEN_C (both unavailable) -> mode C serves the
     // unchanged transcript.
-    for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
-      clk.advance(1);
-      b.execute("provider", "d", { A: () => { throw new Error("A-down"); }, B: () => "b", C: () => "c" }, (v) => v === "c");
-    }
-    b.execute("provider", "d", { A: () => { throw new Error("A-down"); }, B: () => { throw new Error("B-down"); }, C: () => "c" }, (v) => v === "c");
-    const r = b.execute("provider", "d", { A: () => { throw new Error("A-down"); }, B: () => { throw new Error("B-down"); }, C: () => "c" }, (v) => v === "c");
+    tripA(b, clk);
+    bThrow(b, clk);
+    const r = b.execute("provider", "d", { A: failA, B: failB, C: () => "c" }, (v) => v === "c");
     assert.equal(r.mode, "C", "both A and B unavailable -> unchanged C");
     assert.equal(r.ok, true, "C served the unchanged transcript successfully");
   });
@@ -614,10 +543,7 @@ describe("VC0C flag-off byte identity (MEGACOMPACT_VC0C=0)", () => {
       const clk = makeClock();
       // Wire the reporter into a breaker that will trip -> would emit if gated ON.
       const b = createBreaker({ now: clk.now, reporter });
-      for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
-        clk.advance(1);
-        b.execute("provider", "d", { A: () => { throw new Error("x"); }, B: () => "b", C: () => "c" }, (v) => v === "c");
-      }
+      tripA(b, clk);
       assert.equal(b.snapshot("provider").state, "OPEN_B", "breaker still operates under flag-off");
       assert.deepEqual(emitted, [], "flag-off: zero resilience observability writes (mode-C predecessor parity)");
     } finally {
