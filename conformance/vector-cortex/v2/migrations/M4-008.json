@@ -1,0 +1,1 @@
+{"assertion":"M4 a repeated full migration switches once and is idempotent","expected":{"activeVersion":2,"count":1,"ok":true},"id":"M4-008","input":{"activeStarting":1,"checkpoints":["c1"],"scenario":"repeat-full"},"kind":"minhash-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/minhash-migration.schema.json"}

@@ -20,11 +20,17 @@ import { fixtures as replayFixtures } from "./replay.mjs";
 import { fixtures as eventFixtures } from "./events.mjs";
 import { fixtures as resilienceFixtures, named as resilienceNamed } from "./resilience.mjs";
 import { fixtures as ledgerFixtures, named as ledgerNamed } from "./ledger.mjs";
+import { fixtures as minhashFixtures, named as minhashNamed, seedsJson } from "./minhash.mjs";
+import { fixtures as migrationFixtures, named as migrationNamed } from "./migrations.mjs";
+import { fixtures as conformanceFixtures, named as conformanceNamed } from "./conformance.mjs";
 
 const REPLAY_DIR = join(V2, "replay");
 const EVENTS_DIR = join(V2, "events");
 const RESILIENCE_DIR = join(V2, "resilience");
 const LEDGER_DIR = join(V2, "ledger");
+const MINHASH_DIR = join(V2, "minhash");
+const MIGRATIONS_DIR = join(V2, "migrations");
+const CONFORMANCE_DIR = join(V2, "conformance");
 
 export function writeAll() {
   rmSync(V2, { recursive: true, force: true });
@@ -34,6 +40,9 @@ export function writeAll() {
   mkdirSync(EVENTS_DIR, { recursive: true });
   mkdirSync(RESILIENCE_DIR, { recursive: true });
   mkdirSync(LEDGER_DIR, { recursive: true });
+  mkdirSync(MINHASH_DIR, { recursive: true });
+  mkdirSync(MIGRATIONS_DIR, { recursive: true });
+  mkdirSync(CONFORMANCE_DIR, { recursive: true });
 
   const manifestRows = [];
 
@@ -144,13 +153,76 @@ export function writeAll() {
     });
   }
 
+  // M4 MinHashV2 fixtures (VC1C) + the frozen seed table `seeds-v2.json`.
+  const seedsBytes = Buffer.from(canonicalJson(seedsJson()), "utf8");
+  writeFileSync(join(MINHASH_DIR, "seeds-v2.json"), seedsBytes);
+  manifestRows.push({
+    id: "seeds-v2",
+    path: "minhash/seeds-v2.json",
+    sha256: sha256Hex(seedsBytes),
+    schema: "schemas/minhash-seeds.schema.json",
+    algorithm: "minhash-seeds",
+    producer,
+    expected: "schema",
+    license: "synthetic",
+  });
+  for (const fx of [...minhashFixtures, ...minhashNamed]) {
+    const bytes = Buffer.from(canonicalJson(fx), "utf8");
+    const rel = `minhash/${fx.id}.json`;
+    writeFileSync(join(MINHASH_DIR, `${fx.id}.json`), bytes);
+    manifestRows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: fx.schema,
+      algorithm: "minhash-v2",
+      producer,
+      expected: fx.expected.ok ? "ok" : fx.expected.code,
+      license: "synthetic",
+    });
+  }
+
+  // M4 minhash-v2 migration lifecycle fixtures (VC1C).
+  for (const fx of [...migrationFixtures, ...migrationNamed]) {
+    const bytes = Buffer.from(canonicalJson(fx), "utf8");
+    const rel = `migrations/${fx.id}.json`;
+    writeFileSync(join(MIGRATIONS_DIR, `${fx.id}.json`), bytes);
+    manifestRows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: fx.schema,
+      algorithm: "minhash-v2-migration",
+      producer,
+      expected: fx.expected.ok ? "ok" : fx.expected.code,
+      license: "synthetic",
+    });
+  }
+
+  // Conformance-manifest / downgrade behavior fixtures (VC1C).
+  for (const fx of [...conformanceFixtures, ...conformanceNamed]) {
+    const bytes = Buffer.from(canonicalJson(fx), "utf8");
+    const rel = `conformance/${fx.id}.json`;
+    writeFileSync(join(CONFORMANCE_DIR, `${fx.id}.json`), bytes);
+    manifestRows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: fx.schema,
+      algorithm: "conformance-v2",
+      producer,
+      expected: fx.expected.ok ? "ok" : fx.expected.code,
+      license: "synthetic",
+    });
+  }
+
   const manifest = {
     version: "2",
     viewer: "vector-cortex-conformance.mjs",
     producer: "vector-cortex-gen-fixtures.mjs",
-    domain: "evaluation,replay,events,resilience,ledger",
-    owner: "VC0A,VC0B,VC1A,VC0C,VC1B",
-    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture",
+    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance",
+    owner: "VC0A,VC0B,VC1A,VC0C,VC1B,VC1C",
+    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds",
     license: "synthetic",
     fixtures: manifestRows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
   };
@@ -165,5 +237,8 @@ export function writeAll() {
     ledgerNamedCount: ledgerNamed.length,
     namedCount: resilienceNamed.length,
     schemaCount: Object.keys(schemas).length,
+    minhashCount: minhashFixtures.length,
+    migrationCount: migrationFixtures.length,
+    conformanceCount: conformanceFixtures.length,
   };
 }

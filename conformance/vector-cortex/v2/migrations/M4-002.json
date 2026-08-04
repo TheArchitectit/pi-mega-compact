@@ -1,0 +1,1 @@
+{"assertion":"M4 repeated backfill is idempotent (no duplicate v2 rows)","expected":{"activeVersion":2,"count":2,"ok":true},"id":"M4-002","input":{"activeStarting":1,"checkpoints":["c1","c2"],"scenario":"repeat-backfill"},"kind":"minhash-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/minhash-migration.schema.json"}

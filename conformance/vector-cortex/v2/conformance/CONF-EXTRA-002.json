@@ -1,0 +1,1 @@
+{"assertion":"an unlisted file fails with CONF_EXTRA_FIXTURE","expected":{"code":"CONF_EXTRA_FIXTURE","ok":false},"id":"CONF-EXTRA-002","input":{"extraPath":"events/EVT-UNLISTED.json","scenario":"extra-file"},"kind":"conformance-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/conformance-fixture.schema.json"}

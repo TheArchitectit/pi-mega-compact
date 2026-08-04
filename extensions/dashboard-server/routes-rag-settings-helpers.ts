@@ -305,6 +305,12 @@ export const SETTINGS: ReadonlyArray<{
 				"TriadResult/Breaker live circuit breaker (60s window, 20 attempts, 30s cooldown, 3 probes, 5min healthy residence) + durable spool before provider invocation; manual reset clears cooldown but never evidence. OFF = mode C, unchanged transcript, byte-identical.",
 				true,
 			),
+			boolDirect(
+				"MEGACOMPACT_VC1C",
+				"VC1C Cross-Language Conformance v2",
+				"FixtureManifestV2 canonical manifest validator + DowngradeReport deterministic downgrade export + MinHashV2 exact big-integer signatures and the M4 copy/validate/switch minhash-v2 migration (seed table frozen, cross-language byte-exact). OFF = mode C, v1 sync dedup scan unchanged, byte-identical.",
+				true,
+			),
 		],
 	},
 	{

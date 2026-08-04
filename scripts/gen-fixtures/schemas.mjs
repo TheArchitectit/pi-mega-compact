@@ -191,3 +191,130 @@ schemas["schemas/ledger-fixture.schema.json"] = {
     },
   },
 };
+
+schemas["schemas/minhash-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "MinHashV2 algorithm fixture envelope",
+  description:
+    "Common structure every VC1C MinHashV2 algorithm fixture validates against. `input` names the text/session; `expected.ok` success carries the published signature digest + 64 bucket bytes; failure rows carry an exact code.",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["minhash-v2"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: { type: "string" },
+        maxProduct: { type: "string" },
+        signatureBytesHex: { type: "string" },
+        signatureDigest: { type: "string" },
+        buckets: { type: "array", items: { type: "string" } },
+      },
+    },
+    input: { type: "object" },
+  },
+};
+
+schemas["schemas/minhash-migration.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "M4 MinHashV2 migration fixture envelope",
+  description:
+    "Common structure every VC1C M4 minhash-v2 migration fixture validates against. `input.checkpoints` names the v1 index; `expected` gives the exact migration verdict (activeVersion, count, or failure code).",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["minhash-v2"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: { type: "string" },
+        activeVersion: { type: "integer" },
+        count: { type: "integer" },
+        halted: { type: "boolean" },
+        noDuplicates: { type: "boolean" },
+        equalDigests: { type: "boolean" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario", "checkpoints"],
+      properties: {
+        scenario: { type: "string" },
+        checkpoints: { type: "array", items: { type: "string" } },
+        present: { type: "array", items: { type: "string" } },
+        texts: { type: "array", items: { type: "string" } },
+        activeStarting: { type: "integer" },
+      },
+    },
+  },
+};
+
+schemas["schemas/conformance-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC1C conformance-manifest fixture envelope",
+  description:
+    "Common structure every VC1C conformance-manifest / downgrade fixture validates against. `input.scenario` names the temp-corpus mutation to run; `expected` gives the exact verdict/failure code.",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["conformance-v2"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: { type: "string" },
+        entryCount: { type: "integer" },
+        deterministic: { type: "boolean" },
+      },
+    },
+    input: {
+      type: "object",
+      properties: {
+        scenario: { type: "string" },
+        domains: { type: "array", items: { type: "string" } },
+        extraPath: { type: "string" },
+        rows: { type: "integer" },
+      },
+    },
+  },
+};
+
+schemas["schemas/minhash-seeds.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "MinHashV2 frozen seed table",
+  description:
+    "The published 256 unsigned (a,b) seed pairs + p for the frozen MinHashV2 scheme. Values exceed 2^53 so a/b/p are DECIMAL STRINGS for exactness.",
+  type: "object",
+  required: ["schema", "p", "count", "shingleCodePoints", "signatureBytes", "bands", "valuesPerBand", "seedPairs"],
+  properties: {
+    schema: { type: "string" },
+    p: { type: "string" },
+    count: { type: "integer" },
+    shingleCodePoints: { type: "integer" },
+    signatureBytes: { type: "integer" },
+    bands: { type: "integer" },
+    valuesPerBand: { type: "integer" },
+    seedPairs: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["a", "b"],
+        properties: { a: { type: "string" }, b: { type: "string" } },
+      },
+    },
+  },
+};

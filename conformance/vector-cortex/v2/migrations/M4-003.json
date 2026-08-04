@@ -1,0 +1,1 @@
+{"assertion":"M4 interruption before switch leaves v1 active (old authority retained)","expected":{"activeVersion":1,"halted":true,"ok":true},"id":"M4-003","input":{"activeStarting":1,"checkpoints":["c1","c2"],"scenario":"halt-before-switch"},"kind":"minhash-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/minhash-migration.schema.json"}

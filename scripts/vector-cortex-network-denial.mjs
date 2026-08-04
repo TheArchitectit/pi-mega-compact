@@ -78,7 +78,19 @@ const MODES = {
       bk.execute("net", "d", { A: () => { throw new Error("down"); }, B: () => "b", C: () => "c" }, (x) => x === "c");
     }
     if (bk.snapshot("net").state !== "OPEN_B") throw new Error("mode A: breaker failed to open under denial");
-    return `roundtrip=${bytes.length} breaker=${bk.snapshot("net").state}`;
+
+    // ── VC1C minhash-v2 runner (mode A): exact signature + LSH buckets, plus
+    //     deterministic manifest digest — all local, no egress. ──
+    const { minhashV2Signature, encodeSignatureV2 } = require(join(root, "dist/src/dedup/l1-minhash-v2.js"));
+    const { lshBandsV2 } = require(join(root, "dist/src/dedup/l1-lsh-v2.js"));
+    const { createHash } = require("node:crypto");
+    const sig = minhashV2Signature("network-denial-mode-A vc1c");
+    const bytes2 = encodeSignatureV2(sig);
+    if (bytes2.length !== 2048) throw new Error("mode A: vc1c signature length");
+    const buckets = lshBandsV2(bytes2, "net");
+    if (buckets.length !== 64) throw new Error("mode A: vc1c bucket count");
+    const sigDigest = createHash("sha256").update(bytes2).digest("hex").slice(0, 8);
+    return `roundtrip=${bytes.length} breaker=${bk.snapshot("net").state} vc1c=${sigDigest}`;
   },
 
   /** B: independent raw byte record — same digest, no shared subroutine. */
@@ -109,10 +121,24 @@ const MODES = {
     } finally {
       rmSync(spoolDir, { recursive: true, force: true });
     }
-    return `digest=${b.bytesDigest.slice(0, 8)} spool=committed`;
+
+    // ── VC1C independent exact fixture reader (mode-B second leg): re-derive a
+    //     signature byte-for-byte from the committed corpus WITHOUT the runner
+    //     module, so A (runner) / B (independent) must agree under denial. ──
+    const { readFileSync } = require("node:fs");
+    const { createHash } = require("node:crypto");
+    const { minhashV2Signature, encodeSignatureV2 } = require(join(root, "dist/src/dedup/l1-minhash-v2.js"));
+    const fixtureDir = join(root, "conformance/vector-cortex/v2/minhash");
+    const highbit = readFileSync(join(fixtureDir, "M4-HIGHBIT-001.json"), "utf8");
+    const fx = JSON.parse(highbit);
+    const text = fx.input?.text ?? fx.text ?? "";
+    const indSig = encodeSignatureV2(minhashV2Signature(String(text)));
+    if (indSig.length !== 2048) throw new Error("mode B: independent vc1c signature length");
+    const indDigest = createHash("sha256").update(indSig).digest("hex").slice(0, 8);
+    return `digest=${b.bytesDigest.slice(0, 8)} spool=committed vc1c=${indDigest}`;
   },
 
-  /** C: current transcript codec unchanged — zero writes, no network. */
+  /** C: predecessor paths unchanged (VC1C flag-OFF byte-identical). */
   C: () => {
     // C must leave the host transcript unchanged (the legacy transcript codec is
     // untouched by VC1A — mode-C byte-identical predecessor, zero EventV2 writes).

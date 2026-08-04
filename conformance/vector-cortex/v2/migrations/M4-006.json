@@ -1,0 +1,1 @@
+{"assertion":"M4 a duplicated v2 row fails exact-once count (M4_COUNT_MISMATCH)","expected":{"code":"M4_COUNT_MISMATCH","ok":false},"id":"M4-006","input":{"activeStarting":1,"checkpoints":["c1"],"scenario":"duplicate-row"},"kind":"minhash-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/minhash-migration.schema.json"}
