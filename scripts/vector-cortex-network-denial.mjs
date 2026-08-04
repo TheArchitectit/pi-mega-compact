@@ -101,7 +101,22 @@ const MODES = {
     const buckets = lshBandsV2(bytes2, "net");
     if (buckets.length !== 64) throw new Error("mode A: vc1c bucket count");
     const sigDigest = createHash("sha256").update(bytes2).digest("hex").slice(0, 8);
-    return `roundtrip=${bytes.length} breaker=${bk.snapshot("net").state} vc1c=${sigDigest}`;
+
+    // ── VC2A qualified local ONNX (mode A): verify + load + infer the committed
+    //     digest-pinned asset — all filesystem reads, zero egress. ──
+    const { readEncoderManifest, verifyEncoderAsset } = await loadDist("src/vector-cortex/encoder/asset.js");
+    const { createEncoderRuntime } = await loadDist("src/vector-cortex/encoder/runtime.js");
+    const assetDir = join(root, "assets/vector-cortex/encoder-v1");
+    const assetManifest = readEncoderManifest(assetDir);
+    if (!assetManifest) throw new Error("mode A: committed encoder manifest unreadable");
+    const vRes = verifyEncoderAsset(assetDir, assetManifest);
+    if (!vRes.ok) throw new Error(`mode A: committed asset failed verification (${vRes.code})`);
+    const encRt = createEncoderRuntime();
+    const encLoad = encRt.load(assetDir);
+    if (!encLoad.ok || encLoad.mode !== "A") throw new Error("mode A: encoder did not select qualified ONNX");
+    const encInf = encRt.infer({ tokens: Array.from({ length: 128 }, (_, k) => k) });
+    if (!encInf.ok || encInf.semantic.length !== 384) throw new Error("mode A: encoder inference failed under denial");
+    return `roundtrip=${bytes.length} breaker=${bk.snapshot("net").state} vc1c=${sigDigest} vc2a=A`;
   },
 
   /** B: independent raw byte record — same digest, no shared subroutine. */
@@ -149,7 +164,16 @@ const MODES = {
       throw new Error("mode B: independent vc1c signature mismatch");
     }
     const indDigest = indep.digest.slice(0, 8);
-    return `digest=${b.bytesDigest.slice(0, 8)} spool=committed vc1c=${indDigest}`;
+
+    // ── VC2A asset-free trigram (mode B): unsupported platform demotes to B
+    //     without a remote fetch, and inference is refused (no verified asset). ──
+    const { createEncoderRuntime } = await loadDist("src/vector-cortex/encoder/runtime.js");
+    const encRtB = createEncoderRuntime({ platform: () => null });
+    const encLoadB = encRtB.load(join(root, "assets/vector-cortex/encoder-v1"));
+    if (encLoadB.ok || encLoadB.code !== "ENC_PLATFORM_UNSUPPORTED" || encLoadB.mode !== "B") {
+      throw new Error(`mode B: encoder did not demote to trigram B (${encLoadB.code}/${encLoadB.mode})`);
+    }
+    return `digest=${b.bytesDigest.slice(0, 8)} spool=committed vc1c=${indDigest} vc2a=B`;
   },
 
   /** C: predecessor paths unchanged (VC1C flag-OFF byte-identical). */

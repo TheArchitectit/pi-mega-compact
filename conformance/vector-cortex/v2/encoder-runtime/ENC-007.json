@@ -1,0 +1,1 @@
+{"assertion":"an unsupported platform selects trigram B with ENC_PLATFORM_UNSUPPORTED","expected":{"code":"ENC_PLATFORM_UNSUPPORTED","mode":"B","ok":false},"id":"ENC-007","input":{"scenario":"unsupported-platform"},"kind":"encoder-runtime","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-runtime-fixture.schema.json"}

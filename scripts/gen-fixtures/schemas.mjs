@@ -318,3 +318,33 @@ schemas["schemas/minhash-seeds.schema.json"] = {
     },
   },
 };
+
+schemas["schemas/encoder-runtime-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC2A encoder-runtime fixture envelope",
+  description:
+    "Common structure every VC2A encoder-runtime fixture validates against. `input.scenario` names the asset/load condition the acceptance test executes against a TEMP asset dir; `expected` gives the exact verdict (ok/mode A) or failure code.",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["encoder-runtime"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: { type: "string" },
+        mode: { type: "string", enum: ["A", "B", "C"] },
+        semanticWidth: { type: "integer" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario"],
+      properties: { scenario: { type: "string" } },
+    },
+  },
+};

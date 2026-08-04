@@ -311,6 +311,12 @@ export const SETTINGS: ReadonlyArray<{
 				"FixtureManifestV2 canonical manifest validator + DowngradeReport deterministic downgrade export + MinHashV2 exact big-integer signatures and the M4 copy/validate/switch minhash-v2 migration (seed table frozen, cross-language byte-exact). OFF = mode C, v1 sync dedup scan unchanged, byte-identical.",
 				true,
 			),
+			boolDirect(
+				"MEGACOMPACT_VC2A",
+				"VC2A Offline Model Runtime",
+				"ModelManifestV1 digest-before-load ONNX runtime (opset17/batch1/max512) + asset-free trigram demotion. Asset path assets/vector-cortex/encoder-v1 is immutable/digest-pinned. OFF = mode C, byte-identical to predecessor.",
+				true,
+			),
 		],
 	},
 	{

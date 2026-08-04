@@ -1,0 +1,1 @@
+{"assertion":"an opset17 manifest and matching digest load successfully","expected":{"mode":"A","ok":true},"id":"ENC-ASSET-001","input":{"scenario":"valid"},"kind":"encoder-runtime","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-runtime-fixture.schema.json"}

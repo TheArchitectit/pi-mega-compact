@@ -1,0 +1,1 @@
+{"assertion":"a truncated/unreadable ONNX during digest read demotes ENC_ASSET_UNREADABLE","expected":{"code":"ENC_ASSET_UNREADABLE","ok":false},"id":"ENC-006","input":{"scenario":"missing-onnx"},"kind":"encoder-runtime","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-runtime-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"a batch-2 manifest demotes ENC_BATCH_INVALID","expected":{"code":"ENC_BATCH_INVALID","ok":false},"id":"ENC-005","input":{"scenario":"batch-2"},"kind":"encoder-runtime","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-runtime-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"a one-byte model mutation demotes before load","expected":{"code":"ENC_DIGEST_MISMATCH","ok":false},"id":"ENC-DIGEST-002","input":{"scenario":"mutate-onnx"},"kind":"encoder-runtime","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-runtime-fixture.schema.json"}

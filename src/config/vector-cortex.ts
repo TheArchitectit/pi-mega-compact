@@ -69,6 +69,17 @@ export const VC0C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC0C");
  */
 export const VC1C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC1C");
 
+/**
+ * VC2A — offline model runtime and asset decision (ModelManifestV1 /
+ * EncoderRuntime).
+ * Default ON. `MEGACOMPACT_VC2A=0` disables and is byte-identical to the
+ * predecessor (mode C: no asset manifest is read/verified, the encoder runtime
+ * idles in mode C, zero `vector_cortex_encoder_*` emissions; the trigram/lexical
+ * paths are unchanged). The real consumers are the encoder emit seam and the
+ * encoder runtime's A/B/C selection.
+ */
+export const VC2A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC2A");
+
 // ---------------------------------------------------------------------------
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker).
 // Rolled numbers for one 60s window; VC0C consumes these at its breaker seam.
