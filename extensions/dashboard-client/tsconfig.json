@@ -16,7 +16,7 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
-    "types": [],
+    "types": ["node"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],

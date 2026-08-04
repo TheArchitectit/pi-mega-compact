@@ -15,7 +15,8 @@
 import { getStateDir } from "../../store.js";
 import { openStore } from "./utils.js";
 import type { SQLInputValue } from "node:sqlite";
-import { GameMetric, METRICS } from "../../game/scoring.js";
+import type { GameMetric } from "../../game/scoring.js";
+import { METRICS } from "../../game/scoring.js";
 
 // Process-local monotonic sequence appended into the low 3 digits of `ts` so
 // back-to-back inserts within the same millisecond get distinct PK values
