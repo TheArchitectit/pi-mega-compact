@@ -270,6 +270,8 @@ export const SETTINGS: ReadonlyArray<{
 			str("MEGACOMPACT_RAPTOR_MODEL", "RAPTOR Summary Model", "Ollama model for cluster summarization (empty = extractive)", ""),
 			str("MEGACOMPACT_RAPTOR_URL", "RAPTOR Ollama URL", "Ollama endpoint for RAPTOR summarization", "http://127.0.0.1:11434"),
 			num("MEGACOMPACT_EMBED_CACHE", "Embed Cache Size", "Embedding cache entries (0 = disabled)", 256, 0, 10000),
+			num("MEGACOMPACT_EMBEDDING_BATCH_TOKENS", "Embedding Batch Tokens", "Oversized-prompt chunking limit (tokens) for the BYO localhost embedder; text above this is chunked + mean-pooled", 2048, 64, 8192),
+			num("MEGACOMPACT_EMBEDDING_CHARS_PER_TOKEN", "Embedding Chars per Token", "Estimated characters per token used for embedder chunking size", 4, 1, 32),
 		],
 	},
 	{

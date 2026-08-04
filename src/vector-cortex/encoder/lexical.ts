@@ -40,6 +40,34 @@ export function tokenizeLexical(text: string): string[] {
 }
 
 /**
+ * Normalize a single token/phrase unit the same way `tokenizeLexical` does for
+ * the string form: lowercase and strip leading/trailing non-alphanumeric runs.
+ * Applied to array-form tokens so both accepted input forms of `embedLexical`
+ * hash identical conceptual content to identical buckets, regardless of how the
+ * caller chose to pass it (code-review Q03).
+ */
+function normalizeToken(tok: string): string {
+  return tok.toLowerCase().split(/[^a-z0-9_]+/).join("");
+}
+
+/**
+ * Resolve either accepted input form to a normalized token sequence: the string
+ * form routes through `tokenizeLexical` (split on non-alphanumeric boundaries,
+ * fragmented tokens discarded); the array form applies the same per-token
+ * lowercase/strip normalization and drops tokens that normalize to empty. Both
+ * paths therefore agree on hash buckets for the same conceptual content.
+ */
+function resolveTokens(tokensOrText: readonly string[] | string): string[] {
+  if (typeof tokensOrText === "string") return tokenizeLexical(tokensOrText);
+  const out: string[] = [];
+  for (const raw of tokensOrText) {
+    const norm = normalizeToken(raw);
+    if (norm.length > 0) out.push(norm);
+  }
+  return out;
+}
+
+/**
  * Encode a token/phrase sequence into a 256-dim L2-normalized lexical vector
  * (all-zero on empty input). Features: exact token count + token id-hash sums +
  * phrase-adjacency hashes. Deterministic (repeat drift == 0). Pure local compute.
@@ -47,8 +75,7 @@ export function tokenizeLexical(text: string): string[] {
 export function embedLexical(tokensOrText: readonly string[] | string): Float32Array {
   const width = ENCODER_LEXICAL_WIDTH;
   const out = new Float32Array(width);
-  const tokens =
-    typeof tokensOrText === "string" ? tokenizeLexical(tokensOrText) : [...tokensOrText];
+  const tokens = resolveTokens(tokensOrText);
   for (let i = 0; i < tokens.length; i++) {
     const tok = tokens[i]!;
     const h = createHash("sha256").update(`t:${tok}`).digest();

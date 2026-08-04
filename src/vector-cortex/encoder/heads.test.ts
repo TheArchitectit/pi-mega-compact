@@ -6,6 +6,9 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   ENCODER_HEAD_DIMS,
   ENCODER_HEAD_DIM_ORDER,
@@ -152,6 +155,35 @@ describe("VC2B emit seam", () => {
     }
     assert.ok(emitted.includes("vector_cortex_encoder_heads_emitted"));
     assert.ok(emitted.includes("vector_cortex_encoder_fallback_selected"));
+  });
+
+  test("Q01: default reporter (no injected emitter) writes real structured log lines", () => {
+    // The production seam must be LIVE by default — a caller that just invokes
+    // `encodeVectorSet`/`selectTrigramBFallback` without injecting an emitter
+    // still gets structured telemetry instead of a silent no-op. Route the
+    // default logger-backed sink at a temp path and assert the JSON lines land.
+    const dir = mkdtempSync(join(tmpdir(), "vc2b-emit-default-"));
+    const logPath = join(dir, "mega-compact.log");
+    const saved = process.env.MEGACOMPACT_VC2B;
+    process.env.MEGACOMPACT_VC2B = "1";
+    try {
+      const reporter = createEncoderHeadsReporter(undefined, { logPath });
+      reporter.headsEmitted({ heads: 5 });
+      reporter.fallbackSelected({ mode: "B" });
+      const lines = readFileSync(logPath, "utf8").trim().split("\n");
+      const events = lines.map((l) => JSON.parse(l).event);
+      assert.ok(events.includes("vector_cortex_encoder_heads_emitted"));
+      assert.ok(events.includes("vector_cortex_encoder_fallback_selected"));
+      for (const l of lines) {
+        const rec = JSON.parse(l);
+        assert.ok(rec.ts !== undefined, "every line carries ts");
+        assert.ok(rec.event, "every line carries event");
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      if (saved === undefined) delete process.env.MEGACOMPACT_VC2B;
+      else process.env.MEGACOMPACT_VC2B = saved;
+    }
   });
 
   test("projectHead returns the named head with the right dim and unit-or-zero norm", () => {

@@ -141,6 +141,20 @@ function main() {
       join(DEST_CONFIG, "vector-cortex.js"),
     );
   }
+  // VC2B's encoder observers default-emit through src/log.ts (emit-vc2b.ts imports
+  // `../../log.js`). The published dist/vector-cortex/ mirror runs the encoder
+  // subtree at the src-stripped offset, so the loose top-level log module (and
+  // its sole src dependency, config.js, which pulls only already-mirrored
+  // config/vector-cortex.js + node builtins) must be mirrored to dist/log.js and
+  // dist/config.js just like config/vector-cortex.js, or the default (no
+  // injected emitter) reporter would fail to resolve `../../log.js` in the
+  // published tree (code-review Q01).
+  for (const loose of ["log.js", "config.js"]) {
+    const s = join(REPO_ROOT, "dist", "src", loose);
+    if (existsSync(s)) {
+      copyFileSync(s, join(REPO_ROOT, "dist", loose));
+    }
+  }
   console.log(
     `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder files`,
   );

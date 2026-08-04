@@ -87,14 +87,21 @@ export function encodeOrFallback(
 
   // A caller that explicitly forces a fallback mode wins even over the empty-
   // input degenerate case: the forced-mode contract must hold for ANY input, so
-  // handle forceFallback before the empty-input selection below (Q02).
+  // handle forceFallback before the empty-input selection below (Q02). A forced
+  // B/C is NOT a rollback and NOT a demotion — it is an intentional selection
+  // for capacity/testing — so the verdict carries `code: null`, never
+  // ENC_FAIL.ROLLBACK, so a consumer that reads `verdict.code` as "what
+  // triggered the fallback" won't misread a deliberately forced mode as a
+  // rollback and take rollback-specific action (code-review Q04).
   if (options.forceFallback !== undefined) {
-    const forced: Extract<EncoderLoadResult, { ok: false }> = {
-      ok: false,
-      mode: options.forceFallback,
-      code: ENC_FAIL.ROLLBACK,
-    };
-    return fallbackFromLoad(forced, reporter, tokens);
+    if (options.forceFallback === "C") {
+      const sel = selectLexicalC({ reporter });
+      const vector = embedLexical(textFromTokens(tokens));
+      return { ok: true, mode: "C", vector, width: sel.width, limitation: sel.limitation, code: null };
+    }
+    const sel = selectTrigramBFallback({ reporter });
+    const vector = embedTrigram512(textFromTokens(tokens));
+    return { ok: true, mode: "B", vector, width: sel.width, limitation: null, code: null };
   }
 
   // Empty input yields the asset-free fallback (finite, deterministic zero

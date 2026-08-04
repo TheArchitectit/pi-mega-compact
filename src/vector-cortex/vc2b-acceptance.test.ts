@@ -411,6 +411,9 @@ describe("multi-head invariant + independence + triad", () => {
     if (c.ok && c.mode === "C") {
       assert.equal(c.vector.length, ENCODER_LEXICAL_WIDTH);
       assert.ok((c.limitation ?? "").length > 0, "C reports its semantic-context limitation");
+      // Q04: a FORCED C is an intentional selection, not a demotion or rollback,
+      // so it must NOT be stamped with ENC_FAIL.ROLLBACK.
+      assert.equal(c.code, null, "forced C is not a rollback/demotion (code = null)");
     }
     assert.ok(emittedC.includes("vector_cortex_encoder_fallback_selected"), "C selection emits fallback-selected");
     // Widths are disjoint across the triad (no shared feature space).
@@ -432,9 +435,11 @@ describe("multi-head invariant + independence + triad", () => {
     assert.equal(c.mode, "C", "forced C must win over empty-input B selection");
     if (c.ok && c.mode === "C") {
       assert.equal(c.vector.length, ENCODER_LEXICAL_WIDTH);
+      assert.equal(c.code, null, "forced C carries no rollback/demotion code (Q04)");
     }
     assert.ok(emittedC.includes("vector_cortex_encoder_fallback_selected"));
-    // Forced B on empty input also stays B (force mode is honored, code = ROLLBACK).
+    // Forced B on empty input also stays B (force mode is honored, no failure
+    // code — a forced mode is not a rollback/demotion, so code is null).
     const emittedB: string[] = [];
     const reporterB = createEncoderHeadsReporter((e) => emittedB.push(e));
     const b = encodeOrFallback({ tokens: EMPTY_TOKENS }, "", { reporter: reporterB, forceFallback: "B" });
@@ -442,6 +447,7 @@ describe("multi-head invariant + independence + triad", () => {
     assert.equal(b.mode, "B");
     if (b.ok && b.mode === "B") {
       assert.equal(b.vector.length, ENCODER_TRIGRAM_WIDTH);
+      assert.equal(b.code, null, "forced B carries no rollback/demotion code (Q04)");
     }
     });
   });

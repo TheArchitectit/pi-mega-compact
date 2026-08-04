@@ -14,6 +14,7 @@
  */
 
 import { VC2B_ENABLED } from "../../config/vector-cortex.js";
+import { Logger } from "../../log.js";
 
 export type EncoderEmit = (event: string, fields: Record<string, unknown>) => void;
 
@@ -23,23 +24,53 @@ export interface EncoderHeadsReporter {
   readonly fallbackSelected: (fields: Record<string, unknown>) => void;
 }
 
-/** A flag-gated no-op reporter (zero emissions, default when none injected). */
+/** A flag-gated no-op reporter (zero emissions, structural no-op). */
 export const NOOP_VC2B_REPORTER: EncoderHeadsReporter = {
   headsEmitted: () => {},
   fallbackSelected: () => {},
 };
 
 /**
- * Flag-gated emit: no-op when VC2B is off or no emitter is supplied. The
- * returned reporter is itself flag-gated (`VC2B_ENABLED`), so wiring it into a
- * producer seam yields zero emissions when `MEGACOMPACT_VC2B=0` (byte-identical
- * to the predecessor).
+ * The default emitter: routes both VC2B events into the append-only structured
+ * logger (`src/log.ts`) as JSON lines with `ts` + `event`. Supplying `emit:` to
+ * `createEncoderHeadsReporter` replaces this with a caller-provided sink (used
+ * by tests and downstream consumers). Making the default a REAL producer means a
+ * caller that just invokes the producer seam (`encodeOrFallback`, `encodeVectorSet`,
+ * `selectTrigramBFallback`, `selectLexicalC`) without injecting an emitter still
+ * yields structured telemetry instead of silently dropping every event (task 5,
+ * code-review Q01). Best-effort: the logger swallows all I/O errors.
  */
-export function createEncoderHeadsReporter(emit?: EncoderEmit): EncoderHeadsReporter {
+function defaultEmitFor(logPath: string | undefined): EncoderEmit {
+  const logger = new Logger(logPath === undefined ? {} : { path: logPath });
+  return (event, fields) => {
+    logger.info(event, fields);
+  };
+}
+
+/** Options for the default logger-backed sink (used when no `emit` is injected). */
+export interface EncoderHeadsEmitOptions {
+  /** Where the default structured sink writes (defaults to the global log path). */
+  readonly logPath?: string;
+}
+
+/**
+ * Flag-gated emit, defaulting to a real logger-backed sink. The returned
+ * reporter is itself flag-gated (`VC2B_ENABLED`), so wiring it into a producer
+ * seam yields zero emissions when `MEGACOMPACT_VC2B=0` (byte-identical to the
+ * predecessor). Pass an explicit `emit` to route elsewhere (tests, downstream
+ * consumers); omit it to emit real structured log lines (Q01: the default is a
+ * live producer, not a silent no-op). `opts.logPath` only redirects the default
+ * sink and is ignored when `emit` is supplied.
+ */
+export function createEncoderHeadsReporter(
+  emit?: EncoderEmit,
+  opts: EncoderHeadsEmitOptions = {},
+): EncoderHeadsReporter {
+  const sink = emit ?? defaultEmitFor(opts.logPath);
   const fire = (event: string, fields: Record<string, unknown>): void => {
     if (!VC2B_ENABLED()) return;
     try {
-      emit?.(event, { ...fields, ts: new Date().toISOString() });
+      sink(event, { ...fields, ts: new Date().toISOString() });
     } catch {
       /* non-fatal observability */
     }
