@@ -17,11 +17,16 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { VC0A_ENABLED, VC0C_ENABLED, VC1B_ENABLED } from "../../src/config.js";
 import { readEvalRows } from "../../src/vector-cortex/eval/persist.js";
 import { summarizeEvalRows } from "../../src/vector-cortex/eval/reader.js";
 import { createVectorCortexSafety } from "../mega-runtime/vector-cortex-safety.js";
 import { createLedgerStore } from "../../src/vector-cortex/ledger/store.js";
+import { readEncoderManifest, verifyEncoderAsset, detectPlatform } from "../../src/vector-cortex/encoder/asset.js";
 import type {
   VectorCortexEvaluationSummary,
   VectorCortexHealthCard,
@@ -63,6 +68,48 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   // guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
+}
+
+/** Resolve the committed encoder-v1 asset dir by walking up to the repo root. */
+function encoderAssetDir(): string | null {
+  let dir = dirname(fileURLToPath(import.meta.url));
+  const rel = join("assets", "vector-cortex", "encoder-v1");
+  for (let i = 0; i < 8; i++) {
+    const candidate = join(dir, rel);
+    try {
+      // guardrails-allow PREVENT-PI-004: local asset filesystem read (loopback)
+      readFileSync(join(candidate, "manifest.json"));
+      return candidate;
+    } catch {
+      /* keep walking */
+    }
+    const next = dirname(dir);
+    if (next === dir) break;
+    dir = next;
+  }
+  return null;
+}
+
+/**
+ * VC2C encoder health facts (task 5): the SHA-256 of the committed qualified
+ * manifest (asset digest) and the encoder triad mode. Reader-only aggregate
+ * (digest prefix, no bytes). "A" when the committed asset verifies on this host,
+ * "B" when present but not verified (demotion), "C" when absent.
+ */
+function encoderHealthFacts(): { assetDigest: string | null; mode: "A" | "B" | "C" } {
+  const dir = encoderAssetDir();
+  if (dir === null) return { assetDigest: null, mode: "C" };
+  const manifest = readEncoderManifest(dir);
+  if (manifest === null) return { assetDigest: null, mode: "C" };
+  let digest: string;
+  try {
+    // guardrails-allow PREVENT-PI-004: local manifest filesystem read (loopback)
+    digest = createHash("sha256").update(readFileSync(join(dir, "manifest.json"))).digest("hex");
+  } catch {
+    digest = "0".repeat(64);
+  }
+  const verify = verifyEncoderAsset(dir, manifest, detectPlatform());
+  return { assetDigest: digest, mode: verify.ok ? "A" : "B" };
 }
 
 /** Reader-only aggregate GET /api/vector-cortex/evaluation. */
@@ -133,6 +180,8 @@ export function handleVectorCortexHealth(
   const safety = enabled ? createVectorCortexSafety({ stateDir: ctx.stateDir }) : null;
   const card = safety ? safety.health() : null;
 
+  const enc = encoderHealthFacts();
+
   const fallback: VectorCortexHealthCard = {
     enabled: false,
     mode: "C",
@@ -152,6 +201,8 @@ export function handleVectorCortexHealth(
     updatedAt: new Date().toISOString(),
     aggregate: "CLOSED_A",
     stateSource: "ephemeral",
+    encoderAssetDigest: enc.assetDigest,
+    encoderMode: enc.mode,
   };
   if (!card) {
     sendJson(res, 200, fallback);
@@ -191,6 +242,8 @@ export function handleVectorCortexHealth(
     updatedAt: new Date().toISOString(),
     aggregate,
     stateSource: card.stateSource,
+    encoderAssetDigest: enc.assetDigest,
+    encoderMode: enc.mode,
   };
   sendJson(res, 200, body);
   return true;

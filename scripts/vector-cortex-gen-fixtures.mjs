@@ -34,9 +34,11 @@ const {
   encoderNamedCount,
   encoderHeadsCount,
   encoderHeadsNamedCount,
+  encoderQualCount,
+  encoderQualNamedCount,
 } = writeAll();
 
 console.log(
-  `generated ${evalCount} evaluation + ${replayCount} replay + ${eventCount} event fixtures + ${resilienceCount} resilience + ${ledgerCount} ledger + ${ledgerNamedCount} named ledger + ${namedCount} named resilience fixtures + ${minhashCount} minhash + ${migrationCount} migration + ${conformanceCount} conformance fixtures + ${encoderCount} encoder-runtime + ${encoderNamedCount} named encoder-runtime fixtures + ${encoderHeadsCount} encoder-heads + ${encoderHeadsNamedCount} named encoder-heads fixtures + ${schemaCount} schemas + manifest under conformance/vector-cortex/v2`,
+  `generated ${evalCount} evaluation + ${replayCount} replay + ${eventCount} event fixtures + ${resilienceCount} resilience + ${ledgerCount} ledger + ${ledgerNamedCount} named ledger + ${namedCount} named resilience fixtures + ${minhashCount} minhash + ${migrationCount} migration + ${conformanceCount} conformance fixtures + ${encoderCount} encoder-runtime + ${encoderNamedCount} named encoder-runtime fixtures + ${encoderHeadsCount} encoder-heads + ${encoderHeadsNamedCount} named encoder-heads fixtures + ${encoderQualCount} encoder-qualification + ${encoderQualNamedCount} named encoder-qualification fixtures + ${schemaCount} schemas + manifest under conformance/vector-cortex/v2`,
 );
 console.log("next: node scripts/vector-cortex-conformance.mjs --check");

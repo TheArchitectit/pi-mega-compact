@@ -90,6 +90,17 @@ export interface VectorCortexHealthCard {
    * only once the persistent breaker runtime + producer wiring land (VC0D).
    */
   readonly stateSource: "ephemeral" | "live";
+  /**
+   * VC2C encoder asset digest — SHA-256 of the committed ModelManifestV1 bytes.
+   * null when no qualified encoder manifest is present on this host.
+   */
+  readonly encoderAssetDigest: string | null;
+  /**
+   * VC2C encoder triad mode: "A" when the committed asset verifies as a
+   * qualified learned asset on this host/platform, else "B" (trigram) or "C"
+   * (lexical). Reader-only aggregate — the measured digest prefix, never bytes.
+   */
+  readonly encoderMode: "A" | "B" | "C";
 }
 
 /**

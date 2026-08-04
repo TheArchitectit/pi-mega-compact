@@ -90,6 +90,16 @@ export const VC2A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC2A");
  */
 export const VC2B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC2B");
 
+/**
+ * VC2C — encoder qualification + calibration (QualifiedEncoderV1 / CalibrationV1).
+ * Default ON. `MEGACOMPACT_VC2C=0` disables and is byte-identical to the
+ * predecessor (mode C: no qualification manifest is read or selected, the
+ * calibrate/select/fallback seams are idle, zero `vector_cortex_encoder_qualification_*`
+ * emissions; the trigram/lexical paths are unchanged). The real consumers are
+ * the encoder-qualification emit seam and the calibrate/select seams.
+ */
+export const VC2C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC2C");
+
 // ---------------------------------------------------------------------------
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker).
 // Rolled numbers for one 60s window; VC0C consumes these at its breaker seam.

@@ -1,0 +1,1 @@
+{"assertion":"a fully satisfactory held-out metrics set qualifies the asset as mode A","expected":{"mode":"A","ok":true},"id":"ENC-017","input":{"scenario":"qualified"},"kind":"encoder-qualification","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-qualification-fixture.schema.json"}

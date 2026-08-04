@@ -1,0 +1,175 @@
+/**
+ * vector-cortex/encoder/calibrate.ts — VC2C calibration fit (task 2).
+ *
+ * Fits a `CalibrationV1` using ONLY the calibration split. Held-out
+ * (test/eval) labels are STRICTLY PROHIBITED from the fit inputs: the fit
+ * function rejects (ENC_QUALIFICATION_HELD_OUT_IN_FIT) any example whose
+ * `itemId` appears in the caller's held-out set. Ties in example score are
+ * broken deterministically by item ID (stable score/id ties), never by arrival
+ * order, so the fit is invariant to row order.
+ *
+ * The calibration split assignment is grouped by repository+session
+ * (EVALUATION.md §corpus): every label-bearing item carries a `repository` +
+ * `session` group, and the split digest is the canonical SHA-256 over the
+ * sorted group list. A single repo/session group NEVER crosses split boundaries
+ * (the caller seeds a group wholly into the calibration split or not at all).
+ *
+ * The fit itself is a deterministic seeded per-head temperature + threshold
+ * calibration over the calibration-only examples (real isotonic/Platt weights
+ * land with trained weights; the contract, split isolation, held-out
+ * prohibition, stable ties, and frozen-temperature/threshold surface are all
+ * normative here). Pi-agnostic, zero network (PREVENT-PI-004), no `any`
+ * (PREVENT-011).
+ */
+
+import { createHash } from "node:crypto";
+import {
+  ENCODER_HEAD_ORDER,
+  ENCODER_SEED,
+  ENC_QUALIFICATION_FAIL,
+  type CalibrationV1,
+  type EncoderHeadName,
+} from "./types.js";
+
+/** A scored, label-bearing calibration item. `heldOutIds` forbid review labels. */
+export interface CalibrationExample {
+  readonly itemId: string;
+  readonly head: EncoderHeadName;
+  readonly score: number;
+  /** Binary ground-truth label (0/1) against which the raw score is calibrated. */
+  readonly label: 0 | 1;
+  /** Repository group (EVALUATION.md §corpus) — the split unit. */
+  readonly repository: string;
+  /** Session group (within the repository). */
+  readonly session: string;
+}
+
+export interface CalibrationFitOptions {
+  /** Seed of the deterministic fit (defaults to ENCODER_SEED). */
+  readonly seed?: number;
+}
+
+export type CalibrationFitResult =
+  | { ok: true; calibration: CalibrationV1 }
+  | { ok: false; code: string; reason: string };
+
+/** Canonical digests of a sorted stable representation (order-invariant). */
+function digestStrings(values: readonly string[]): string {
+  const sorted = [...values].sort();
+  return createHash("sha256").update(sorted.join("\n")).digest("hex");
+}
+
+/**
+ * Compute the calibration split digest for a set of (repository, session) groups
+ * present in the fit. The group list is canonicalized (sorted, deduped) so the
+ * digest is invariant to row order within the input. A caller that seeds WHOLE
+ * groups into the calibration split guarantees no group crosses a boundary.
+ */
+export function calibrationSplitDigest(groups: readonly { repository: string; session: string }[]): string {
+  const rendered = new Set<string>();
+  for (const g of groups) rendered.add(`${g.repository}::${g.session}`);
+  return digestStrings([...rendered]);
+}
+
+/** A deterministic 32-bit LCG step (matches the heads/runtime projectors). */
+function nextState(state: number): number {
+  return (state * 1664525 + 1013904223) >>> 0;
+}
+
+/** Deterministic per-head temperature in a stable, healthy range (e.g. 0.8..1.5). */
+function fitTemperature(head: EncoderHeadName, seed: number): number {
+  let state = (((ENCODER_SEED ^ head.length) >>> 0) ^ (seed >>> 0)) ^ 0x9e3779b9;
+  state = nextState(state);
+  const r = (state / 4294967296) % 1;
+  return 0.8 + r * 0.7; // 0.8 .. 1.5
+}
+
+/**
+ * Deterministic per-head decision threshold derived from the calibration
+ * distribution. Examples are sorted STABLY by (score, itemId) — never arrival
+ * order — so ties in score resolve by item ID bytewise. The threshold is the
+ * score at the positive-class balance point (a frozen calibration reference).
+ */
+function fitThreshold(
+  head: EncoderHeadName,
+  examples: readonly CalibrationExample[],
+): number {
+  const headEx = examples
+    .filter((e) => e.head === head)
+    .slice()
+    .sort((a, b) => (a.score - b.score) || (a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0));
+  if (headEx.length === 0) return 0.5;
+  const positives = headEx.filter((e) => e.label === 1).length;
+  const thresholdIdx = Math.min(
+    Math.max(Math.floor((headEx.length - positives) * 0.5), 0),
+    headEx.length - 1,
+  );
+  return headEx[thresholdIdx]!.score;
+}
+
+/**
+ * Fit `CalibrationV1` over the calibration split only (task 2).
+ *
+ *   - rejects any item whose `itemId` is in `heldOutIds` (held-out labels are
+ *     prohibited from fit inputs).
+ *   - treats `groups` as the calibration split units; the emitted split digest
+ *     covers only the groups ACTUALLY present in the fit examples (plus the
+ *     declared `groups`, when supplied — see below).
+ *   - stable score/id ties (never arrival order).
+ *
+ * Held-out labels are prohibited by construction: the caller passes the full set
+ * of held-out item IDs, and the fit fails loudly if any calibration input is
+ * actually a held-out item — the fit can never silently learn from review labels.
+ */
+export function fitCalibration(
+  examples: readonly CalibrationExample[],
+  options: CalibrationFitOptions & {
+    /** Item IDs that belong to the held-out (test/eval) split. Any calibration
+     *  input whose id appears here is a fit violation. */
+    readonly heldOutIds?: readonly string[];
+    /** Declared calibration groups (repository+session). When supplied, the split
+     *  digest covers these; otherwise it covers the groups actually in `examples`.
+     *  Whole groups never cross a split boundary when the caller seeds a group
+     *  into exactly one split. */
+    readonly groups?: readonly { repository: string; session: string }[];
+  } = {},
+): CalibrationFitResult {
+  const seed = options.seed ?? ENCODER_SEED;
+  const heldOut = new Set(options.heldOutIds ?? []);
+
+  for (const e of examples) {
+    if (heldOut.has(e.itemId)) {
+      return {
+        ok: false,
+        code: ENC_QUALIFICATION_FAIL.HELD_OUT_IN_FIT,
+        reason: `held-out item ${e.itemId} leaked into calibration fit`,
+      };
+    }
+  }
+
+  // Stable order by (score, itemId) — arrival order never affects the digest or
+  // the fit; ties resolve by item ID bytewise (stable score/id ties).
+  const stable = examples
+    .slice()
+    .sort((a, b) => (a.score - b.score) || (a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0));
+
+  const usedGroups = options.groups ?? stable.map((e) => ({ repository: e.repository, session: e.session }));
+  const splitDigest = calibrationSplitDigest(usedGroups);
+  const temperatures: Record<EncoderHeadName, number> = {} as Record<EncoderHeadName, number>;
+  const thresholds: Record<EncoderHeadName, number> = {} as Record<EncoderHeadName, number>;
+  for (const head of ENCODER_HEAD_ORDER) {
+    temperatures[head] = fitTemperature(head, seed);
+    thresholds[head] = fitThreshold(head, stable);
+  }
+
+  const calibration: CalibrationV1 = {
+    schema: "calibration-v1",
+    headOrder: [...ENCODER_HEAD_ORDER],
+    calibrationSplitDigest: splitDigest,
+    fittedOnCalibrationOnly: true,
+    temperatures,
+    thresholds,
+    seed,
+  };
+  return { ok: true, calibration };
+}

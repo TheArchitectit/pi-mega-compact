@@ -1,0 +1,1 @@
+{"assertion":"calibration fit produces a split digest and excludes held-out labels from the fit","expected":{"mode":"A","ok":true},"id":"ENC-018","input":{"scenario":"calibration-fit"},"kind":"encoder-qualification","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-qualification-fixture.schema.json"}

@@ -157,6 +157,15 @@ describe("/api/vector-cortex/health (VC0C)", () => {
 			// LIVENESS HONESTY (VC0C-Q01): the per-request breaker is ephemeral —
 			// never present the exactly-default CLOSED_A as a LIVE circuit breaker.
 			assert.equal(body.stateSource, "ephemeral");
+			// VC2C encoder health (task 5): the committed qualified manifest digest
+			// and triad mode are surfaced as reader-only aggregates.
+			assert.equal(typeof body.encoderAssetDigest, "string");
+			assert.equal(body.encoderAssetDigest.length, 64);
+			assert.ok(["A", "B", "C"].includes(body.encoderMode), "encoderMode a triad member");
+			// The committed encoder asset is a package invariant of this sprint, so
+			// the health card reports mode A (verified on the bundle's platform) or
+			// a legit demotion on an off-platform host — never a missing mode type.
+			assert.ok(typeof body.encoderMode === "string");
 			// Reader-only: never payload/prompt/ledger fields.
 			assert.equal("payload" in body, false);
 			assert.equal("prompt" in body, false);
