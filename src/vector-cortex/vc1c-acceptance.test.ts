@@ -42,6 +42,7 @@ import {
   type ConformanceHandler,
   type DowngradeExporter,
 } from "./conformance/runner.js";
+import { independentReaderV2, type PublishedSeedPair } from "./conformance/triadB-reader.js";
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** Walk up from the test location until the conformance corpus is found. */
 function repoRoot(from: string): string {
@@ -120,7 +121,6 @@ function memHost(input: MigrationFixture["input"]): {
   host: M4Host;
   rows: V2SignatureRow[];
   active: () => number;
-  switchCalls: () => number;
   failSwitch: (fail: boolean) => void;
 } {
   const checkpoints = input.checkpoints;
@@ -128,7 +128,6 @@ function memHost(input: MigrationFixture["input"]): {
   const textOf = new Map(checkpoints.map((c, i) => [c, texts[i] ?? `source-of-${c}`]));
   const rows: V2SignatureRow[] = [];
   let active = input.activeStarting;
-  let switches = 0;
   let crashingSwitch = false;
   const host: M4Host = {
     v1CheckpointIds: () => checkpoints,
@@ -137,22 +136,22 @@ function memHost(input: MigrationFixture["input"]): {
     storedV2: () => rows,
     activeVersion: () => active,
     putV2: (newRows) => {
-      // Append without dedup: backfill itself avoids re-writing known ids (via
-      // storedV2), so idempotency is preserved while duplicate/corrupt rows can
-      // be injected for the failure scenarios (M4-005/006/007).
-      rows.push(...newRows);
+      // Replace-by-checkpoint-id (upsert), so a rewrite heals a corrupt row.
+      for (const row of newRows) {
+        const i = rows.findIndex((r) => r.checkpointId === row.checkpointId);
+        if (i >= 0) rows[i] = row;
+        else rows.push(row);
+      }
     },
     switchToV2: () => {
       if (crashingSwitch) throw new Error("M4_SWITCH_CRASH");
       active = MINHASH_VERSION;
-      switches += 1;
     },
   };
   return {
     host,
     rows,
     active: () => active,
-    switchCalls: () => switches,
     failSwitch: (fail) => {
       crashingSwitch = fail;
     },
@@ -188,11 +187,19 @@ describe("MinHashV2 exact vectors vs M4-HIGHBIT-001 (triad A/B)", () => {
     assert.deepEqual(lshBandsV2(bytes, fx.input.session), fx.expected.buckets, "bucket keys");
   });
   test("B: independent exact reader re-derives the signature byte-for-byte", () => {
-    // Independent path: recompute directly from the committed text without the
-    // runner module's cached seeds, then compare to the fixture digest.
+    // Independent from A: shares neither code nor seed cache with the runner
+    // (l1-minhash-v2.js) — reads published (a,b) pairs from seeds-v2.json and
+    // re-derives all arithmetic from first principles.
     const fx = fixture<MinhashFixture>("minhash/M4-HIGHBIT-001.json");
-    const indep = encodeSignatureV2(minhashV2Signature(fx.input.text));
-    assert.equal(sha256Hex(indep), fx.expected.signatureDigest, "independent reader matches fixture");
+    const seeds = readJson<{ seedPairs: PublishedSeedPair[] }>(join(V2, "minhash", "seeds-v2.json")).seedPairs;
+    assert.equal(seeds.length, 256, "published seed table has exactly 256 pairs");
+    const indep = independentReaderV2(fx.input.text, fx.input.session, seeds, true);
+    assert.equal(indep.digest, fx.expected.signatureDigest, "independent reader matches fixture digest");
+    assert.equal(indep.bytes.length, 2048, "independent reader yields a full 2048-byte signature");
+    assert.deepEqual(indep.buckets, fx.expected.buckets, "independent bucket keys match fixture");
+    const runnerBytes = encodeSignatureV2(minhashV2Signature(fx.input.text)); // cross-check exact bytes
+    assert.equal(Buffer.from(indep.bytes).toString("hex"), Buffer.from(runnerBytes).toString("hex"),
+      "independent bytes == runner bytes (both match the committed authority)");
   });
   test("M4-VERSION-002: a v1/v2 cross-version compare is rejected", () => {
     const fx = fixture<VersionFixture>("minhash/M4-VERSION-002.json");
@@ -278,7 +285,7 @@ function assertMigration(fx: MigrationFixture): void {
     assert.ok(v.codes.includes(M4_FAIL.DIGEST_MISMATCH), `got ${v.codes.join(",")}`);
   } else if (scenario === "duplicate-row") {
     const row = computeV2Row(h.host, input.checkpoints[0]!);
-    h.host.putV2([row, { ...row }]);
+    h.rows.push(row, { ...row }); // physical duplicates from a broken prior write
     const v = m4Verify(h.host);
     assert.equal(v.ok, fx.expected.ok, "duplicate fails");
     assert.ok(v.codes.includes(M4_FAIL.COUNT_MISMATCH), `got ${v.codes.join(",")}`);
@@ -306,6 +313,16 @@ describe("M4 migration lifecycle against M4-00x fixtures", () => {
   test("M4-DUP-001: equal-content checkpoints remain two rows", () => {
     const fx = fixture<MigrationFixture>("migrations/M4-DUP-001.json");
     assertMigration(fx);
+  });
+  test("corrupt persisted v2 rows are repaired by backfill, not skipped by id", () => {
+    // Q02: a crash-mid-write bad-digest row is recomputed by backfill (not
+    // skipped on checkpoint-id alone), so m4Verify self-heals.
+    const h = memHost({ scenario: "full", checkpoints: ["c1"], activeStarting: 1 });
+    h.host.putV2([{ ...computeV2Row(h.host, "c1"), digest: "sha256:deadbeef" }]);
+    const delta = m4Backfill(h.host);
+    assert.equal(delta.length, 1, "corrupt row is rewritten");
+    assert.equal(delta[0]?.checkpointId, "c1", "rewrite targets the corrupt id");
+    assert.equal(m4Verify(h.host).ok, true, "verify passes after backfill self-heal");
   });
 });
 // Canonical manifest validator (CONF-MANIFEST-001 / CONF-EXTRA-002)

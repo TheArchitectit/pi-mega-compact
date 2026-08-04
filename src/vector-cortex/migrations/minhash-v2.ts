@@ -108,9 +108,15 @@ function sha256Hex(bytes: Uint8Array): string {
 
 /**
  * Backfill v2 signatures/buckets for all v1 checkpoint ids (resumable): rows
- * already persisted with matching digest are left untouched (no duplicates),
- * and the active pointer stays at v1 until a verified switch. Returns the rows
- * written this call (delta), never duplicates.
+ * already persisted with matching v2 digest/version are left untouched (no
+ * duplicates), and the active pointer stays at v1 until a verified switch.
+ * Returns the rows written this call (delta), never duplicates.
+ *
+ * An EXISTING row is re-computed and digest-verified before it is skipped; if
+ * the persisted row is corrupt (wrong version, wrong length, or a digest that
+ * no longer re-hashes its signatureBytes — e.g. a crash mid-write that left a
+ * truncated/bad row for an already-present id), it is recomputed and rewritten
+ * so corruption self-heals instead of being frozen by a later `m4Verify` failure.
  */
 export function m4Backfill(
   host: M4Host,
@@ -120,9 +126,10 @@ export function m4Backfill(
   const existing = new Map(host.storedV2().map((r) => [r.checkpointId, r]));
   const writes: V2SignatureRow[] = [];
   for (const id of wanted) {
-    if (existing.has(id)) continue; // already backfilled — resumable, no dup
     const row = computeV2Row(host, id);
-    writes.push(row);
+    const stored = existing.get(id);
+    if (stored !== undefined && v2RowMatches(stored, row)) continue; // healthy, no dup
+    writes.push(row); // absent, or stored row is corrupt -> (re)compute authoritative bytes
   }
   if (writes.length > 0) {
     host.putV2(writes);
@@ -132,6 +139,17 @@ export function m4Backfill(
     });
   }
   return writes;
+}
+
+/** True when a persisted row already matches the authoritative recompute. */
+function v2RowMatches(stored: V2SignatureRow, fresh: V2SignatureRow): boolean {
+  return (
+    stored.version === MINHASH_VERSION &&
+    stored.checkpointId === fresh.checkpointId &&
+    stored.sessionId === fresh.sessionId &&
+    stored.signatureBytes.length === fresh.signatureBytes.length &&
+    stored.digest === fresh.digest
+  );
 }
 
 /**
