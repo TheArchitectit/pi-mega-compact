@@ -24,7 +24,7 @@ import {
   type ModelManifestV1,
   type EncoderLoadResult,
 } from "./encoder/types.js";
-import { verifyEncoderAsset, readEncoderManifest } from "./encoder/asset.js";
+import { verifyEncoderAsset, readEncoderManifest, detectPlatform } from "./encoder/asset.js";
 import { createEncoderRuntime, type CreateEncoderRuntimeOptions } from "./encoder/runtime.js";
 import { createEncoderReporter, NOOP_ENCODER_REPORTER } from "./encoder/emit.js";
 import { canonicalManifestsConverge } from "./conformance/manifest.js";
@@ -42,7 +42,6 @@ function repoRoot(from: string): string {
 }
 const REPO_ROOT = repoRoot(HERE);
 const V2 = join(REPO_ROOT, "conformance", "vector-cortex", "v2");
-const COMMITTED_ASSET = join(REPO_ROOT, "assets", "vector-cortex", "encoder-v1");
 
 interface ManifestDef {
   owner: string;
@@ -73,6 +72,13 @@ function sha256(bytes: Uint8Array): string {
 const ENC_NAMED = ["ENC-ASSET-001", "ENC-DIGEST-002", "ENC-PLATFORM-003"];
 const VC2A_IDS = [...ENC_IDS, ...ENC_NAMED];
 
+/** The live platform, or linux-x64 in an unrecognized-host test env. Temp asset
+ *  manifests derive their declared platform from here so they always match the
+ *  runtime host — otherwise a "valid" scenario spuriously demotes to
+ *  PLATFORM_UNSUPPORTED on non-linux-x64 machines and the suite fails
+ *  (cross-platform code-quality Q02). */
+const HOST_PLATFORM = detectPlatform() ?? "linux-x64";
+
 // ---------------------------------------------------------------------------
 // Temp asset construction (real files, real digests)
 // ---------------------------------------------------------------------------
@@ -89,7 +95,7 @@ function baseManifest(over: Partial<ModelManifestV1> = {}): ModelManifestV1 {
     opset: 17,
     batch: 1,
     maxTokens: ENCODER_MAX_TOKENS,
-    platform: "linux-x64",
+    platform: HOST_PLATFORM,
     hiddenWidth: 384,
     semanticWidth: 384,
     heads: { semantic: 384, dependency: 128, contradiction: 128, cacheStability: 64, payloadRouting: 32 },
@@ -307,21 +313,21 @@ describe("encoder runtime invariant + injection + triad", () => {
     rmSync(dir513, { recursive: true, force: true });
   });
   test("truncated ONNX during digest read demotes ENC_ASSET_UNREADABLE", () => {
-    const dir = tmpAsset("vc2a-trunc");
-    mkdirSync(dir, { recursive: true });
+    // Build a LIVE-platform manifest whose model.onnx is absent on disk ->
+    // unreadable during the digest read -> ENC_ASSET_UNREADABLE. This is
+    // platform-independent (Q02): the committed bundle is pinned to linux-x64
+    // and would demote for platform reasons (PLATFORM_UNSUPPORTED) on other
+    // hosts before ever reaching the digest read.
+    const built = buildDir("missing-onnx");
     try {
-      // Committed manifest references model.onnx which is absent on disk here.
-      const manifest = readEncoderManifest(COMMITTED_ASSET);
-      assert.ok(manifest, "committed manifest readable");
-      writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifest));
-      const load = createEncoderRuntime().load(dir);
+      const load = createEncoderRuntime().load(built.dir);
       assert.equal(load.ok, false);
       if (!load.ok) {
         assert.equal(load.code, ENC_FAIL.ASSET_UNREADABLE);
         assert.equal(load.mode, "B");
       }
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmBuilt(built);
     }
   });
   test("allocator failure after verification demotes ENC_ASSET_UNREADABLE", () => {

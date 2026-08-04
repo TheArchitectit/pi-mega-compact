@@ -40,7 +40,12 @@ export const ENCODER_OPSET = 17;
 export const ENCODER_BATCH = 1;
 /** Maximum accepted token count (WordPiece, deterministic truncation). */
 export const ENCODER_MAX_TOKENS = 512;
-/** Caps measured RSS (bytes) at 150 MiB (MODEL_ASSET §qualification). */
+/** Caps the encoder's MARGINAL footprint (bytes) at 150 MiB (MODEL_ASSET
+ *  §qualification). The budget bounds the encoder's own incremental allocation
+ *  (in-process allocation counter + any externally staged asset working set),
+ *  NOT the whole-process RSS — in a live pi extension the process baseline
+ *  routinely exceeds 150 MiB, so measuring absolute RSS would make mode A
+ *  unreachable in production (code-review Q01). */
 export const ENCODER_RSS_BUDGET_BYTES = 150 * 1024 * 1024;
 /** p95 inference budget in milliseconds (MODEL_ASSET §qualification). */
 export const ENCODER_LATENCY_P95_MS = 40;
@@ -135,6 +140,11 @@ export const ENC_FAIL = {
   MANIFEST_INVALID: "ENC_MANIFEST_INVALID",
   /** measured RSS over the 150 MiB budget (selects trigram B). */
   RSS_BUDGET_EXCEEDED: "ENC_RSS_BUDGET_EXCEEDED",
+  /** mode C forced by the rollback path (MEGACOMPACT_VC2A=0 / forcedMode "C").
+   *  Distinct from MANIFEST_INVALID so a non-corrupt, correctly-shaped asset
+   *  present on disk is not mis-reported as "manifest invalid" when the runtime
+   *  is simply rolled back to the predecessor path (code-review Q04). */
+  ROLLBACK: "ENC_ROLLBACK_ACTIVE",
 } as const;
 
 /** The 8 registered VC2A conformance IDs (task 1: "register ENC-001..008"). */

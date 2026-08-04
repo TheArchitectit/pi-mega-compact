@@ -9,7 +9,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ENC_FAIL, ENCODER_MAX_TOKENS, ENCODER_RSS_BUDGET_BYTES } from "./types.js";
 import { createEncoderRuntime } from "./runtime.js";
+import { detectPlatform } from "./asset.js";
 import { createEncoderReporter, NOOP_ENCODER_REPORTER } from "./emit.js";
+
+/** The temp asset's declared platform follows the LIVE detector, so the
+ *  manifest's platform always matches the runtime host and verification does
+ *  not spuriously demote to PLATFORM_UNSUPPORTED on non-linux-x64 hosts
+ *  (cross-platform code-quality Q02). */
+const HOST_PLATFORM = detectPlatform() ?? "linux-x64";
 
 function tempDir(prefix: string): string {
   return join(tmpdir(), `${prefix}-${Math.random().toString(36).slice(2)}`);
@@ -30,7 +37,7 @@ function makeAssetDir(over: Partial<{ onnx: Buffer; tokenizer: Buffer }> = {}): 
     opset: 17,
     batch: 1,
     maxTokens: ENCODER_MAX_TOKENS,
-    platform: "linux-x64",
+    platform: HOST_PLATFORM,
     hiddenWidth: 384,
     semanticWidth: 384,
     heads: { semantic: 384, dependency: 128, contradiction: 128, cacheStability: 64, payloadRouting: 32 },
@@ -156,13 +163,47 @@ describe("VC2A EncoderRuntime (task 3)", () => {
     }
   });
 
-  test("measured RSS over 150 MiB demotes ENC_RSS_BUDGET_EXCEEDED (mode B)", () => {
+  test("over-budget marginal footprint demotes ENC_RSS_BUDGET_EXCEEDED (mode B)", () => {
+    // The budget gates the encoder's MARGINAL footprint (Q01), so a large
+    // whole-process RSS is irrelevant; an externally staged allocation over the
+    // 150 MiB budget (or the encoder's own allocation counter) demotes.
     const dir = makeAssetDir();
     try {
-      const rt = createEncoderRuntime({ host: { rssBytes: () => ENCODER_RSS_BUDGET_BYTES + 1 } });
+      const rt = createEncoderRuntime({ host: { allocatedBytes: () => ENCODER_RSS_BUDGET_BYTES + 1 } });
       const load = rt.load(dir);
       assert.equal(load.ok, false);
       if (!load.ok) assert.equal(load.code, ENC_FAIL.RSS_BUDGET_EXCEEDED);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("over-budget marginal footprint during infer demotes to mode B (Q03 parity)", () => {
+    // A healthy process baseline must not block mode A; only the encoder's
+    // INCREMENTAL footprint exceeding the budget should (Q01). Once over budget
+    // an inference demotes to mode B (consistent with load), and the check runs
+    // BEFORE the projection allocation (cap-before-allocation, task 3).
+    const dir = makeAssetDir();
+    try {
+      // Under budget a verified load is mode A even though the whole process
+      // RSS (via the default seam, not measured here) could be large.
+      const rtOk = createEncoderRuntime();
+      assert.equal(rtOk.load(dir).ok, true);
+      assert.equal(rtOk.mode, "A");
+      // Push the marginal footprint over budget at runtime: start under budget,
+      // then saturate so infer demotes from A -> B before allocating.
+      let budget = 0;
+      const rtInf = createEncoderRuntime({ host: { allocatedBytes: () => budget } });
+      assert.equal(rtInf.load(dir).ok, true);
+      budget = ENCODER_RSS_BUDGET_BYTES + 1;
+      const inf = rtInf.infer({ tokens: [1, 2, 3] });
+      assert.equal(inf.ok, false);
+      if (!inf.ok) assert.equal(inf.code, ENC_FAIL.RSS_BUDGET_EXCEEDED);
+      assert.equal(rtInf.mode, "B", "runtime demoted to B on over-budget infer");
+      // A subsequent infer in mode B is blocked (no stale mode-A allocation).
+      const after = rtInf.infer({ tokens: [1, 2, 3] });
+      assert.equal(after.ok, false);
+      if (!after.ok) assert.equal(after.code, ENC_FAIL.SHAPE_INVALID);
     } finally {
       cleanup(dir);
     }
@@ -174,11 +215,40 @@ describe("VC2A EncoderRuntime (task 3)", () => {
       const rt = createEncoderRuntime({ forcedMode: "C" });
       const load = rt.load(dir);
       assert.equal(load.ok, false);
-      if (!load.ok) assert.equal(load.mode, "C");
+      if (!load.ok) {
+        assert.equal(load.mode, "C");
+        // Q04: even a correctly-shaped, digest-correct asset present on disk is
+        // reported as ROLLBACK (mode-C rollback), NOT MANIFEST_INVALID.
+        assert.equal(load.code, ENC_FAIL.ROLLBACK);
+      }
       const inf = rt.infer({ tokens: [1] });
       assert.equal(inf.ok, false);
     } finally {
       cleanup(dir);
+    }
+  });
+
+  test("rollback returns ENC_ROLLBACK_ACTIVE, distinct from MANIFEST_INVALID (Q04)", () => {
+    // A valid verified asset on disk alone must never be described as a
+    // corrupt/missing manifest when the rollback path is active.
+    const dir = makeAssetDir();
+    const empty = tempDir("vc2a-rollback-empty");
+    mkdirSync(empty, { recursive: true });
+    try {
+      // Both a valid asset dir and an empty dir report ROLLBACK (not
+      // MANIFEST_INVALID) on the forced-C rollback path.
+      for (const d of [dir, empty]) {
+        const rt = createEncoderRuntime({ forcedMode: "C" });
+        const load = rt.load(d);
+        assert.equal(load.ok, false);
+        if (!load.ok) {
+          assert.equal(load.mode, "C");
+          assert.equal(load.code, ENC_FAIL.ROLLBACK, "rollback code, not manifest-invalid");
+        }
+      }
+    } finally {
+      cleanup(dir);
+      cleanup(empty);
     }
   });
 

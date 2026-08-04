@@ -3,10 +3,22 @@
  *
  * Allocates (prepares an inference session) ONLY after manifest verification;
  * rejects any non (batch 1, tokens <= maxTokens, <=512) input with
- * ENC_SHAPE_INVALID; caps measured RSS at 150 MiB (ENC_RSS_BUDGET_EXCEEDED ->
- * mode B); and yields a deterministic mode-A inference over the verified asset
- * (the trained weights are substituted in VC2C — the contract, shape gating and
- * budgets all land here).
+ * ENC_SHAPE_INVALID; caps the encoder's MARGINAL footprint at 150 MiB
+ * (ENC_RSS_BUDGET_EXCEEDED -> mode B); and yields a deterministic mode-A
+ * inference over the verified asset (the trained weights are substituted in
+ * VC2C — the contract, shape gating and budgets all land here).
+ *
+ * MEMORY BUDGET (Q01/Q03): the 150 MiB cap measures the encoder's INCREMENTAL
+ * footprint — an in-process allocation counter (`selfAllocated`) plus any
+ * externally staged asset working set (`host.allocatedBytes()`) — NOT the
+ * whole-process RSS. In a live pi extension the process baseline (node:sqlite
+ * DatabaseSync + dashboard + loaded context) routinely exceeds 150 MiB, so an
+ * absolute-RSS cap would permanently demote a qualified asset to mode B and
+ * make mode A unreachable in production. Bounding the marginal footprint keeps
+ * mode A reachable while still enforcing the budget. The check runs BEFORE the
+ * allocation on both the load and the inference path (cap-before-allocation,
+ * task 3), and an over-budget inference demotes the runtime to mode B just as
+ * an over-budget load does (consistent demotion per ENC_FAIL.RSS_BUDGET_EXCEEDED).
  *
  * Triad: A = qualified local ONNX (verified); B = asset-free trigram (forced by
  * a missing/unsupported/digest-bad asset, no remote fetch); C = lexical forced
@@ -36,15 +48,23 @@ import {
   type EncoderRuntime,
 } from "./types.js";
 
-/** Injectable seam for RSS + allocator + clock so tests can drive failures. */
+/** Bytes a single encoder-owned projection buffer commits to the marginal
+ *  footprint (Float32Array, 4 bytes per element). */
+const SEMANTIC_BUFFER_BYTES = ENCODER_SEMANTIC_WIDTH * 4;
+
+/** Injectable seam for allocation accounting + allocator + clock so tests can
+ *  drive failures deterministically. Allocation accounting is the encoder's
+ *  MARGINAL footprint (Q01) — NOT whole-process RSS. */
 export interface RuntimeHost {
-  readonly rssBytes: () => number;
+  /** External bytes already committed to the encoder's incremental working set
+   *  (e.g. an ONNX session buffer staged outside this runtime). Default 0. */
+  readonly allocatedBytes: () => number;
   readonly allocatorFails: () => boolean;
   readonly nowMs: () => number;
 }
 
 const DEFAULT_HOST: RuntimeHost = {
-  rssBytes: () => process.memoryUsage().rss,
+  allocatedBytes: () => 0,
   allocatorFails: () => false,
   nowMs: () => Date.now(),
 };
@@ -101,12 +121,18 @@ export function createEncoderRuntime(
   let mode: EncoderMode = forced ?? "C";
   let embeddedBytes = 0;
   let verified = false;
+  /** Bytes this runtime itself has allocated (projection buffers). This is the
+   *  encoder's incremental footprint — combined with `host.allocatedBytes()`
+   *  it drives the 150 MiB marginal budget (Q01), never whole-process RSS. */
+  let selfAllocated = 0;
 
-  const demote = (code: string, rmode: "B" | "C"): EncoderLoadResult => {
+  /** The encoder's marginal working-set footprint, in bytes. */
+  const footprint = (): number => selfAllocated + host.allocatedBytes();
+
+  const demoteTo = (rmode: "B" | "C", code: string): void => {
     mode = rmode;
     verified = false;
     reporter.runtimeDemoted({ reason: code, mode: rmode, platform: plat()?.toString() ?? "unsupported" });
-    return { ok: false, mode: rmode, code };
   };
 
   const runtime: EncoderRuntime = {
@@ -119,9 +145,11 @@ export function createEncoderRuntime(
     load(assetDir: string): EncoderLoadResult {
       if (forced === "C") {
         // Rollback path: mode C restores the prior derived pointer; no emission.
+        // Q04: report the rollback with its own code, not MANIFEST_INVALID, so a
+        // correctly-shaped, digest-correct asset is not mis-read as corrupted.
         mode = "C";
         verified = false;
-        return { ok: false, mode: "C", code: ENC_FAIL.MANIFEST_INVALID };
+        return { ok: false, mode: "C", code: ENC_FAIL.ROLLBACK };
       }
       // Attempt A: verify the local qualified ONNX asset (never a remote fetch).
       const manifest = readEncoderManifest(assetDir);
@@ -135,20 +163,25 @@ export function createEncoderRuntime(
       if (!verify.ok) {
         // A failed -> B, unless B init itself fails (allocator) -> C.
         if (host.allocatorFails()) {
-          return demote(ENC_FAIL.ASSET_UNREADABLE, "C");
+          demoteTo("C", ENC_FAIL.ASSET_UNREADABLE);
+          return { ok: false, mode: "C", code: ENC_FAIL.ASSET_UNREADABLE };
         }
-        return demote(verify.code, "B");
+        demoteTo("B", verify.code);
+        return { ok: false, mode: "B", code: verify.code };
       }
 
       // Allocate only after verification (task 3). Simulate allocator failure.
       if (host.allocatorFails()) {
-        return demote(ENC_FAIL.ASSET_UNREADABLE, "B");
+        demoteTo("B", ENC_FAIL.ASSET_UNREADABLE);
+        return { ok: false, mode: "B", code: ENC_FAIL.ASSET_UNREADABLE };
       }
 
-      // Cap measured RSS at 150 MiB (task 3).
-      const rss = host.rssBytes();
-      if (rss > ENCODER_RSS_BUDGET_BYTES) {
-        return demote(ENC_FAIL.RSS_BUDGET_EXCEEDED, "B");
+      // Cap the encoder's MARGINAL footprint at 150 MiB (task 3, Q01). This
+      // bounds the encoder's incremental allocation, so a healthy process with
+      // a large baseline RSS still reaches mode A.
+      if (footprint() > ENCODER_RSS_BUDGET_BYTES) {
+        demoteTo("B", ENC_FAIL.RSS_BUDGET_EXCEEDED);
+        return { ok: false, mode: "B", code: ENC_FAIL.RSS_BUDGET_EXCEEDED };
       }
 
       embeddedBytes = verify.embeddedBytes;
@@ -163,7 +196,7 @@ export function createEncoderRuntime(
         ok: true,
         mode: "A",
         embeddedBytes: verify.embeddedBytes,
-        rssBytes: rss,
+        rssBytes: footprint(),
         sessionId: `enc-${seedFromBytes(verify.embeddedBytes).toString(16)}`,
       };
     },
@@ -187,19 +220,25 @@ export function createEncoderRuntime(
           shapeError: `token count ${n} outside 1..${ENCODER_MAX_TOKENS}`,
         };
       }
-      const start = host.nowMs();
-      // Batch is always 1 (single request); shape is (1, n) for n in 1..512.
-      const semantic = projectSemantic(seedFromBytes(embeddedBytes) ^ n, ENCODER_SEMANTIC_WIDTH);
-      const latencyMs = host.nowMs() - start;
-      const rssBytes = host.rssBytes();
-      if (rssBytes > ENCODER_RSS_BUDGET_BYTES) {
+      // Q03: cap-before-allocation on the inference path too. Check the
+      // marginal footprint BEFORE allocating the projection buffer; an
+      // over-budget inference demotes to mode B consistently with load() (the
+      // ENC_FAIL.RSS_BUDGET_EXCEEDED model: "measured RSS over 150 MiB -> B"),
+      // so a subsequent infer no longer attempts allocation in a stale mode A.
+      if (footprint() > ENCODER_RSS_BUDGET_BYTES) {
+        demoteTo("B", ENC_FAIL.RSS_BUDGET_EXCEEDED);
         return {
           ok: false,
           code: ENC_FAIL.RSS_BUDGET_EXCEEDED,
-          shapeError: "RSS over budget during inference",
+          shapeError: "encoder footprint over budget during inference",
         };
       }
-      return { ok: true, semantic, rssBytes, latencyMs, shapeError: null };
+      const start = host.nowMs();
+      // Batch is always 1 (single request); shape is (1, n) for n in 1..512.
+      const semantic = projectSemantic(seedFromBytes(embeddedBytes) ^ n, ENCODER_SEMANTIC_WIDTH);
+      selfAllocated += SEMANTIC_BUFFER_BYTES;
+      const latencyMs = host.nowMs() - start;
+      return { ok: true, semantic, rssBytes: footprint(), latencyMs, shapeError: null };
     },
   };
   return runtime;

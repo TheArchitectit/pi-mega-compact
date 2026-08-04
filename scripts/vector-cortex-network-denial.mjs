@@ -104,19 +104,32 @@ const MODES = {
 
     // ── VC2A qualified local ONNX (mode A): verify + load + infer the committed
     //     digest-pinned asset — all filesystem reads, zero egress. ──
-    const { readEncoderManifest, verifyEncoderAsset } = await loadDist("src/vector-cortex/encoder/asset.js");
+    const { readEncoderManifest, verifyEncoderAsset, detectPlatform } = await loadDist("src/vector-cortex/encoder/asset.js");
     const { createEncoderRuntime } = await loadDist("src/vector-cortex/encoder/runtime.js");
     const assetDir = join(root, "assets/vector-cortex/encoder-v1");
     const assetManifest = readEncoderManifest(assetDir);
     if (!assetManifest) throw new Error("mode A: committed encoder manifest unreadable");
     const vRes = verifyEncoderAsset(assetDir, assetManifest);
-    if (!vRes.ok) throw new Error(`mode A: committed asset failed verification (${vRes.code})`);
-    const encRt = createEncoderRuntime();
-    const encLoad = encRt.load(assetDir);
-    if (!encLoad.ok || encLoad.mode !== "A") throw new Error("mode A: encoder did not select qualified ONNX");
-    const encInf = encRt.infer({ tokens: Array.from({ length: 128 }, (_, k) => k) });
-    if (!encInf.ok || encInf.semantic.length !== 384) throw new Error("mode A: encoder inference failed under denial");
-    return `roundtrip=${bytes.length} breaker=${bk.snapshot("net").state} vc1c=${sigDigest} vc2a=A`;
+    if (detectPlatform() === assetManifest.platform) {
+      // Host matches the bundle's pinned platform: the committed digest-pinned
+      // asset MUST verify, load and infer as mode A — all filesystem reads.
+      if (!vRes.ok) throw new Error(`mode A: committed asset failed verification (${vRes.code})`);
+      const encRt = createEncoderRuntime();
+      const encLoad = encRt.load(assetDir);
+      if (!encLoad.ok || encLoad.mode !== "A") throw new Error("mode A: encoder did not select qualified ONNX");
+      const encInf = encRt.infer({ tokens: Array.from({ length: 128 }, (_, k) => k) });
+      if (!encInf.ok || encInf.semantic.length !== 384) throw new Error("mode A: encoder inference failed under denial");
+      return `roundtrip=${bytes.length} breaker=${bk.snapshot("net").state} vc1c=${sigDigest} vc2a=A`;
+    }
+    // Host is NOT the bundle's pinned platform (cross-platform Q02): the bundle
+    // correctly demotes to trigram B via PLATFORM_UNSUPPORTED — still zero
+    // network egress, so the denial gate holds on every supported platform.
+    if (vRes.ok || vRes.code !== "ENC_PLATFORM_UNSUPPORTED") {
+      throw new Error(`mode A: off-platform bundle should demote PLATFORM_UNSUPPORTED, got ${vRes.code}`);
+    }
+    const encLoadB = createEncoderRuntime().load(assetDir);
+    if (encLoadB.ok || encLoadB.mode !== "B") throw new Error("mode A: off-platform bundle should demote to trigram B");
+    return `roundtrip=${bytes.length} breaker=${bk.snapshot("net").state} vc1c=${sigDigest} vc2a=B`;
   },
 
   /** B: independent raw byte record — same digest, no shared subroutine. */

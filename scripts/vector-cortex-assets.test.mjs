@@ -43,7 +43,7 @@ try {
 } catch {
   assetMod = require("../src/vector-cortex/encoder/asset.js");
 }
-const { verifyEncoderAsset, readEncoderManifest } = assetMod;
+const { verifyEncoderAsset, readEncoderManifest, detectPlatform } = assetMod;
 
 let runtimeMod;
 try {
@@ -54,6 +54,13 @@ try {
 const { createEncoderRuntime } = runtimeMod;
 
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+
+// The committed placeholder bundle is digest-pinned to linux-x64 (the dev/CI
+// host). On any OTHER supported platform it correctly demotes PLATFORM_UNSUPPORTED
+// (mode B) rather than verifying as mode A — cross-platform handling (Q02). The
+// mode-A assertions below are gated on the live host matching the bundle.
+const BUNDLE_PLATFORM = "linux-x64";
+const HOST_PLATFORM = detectPlatform();
 
 test("committed bundle: model.onnx + tokenizer.json exist and hash to the manifest", () => {
   const manifest = readEncoderManifest(ASSET_DIR);
@@ -73,22 +80,35 @@ test("committed bundle: model.onnx + tokenizer.json exist and hash to the manife
   assert.equal(tok.length, manifest.tokenizer.bytes, "tokenizer byte count matches manifest");
 });
 
-test("committed bundle verifies as mode A through the production seam", () => {
+test("committed bundle verifies as mode A through the production seam (on its platform)", () => {
   const manifest = readEncoderManifest(ASSET_DIR);
   const res = verifyEncoderAsset(ASSET_DIR, manifest);
-  assert.equal(res.ok, true, "verify passes");
-  assert.ok(res && res.embeddedBytes === manifest.totalBytes, "embedded bytes match totalBytes");
+  if (HOST_PLATFORM === BUNDLE_PLATFORM) {
+    assert.equal(res.ok, true, "verify passes on the matching host");
+    assert.ok(res && res.embeddedBytes === manifest.totalBytes, "embedded bytes match totalBytes");
+  } else {
+    assert.equal(res.ok, false, "bundle demotes off-platform (not falsely verified)");
+    if (!res.ok) assert.equal(res.code, "ENC_PLATFORM_UNSUPPORTED");
+  }
 });
 
-test("committed bundle loads as mode A and infers within 1..512 dims", () => {
+test("committed bundle loads as mode A and infers within 1..512 dims (on its platform)", () => {
   const rt = createEncoderRuntime();
   const load = rt.load(ASSET_DIR);
-  assert.equal(load.ok, true, "load ok");
-  if (load.ok) assert.equal(load.mode, "A");
-  for (const n of [1, 128, 512]) {
-    const inf = rt.infer({ tokens: Array.from({ length: n }, (_, i) => i % 500) });
-    assert.equal(inf.ok, true, `dim ${n} infers`);
-    if (inf.ok) assert.equal(inf.semantic.length, 384, "384-dim semantic projection");
+  if (HOST_PLATFORM === BUNDLE_PLATFORM) {
+    assert.equal(load.ok, true, "load ok");
+    if (load.ok) assert.equal(load.mode, "A");
+    for (const n of [1, 128, 512]) {
+      const inf = rt.infer({ tokens: Array.from({ length: n }, (_, i) => i % 500) });
+      assert.equal(inf.ok, true, `dim ${n} infers`);
+      if (inf.ok) assert.equal(inf.semantic.length, 384, "384-dim semantic projection");
+    }
+  } else {
+    assert.equal(load.ok, false, "off-platform bundle demotes to mode B");
+    if (!load.ok) {
+      assert.equal(load.code, "ENC_PLATFORM_UNSUPPORTED");
+      assert.equal(load.mode, "B");
+    }
   }
 });
 
@@ -101,11 +121,13 @@ test("one-byte mutation of the committed ONNX demotes ENC_DIGEST_MISMATCH (mode 
     writeFileSync(join(dir, "model.onnx"), mutated);
     writeFileSync(join(dir, "tokenizer.json"), readFileSync(join(ASSET_DIR, manifest.tokenizer.path)));
     writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifest));
-    const res = verifyEncoderAsset(dir, readEncoderManifest(dir));
+    // Pin the bundle's declared platform so the digest path is exercised
+    // regardless of the live host (Q02).
+    const res = verifyEncoderAsset(dir, readEncoderManifest(dir), BUNDLE_PLATFORM);
     assert.equal(res.ok, false);
     if (!res.ok) {
       assert.equal(res.code, "ENC_DIGEST_MISMATCH");
-      const load = createEncoderRuntime().load(dir);
+      const load = createEncoderRuntime({ platform: () => BUNDLE_PLATFORM }).load(dir);
       assert.equal(load.ok, false);
       if (!load.ok) assert.equal(load.mode, "B");
     }
@@ -120,8 +142,9 @@ test("truncating the committed ONNX demotes ENC_ASSET_UNREADABLE (mode B)", () =
     const manifest = readEncoderManifest(ASSET_DIR);
     writeFileSync(join(dir, "tokenizer.json"), readFileSync(join(ASSET_DIR, manifest.tokenizer.path)));
     writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifest));
-    // manifest.onnx absent on disk -> unreadable during digest read.
-    const load = createEncoderRuntime().load(dir);
+    // manifest.onnx absent on disk -> unreadable during digest read. Pin the
+    // bundle's declared platform so the digest path runs regardless of host (Q02).
+    const load = createEncoderRuntime({ platform: () => BUNDLE_PLATFORM }).load(dir);
     assert.equal(load.ok, false);
     if (!load.ok) {
       assert.equal(load.code, "ENC_ASSET_UNREADABLE");

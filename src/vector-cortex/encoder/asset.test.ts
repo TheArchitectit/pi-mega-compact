@@ -14,9 +14,15 @@ import {
   ENCODER_OPSET,
   type ModelManifestV1,
 } from "./types.js";
-import { verifyEncoderAsset, readEncoderManifest } from "./asset.js";
+import { verifyEncoderAsset, readEncoderManifest, detectPlatform } from "./asset.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+/** The live platform, or linux-x64 in an unrecognized-host test env. The temp
+ *  asset manifests derive their declared platform from here so they always match
+ *  the runtime host — otherwise verification spuriously demotes to
+ *  PLATFORM_UNSUPPORTED on non-linux-x64 machines (cross-platform Q02). */
+const HOST_PLATFORM = detectPlatform() ?? "linux-x64";
 
 /** Walk up from the test location to the repo root (assets/ + conformance/). */
 function repoRoot(from: string): string {
@@ -60,7 +66,7 @@ function buildAssetDir(input: {
       opset: ENCODER_OPSET,
       batch: ENCODER_BATCH,
       maxTokens: ENCODER_MAX_TOKENS,
-      platform: "linux-x64" as const,
+      platform: HOST_PLATFORM,
       hiddenWidth: 384,
       semanticWidth: 384,
       heads: { semantic: 384, dependency: 128, contradiction: 128, cacheStability: 64, payloadRouting: 32 },
@@ -94,8 +100,21 @@ describe("VC2A asset verification (ENC-ASSET-001)", () => {
   });
 
   test("the committed encoder-v1 bundle verifies against its own manifest", () => {
-    const res = verifyEncoderAsset(COMMITTED_ASSET, readEncoderManifest(COMMITTED_ASSET));
-    assert.equal(res.ok, true);
+    const manifest = readEncoderManifest(COMMITTED_ASSET);
+    assert.ok(manifest, "committed manifest readable");
+    const host = detectPlatform();
+    const res = verifyEncoderAsset(COMMITTED_ASSET, manifest);
+    // The committed placeholder bundle is digest-pinned to linux-x64 (the dev /
+    // CI host). It verifies as mode A on that matching platform and correctly
+    // demotes PLATFORM_UNSUPPORTED on any other supported platform — a valid,
+    // digest-verified outcome either way (cross-platform Q02). The test must
+    // not spuriously fail the suite on non-linux-x64 hosts.
+    if (host === manifest.platform) {
+      assert.equal(res.ok, true, "bundle verifies on its matching platform");
+    } else {
+      assert.equal(res.ok, false, "bundle demotes off-platform (not falsely verified)");
+      if (!res.ok) assert.equal(res.code, ENC_FAIL.PLATFORM_UNSUPPORTED);
+    }
   });
 
   test("one-byte model mutation demotes BEFORE load (ENC_DIGEST_MISMATCH / ENC-DIGEST-002)", () => {
