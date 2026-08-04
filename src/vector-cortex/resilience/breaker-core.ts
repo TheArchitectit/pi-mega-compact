@@ -365,8 +365,13 @@ export function createBreaker(opts: BreakerOptions = {}): ConcreteBreaker {
         return { ok: false, mode, code: errorCode, retryable: true, breaker: record(subsystem) };
       }
       if (mode === "B") {
-        // Fresh B failure -> OPEN_C.
-        openTo(s, subsystem, "OPEN_C", s.failures.length >= BREAKER_CORRECTNESS_FAILURES ? "correctness" : "performance", errorCode);
+        // Fresh B failure -> OPEN_C. tripKind mirrors the A path: only a semantic
+        // correctness signal (TRI_OUTPUT_INVALID) is "correctness"; a plain
+        // TRI_EXEC_THREW perf throw is "performance". (Not `failures.length >=
+        // BREAKER_CORRECTNESS_FAILURES` — that is ALWAYS true right after
+        // recording this failure, which would tautologically mislabel every
+        // B-throw as a correctness trip.)
+        openTo(s, subsystem, "OPEN_C", errorCode === "TRI_OUTPUT_INVALID" ? "correctness" : "performance", errorCode);
         s.retryAttempt += 1;
         return { ok: false, mode, code: errorCode, retryable: true, breaker: record(subsystem) };
       }
@@ -388,8 +393,7 @@ export function createBreaker(opts: BreakerOptions = {}): ConcreteBreaker {
       return { ok: false, mode, code: errorCode, retryable: true, breaker: record(subsystem) };
     },
 
-    recordProbe(...args: readonly unknown[]): BreakerRecord {
-      const subsystem = String(args[0] ?? "");
+    recordProbe(subsystem: string): BreakerRecord {
       const s = get(subsystem);
       const openState: "OPEN_B" | "OPEN_C" =
         s.state === "OPEN_C" ? "OPEN_C" : "OPEN_B";

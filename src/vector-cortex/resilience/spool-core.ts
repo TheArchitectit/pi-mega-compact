@@ -40,6 +40,8 @@ import type { ResilienceReporter } from "./emit.js";
 export const SPOOL_SCHEMA = "spool-v1";
 /** Sentinel eventId of an acknowledgement frame (carries the committed seq). */
 export const ACK_EVENT_ID = "__ack__";
+/** Fixed on-disk width of the digest field: "sha256:" + 64 hex chars = 71 bytes. */
+export const DIGEST_FIELD_LEN = "sha256:".length + 64;
 
 /** CRC32C (Castagnoli) table — seeded once. */
 const CRC_TABLE: number[] = (() => {
@@ -246,9 +248,11 @@ class SessionSpoolImpl implements SessionSpool {
 
   drain(insert: AuthorityInsert): SpoolDrainResult {
     const tail = this.frames;
-    this.frames = [];
     if (tail.length === 0) return { verdict: "SPOOL_COMMITTED", committedSeq: this.ackedSeq };
-    // Strictly sort by (seq, eventId).
+    // Strictly sort by (seq, eventId). NOTE: we do NOT clear this.frames up front
+    // (VC0C-Q04) — the queue is only cleared once every insert has succeeded and
+    // the ack is durably appended. If any insert throws (rather than returning a
+    // conflict), the unacked tail must be retained for a later retry, not dropped.
     const sorted = [...tail].sort(compareFrames);
     let committed = this.ackedSeq;
     for (const f of sorted) {
@@ -257,7 +261,17 @@ class SessionSpoolImpl implements SessionSpool {
         this.frames = sorted.filter((x) => x.seq > committed);
         return { verdict: "SPOOL_MANUAL_HALT", committedSeq: committed, reason: `TRI_SPOOL_GAP expected ${committed + 1n} got ${f.seq}` };
       }
-      const outcome = insert(this.session, f.seq, f.eventId, f.digest, f.bytes);
+      let outcome: "committed" | "idempotent" | "conflict";
+      try {
+        outcome = insert(this.session, f.seq, f.eventId, f.digest, f.bytes);
+      } catch {
+        // Authority insert THREW (e.g. a transient authority write error). This is
+        // NON-FATAL: requeue the unacked tail and halt, mirroring the manual-halt
+        // path, instead of propagating (a propagating throw would lose the frames
+        // and leave a retry seeing SPOOL_COMMITTED-with-nothing-processed).
+        this.frames = sorted.filter((x) => x.seq > committed);
+        return { verdict: "SPOOL_MANUAL_HALT", committedSeq: committed, reason: "TRI_SPOOL_INSERT_THROW" };
+      }
       if (outcome === "committed" || outcome === "idempotent") {
         committed = f.seq;
       } else {
@@ -265,7 +279,9 @@ class SessionSpoolImpl implements SessionSpool {
         return { verdict: "SPOOL_MANUAL_HALT", committedSeq: committed, reason: "TRI_SPOOL_CONFLICT conflicting digest" };
       }
     }
-    // Durably commit: append+fsync an ack frame, then advance the high-water.
+    // All frames committed: clear the in-memory queue, then durably commit by
+    // appending+fsyncing an ack frame and advancing the high-water.
+    this.frames = [];
     this.appendAck(committed);
     this.ackedSeq = committed;
     return { verdict: "SPOOL_COMMITTED", committedSeq: committed };
@@ -291,9 +307,12 @@ class SessionSpoolImpl implements SessionSpool {
   }
 
   highWater(): bigint {
-    // During authority outage the high-water freezes: drain cannot commit (the
-    // insert callback rejects), so ackedSeq stays put even while frames append.
-    if (this.outage()) return this.ackedSeq;
+    // The contiguous authority high-water advances ONLY on a durable ack
+    // (appendAck after a successful drain commit). During authority outage drain
+    // cannot commit, so ackedSeq naturally freezes here — an explicit outage
+    // branch would return the same value and was dead code (VC0C-Q05). The
+    // freeze/outage SIGNAL is the `frozen()`/`frontierFrozen` flag, not this
+    // scalar; frames appended during outage remain in the unacked tail.
     return this.ackedSeq;
   }
 
@@ -334,12 +353,16 @@ function parseHeader(line: string): SpoolHeader {
 }
 
 /**
- * Encode one binary frame: [u32 len][seq i64][eventId UTF-8 NUL][bytes][NUL][64-byte sha256 hex][u32 crc32c].
- * body length = 8 + eventId.length + 1 + bytes.length + 1 + 64 + 4.
+ * Encode one binary frame: [u32 len][seq i64][eventId UTF-8 NUL][bytes][NUL][digest][u32 crc32c].
+ * The digest field is DIGEST_FIELD_LEN bytes ("sha256:" + 64 hex = 71) — sizing it
+ * to fit the FULL digest string is load-bearing for read-side verification
+ * (VC0C-Q03): a 64-byte cap silently truncated Buffer.write, so the stored digest
+ * could never match the recomputed value and every frame would be rejected on read.
+ * body length = 8 + eventId.length + 1 + bytes.length + 1 + DIGEST_FIELD_LEN + 4.
  */
 function encodeFrame(f: SpoolFrame): Buffer {
   const idBuf = Buffer.from(f.eventId, "utf8");
-  const bodyLen = 8 + idBuf.length + 1 + f.bytes.length + 1 + 64 + 4;
+  const bodyLen = 8 + idBuf.length + 1 + f.bytes.length + 1 + DIGEST_FIELD_LEN + 4;
   const body = Buffer.alloc(bodyLen);
   let o = 0;
   body.writeBigInt64LE(BigInt(f.seq), o); o += 8;
@@ -347,14 +370,22 @@ function encodeFrame(f: SpoolFrame): Buffer {
   body[o] = 0; o += 1;
   Buffer.from(f.bytes).copy(body, o); o += f.bytes.length;
   body[o] = 0; o += 1;
-  body.write(f.digest, o, "utf8"); o += 64;
+  body.write(f.digest, o, "utf8"); o += DIGEST_FIELD_LEN;
   body.writeUInt32LE(f.crc32c, o); o += 4;
   const lenBuf = Buffer.alloc(4);
   lenBuf.writeUInt32LE(bodyLen, 0);
   return Buffer.concat([lenBuf, body]);
 }
 
-/** Parse a length-prefixed frame; returns null for a torn/truncated tail. */
+/**
+ * Parse a length-prefixed frame; returns null for a torn/truncated tail OR a
+ * CRYPTOGRAPHIC INTEGRITY MISMATCH (VC0C-Q03). The stored SHA-256 digest and
+ * CRC32C are recomputed over the parsed bytes and compared — a same-length bit
+ * flip must not survive reopen and be drained/committed. A mismatch is treated
+ * like a torn tail: `readExisting` stops there and the frame is NOT accepted —
+ * it remains unacknowledged, so replay/requeue preserves it rather than
+ * silently committing corrupted bytes.
+ */
 function tryParseFrame(buf: Buffer): SpoolFrame | null {
   if (buf.length < 4) return null;
   const len = buf.readUInt32LE(0);
@@ -369,7 +400,12 @@ function tryParseFrame(buf: Buffer): SpoolFrame | null {
   const nul2 = body.indexOf(0, o);
   if (nul2 < 0) return null;
   const bytes = new Uint8Array(body.subarray(bytesStart, nul2)); o = nul2 + 1;
-  const digest = body.subarray(o, o + 64).toString("utf8");
-  const crc32c = body.readUInt32LE(o + 64);
-  return { session: "", seq, eventId, digest, bytes, crc32c };
+  const digest = body.subarray(o, o + DIGEST_FIELD_LEN).toString("utf8");
+  const storedCrc = body.readUInt32LE(o + DIGEST_FIELD_LEN);
+  // Recompute and verify — write-only integrity would let a same-length bit flip
+  // drain/commit silently. Return null (treat as torn/corrupt) on mismatch.
+  if (digest !== `sha256:${sha256Hex(bytes)}` || storedCrc !== crc32c(bytes)) {
+    return null;
+  }
+  return { session: "", seq, eventId, digest, bytes, crc32c: storedCrc };
 }

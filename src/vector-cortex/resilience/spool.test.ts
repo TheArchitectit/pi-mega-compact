@@ -16,7 +16,7 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, appendFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSpool, sha256Hex, type AuthorityInsert } from "./spool.js";
@@ -206,6 +206,68 @@ describe("spool — append / fsync / ack / high-water", () => {
       const spool = createSpool({ dir });
       const s = spool.session("sessH");
       assert.equal(s.highWater(), 0n);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("VC0C-Q03: a same-length payload bit-flip in a durably-written frame is rejected on reopen", () => {
+    const dir = tmpDir();
+    try {
+      const spool = createSpool({ dir });
+      const s = spool.session("sessQ03");
+      const a = makeAuthority();
+      const payload = enc.encode("HELLO-SPOOL");
+      s.append({ seq: 1n, eventId: "e1", bytes: payload });
+      // Corrupt one payload byte in the on-disk frame (same length; digest+crc
+      // are recomputed on read). Locate the payload: after the header line and
+      // the u32 length prefix and seq(8) + eventId "e1"('2') + NUL(1).
+      const file = join(dir, "spool-sessQ03.spool");
+      const fileBuf = readFileSync(file);
+      const headerEnd = fileBuf.indexOf(0x0a); // end of header line
+      const bodyStart = headerEnd + 1 + 4; // + length prefix
+      const payloadOff = bodyStart + 8 + "e1".length + 1;
+      const corrupted = Buffer.from(fileBuf);
+      corrupted[payloadOff] = (corrupted[payloadOff] ^ 0xff) as number;
+      writeFileSync(file, corrupted);
+      // Reopen: the corrupt frame must NOT be accepted — high-water stays 0 and
+      // drain must not commit it (it is treated like a torn/corrupt tail).
+      const spool2 = createSpool({ dir });
+      const s2 = spool2.session("sessQ03");
+      assert.equal(s2.highWater(), 0n, "corrupt frame must not advance the frontier");
+      // Drain has nothing valid to commit (frame rejected) and no ack exists, so
+      // this enum's verdict is not COMMITTED with the corrupt bytes.
+      const d = spool2.session("sessQ03").drain(a.insert);
+      assert.equal(d.verdict, "SPOOL_COMMITTED");
+      assert.equal(d.committedSeq, 0n, "no frame committed — corrupted bytes are never drained");
+      assert.equal(a.rows.has("e1"), false, "corrupted frame never reached the authority ledger");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("VC0C-Q04: an authority insert THROW retains frames, returns manual-halt, and a retry succeeds", () => {
+    const dir = tmpDir();
+    try {
+      const spool = createSpool({ dir });
+      const s = spool.session("sessQ04");
+      let throwOnce = true;
+      const failingInsert: AuthorityInsert = (session, seq, eventId, digest, bytes) => {
+        if (throwOnce) throw new Error("transient authority write error");
+        return makeAuthority().insert(session, seq, eventId, digest, bytes);
+      };
+      s.append({ seq: 1n, eventId: "e1", bytes: enc.encode("a") });
+      // First drain: insert throws -> manual halt, frames RETAINED (not dropped).
+      const d1 = s.drain(failingInsert);
+      assert.equal(d1.verdict, "SPOOL_MANUAL_HALT");
+      assert.match(d1.reason ?? "", /TRI_SPOOL_INSERT_THROW/);
+      assert.equal(s.highWater(), 0n, "nothing committed before the throw");
+      // Retry with a working insert: the retained frame must now commit.
+      throwOnce = false;
+      const d2 = s.drain(makeAuthority().insert);
+      assert.equal(d2.verdict, "SPOOL_COMMITTED");
+      assert.equal(d2.committedSeq, 1n, "retained frame commits on retry");
+      assert.equal(s.highWater(), 1n);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

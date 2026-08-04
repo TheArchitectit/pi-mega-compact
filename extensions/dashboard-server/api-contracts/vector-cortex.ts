@@ -83,6 +83,13 @@ export interface VectorCortexHealthCard {
   readonly updatedAt: string;
   /** Worst aggregate state across all health cards (this shell has one). */
   readonly aggregate: string;
+  /**
+   * Breaker state source. "ephemeral" (the ONLY value until VC0D) = this breaker
+   * is per-process/in-memory, rebuilt on every request — NOT a live persistent
+   * breaker; the dashboard/README must not present it as live. "live" appears
+   * only once the persistent breaker runtime + producer wiring land (VC0D).
+   */
+  readonly stateSource: "ephemeral" | "live";
 }
 
 /**

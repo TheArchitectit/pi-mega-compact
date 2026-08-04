@@ -87,6 +87,25 @@ describe("breaker — window + trip (TRI-WINDOW-001)", () => {
     // itself excludes the old failure via attempts count.
     assert.ok(b.snapshot("s1").attempts <= 19, "old failure rolled out of window");
   });
+
+  test("VC0C-Q02: a plain B-mode THROW is labeled tripKind \"performance\", not \"correctness\"", () => {
+    const clk = fakeClock();
+    const b = createBreaker({ now: clk.now });
+    // Open A -> OPEN_B (20 A throws). Next execute selects mode B.
+    for (let i = 0; i < BREAKER_MIN_ATTEMPTS; i++) {
+      b.execute<number>("s1", `f-${i}`, { A: failRun, B: okRun(1), C: okRun(2) }, alwaysTrue);
+    }
+    assert.equal(b.snapshot("s1").state, "OPEN_B");
+    // Mode B now runs and THROWS (a transient performance throw, not a semantic
+    // correctness signal) -> OPEN_C with tripKind "performance" (not the
+    // tautological "correctness" the pre-fix branch emitted for every B-throw).
+    const r = b.execute<number>("s1", "b-throw", { A: failRun, B: failRun, C: okRun(2) }, alwaysTrue);
+    const rec = b.snapshot("s1");
+    assert.equal(r.ok, false);
+    assert.equal(rec.state, "OPEN_C");
+    assert.equal(rec.tripKind, "performance", "a fresh B-throw must be a performance trip");
+    assert.equal(r.code, "TRI_EXEC_THREW");
+  });
 });
 
 describe("breaker — recovery probes + healthy residence (TRI-PROBE-002)", () => {

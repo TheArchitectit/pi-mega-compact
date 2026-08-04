@@ -149,6 +149,7 @@ export function handleVectorCortexHealth(
     failureRate: 0,
     updatedAt: new Date().toISOString(),
     aggregate: "CLOSED_A",
+    stateSource: "ephemeral",
   };
   if (!card) {
     sendJson(res, 200, fallback);
@@ -187,6 +188,7 @@ export function handleVectorCortexHealth(
     failureRate: card.failureRate,
     updatedAt: new Date().toISOString(),
     aggregate,
+    stateSource: card.stateSource,
   };
   sendJson(res, 200, body);
   return true;

@@ -48,6 +48,8 @@ export interface VectorCortexHealthCard {
   failureRate: number;
   updatedAt: string;
   aggregate: string;
+  /** "ephemeral" = per-process/in-memory breaker (non-live until VC0D). */
+  stateSource: "ephemeral" | "live";
 }
 
 /** Admin reset result (VC0C, task 5). */

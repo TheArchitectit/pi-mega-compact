@@ -155,13 +155,18 @@ export default function VectorCortexTab(): React.ReactElement {
 				<CardHeader>
 					<div className="flex items-center justify-between">
 						<CardTitle>Live Safety Envelope (VC0C)</CardTitle>
-						<button
-							onClick={onReset}
-							disabled={!health?.enabled}
-							className="rounded border border-border px-2 py-1 text-xs disabled:opacity-50"
-						>
-							Reset Cooldown
-						</button>
+						<div className="flex items-center gap-2">
+							{health?.stateSource === "ephemeral" && (
+								<Badge variant="outline">EPHEMERAL (non-live)</Badge>
+							)}
+							<button
+								onClick={onReset}
+								disabled={!health?.enabled}
+								className="rounded border border-border px-2 py-1 text-xs disabled:opacity-50"
+							>
+								Reset Cooldown
+							</button>
+						</div>
 					</div>
 				</CardHeader>
 				<CardContent>
@@ -183,7 +188,13 @@ export default function VectorCortexTab(): React.ReactElement {
 							/>
 							<Metric
 								label="Frontier"
-								value={health.frontierFrozen ? "FROZEN" : "LIVE"}
+								value={
+									health.stateSource === "ephemeral"
+										? "non-live"
+										: health.frontierFrozen
+											? "FROZEN"
+											: "LIVE"
+								}
 							/>
 							<Metric label="Spool lag" value={String(health.spoolLag)} />
 						</div>

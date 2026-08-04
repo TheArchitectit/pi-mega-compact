@@ -154,6 +154,9 @@ describe("/api/vector-cortex/health (VC0C)", () => {
 			assert.equal(typeof body.frontierFrozen, "boolean");
 			assert.equal(typeof body.spoolLag, "number");
 			assert.equal(body.aggregate, "CLOSED_A");
+			// LIVENESS HONESTY (VC0C-Q01): the per-request breaker is ephemeral —
+			// never present the exactly-default CLOSED_A as a LIVE circuit breaker.
+			assert.equal(body.stateSource, "ephemeral");
 			// Reader-only: never payload/prompt/ledger fields.
 			assert.equal("payload" in body, false);
 			assert.equal("prompt" in body, false);

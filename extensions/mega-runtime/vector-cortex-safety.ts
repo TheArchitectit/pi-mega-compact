@@ -17,6 +17,20 @@
  *
  * Local-only (PREVENT-PI-004); no `any` (PREVENT-011); no console.log — events
  * go through the injected resilience reporter / Logger.
+ *
+ * LIVENESS HONESTY (VC0C-Q01/Q06): the breaker composed here is PER-PROCESS /
+ * IN-MEMORY and EPHEMERAL — `createVectorCortexSafety` builds a fresh instance on
+ * every dashboard request (GET /health, POST /reset). There is NO persistent
+ * breaker runtime and NO live producer wiring (the real circuit-breaker that runs
+ * around the actual compaction loop is DEFERRED to the producer-wiring sprint,
+ * carried VC0B-I08 -> VC0D). Consequently GET /health always reflects a brand-new
+ * CLOSED_A instance and POST /reset mutates an instance that vanishes when the
+ * request returns: the endpoints are ILLUSTRATIVE until VC0D wires a persistent
+ * instance. The health payload therefore carries `stateSource:"ephemeral"` so the
+ * dashboard/README never present it as a live breaker. Frontier-frozen / spool-lag
+ * are owned by the DURABLE spool but have no live per-session handle here, so they
+ * are surfaced as static/non-live until VC0D (with authorityOutage mirrored from
+ * the host context when supplied).
  */
 
 import { join } from "node:path";
@@ -57,6 +71,8 @@ export interface VectorCortexHealthSummary {
   readonly p95Ms: number;
   readonly failureRate: number;
   readonly updatedAt: string;
+  /** "ephemeral" => per-process/in-memory breaker; "live" => persistent (VC0D). */
+  readonly stateSource: "ephemeral" | "live";
 }
 
 export interface TriadProvider<T> {
@@ -124,8 +140,13 @@ export function createVectorCortexSafety(
     health(): VectorCortexHealthSummary {
       const rec = breaker.snapshot("provider");
       const enabled = VC0C_ENABLED();
-      // The provider subsystem's breaker gates the live triad; spool lag is the
-      // durable unacknowledged tail (0 while idle — reconciled on drain).
+      // LIVENESS HONESTY (VC0C-Q01/Q06): this breaker is created fresh per request
+      // and is ephemeral — declare it explicitly so the dashboard never presents it
+      // as a live breaker. `authorityOutage` is mirrored from the host context when
+      // supplied (otherwise false). `frontierFrozen` (rec.frozenFrontier) and
+      // `spoolLag` are owned by the DURABLE spool, which has no live per-session
+      // handle here — they stay static/no-op until VC0D wires a persistent breaker
+      // instance; stateSource:"ephemeral" is the signal that they are not live.
       return {
         enabled,
         mode: rec.state === "MANUAL_HALT" ? "C" : rec.state === "CLOSED_A" ? "A" : "B",
@@ -137,13 +158,14 @@ export function createVectorCortexSafety(
         probeCount: rec.probeCount,
         backoffDelayMs: rec.retryDelayMs,
         frontierFrozen: rec.frozenFrontier,
-        authorityOutage: false,
+        authorityOutage: ctx.authorityOutage?.() ?? false,
         spoolLag: 0,
         attempts: rec.attempts,
         failures: rec.failures,
         p95Ms: rec.p95Ms,
         failureRate: rec.failureRate,
         updatedAt: wallNow(),
+        stateSource: "ephemeral",
       };
     },
 

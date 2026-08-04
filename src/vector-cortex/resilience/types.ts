@@ -126,7 +126,7 @@ export interface Breaker {
     run: Record<Mode, () => T>,
     validate: (v: T) => boolean,
   ): TriadResult<T>;
-  recordProbe(...args: readonly unknown[]): BreakerRecord;
+  recordProbe(subsystem: string): BreakerRecord;
   manualHalt(reason: string): BreakerRecord;
 }
 
