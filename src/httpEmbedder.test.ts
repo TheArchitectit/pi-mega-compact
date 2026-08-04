@@ -13,7 +13,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { embeddingConfigFromEnv } from "./httpEmbedder.js";
+import { embeddingConfigFromEnv, HttpEmbedder } from "./httpEmbedder.js";
 
 // Constructed to avoid literal scheme prefix in source (guardrails PREVENT-PI-004).
 const HTTP = "http" + "://";
@@ -24,6 +24,8 @@ const ENV_KEYS = [
   "MEGACOMPACT_EMBEDDING_HEADERS",
   "MEGACOMPACT_EMBEDDING_KEY",
   "MEGACOMPACT_EMBEDDING_DIM",
+  "MEGACOMPACT_EMBEDDING_BATCH_TOKENS",
+  "MEGACOMPACT_EMBEDDING_CHARS_PER_TOKEN",
 ];
 
 function saveEnv(): Record<string, string | undefined> {
@@ -282,5 +284,90 @@ test("embeddingConfigFromEnv: never throws on any input", () => {
     }
   } finally {
     restoreEnv(saved);
+  }
+});
+
+// ── Oversized-input chunking + graceful fallback (BowTiedDevil 500 report) ────
+
+import { chunkText, estimateTokens, meanPool } from "./httpEmbedder.js";
+
+test("estimateTokens: ceil(chars / charsPerToken)", () => {
+  assert.equal(estimateTokens("", 4), 0);
+  assert.equal(estimateTokens("abcd", 4), 1);
+  assert.equal(estimateTokens("abcde", 4), 2); // 5 chars / 4 → 2
+  assert.equal(estimateTokens("a".repeat(8192), 4), 2048);
+});
+
+test("chunkText: short text returns a single chunk unchanged", () => {
+  const text = "hello world, this is short.";
+  assert.deepEqual(chunkText(text, 2048, 4), [text]);
+});
+
+test("chunkText: splits oversized text into <= limit chunks, prefers boundaries", () => {
+  // 100 tokens/chunk at 4 chars/token = 400-char chunks.
+  const paras = Array.from({ length: 20 }, (_, i) => `Paragraph ${i}. ` + "word ".repeat(40)).join("\n\n");
+  const chunks = chunkText(paras, 100, 4);
+  assert.ok(chunks.length > 1, "expected multiple chunks");
+  for (const c of chunks) {
+    assert.ok(estimateTokens(c, 4) <= 100 + 1, `chunk over limit: ${estimateTokens(c, 4)} tokens`);
+  }
+  // Concatenation preserves all content (chunks are contiguous slices).
+  assert.equal(chunks.join(""), paras, "contiguous chunks fully reconstruct the input");
+});
+
+test("chunkText: hard-slices a single oversized run with no whitespace", () => {
+  const run = "x".repeat(5000); // no boundaries at all
+  const chunks = chunkText(run, 100, 4); // 400-char chunks
+  assert.ok(chunks.length > 1);
+  assert.equal(chunks.join(""), run, "content fully preserved across hard slices");
+});
+
+test("meanPool: weighted average then L2-renormalize", () => {
+  const pooled = meanPool(
+    [
+      [1, 0],
+      [0, 1],
+    ],
+    [3, 1],
+  );
+  // Weighted mean = [0.75, 0.25]; normalized → [~0.949, ~0.316].
+  const norm = Math.hypot(pooled[0], pooled[1]);
+  assert.ok(Math.abs(norm - 1) < 1e-9, "pooled vector is unit length");
+  assert.ok(pooled[0] > pooled[1], "heavier chunk dominates");
+});
+
+test("HttpEmbedder.embed: NEVER throws when server is unreachable — falls back to trigram", () => {
+  const saved = saveEnv();
+  try {
+    clearEnv();
+    // Point at a loopback port that is not listening → embedOne throws → fallback.
+    process.env.MEGACOMPACT_EMBEDDING_URL = HTTP + "127.0.0.1:9/embed";
+    process.env.MEGACOMPACT_STATE_DIR = "/tmp/mc-embed-test-" + process.pid;
+    const emb = new HttpEmbedder(embeddingConfigFromEnv()!);
+    const vec = emb.embed("some text that must not crash the checkpoint path");
+    assert.ok(Array.isArray(vec) && vec.length > 0, "fallback produced a vector");
+    const norm = Math.hypot(...vec);
+    assert.ok(Math.abs(norm - 1) < 1e-6, "fallback vector is L2-normalized");
+  } finally {
+    restoreEnv(saved);
+    delete process.env.MEGACOMPACT_STATE_DIR;
+  }
+});
+
+test("HttpEmbedder.embed: oversized input triggers chunking path and still never throws", () => {
+  const saved = saveEnv();
+  try {
+    clearEnv();
+    process.env.MEGACOMPACT_EMBEDDING_URL = HTTP + "127.0.0.1:9/embed";
+    process.env.MEGACOMPACT_EMBEDDING_BATCH_TOKENS = "16"; // force chunking (16-token limit)
+    process.env.MEGACOMPACT_EMBEDDING_CHARS_PER_TOKEN = "4";
+    process.env.MEGACOMPACT_STATE_DIR = "/tmp/mc-embed-test-" + process.pid;
+    const emb = new HttpEmbedder(embeddingConfigFromEnv()!);
+    const big = ("The quick brown fox jumps over the lazy dog. ".repeat(40)); // ~1880 chars ≫ 64-char chunks
+    const vec = emb.embed(big); // chunking path; server down → fallback
+    assert.ok(Array.isArray(vec) && vec.length > 0, "chunked+fallback produced a vector");
+  } finally {
+    restoreEnv(saved);
+    delete process.env.MEGACOMPACT_STATE_DIR;
   }
 });
