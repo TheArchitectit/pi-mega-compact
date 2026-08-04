@@ -19,3 +19,4 @@ export { handleVectorCortexHealth, handleVectorCortexBreakersReset } from "./rou
 export { handleVectorCortexLedger } from "./routes-vector-cortex-ledger.js";
 export { handleVectorCortexTopology } from "./routes-vector-cortex-topology.js";
 export { handleVectorCortexQuery } from "./routes-vector-cortex-query.js";
+export { handleVectorCortexShards } from "./routes-vector-cortex-shards.js";

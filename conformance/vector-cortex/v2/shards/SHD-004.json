@@ -1,0 +1,1 @@
+{"assertion":"an empty stream yields zero semantic shards","expected":{"eventCount":0,"ok":true,"shardCount":0},"id":"SHD-004","input":{"events":[],"scenario":"empty-stream","sessionId":"s1","targetSize":16},"kind":"shard","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/shard-fixture.schema.json"}

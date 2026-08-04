@@ -349,6 +349,12 @@ export const SETTINGS: ReadonlyArray<{
 				"TopologyQueryV1/RouterKeyV2 structured keys (length-delimited, unsigned-byte order, no prefix ambiguity), exact (session,generation) invalidation, stale-generation rejection (TOP_GENERATION_STALE), and the M6 router-generation-v2 copy/validate/switch migration. OFF = mode C, no structured router key / generation invalidation, byte-identical predecessor.",
 				true,
 			),
+			boolDirect(
+				"MEGACOMPACT_VC4A",
+				"VC4A Dual-Tier Shards",
+				"SemanticShardV1/ExactShardV1/ShardManifestV1: partition a session ONLY at complete EventV2 boundaries; exact shards preserve every tool call/result pair, anchor and invalid UTF-8 event as original bytes (pairs never split across exact shards); manifest enforces disjoint sorted ranges + complete protected-span coverage. OFF = mode C, exact anchors/current transcript only, byte-identical predecessor.",
+				true,
+			),
 		],
 	},
 	{
