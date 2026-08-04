@@ -161,6 +161,52 @@ test("truncating the committed ONNX demotes ENC_ASSET_UNREADABLE (mode B)", () =
   }
 });
 
+const VC2C_PACKAGE_BUDGET_BYTES = 35 * 1024 * 1024;
+
+test("VC2C package dry-run listing is under the 35 MiB budget (no .tgz created)", async () => {
+  // MODEL_ASSET §packaging: the ENTIRE compressed npm package listing must be
+  // <= 35 MiB. Dry-run listing ONLY — never creates a .tgz (PREVENT-DIST-001).
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const execFileP = promisify(execFile);
+  const { stdout } = await execFileP("npm", ["pack", "--dry-run", "--json"], {
+    cwd: ROOT,
+    timeout: 120_000,
+  });
+  // `npm pack --json` returns an object keyed by package name with a `files`
+  // array of {path,size,...} entries.
+  const parsed = JSON.parse(stdout);
+  const pack = Object.values(parsed)[0] ?? {};
+  const files = pack.files ?? [];
+  const total = files.reduce((acc, e) => acc + (Number(e?.size) || 0), 0);
+  assert.ok(
+    total <= VC2C_PACKAGE_BUDGET_BYTES,
+    `package listing ${total} bytes exceeds ${VC2C_PACKAGE_BUDGET_BYTES} (35 MiB)`,
+  );
+  // The qualified manifest + ONNX must be present in the shipped listing.
+  const paths = new Set(files.map((e) => e.path));
+  assert.ok(
+    [...paths].some((p) => p.includes("assets/vector-cortex/encoder-v1/manifest.json")),
+    "qualified encoder manifest listed in package",
+  );
+  assert.ok(
+    [...paths].some((p) => p.includes("assets/vector-cortex/encoder-v1/model.onnx")),
+    "encoder ONNX listed in package",
+  );
+});
+
+test("VC2C committed qualified manifest + assets exist and onnx+tokenizer stay under 35 MiB", () => {
+  // The committed encoder manifest + ONNX + tokenizer are the runtime asset; the
+  // ONNX+tokenizer working set must stay well under the 35 MiB shipping budget.
+  const manifest = readEncoderManifest(ASSET_DIR);
+  assert.ok(manifest, "qualified manifest readable");
+  assert.equal(typeof manifest.onnx.sha256, "string");
+  assert.ok(manifest.onnx.bytes > 0, "onnx bytes declared");
+  const onnxBytes = manifest.onnx.bytes;
+  assert.ok(onnxBytes < VC2C_PACKAGE_BUDGET_BYTES, "onnx bytes under 35 MiB");
+  assert.ok(manifest.tokenizer.bytes < VC2C_PACKAGE_BUDGET_BYTES, "tokenizer bytes under 35 MiB");
+});
+
 test("training provenance scaffold exists and matches the manifest digest", () => {
   const dm = readFileSync(join(ROOT, "training", "vector-cortex", "dataset-manifest.json"), "utf8");
   const parsed = JSON.parse(dm);

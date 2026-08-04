@@ -1,0 +1,1 @@
+{"assertion":"calibration fit excludes held-out fixture IDs from fit inputs","expected":{"mode":"A","ok":true},"id":"ENC-CAL-001","input":{"scenario":"held-out-exclusion"},"kind":"encoder-qualification","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-qualification-fixture.schema.json"}

@@ -27,6 +27,7 @@
     "extensions",
     "extensions/dashboard-client/dist",
     "src",
+    "assets/vector-cortex/encoder-v1",
     "README.md",
     "LICENSE",
     "!dist/**/*.test.js",

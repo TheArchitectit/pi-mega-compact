@@ -389,3 +389,42 @@ schemas["schemas/encoder-heads-fixture.schema.json"] = {
     },
   },
 };
+
+schemas["schemas/encoder-qualification-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC2C encoder-qualification fixture envelope",
+  description:
+    "Common structure every VC2C encoder-qualification fixture validates against. `input.scenario` names the calibration/qualification/fallback condition the acceptance test executes against the REAL calibrate/select/fallback producers; `expected` gives the exact verdict (ok/mode A) or failure code.",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["encoder-qualification"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: { type: "string" },
+        mode: { type: "string", enum: ["A", "B", "C"] },
+        budgetBytes: { type: "integer" },
+        splitDigest: { type: "string" },
+        heads: { type: "integer" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario"],
+      properties: {
+        scenario: { type: "string" },
+        head: { type: "string" },
+        group: {
+          type: "object",
+          properties: { repository: { type: "string" }, session: { type: "string" } },
+        },
+      },
+    },
+  },
+};

@@ -129,8 +129,46 @@ const MODES = {
       if (vset.heads.length !== 5 || vset.heads[0].dim !== 384) throw new Error("mode A: vc2b heads failed under denial");
       const tb = embedTrigram512("network-denial mode A vc2b");
       if (tb.length !== 512) throw new Error("mode A: vc2b trigram failed under denial");
+
+      // ── VC2C qualification (mode A): calibration fit + atomic selection of the
+      //     qualified learned asset — all deterministic local math, zero egress. ──
+      const { fitCalibration, calibrationSplitDigest } = await loadDist("src/vector-cortex/encoder/calibrate.js");
+      const { selectQualifiedEncoder } = await loadDist("src/vector-cortex/encoder/select.js");
+      const { selectQualificationFallback } = await loadDist("src/vector-cortex/encoder/fallback.js");
+      const ex = [
+        { itemId: "n1", head: "semantic", score: 0.2, label: 0, repository: "rA", session: "s1" },
+        { itemId: "n2", head: "semantic", score: 0.9, label: 1, repository: "rA", session: "s1" },
+        { itemId: "n3", head: "dependency", score: 0.1, label: 0, repository: "rB", session: "s2" },
+        { itemId: "n4", head: "dependency", score: 0.8, label: 1, repository: "rB", session: "s2" },
+      ];
+      const calibration = fitCalibration(ex);
+      if (!calibration.ok || calibration.calibration.schema !== "calibration-v1") {
+        throw new Error("mode A: calibration fit failed under denial");
+      }
+      const split = calibrationSplitDigest(ex.map((r) => ({ repository: r.repository, session: r.session })));
+      if (split.length !== 64) throw new Error("mode A: calibration split digest invalid");
+      // Fully-satisfactory held-out metrics -> QualifiedEncoderV1 (mode A).
+      const heldOut = {
+        semantic: { spearman: 0.8, recallAt10: 0.95 },
+        dependency: { precision: 0.98, recall: 0.96 },
+        contradiction: { precision: 0.99, recall: 0.95, ece: 0.03 },
+        cacheStability: { precision: 1.0, recall: 0.95 },
+        payloadRouting: { macroF1: 0.98, exactAnchorRecall: 1.0 },
+        reconstruction: { votesOk: true, dependencyClosureRecall: 1.0, taskSuccessNonInferior: true },
+      };
+      const qualified = selectQualifiedEncoder({
+        modelVersion: "vc2c-netdenial",
+        asset: { maxTokens: 512, latencyP95Ms: 20, rssDeltaMib: 40 },
+        onnxDigest: "a".repeat(64),
+        assetManifestDigest: "e".repeat(64),
+        calibration: calibration.calibration,
+        heldOut,
+      });
+      if (!qualified.ok || qualified.qualified.mode !== "A") throw new Error("mode A: vc2c should qualify mode A under denial");
+      const fb = selectQualificationFallback("ENC_QUALIFICATION_THRESHOLD_FAILED", [1, 2, 3]);
+      if (fb.mode !== "B" || fb.width !== 512) throw new Error("mode A: vc2c fallback B failed under denial");
       const headsNote = `${vset.heads.length}heads`;
-      return `roundtrip=${bytes.length} breaker=${bk.snapshot("net").state} vc1c=${sigDigest} vc2a=A vc2b=${headsNote}`;
+      return `roundtrip=${bytes.length} breaker=${bk.snapshot("net").state} vc1c=${sigDigest} vc2a=A vc2b=${headsNote} vc2c=A`;
     }
     // Host is NOT the bundle's pinned platform (cross-platform Q02): the bundle
     // correctly demotes to trigram B via PLATFORM_UNSUPPORTED — still zero
@@ -205,7 +243,43 @@ const MODES = {
     const tb = embedTrigram512("network-denial mode B vc2b trigram");
     const lx = embedLexical(["network", "denial", "mode", "b", "vc2b"]);
     if (tb.length !== 512 || lx.length !== 256) throw new Error("mode B: vc2b trigram/lexical failed under denial");
-    return `digest=${b.bytesDigest.slice(0, 8)} spool=committed vc1c=${indDigest} vc2a=B vc2b=B`;
+
+    // ── VC2C demotion + fallback (mode B): one failed causal head demotes A,
+    //     forcing independently-initialized trigram B (width 512); an injected B
+    //     error forces lexical C (width 256) — all local, zero egress. ──
+    const { selectQualifiedEncoder } = await loadDist("src/vector-cortex/encoder/select.js");
+    const { selectQualificationFallback } = await loadDist("src/vector-cortex/encoder/fallback.js");
+    const demoted = selectQualifiedEncoder({
+      modelVersion: "vc2c-netdenial-B",
+      asset: { maxTokens: 512, latencyP95Ms: 20, rssDeltaMib: 40 },
+      onnxDigest: "b".repeat(64),
+      assetManifestDigest: "e".repeat(64),
+      calibration: {
+        schema: "calibration-v1",
+        headOrder: ["semantic", "dependency", "contradiction", "cacheStability", "payloadRouting"],
+        calibrationSplitDigest: "c".repeat(64),
+        fittedOnCalibrationOnly: true,
+        temperatures: { semantic: 1, dependency: 1, contradiction: 1, cacheStability: 1, payloadRouting: 1 },
+        thresholds: { semantic: 0.5, dependency: 0.5, contradiction: 0.5, cacheStability: 0.5, payloadRouting: 0.5 },
+        seed: 1729,
+      },
+      heldOut: {
+        semantic: { spearman: 0.8, recallAt10: 0.95 },
+        dependency: { precision: 0.9, recall: 0.96 }, // below .97 -> demotes
+        contradiction: { precision: 0.99, recall: 0.95, ece: 0.03 },
+        cacheStability: { precision: 1.0, recall: 0.95 },
+        payloadRouting: { macroF1: 0.98, exactAnchorRecall: 1.0 },
+        reconstruction: { votesOk: true, dependencyClosureRecall: 1.0, taskSuccessNonInferior: true },
+      },
+    });
+    if (demoted.ok || demoted.code !== "ENC_QUALIFICATION_THRESHOLD_FAILED") {
+      throw new Error(`mode B: vc2c should demote on failed causal head (${demoted.code})`);
+    }
+    const fbB = selectQualificationFallback("ENC_QUALIFICATION_THRESHOLD_FAILED", [1, 2, 3]);
+    const fbC = selectQualificationFallback("ENC_QUALIFICATION_THRESHOLD_FAILED", [1, 2, 3], { injectBError: true });
+    if (fbB.mode !== "B" || fbB.width !== 512) throw new Error("mode B: vc2c fallback B failed under denial");
+    if (fbC.mode !== "C" || fbC.width !== 256) throw new Error("mode B: vc2c fallback C failed under denial");
+    return `digest=${b.bytesDigest.slice(0, 8)} spool=committed vc1c=${indDigest} vc2a=B vc2b=B vc2c=B/C`;
   },
 
   /** C: predecessor paths unchanged (VC1C flag-OFF byte-identical). */

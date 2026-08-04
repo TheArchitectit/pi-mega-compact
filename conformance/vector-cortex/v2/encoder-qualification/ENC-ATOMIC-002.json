@@ -1,0 +1,1 @@
+{"assertion":"one failed causal head demotes the entire A (no partial A)","expected":{"code":"ENC_QUALIFICATION_THRESHOLD_FAILED","mode":"B","ok":false},"id":"ENC-ATOMIC-002","input":{"scenario":"one-failed-causal-head"},"kind":"encoder-qualification","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-qualification-fixture.schema.json"}

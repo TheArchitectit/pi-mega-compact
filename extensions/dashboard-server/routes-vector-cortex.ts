@@ -17,11 +17,16 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
-import { VC0A_ENABLED, VC0C_ENABLED, VC1B_ENABLED } from "../../src/config.js";
+import { createHash } from "node:crypto";
+import { readFileSync, statSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { VC0A_ENABLED, VC0C_ENABLED, VC1B_ENABLED, VC2C_ENABLED } from "../../src/config.js";
 import { readEvalRows } from "../../src/vector-cortex/eval/persist.js";
 import { summarizeEvalRows } from "../../src/vector-cortex/eval/reader.js";
 import { createVectorCortexSafety } from "../mega-runtime/vector-cortex-safety.js";
 import { createLedgerStore } from "../../src/vector-cortex/ledger/store.js";
+import { readEncoderManifest, verifyEncoderAsset, detectPlatform } from "../../src/vector-cortex/encoder/asset.js";
 import type {
   VectorCortexEvaluationSummary,
   VectorCortexHealthCard,
@@ -63,6 +68,102 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   // guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
+}
+
+/** Resolve the committed encoder-v1 asset dir by walking up to the repo root. */
+function encoderAssetDir(): string | null {
+  let dir = dirname(fileURLToPath(import.meta.url));
+  const rel = join("assets", "vector-cortex", "encoder-v1");
+  for (let i = 0; i < 8; i++) {
+    const candidate = join(dir, rel);
+    try {
+      // guardrails-allow PREVENT-PI-004: local asset filesystem read (loopback)
+      readFileSync(join(candidate, "manifest.json"));
+      return candidate;
+    } catch {
+      /* keep walking */
+    }
+    const next = dirname(dir);
+    if (next === dir) break;
+    dir = next;
+  }
+  return null;
+}
+
+/**
+ * VC2C encoder health facts (task 5): the SHA-256 of the committed qualified
+ * manifest (asset digest) and the encoder triad mode. Reader-only aggregate
+ * (digest prefix, no bytes). Gated on MEGACOMPACT_VC2C: when the flag is OFF
+ * (rollback), the card reports mode C with an absent digest — consistent with
+ * the rest of the card, whose enabled/mode fields reflect active (flag-gated)
+ * state. When ON: "A" when the committed asset verifies on this host, "B" when
+ * present but not verified (demotion), "C" when absent.
+ *
+ * The verification hashes the full ONNX + tokenizer bytes, which is expensive
+ * on a periodically-polled endpoint as the shipped asset grows. The result is
+ * memoized against a cheap key (manifest bytes + file sizes/mtimes + platform);
+ * any on-disk mutation invalidates the key, so the cache never goes stale while
+ * avoiding the repeated large-file hashing. A failed digest read returns null
+ * (an absent digest), never a misleading zero-sentinel.
+ */
+type EncoderHealthFacts = { assetDigest: string | null; mode: "A" | "B" | "C" };
+
+interface HealthFactCache {
+  key: string;
+  facts: EncoderHealthFacts;
+}
+
+let healthCache: HealthFactCache | null = null;
+
+/** Stable cache key: manifest bytes + (size,mtime) of the asset files + platform. */
+function healthFactCacheKey(dir: string, manifestPath: string): string | null {
+  const platform = detectPlatform();
+  if (!platform) return null;
+  const parts: string[] = [platform];
+  try {
+    for (const p of [manifestPath, join(dir, "model.onnx"), join(dir, "tokenizer.json")]) {
+      const s = statSync(p);
+      parts.push(`${s.size}:${s.mtimeMs}`);
+    }
+    // guardrails-allow PREVENT-PI-004: local manifest filesystem read (loopback)
+    parts.push(createHash("sha256").update(readFileSync(manifestPath)).digest("hex"));
+  } catch {
+    return null;
+  }
+  return parts.join("|");
+}
+
+function computeEncoderHealthFacts(dir: string): EncoderHealthFacts | null {
+  const manifest = readEncoderManifest(dir);
+  if (manifest === null) return { assetDigest: null, mode: "C" };
+  const manifestPath = join(dir, "manifest.json");
+  const key = healthFactCacheKey(dir, manifestPath);
+  if (key === null) return null;
+  if (healthCache !== null && healthCache.key === key) return healthCache.facts;
+  let digest: string;
+  try {
+    // guardrails-allow PREVENT-PI-004: local manifest filesystem read (loopback)
+    digest = createHash("sha256").update(readFileSync(manifestPath)).digest("hex");
+  } catch {
+    return { assetDigest: null, mode: "B" };
+  }
+  const verify = verifyEncoderAsset(dir, manifest, detectPlatform());
+  const facts: EncoderHealthFacts = { assetDigest: digest, mode: verify.ok ? "A" : "B" };
+  healthCache = { key, facts };
+  return facts;
+}
+
+function encoderHealthFacts(): EncoderHealthFacts {
+  if (!VC2C_ENABLED()) {
+    // Rollback: MEGACOMPACT_VC2C=0 selects C — report the inactive (flag-gated)
+    // mode with no asset digest rather than an on-disk-computed A/B.
+    return { assetDigest: null, mode: "C" };
+  }
+  const dir = encoderAssetDir();
+  if (dir === null) return { assetDigest: null, mode: "C" };
+  const facts = computeEncoderHealthFacts(dir);
+  if (facts === null) return { assetDigest: null, mode: "C" };
+  return facts;
 }
 
 /** Reader-only aggregate GET /api/vector-cortex/evaluation. */
@@ -133,6 +234,8 @@ export function handleVectorCortexHealth(
   const safety = enabled ? createVectorCortexSafety({ stateDir: ctx.stateDir }) : null;
   const card = safety ? safety.health() : null;
 
+  const enc = encoderHealthFacts();
+
   const fallback: VectorCortexHealthCard = {
     enabled: false,
     mode: "C",
@@ -152,6 +255,8 @@ export function handleVectorCortexHealth(
     updatedAt: new Date().toISOString(),
     aggregate: "CLOSED_A",
     stateSource: "ephemeral",
+    encoderAssetDigest: enc.assetDigest,
+    encoderMode: enc.mode,
   };
   if (!card) {
     sendJson(res, 200, fallback);
@@ -191,6 +296,8 @@ export function handleVectorCortexHealth(
     updatedAt: new Date().toISOString(),
     aggregate,
     stateSource: card.stateSource,
+    encoderAssetDigest: enc.assetDigest,
+    encoderMode: enc.mode,
   };
   sendJson(res, 200, body);
   return true;

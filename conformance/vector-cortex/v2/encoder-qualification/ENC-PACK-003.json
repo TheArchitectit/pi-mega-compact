@@ -1,0 +1,1 @@
+{"assertion":"clean package listing contains the qualification manifest and ONNX under 35MiB","expected":{"budgetBytes":36700160,"ok":true},"id":"ENC-PACK-003","input":{"scenario":"package-listing"},"kind":"encoder-qualification","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-qualification-fixture.schema.json"}

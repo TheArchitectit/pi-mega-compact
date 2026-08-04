@@ -325,6 +325,12 @@ export const SETTINGS: ReadonlyArray<{
 				"VectorSetV1 five L2-normalized heads (384/128/128/64/32) with head-calibration draft + asset-free trigram B (512d) and lexical C fallbacks, plus the per-head emit seam. OFF = mode C, no per-head vectors emitted, byte-identical predecessor.",
 				true,
 			),
+			boolDirect(
+				"MEGACOMPACT_VC2C",
+				"VC2C Encoder Qualification + Calibration",
+				"QualifiedEncoderV1/CalibrationV1: calibration fit on the calibration split only (held-out labels prohibited) + atomic selection across MODEL_ASSET and per-head EVALUATION thresholds (any field failure demotes all of A). OFF = mode C, no qualification/calibration selection, byte-identical predecessor.",
+				true,
+			),
 		],
 	},
 	{

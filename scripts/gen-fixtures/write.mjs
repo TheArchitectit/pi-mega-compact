@@ -25,6 +25,7 @@ import { fixtures as migrationFixtures, named as migrationNamed } from "./migrat
 import { fixtures as conformanceFixtures, named as conformanceNamed } from "./conformance.mjs";
 import { fixtures as encoderFixtures, named as encoderNamed } from "./encoder-runtime.mjs";
 import { fixtures as encoderHeadsFixtures, named as encoderHeadsNamed } from "./encoder-heads.mjs";
+import { fixtures as encQualFixtures, named as encQualNamed } from "./encoder-qualification.mjs";
 
 const REPLAY_DIR = join(V2, "replay");
 const EVENTS_DIR = join(V2, "events");
@@ -35,6 +36,7 @@ const MIGRATIONS_DIR = join(V2, "migrations");
 const CONFORMANCE_DIR = join(V2, "conformance");
 const ENCODER_DIR = join(V2, "encoder-runtime");
 const ENCODER_HEADS_DIR = join(V2, "encoder-heads");
+const ENCODER_QUAL_DIR = join(V2, "encoder-qualification");
 
 export function writeAll() {
   rmSync(V2, { recursive: true, force: true });
@@ -49,6 +51,7 @@ export function writeAll() {
   mkdirSync(CONFORMANCE_DIR, { recursive: true });
   mkdirSync(ENCODER_DIR, { recursive: true });
   mkdirSync(ENCODER_HEADS_DIR, { recursive: true });
+  mkdirSync(ENCODER_QUAL_DIR, { recursive: true });
 
   const manifestRows = [];
 
@@ -266,13 +269,32 @@ export function writeAll() {
     });
   }
 
+  // Encoder-qualification fixtures (VC2C): kind=encoder-qualification. expected.ok
+  // pins a mode-A qualification; expected.code pins the exact demotion code/mode.
+  for (const fx of [...encQualFixtures, ...encQualNamed]) {
+    const bytes = Buffer.from(canonicalJson(fx), "utf8");
+    const rel = `encoder-qualification/${fx.id}.json`;
+    writeFileSync(join(ENCODER_QUAL_DIR, `${fx.id}.json`), bytes);
+    manifestRows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: fx.schema,
+      algorithm: "encoder-qualification",
+      producer,
+      expected: fx.expected.ok ? "ok" : fx.expected.code,
+      license: "synthetic",
+      ...(fx.expected.mode ? { mode: fx.expected.mode } : {}),
+    });
+  }
+
   const manifest = {
     version: "2",
     viewer: "vector-cortex-conformance.mjs",
     producer: "vector-cortex-gen-fixtures.mjs",
-    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads",
-    owner: "VC0A,VC0B,VC1A,VC0C,VC1B,VC1C,VC2A,VC2B",
-    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads",
+    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification",
+    owner: "VC0A,VC0B,VC1A,VC0C,VC1B,VC1C,VC2A,VC2B,VC2C",
+    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification",
     license: "synthetic",
     fixtures: manifestRows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
   };
@@ -294,5 +316,7 @@ export function writeAll() {
     encoderNamedCount: encoderNamed.length,
     encoderHeadsCount: encoderHeadsFixtures.length,
     encoderHeadsNamedCount: encoderHeadsNamed.length,
+    encoderQualCount: encQualFixtures.length,
+    encoderQualNamedCount: encQualNamed.length,
   };
 }

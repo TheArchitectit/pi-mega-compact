@@ -50,6 +50,17 @@ export interface VectorCortexHealthCard {
   aggregate: string;
   /** "ephemeral" = per-process/in-memory breaker (non-live until VC0D). */
   stateSource: "ephemeral" | "live";
+  /**
+   * VC2C encoder asset digest — SHA-256 of the committed ModelManifestV1 bytes.
+   * null when no qualified encoder manifest is present on this host.
+   */
+  encoderAssetDigest: string | null;
+  /**
+   * VC2C encoder triad mode: "A" when the committed asset verifies as a
+   * qualified learned asset on this host/platform, else "B" (trigram) or "C"
+   * (lexical).
+   */
+  encoderMode: "A" | "B" | "C";
 }
 
 /** Admin reset result (VC0C, task 5). */

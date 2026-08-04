@@ -203,6 +203,8 @@ export default function VectorCortexTab(): React.ReactElement {
 								}
 							/>
 							<Metric label="Spool lag" value={String(health.spoolLag)} />
+								<Metric label="Encoder mode" value={health.encoderMode} />
+								<Metric label="Encoder asset" value={health.encoderAssetDigest ? health.encoderAssetDigest.slice(0, 12) : "none"} />
 						</div>
 					)}
 				</CardContent>

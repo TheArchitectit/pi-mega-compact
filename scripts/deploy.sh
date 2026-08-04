@@ -155,6 +155,41 @@ if ! npm pack --dry-run --json 2>/dev/null |
 fi
 echo "[deploy] dashboard bundle verified in npm pack output."
 
+# --- 4.6 VC2C encoder asset + package-listing gate ----------------------------
+# MODEL_ASSET §qualification/packaging: require the qualified encoder manifest
+# (asset paths + supported matrix covered by the committed manifest; the VC2A
+# verification seam re-checks digests before load), and that the ENTIRE npm
+# package dry-run listing is <= 35 MiB (the compressed shipping budget).
+# Dry-run listing ONLY — never create a .tgz (PREVENT-DIST-001).
+VC2C_ASSET_DIR="assets/vector-cortex/encoder-v1"
+echo "[deploy] VC2C asset gate: qualified manifest + package listing <= 35 MiB"
+if [[ ! -f "$VC2C_ASSET_DIR/manifest.json" ]]; then
+	echo "[deploy] ERROR: qualified encoder manifest missing ($VC2C_ASSET_DIR/manifest.json)." >&2
+	exit 1
+fi
+for REQUIRED_ASSET in "model.onnx" "tokenizer.json"; do
+	if [[ ! -f "$VC2C_ASSET_DIR/$REQUIRED_ASSET" ]]; then
+		echo "[deploy] ERROR: qualified encoder asset $REQUIRED_ASSET missing under $VC2C_ASSET_DIR." >&2
+		exit 1
+	fi
+done
+PACKAGE_BYTES="$(npm pack --dry-run --json 2>/dev/null | python3 -c "
+import json,sys
+try:
+    # npm pack --json -> object keyed by package name with a 'files' array of
+    # {'path':..., 'size':...} entries. Sum every shipped file's size.
+    data=json.load(sys.stdin)
+    pack=next(iter(data.values()), {})
+    print(sum(int(e.get('size',0)) for e in pack.get('files', [])))
+except Exception:
+    print('')
+")"
+if [[ -z "$PACKAGE_BYTES" || "$PACKAGE_BYTES" -gt $((35*1024*1024)) ]]; then
+	echo "[deploy] ERROR: total package listing ${PACKAGE_BYTES:-unknown} bytes exceeds the 35 MiB budget." >&2
+	exit 1
+fi
+echo "[deploy] package listing ${PACKAGE_BYTES} bytes <= 35 MiB; VC2C asset gate green."
+
 # --- 5. bump version ----------------------------------------------------------
 CURRENT_VERSION="$(node -e "console.log(require('./package.json').version)")"
 if [[ "$CURRENT_VERSION" == "$NEW_VERSION" ]]; then
