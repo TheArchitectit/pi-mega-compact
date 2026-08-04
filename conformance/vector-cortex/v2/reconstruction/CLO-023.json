@@ -1,0 +1,1 @@
+{"assertion":"equal timestamps are an unresolved tie","expected":{"code":"CLO_CONTRADICTION_UNRESOLVED","ok":false,"unresolved":["x","y"]},"id":"CLO-023","input":{"graph":"contra-tie","scenario":"closure-contra-tie","seeds":["a"]},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

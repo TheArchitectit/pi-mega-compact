@@ -13,6 +13,7 @@ import {
 	fetchVectorCortexHealth,
 	fetchVectorCortexLedger,
 	fetchVectorCortexQuery,
+	fetchVectorCortexReconstruct,
 	fetchVectorCortexShards,
 	fetchVectorCortexTopology,
 	resetVectorCortexBreaker,
@@ -20,6 +21,7 @@ import {
 	type VectorCortexHealthCard,
 	type VectorCortexLedgerView,
 	type VectorCortexQueryView,
+	type VectorCortexReconstructView,
 	type VectorCortexShardsView,
 	type VectorCortexTopologyView,
 } from "../api/vector-cortex";
@@ -54,6 +56,7 @@ export default function VectorCortexTab(): React.ReactElement {
 	const [topology, setTopology] = useState<VectorCortexTopologyView | null>(null);
 	const [query, setQuery] = useState<VectorCortexQueryView | null>(null);
 	const [shards, setShards] = useState<VectorCortexShardsView | null>(null);
+	const [reconstruct, setReconstruct] = useState<VectorCortexReconstructView | null>(null);
 
 	const poll = useCallback(() => {
 		fetchVectorCortexEvaluation()
@@ -76,6 +79,9 @@ export default function VectorCortexTab(): React.ReactElement {
 		});
 		fetchVectorCortexShards().then(setShards).catch(() => {
 			/* dual-tier shards card is best-effort (VC4A) */
+		});
+		fetchVectorCortexReconstruct().then(setReconstruct).catch(() => {
+			/* reconstruction-fidelity card is best-effort (VC4C) */
 		});
 	}, []);
 
@@ -355,6 +361,37 @@ export default function VectorCortexTab(): React.ReactElement {
 							</div>
 							<div className="mt-3 text-xs text-muted-foreground">
 								Reader-only count/byte aggregate; staged in-memory this sprint.
+							</div>
+						</>
+					)}
+				</CardContent>
+			</Card>
+			<Card>
+				<CardHeader>
+					<div className="flex items-center justify-between">
+						<CardTitle>Reconstruction Fidelity (VC4C)</CardTitle>
+						{reconstruct?.enabled ? (
+							<Badge variant="success">ACTIVE</Badge>
+						) : (
+							<Badge variant="danger">OFF</Badge>
+						)}
+					</div>
+				</CardHeader>
+				<CardContent>
+					{!reconstruct?.enabled ? (
+						<div className="vc-empty">Reconstruction fidelity disabled (VC4C off).</div>
+					) : (
+						<>
+							<div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+								<Metric label="Closure attempts" value={String(reconstruct.closureAttempts)} />
+								<Metric label="Closure rejections" value={String(reconstruct.closureRejections)} />
+								<Metric label="Validated" value={String(reconstruct.validatedCount)} />
+								<Metric label="Invalidated" value={String(reconstruct.invalidatedCount)} />
+								<Metric label="Span total" value={String(reconstruct.spanTotal)} />
+								<Metric label="Byte total" value={String(reconstruct.byteTotal)} />
+							</div>
+							<div className="mt-3 text-xs text-muted-foreground">
+								Reader-only closure/validation aggregate; staged in-memory this sprint.
 							</div>
 						</>
 					)}

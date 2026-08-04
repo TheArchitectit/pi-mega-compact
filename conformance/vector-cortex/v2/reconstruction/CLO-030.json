@@ -1,0 +1,1 @@
+{"assertion":"the mandatory token estimate is the content-only sum of selected nodes","expected":{"closureReachedFixedPoint":true,"mandatoryTokenEstimate":30,"ok":true},"id":"CLO-030","input":{"graph":"tokened","scenario":"closure-token-sum","seeds":["a"]},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

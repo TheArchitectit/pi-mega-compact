@@ -231,6 +231,34 @@ export interface VectorCortexResidualView {
 }
 
 /**
+ * Reader-only reconstruction-fidelity aggregate for GET /api/vector-cortex/reconstruct
+ * (VC4C). Purely an enabled-flag + COUNT/BYTE aggregate — closure attempts,
+ * rejections, validated/invalidated counts, span total, and byte total.
+ * Reader-only: NEVER exposes reconstructed spans, exact bytes, or prompt text.
+ * The reconstruction validator is pure in-memory logic in this sprint (no
+ * durable metrics store), so when no closure has been staged the aggregates are
+ * truthfully zero. Non-fatal: a missing state dir degrades to `enabled:false`.
+ */
+export interface VectorCortexReconstructView {
+  /** Whether the VC4C reconstruction fidelity flag is enabled in this process. */
+  readonly enabled: boolean;
+  /** Number of closure attempts observed by the process emitter. */
+  readonly closureAttempts: number;
+  /** Number of closures rejected (events vector_cortex_closure_rejected). */
+  readonly closureRejections: number;
+  /** Number of reconstructions validated (events vector_cortex_reconstruction_validated). */
+  readonly validatedCount: number;
+  /** Number of reconstructions invalidated (failed validation). */
+  readonly invalidatedCount: number;
+  /** Total reconstructed spans across validated reconstructions. */
+  readonly spanTotal: number;
+  /** Total reconstructed bytes across validated reconstructions. */
+  readonly byteTotal: number;
+  /** ISO timestamp of the snapshot. */
+  readonly updatedAt: string;
+}
+
+/**
  * Reader-only occurrence-ledger view for GET /api/vector-cortex/ledger (VC1B).
  * Built on the LedgerReader capability surface. Exposes occurrence IDENTITY
  * (seq/eventId/kind/digest/toolCallId) and the per-session high-water/count —

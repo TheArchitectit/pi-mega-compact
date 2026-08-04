@@ -1,0 +1,1 @@
+{"assertion":"a contradiction between an unselected pair does not block closure","expected":{"closureReachedFixedPoint":true,"ok":true,"unresolved":[]},"id":"CLO-027","input":{"graph":"contra-unselected","scenario":"closure-contra-unselected","seeds":["a"]},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

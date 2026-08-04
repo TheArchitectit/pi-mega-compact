@@ -1,0 +1,1 @@
+{"assertion":"a valid reconstruction reports per-tier counts","expected":{"bySource":{"exact":1,"residual":1,"semantic":1},"ok":true},"id":"REC-027","input":{"graph":"mixed","scenario":"validate-by-source","shards":"mixed"},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

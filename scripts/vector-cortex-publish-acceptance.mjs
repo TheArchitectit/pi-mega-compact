@@ -159,6 +159,14 @@ function main() {
         name.endsWith(".js") && !name.endsWith(".test.js"),
       )
     : 0;
+  // VC4C added the reconstruct subtree (types/closure/assemble/validate). Mirror
+  // its runtime .js so the vc4c-acceptance aggregator's `./reconstruct/...`
+  // imports resolve at the published dist/vector-cortex/ offset (tests excluded).
+  const nReconstruct = existsSync(join(SRC_VECTOR, "reconstruct"))
+    ? copyTree(join(SRC_VECTOR, "reconstruct"), join(DEST_VECTOR, "reconstruct"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
   // VC3B support file (mode-B linear reference scan + helper producers) lives at
   // src/vector-cortex/vc3b-support.ts. Mirror its runtime .js so the
   // vc3b-acceptance aggregator's `./vc3b-support.js` import resolves at the
@@ -196,7 +204,7 @@ function main() {
     }
   }
   console.log(
-    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder + ${nCortex} cortex + ${nTopology} topology + ${nShards} shards + ${nResidual} residual + ${nSupport} support files`,
+    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder + ${nCortex} cortex + ${nTopology} topology + ${nShards} shards + ${nResidual} residual + ${nReconstruct} reconstruct + ${nSupport} support files`,
   );
 }
 

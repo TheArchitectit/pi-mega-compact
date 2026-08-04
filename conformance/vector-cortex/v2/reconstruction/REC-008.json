@@ -1,0 +1,1 @@
+{"assertion":"adjacent spans concatenate without a gap or overlap","expected":{"byteTotal":21,"ok":true},"id":"REC-008","input":{"graph":"adjacent","scenario":"assemble-adjacent","shards":"adjacent"},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

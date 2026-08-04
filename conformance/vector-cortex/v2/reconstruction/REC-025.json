@@ -1,0 +1,1 @@
+{"assertion":"mode C (legacy prompt) is continuity, not semantic completeness","expected":{"ok":true,"semanticLossStated":true},"id":"REC-025","input":{"graph":"mixed","mode":"C","scenario":"validate-mode-c-continuity","shards":"mixed"},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

@@ -5,7 +5,9 @@
 
 ## Goal and inputs/outputs
 
-Consume only reviewer-accepted predecessor contracts and [common contracts](../CONTRACTS.md). Own **ClosureResult / ReconstructionV1**. Production ownership: `src/vector-cortex/reconstruct/{closure,assemble,validate}.ts; scripts/vector-cortex-residual-benchmark.mjs`. Algorithm: Recursively add dependencies/tool pairs; contradiction keeps later exact resolution; unresolved ties reject; assemble source order; mandatory before VC5.
+Consume only reviewer-accepted predecessor contracts and [common contracts](../CONTRACTS.md). Own **ClosureResult / ReconstructionV1**. Production ownership: `src/vector-cortex/reconstruct/{types,closure,assemble,validate,_acceptance-helpers}.ts; scripts/vector-cortex-residual-benchmark.mjs`. Algorithm: Recursively add dependencies/tool pairs; contradiction keeps later exact resolution; unresolved ties reject; assemble source order; mandatory before VC5.
+
+> **Ownership amendment (contract-first + hard-limit split):** `types.ts` was added because the contract interface ships inside the sprint's own `reconstruct/` subtree before any implementation (VC4B precedent, commit `0746d5a`). `_acceptance-helpers.ts` was added because the acceptance aggregator's fixture materialization was extracted into a sibling helper to keep `vc4c-acceptance.test.ts` under the 600-line test hard limit (reviewer fix).
 
 ## Numbered implementation tasks
 

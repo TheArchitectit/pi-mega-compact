@@ -361,6 +361,12 @@ export const SETTINGS: ReadonlyArray<{
 				"Residual codec: orthonormal DCT-II basis + int16 block quantization + block-scoped exact correction stream + (9,6) Reed-Solomon parity shards with SHA-256 corruption detection; admission gates on encodedSize <= 95% of exact-compressed size. OFF = mode C, no residual artifact produced, byte-identical predecessor.",
 				true,
 			),
+			boolDirect(
+				"MEGACOMPACT_VC4C",
+				"VC4C Reconstruction Fidelity",
+				"Conservative closure + source-order assembly + reconstruction validator: recursively closes dependencies and whole tool pairs to a fixed point, resolves contradictions by retaining the later exact source resolution, assembles spans solely by source range, and rejects missing anchors / split pairs / digest mismatch / unresolved contradiction. Mandatory token estimate is content-only and handed unchanged to VC5A. OFF = mode C, no closure/validator, byte-identical predecessor (VC4B).",
+				true,
+			),
 		],
 	},
 	{

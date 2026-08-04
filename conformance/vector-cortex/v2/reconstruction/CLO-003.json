@@ -1,0 +1,1 @@
+{"assertion":"a cycle terminates at the fixed point (no infinite recursion)","expected":{"closureReachedFixedPoint":true,"ok":true,"selected":["a","b","c"]},"id":"CLO-003","input":{"graph":"cycle","scenario":"closure-cycle","seeds":["a"]},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

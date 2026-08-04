@@ -1,0 +1,1 @@
+{"assertion":"two tool pairs both close atomically from one seed","expected":{"closureReachedFixedPoint":true,"ok":true,"selected":["a","b","c","d"]},"id":"CLO-015","input":{"graph":"two-pairs","scenario":"closure-two-pairs","seeds":["a","c"]},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"a two-span overlap rejects with REC_SPAN_OVERLAP","expected":{"code":"REC_SPAN_OVERLAP","ok":false},"id":"REC-015","input":{"graph":"adjacent","scenario":"validate-span-overlap","shards":"overlap"},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

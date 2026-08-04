@@ -1,0 +1,1 @@
+{"assertion":"selecting one end of a tool pair requires the other","expected":{"closureReachedFixedPoint":true,"ok":true,"selected":["toolcall","toolresult"]},"id":"CLO-011","input":{"graph":"toolpair","scenario":"closure-tool-pair","seeds":["toolcall"]},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

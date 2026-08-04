@@ -1,0 +1,1 @@
+{"assertion":"an unresolved contradiction keeps both nodes in selection","expected":{"code":"CLO_CONTRADICTION_UNRESOLVED","ok":false},"id":"CLO-025","input":{"graph":"contra-tie","scenario":"closure-contra-keep-both","seeds":["a"]},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

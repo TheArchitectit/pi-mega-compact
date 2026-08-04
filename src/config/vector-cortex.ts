@@ -160,6 +160,20 @@ export const VC4A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC4A");
  */
 export const VC4B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC4B");
 
+/**
+ * VC4C — reconstruction fidelity (closure + assemble + validate). Default ON.
+ * `MEGACOMPACT_VC4C=0` disables and is byte-identical to the predecessor
+ * (VC4B): no conservative closure is computed, the reconstruction validator's
+ * `vector_cortex_reconstruction_validated` / `vector_cortex_closure_rejected`
+ * events are never emitted, and the assembled reconstruction is never produced
+ * (the prompt continues to be built by the legacy VC4B exact/residual path and
+ * the VC4A shard goldens are unchanged). The closure/assemble/validate
+ * functions are PURE — flag OFF gates the reporter seam, never the arithmetic.
+ * This flag MUST also be a dashboard SETTINGS toggle (visible in config UI,
+ * never in EXCLUDED_SETTINGS), mirroring VC4A/VC4B.
+ */
+export const VC4C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC4C");
+
 // ---------------------------------------------------------------------------
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker).
 // Rolled numbers for one 60s window; VC0C consumes these at its breaker seam.

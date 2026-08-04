@@ -129,6 +129,22 @@ export interface VectorCortexShardsView {
 }
 
 /**
+ * Reconstruction-fidelity aggregate (VC4C, GET /api/vector-cortex/reconstruct).
+ * Reader-only: closure/validation counts + byte totals, never reconstructed
+ * spans, exact bytes, or prompt text.
+ */
+export interface VectorCortexReconstructView {
+  enabled: boolean;
+  closureAttempts: number;
+  closureRejections: number;
+  validatedCount: number;
+  invalidatedCount: number;
+  spanTotal: number;
+  byteTotal: number;
+  updatedAt: string;
+}
+
+/**
  * Occurrence-ledger identity view (VC1B, GET /api/vector-cortex/ledger).
  * Reader-only: seq/eventId/kind/digest + high-water, never source payloads.
  */

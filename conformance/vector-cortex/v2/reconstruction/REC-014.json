@@ -1,0 +1,1 @@
+{"assertion":"a tool pair split across a gap rejects with REC_TOOL_PAIR_SPLIT","expected":{"code":"REC_TOOL_PAIR_SPLIT","ok":false},"id":"REC-014","input":{"graph":"toolpair","scenario":"validate-tool-pair-split","shards":"pair-split"},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

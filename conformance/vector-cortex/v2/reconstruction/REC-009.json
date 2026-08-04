@@ -1,0 +1,1 @@
+{"assertion":"a single span assembles to its own bytes","expected":{"ok":true,"spanCount":1},"id":"REC-009","input":{"graph":"single","scenario":"assemble-single","shards":"single"},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

@@ -8,6 +8,7 @@ import type {
 	VectorCortexHealthCard,
 	VectorCortexLedgerView,
 	VectorCortexQueryView,
+	VectorCortexReconstructView,
 	VectorCortexResetResult,
 	VectorCortexShardsView,
 	VectorCortexTopologyView,
@@ -18,6 +19,7 @@ export type {
 	VectorCortexHealthCard,
 	VectorCortexLedgerView,
 	VectorCortexQueryView,
+	VectorCortexReconstructView,
 	VectorCortexResetResult,
 	VectorCortexShardsView,
 	VectorCortexTopologyView,
@@ -54,6 +56,13 @@ export async function fetchVectorCortexShards(): Promise<VectorCortexShardsView>
 	const r = await fetch("/api/vector-cortex/shards");
 	if (!r.ok) throw new Error(`vector-cortex shards: ${r.status}`);
 	return r.json() as Promise<VectorCortexShardsView>;
+}
+
+/** Reader-only reconstruction-fidelity aggregate (VC4C). */
+export async function fetchVectorCortexReconstruct(): Promise<VectorCortexReconstructView> {
+	const r = await fetch("/api/vector-cortex/reconstruct");
+	if (!r.ok) throw new Error(`vector-cortex reconstruct: ${r.status}`);
+	return r.json() as Promise<VectorCortexReconstructView>;
 }
 
 /** Reader-only occurrence-ledger identity view (VC1B). */

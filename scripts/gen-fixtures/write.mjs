@@ -31,6 +31,7 @@ import { fixtures as topologyFixtures, named as topologyNamed } from "./topology
 import { fixtures as topologyQueryFixtures, named as topologyQueryNamed } from "./topology-query.mjs";
 import { fixtures as shardFixtures, named as shardNamed } from "./shards.mjs";
 import { fixtures as residualFixtures, named as residualNamed } from "./residual.mjs";
+import { fixtures as reconstructionFixtures, named as reconstructionNamed } from "./reconstruction.mjs";
 
 const REPLAY_DIR = join(V2, "replay");
 const EVENTS_DIR = join(V2, "events");
@@ -47,6 +48,7 @@ const TOPOLOGY_DIR = join(V2, "topology");
 const TOPOLOGY_QUERY_DIR = join(V2, "topology-query");
 const SHARDS_DIR = join(V2, "shards");
 const RESIDUAL_DIR = join(V2, "residual");
+const RECONSTRUCTION_DIR = join(V2, "reconstruction");
 
 export function writeAll() {
   rmSync(V2, { recursive: true, force: true });
@@ -67,6 +69,7 @@ export function writeAll() {
   mkdirSync(TOPOLOGY_QUERY_DIR, { recursive: true });
   mkdirSync(SHARDS_DIR, { recursive: true });
   mkdirSync(RESIDUAL_DIR, { recursive: true });
+  mkdirSync(RECONSTRUCTION_DIR, { recursive: true });
 
   const manifestRows = [];
 
@@ -398,13 +401,32 @@ export function writeAll() {
     });
   }
 
+  // Reconstruction fixtures (VC4C): kind=reconstruction rows (CLO-001..030 +
+  // REC-001..030 + named) pin closure / assembly / validation behavior with
+  // algorithm "reconstruction".
+  for (const fx of [...reconstructionFixtures, ...reconstructionNamed]) {
+    const bytes = Buffer.from(canonicalJson(fx), "utf8");
+    const rel = `reconstruction/${fx.id}.json`;
+    writeFileSync(join(RECONSTRUCTION_DIR, `${fx.id}.json`), bytes);
+    manifestRows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: fx.schema,
+      algorithm: "reconstruction",
+      producer,
+      expected: fx.expected.ok ? "ok" : fx.expected.code,
+      license: "synthetic",
+    });
+  }
+
   const manifest = {
     version: "2",
     viewer: "vector-cortex-conformance.mjs",
     producer: "vector-cortex-gen-fixtures.mjs",
-    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification,cortex-store,topology,topology-query,router-generation-v2,shard,residual",
-    owner: "VC0A,VC0B,VC0C,VC1A,VC1B,VC1C,VC2A,VC2B,VC2C,VC3A,VC3B,VC3C,VC4A,VC4B",
-    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification;cortex-store;topology-fixture;topology-query-fixture;router-generation-migration;shard-fixture;residual-fixture",
+    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification,cortex-store,topology,topology-query,router-generation-v2,shard,residual,reconstruction",
+    owner: "VC0A,VC0B,VC0C,VC1A,VC1B,VC1C,VC2A,VC2B,VC2C,VC3A,VC3B,VC3C,VC4A,VC4B,VC4C",
+    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification;cortex-store;topology-fixture;topology-query-fixture;router-generation-migration;shard-fixture;residual-fixture;reconstruction-fixture",
     license: "synthetic",
     fixtures: manifestRows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
   };
@@ -436,5 +458,7 @@ export function writeAll() {
     shardNamedCount: shardNamed.length,
     residualCount: residualFixtures.length,
     residualNamedCount: residualNamed.length,
+    reconstructionCount: reconstructionFixtures.length,
+    reconstructionNamedCount: reconstructionNamed.length,
   };
 }

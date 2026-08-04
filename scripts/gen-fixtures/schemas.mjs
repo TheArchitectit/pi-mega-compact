@@ -688,3 +688,79 @@ schemas["schemas/residual-fixture.schema.json"] = {
     },
   },
 };
+
+schemas["schemas/reconstruction-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC4C reconstruction fidelity fixture envelope",
+  description:
+    "Common structure every VC4C reconstruction fixture validates against. `input.scenario` names the closure / assembly / validation condition the acceptance test executes against the REAL reconstruct module (src/vector-cortex/reconstruct/{closure,assemble,validate}.js); `expected` gives the exact verdict (ok) or the failure code (REC_SOURCE_UNAVAILABLE / REC_ANCHOR_MISSING / REC_TOOL_PAIR_SPLIT / REC_DIGEST_MISMATCH / REC_CONTRADICTION_UNRESOLVED / REC_SPAN_OVERLAP). Graphs and shards are described declaratively by name and materialized by the test, so no byte payload is embedded.",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["reconstruction"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: {
+          type: "string",
+          enum: [
+            "REC_SOURCE_UNAVAILABLE",
+            "REC_ANCHOR_MISSING",
+            "REC_TOOL_PAIR_SPLIT",
+            "REC_DIGEST_MISMATCH",
+            "REC_CONTRADICTION_UNRESOLVED",
+            "REC_SPAN_OVERLAP",
+            "CLO_CONTRADICTION_UNRESOLVED",
+            "CLO_UNKNOWN_SEED",
+            "CLO_MISSING_NODE",
+          ],
+        },
+        selected: { type: "array", items: { type: "string" } },
+        selectedCount: { type: "integer" },
+        unresolved: { type: "array", items: { type: "string" } },
+        removedContradictions: { type: "array", items: { type: "string" } },
+        spanCount: { type: "integer" },
+        protectedSpanCount: { type: "integer" },
+        byteTotal: { type: "integer" },
+        mandatoryTokenEstimate: { type: "integer" },
+        closureReachedFixedPoint: { type: "boolean" },
+        assemblySortedBySource: { type: "boolean" },
+        digestIsConcatenation: { type: "boolean" },
+        summaryOpaque: { type: "boolean" },
+        semanticExcluded: { type: "boolean" },
+        semanticLossStated: { type: "boolean" },
+        bySource: {
+          type: "object",
+          properties: {
+            exact: { type: "integer" },
+            residual: { type: "integer" },
+            semantic: { type: "integer" },
+          },
+        },
+        emits: {
+          type: "string",
+          enum: ["vector_cortex_reconstruction_validated", "vector_cortex_closure_rejected"],
+        },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario"],
+      properties: {
+        scenario: { type: "string" },
+        graph: { type: "string" },
+        shards: { type: "string" },
+        seeds: { type: "array", items: { type: "string" } },
+        eraseShard: { type: "string" },
+        closureOk: { type: "boolean" },
+        mode: { type: "string", enum: ["A", "B", "C"] },
+        forceModeB: { type: "boolean" },
+      },
+    },
+  },
+};

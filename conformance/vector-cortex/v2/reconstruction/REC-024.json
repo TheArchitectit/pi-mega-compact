@@ -1,0 +1,1 @@
+{"assertion":"mode B forced by a semantic validation failure still assembles exact spans","expected":{"ok":true,"semanticExcluded":true},"id":"REC-024","input":{"forceModeB":true,"graph":"mixed","mode":"B","scenario":"validate-mode-b-forced","shards":"mixed"},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

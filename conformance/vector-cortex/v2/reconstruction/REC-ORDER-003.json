@@ -1,0 +1,1 @@
+{"assertion":"semantic and exact spans assemble by source offsets (named)","expected":{"assemblySortedBySource":true,"ok":true,"spanCount":3},"id":"REC-ORDER-003","input":{"graph":"ordered","scenario":"assemble-source-order","shards":"ordered"},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

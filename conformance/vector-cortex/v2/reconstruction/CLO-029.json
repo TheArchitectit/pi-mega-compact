@@ -1,0 +1,1 @@
+{"assertion":"a resolved contradiction still closes its dependencies","expected":{"closureReachedFixedPoint":true,"ok":true,"unresolved":[]},"id":"CLO-029","input":{"graph":"contra-deps","scenario":"closure-contra-deps","seeds":["a"]},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

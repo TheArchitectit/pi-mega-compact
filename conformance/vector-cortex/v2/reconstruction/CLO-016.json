@@ -1,0 +1,1 @@
+{"assertion":"selecting the anchor alone closes to the floor","expected":{"closureReachedFixedPoint":true,"ok":true,"selected":["a","anchor"]},"id":"CLO-016","input":{"graph":"anchored","scenario":"closure-anchor-only","seeds":["anchor"]},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

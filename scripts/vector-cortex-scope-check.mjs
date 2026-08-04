@@ -222,6 +222,11 @@ export function crossCuttingExceptions(sprintId) {
 		// handler per domain (routes-vector-cortex-shards.ts, -query.ts, ...) to
 		// stay under the 500-line hard limit, so the whole family is a seam.
 		/^extensions\/dashboard-server\/routes-vector-cortex[\w.-]*\.(ts|tsx)$/,
+		// The sprint's own spec file. A sprint may amend its Production ownership
+		// line (contract-first deviations, helper additions surfaced by THIS gate);
+		// the amendment is a per-sprint artifact the controller ratifies, the same
+		// standing as the evidence record. Match ONLY this sprint's spec, no other.
+		new RegExp(`^docs/vector-cortex/sprints/${id}-[^/]+\\.md$`),
 	];
 	return { exact, prefixes, patterns };
 }

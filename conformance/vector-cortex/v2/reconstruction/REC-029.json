@@ -1,0 +1,1 @@
+{"assertion":"a tool pair kept contiguous passes validation","expected":{"ok":true,"spanCount":2},"id":"REC-029","input":{"graph":"toolpair","scenario":"validate-pair-contiguous","shards":"pair-contiguous"},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

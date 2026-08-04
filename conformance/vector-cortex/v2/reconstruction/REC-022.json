@@ -1,0 +1,1 @@
+{"assertion":"a validated reconstruction contains every protected span","expected":{"ok":true,"protectedSpanCount":1},"id":"REC-022","input":{"graph":"protected","scenario":"validate-protected-present","shards":"protected"},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

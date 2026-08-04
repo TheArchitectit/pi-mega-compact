@@ -1,0 +1,1 @@
+{"assertion":"an anchor is always included even if not seeded","expected":{"closureReachedFixedPoint":true,"ok":true,"selected":["a","anchor"]},"id":"CLO-012","input":{"graph":"anchored","scenario":"closure-anchor-floor","seeds":["a"]},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"selecting a adds dependencies b then c (named)","expected":{"closureReachedFixedPoint":true,"ok":true,"selected":["a","b","c"]},"id":"CLO-TRANSITIVE-001","input":{"graph":"chain","scenario":"closure-transitive","seeds":["a"]},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}
