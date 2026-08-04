@@ -26,52 +26,8 @@ import { createRequire } from "node:module";
 import { NEW_UI } from "../../src/config.js";
 import { log, setLogPath, setDashboardServerVersion } from "./state.js";
 import { detectTailscaleIP } from "./tailscale.js";
-import {
-	buildRouteContext,
-	handleIndex,
-	handleRepoIndex,
-	handleEvents,
-	handleGameState,
-	handleGameScores,
-	handlePerf,
-	handlePerfSamples,
-	handleAchievements,
-	handleSessions,
-	handleTopics,
-	handleTurns,
-	handleMaintenance,
-	handleProviderCache,
-	handleCacheStripes,
-	handleMemoryStatus,
-	handleSetupStatus,
-	handleSetupDetect,
-	handleSetupConfigure,
-	handleMemoryMap,
-	handleRaptorTree,
-	handleRaptorBuildHistory,
-	handleContextHealth,
-	handleCachePoison,
-	handleHealthSettings,
-	handleEmbedderHealth,
-	handleRagSettings,
-	handleRagMetrics,
-	handleModelThresholds,
-	handleWiki,
-	handleVectorCortexEvaluation,
-	handleVectorCortexHealth,
-	handleVectorCortexBreakersReset,
-	handleVectorCortexLedger,
-	handleVectorCortexTopology,
-	handleVectorCortexQuery,
-	handleVectorCortexShards,
-	handleVectorCortexResidual,
-	handleVectorCortexReconstruct,
-	handleVectorCortexPlans,
-	handleVectorCortexRender,
-	handleVectorCortexRollout,
-	handleVectorCortexClosureProof,
-	handleStatic,
-} from "./routes.js";
+import { buildRouteContext, handleStatic } from "./routes.js";
+import { dispatchRoutes } from "./route-dispatch.js";
 
 export async function launchDashboardServer(
 	stateDir: string,
@@ -277,48 +233,7 @@ export async function launchDashboardServer(
 		}
 
 		// Dispatch — each handler returns true if it ended the response.
-		if (handleIndex(req, res, ctx)) return;
-		if (handleRepoIndex(req, res, ctx)) return;
-		if (handleEvents(req, res, ctx)) return;
-		if (handleGameState(req, res, ctx)) return;
-		if (handleGameScores(req, res, ctx)) return;
-		if (handlePerfSamples(req, res, ctx)) return;
-		if (handlePerf(req, res, ctx)) return;
-		if (handleAchievements(req, res, ctx)) return;
-		if (handleSessions(req, res, ctx)) return;
-		if (handleTopics(req, res, ctx)) return;
-		if (handleTurns(req, res, ctx)) return;
-		if (handleMaintenance(req, res, ctx)) return;
-		if (handleProviderCache(req, res, ctx)) return;
-		if (handleMemoryStatus(req, res, ctx)) return;
-		if (handleCacheStripes(req, res, ctx)) return;
-		if (handleSetupStatus(req, res, ctx)) return;
-		if (handleSetupDetect(req, res, ctx)) return;
-		if (handleSetupConfigure(req, res, ctx)) return;
-		if (handleMemoryMap(req, res, ctx)) return;
-		if (handleRaptorTree(req, res, ctx)) return;
-		if (handleRaptorBuildHistory(req, res, ctx)) return;
-		if (handleContextHealth(req, res, ctx)) return;
-		if (handleCachePoison(req, res, ctx)) return;
-		if (handleHealthSettings(req, res, ctx)) return;
-		if (handleEmbedderHealth(req, res, ctx)) return;
-		if (handleRagSettings(req, res, ctx)) return;
-		if (handleRagMetrics(req, res, ctx)) return;
-		if (handleModelThresholds(req, res, ctx)) return;
-		if (handleWiki(req, res, ctx)) return;
-		if (handleVectorCortexEvaluation(req, res, ctx)) return;
-		if (handleVectorCortexHealth(req, res, ctx)) return;
-		if (handleVectorCortexBreakersReset(req, res, ctx)) return;
-		if (handleVectorCortexLedger(req, res, ctx)) return;
-		if (handleVectorCortexTopology(req, res, ctx)) return;
-		if (handleVectorCortexQuery(req, res, ctx)) return;
-		if (handleVectorCortexShards(req, res, ctx)) return;
-		if (handleVectorCortexResidual(req, res, ctx)) return;
-		if (handleVectorCortexReconstruct(req, res, ctx)) return;
-		if (handleVectorCortexPlans(req, res, ctx)) return;
-		if (handleVectorCortexRender(req, res, ctx)) return;
-	if (handleVectorCortexRollout(req, res, ctx)) return;
-	if (handleVectorCortexClosureProof(req, res, ctx)) return;
+		if (dispatchRoutes(req, res, ctx)) return;
 		handleStatic(req, res, ctx);
 	});
 

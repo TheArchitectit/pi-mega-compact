@@ -40,6 +40,8 @@ import { VectorCortexRenderCard } from "./VectorCortexRenderCard";
 import { VectorCortexRolloutCard } from "./VectorCortexRolloutCard";
 import { VectorCortexClosureCard } from "./VectorCortexClosureCard";
 import { VectorCortexPlansCard } from "./VectorCortexPlansCard";
+import { VectorCortexTopologyCard } from "./VectorCortexTopologyCard";
+import { VectorCortexLedgerCard } from "./VectorCortexLedgerCard";
 
 function ModeChip({ mode, count }: { mode: string; count: number }): React.ReactElement {
 	return (
@@ -253,110 +255,7 @@ export default function VectorCortexTab(): React.ReactElement {
 					)}
 				</CardContent>
 			</Card>
-			<Card>
-				<CardHeader>
-					<div className="flex items-center justify-between">
-						<CardTitle>Derived Cortex Store (VC3A)</CardTitle>
-						{topology?.enabled ? (
-							<Badge variant="success">ACTIVE</Badge>
-						) : (
-							<Badge variant="danger">OFF</Badge>
-						)}
-					</div>
-				</CardHeader>
-				<CardContent>
-					{!topology?.enabled ? (
-						<div className="vc-empty">Cortex store disabled (VC3A off).</div>
-					) : (
-						<>
-						<div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-							<Metric label="Generation" value={topology.generationId ?? "—"} />
-							<Metric label="Ordinal" value={topology.ordinal ?? "—"} />
-							<Metric label="Records" value={String(topology.recordCount)} />
-							<Metric label="Frontier (HW)" value={topology.sourceHighWater} />
-							<Metric
-								label="Root digest"
-								value={topology.rootDigest ? topology.rootDigest.slice(0, 16) : "—"}
-							/>
-							{topology.nodes !== undefined && (
-								<>
-									<Metric
-										label="Nodes"
-										value={String(topology.nodes?.length ?? 0)}
-									/>
-									<Metric
-										label="Edges"
-										value={String(topology.edges?.length ?? 0)}
-									/>
-									<Metric
-										label="Graph digest"
-										value={
-											topology.generationDigest
-												? topology.generationDigest.slice(0, 16)
-												: "—"
-										}
-									/>
-								</>
-							)}
-						</div>
-						{topology.nodes !== undefined &&
-							(topology.edges?.length ?? 0) > 0 && (
-								<div className="mt-4 max-h-56 overflow-y-auto">
-									<div className="mb-1 text-xs font-medium text-muted-foreground">
-										Topology edges (VC3B)
-									</div>
-									<table className="w-full text-left text-xs">
-										<thead>
-											<tr className="border-b border-border/50 text-muted-foreground">
-												<th className="py-1 pr-2">source</th>
-												<th className="py-1 pr-2">target</th>
-												<th className="py-1 pr-2">head</th>
-												<th className="py-1 pr-2">dir</th>
-												<th className="py-1">score</th>
-											</tr>
-										</thead>
-										<tbody>
-											{topology.edges?.map((e, i) => (
-												<tr
-													key={`${e.source}-${e.target}-${e.head}-${i}`}
-													className="border-b border-border/30"
-												>
-													<td className="py-1 pr-2 font-mono">{e.source}</td>
-													<td className="py-1 pr-2 font-mono">{e.target}</td>
-													<td className="py-1 pr-2 font-mono">{e.head}</td>
-													<td className="py-1 pr-2">{e.direction}</td>
-													<td className="py-1 font-mono">{e.score}</td>
-												</tr>
-											))}
-										</tbody>
-									</table>
-								</div>
-							)}
-						</>
-					)}
-				</CardContent>
-			</Card>
-			<Card>
-				<CardHeader>
-					<div className="flex items-center justify-between">
-						<CardTitle>Topology Query Diagnostics (VC3C)</CardTitle>
-						{query?.enabled ? (
-							<Badge variant="success">ACTIVE</Badge>
-						) : (
-							<Badge variant="danger">OFF</Badge>
-						)}
-					</div>
-				</CardHeader>
-				<CardContent>
-					{!query?.enabled ? (
-						<div className="vc-empty">Query diagnostics unavailable (VC3C off).</div>
-					) : (
-						<div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-							<Metric label="Router version" value={String(query.routerVersion)} />
-						</div>
-					)}
-				</CardContent>
-			</Card>
+			<VectorCortexTopologyCard topology={topology} query={query} />
 			<Card>
 				<CardHeader>
 					<div className="flex items-center justify-between">
@@ -421,66 +320,7 @@ export default function VectorCortexTab(): React.ReactElement {
 			<VectorCortexRenderCard view={render} />
 			<VectorCortexRolloutCard view={rollout} />
 			<VectorCortexClosureCard view={closureProof} />
-			<Card>
-				<CardHeader>
-					<div className="flex items-center justify-between">
-						<CardTitle>Occurrence Ledger (VC1B)</CardTitle>
-						{ledger?.enabled ? (
-							<Badge variant="success">ACTIVE</Badge>
-						) : (
-							<Badge variant="danger">OFF</Badge>
-						)}
-					</div>
-				</CardHeader>
-				<CardContent>
-					{!ledger?.enabled ? (
-						<div className="vc-empty">Ledger disabled (VC1B off).</div>
-					) : (
-						<>
-							<div className="mb-3 grid grid-cols-2 gap-4 md:grid-cols-3">
-								<Metric label="Session" value={ledger.session} />
-								<Metric label="High-water" value={ledger.highWater} />
-								<Metric label="Occurrences" value={String(ledger.count)} />
-							</div>
-							{ledger.occurrences.length === 0 ? (
-								<div className="vc-empty">No occurrences recorded.</div>
-							) : (
-								<div className="max-h-64 overflow-y-auto">
-									<table className="w-full text-left text-xs">
-										<thead>
-											<tr className="border-b border-border/50 text-muted-foreground">
-												<th className="py-1 pr-2">seq</th>
-												<th className="py-1 pr-2">eventId</th>
-												<th className="py-1 pr-2">kind</th>
-												<th className="py-1 pr-2">toolCall</th>
-												<th className="py-1">digest</th>
-											</tr>
-										</thead>
-										<tbody>
-											{ledger.occurrences.map((o) => (
-												<tr
-													key={`${o.seq}-${o.eventId}`}
-													className="border-b border-border/30"
-												>
-													<td className="py-1 pr-2 font-mono">{o.seq}</td>
-													<td className="py-1 pr-2 font-mono">{o.eventId}</td>
-													<td className="py-1 pr-2">{o.kind}</td>
-													<td className="py-1 pr-2 font-mono">
-														{o.toolCallId ?? "\u2014"}
-													</td>
-													<td className="max-w-[180px] truncate font-mono text-muted-foreground">
-														{o.digest}
-													</td>
-												</tr>
-											))}
-										</tbody>
-									</table>
-								</div>
-							)}
-						</>
-					)}
-				</CardContent>
-			</Card>
+			<VectorCortexLedgerCard ledger={ledger} />
 		</div>
 	);
 }
