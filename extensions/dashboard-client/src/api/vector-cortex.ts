@@ -9,6 +9,7 @@ import type {
 	VectorCortexLedgerView,
 	VectorCortexQueryView,
 	VectorCortexResetResult,
+	VectorCortexShardsView,
 	VectorCortexTopologyView,
 } from "../types/vector-cortex";
 
@@ -18,6 +19,7 @@ export type {
 	VectorCortexLedgerView,
 	VectorCortexQueryView,
 	VectorCortexResetResult,
+	VectorCortexShardsView,
 	VectorCortexTopologyView,
 };
 
@@ -45,6 +47,13 @@ export async function fetchVectorCortexQuery(): Promise<VectorCortexQueryView> {
 	const r = await fetch("/api/vector-cortex/query");
 	if (!r.ok) throw new Error(`vector-cortex query: ${r.status}`);
 	return r.json() as Promise<VectorCortexQueryView>;
+}
+
+/** Reader-only dual-tier shard aggregate (VC4A). */
+export async function fetchVectorCortexShards(): Promise<VectorCortexShardsView> {
+	const r = await fetch("/api/vector-cortex/shards");
+	if (!r.ok) throw new Error(`vector-cortex shards: ${r.status}`);
+	return r.json() as Promise<VectorCortexShardsView>;
 }
 
 /** Reader-only occurrence-ledger identity view (VC1B). */

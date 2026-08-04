@@ -116,6 +116,19 @@ export interface VectorCortexQueryView {
 }
 
 /**
+ * Dual-tier shard aggregate (VC4A, GET /api/vector-cortex/shards).
+ * Reader-only count/byte aggregate — never shard payloads or verbatim bytes.
+ */
+export interface VectorCortexShardsView {
+  enabled: boolean;
+  semanticCount: number;
+  exactCount: number;
+  byteTotal: number;
+  protectedByteTotal: number;
+  updatedAt: string;
+}
+
+/**
  * Occurrence-ledger identity view (VC1B, GET /api/vector-cortex/ledger).
  * Reader-only: seq/eventId/kind/digest + high-water, never source payloads.
  */

@@ -35,7 +35,7 @@
 | VC1 | exact v2 ledger, compatibility journal, conformance | ✅ done (VC1A, VC1B, VC1C) |
 | VC2 | qualified learned A plus live B/C | ✅ done (VC2A, VC2B, VC2C — contract-level; real ONNX weights/backend deferred) |
 | VC3 | deterministic capability-gated topology | ✅ done (VC3A, VC3B, VC3C) |
-| VC4 | byte-faithful reconstruction and mandatory closure | planned |
+| VC4 | byte-faithful reconstruction and mandatory closure | 🟡 in progress (VC4A ✅, VC4B next) |
 | VC5 | validated DAG live rollout | planned |
 | VC6 | exact restoration and derived repair | planned |
 | VC7 | provider-honest range crystals and causal economics | planned |

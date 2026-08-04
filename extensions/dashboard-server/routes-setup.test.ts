@@ -37,6 +37,7 @@ async function withServer<T>(
 	fn: (port: number) => Promise<T>,
 ): Promise<T> {
 	process.env.MEGACOMPACT_DASHBOARD_PORT = port;
+	process.env.MEGACOMPACT_DASHBOARD_HOST = "127.0.0.1";
 	const child = spawn(process.execPath, [SERVER_ENTRY, dir], {
 		stdio: "ignore",
 	});
@@ -55,6 +56,7 @@ async function withServer<T>(
 	} finally {
 		child.kill("SIGTERM");
 		delete process.env.MEGACOMPACT_DASHBOARD_PORT;
+		delete process.env.MEGACOMPACT_DASHBOARD_HOST;
 		rmSync(dir, { recursive: true, force: true });
 	}
 }

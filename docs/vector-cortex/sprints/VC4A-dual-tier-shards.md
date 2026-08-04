@@ -1,6 +1,6 @@
 # VC4A — Dual-tier shard contract
 
-**Status:** next | **Depends on:** VC3C | **Phase:** VC4
+**Status:** done | **Depends on:** VC3C | **Phase:** VC4
 **Flag:** `MEGACOMPACT_VC4A`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC4A=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs
@@ -45,4 +45,4 @@ Rollback sets `MEGACOMPACT_VC4A=0`, selects C, restores the prior derived pointe
 
 ## Exit evidence
 
-Run exact project gates: `npm run build`, `node --test dist/vector-cortex/vc4a-acceptance.test.js`, `npm test`, `npm run lint`, `python3 scripts/regression_check.py --all`, `node scripts/guardrails-scan.mjs`, `python3 scripts/log_failure.py --list`, `node scripts/vector-cortex-conformance.mjs --check`, `node scripts/vector-cortex-docs-check.mjs`, and `git diff --check`. Sprints that add or alter any runtime path also run `node scripts/vector-cortex-network-denial.mjs --modes=A,B,C`; asset/Rust/dashboard gates additionally apply when named by this sprint. No permissive globs or warning-only scans count.
+Run exact project gates: `npm run build`, `node --test dist/vector-cortex/vc4a-acceptance.test.js`, `npm test`, `npm run lint`, `python3 scripts/regression_check.py --all`, `node scripts/guardrails-scan.mjs`, `python3 scripts/log_failure.py --list`, `node scripts/vector-cortex-conformance.mjs --check`, `node scripts/vector-cortex-docs-check.mjs`, and `git diff --check`. asset/Rust/dashboard gates additionally apply when named by this sprint. No permissive globs or warning-only scans count.

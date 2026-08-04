@@ -178,6 +178,30 @@ export interface VectorCortexQueryView {
 }
 
 /**
+ * Reader-only dual-tier shard aggregate for GET /api/vector-cortex/shards
+ * (VC4A). Purely an enabled-flag + COUNT/BYTE aggregate over the most recently
+ * built shard manifest — semantic shards, exact shards, and the protected span
+ * byte total. Reader-only: never exposes shard payloads, verbatim exact bytes,
+ * or prompt text. The shard tier is pure in-memory partition logic in this
+ * sprint (no durable manifest store), so when no partition has been staged the
+ * counts are zero. Non-fatal: a missing state dir degrades to `enabled:false`.
+ */
+export interface VectorCortexShardsView {
+  /** Whether the VC4A dual-tier shard flag is enabled in this process. */
+  readonly enabled: boolean;
+  /** Number of semantic shards in the most recent manifest. */
+  readonly semanticCount: number;
+  /** Number of exact shards in the most recent manifest. */
+  readonly exactCount: number;
+  /** Combined byte total across both tiers. */
+  readonly byteTotal: number;
+  /** Total protected-span bytes the exact tier must tile. */
+  readonly protectedByteTotal: number;
+  /** ISO timestamp of the snapshot. */
+  readonly updatedAt: string;
+}
+
+/**
  * Reader-only occurrence-ledger view for GET /api/vector-cortex/ledger (VC1B).
  * Built on the LedgerReader capability surface. Exposes occurrence IDENTITY
  * (seq/eventId/kind/digest/toolCallId) and the per-session high-water/count —

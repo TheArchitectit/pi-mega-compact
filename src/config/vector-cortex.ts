@@ -134,6 +134,19 @@ export const VC3B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC3B");
  */
 export const VC3C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC3C");
 
+/**
+ * VC4A — dual-tier shard contract (SemanticShardV1 / ExactShardV1 /
+ * ShardManifestV1).
+ * Default ON. `MEGACOMPACT_VC4A=0` disables and is byte-identical to the
+ * predecessor (mode C: exact anchors/current transcript only, no semantic or
+ * exact shard manifest is assembled or emitted, zero
+ * `vector_cortex_shard_manifest_built` / `vector_cortex_protected_span_rejected`
+ * emissions; the predecessor derived pointer and goldens are unchanged). The
+ * real consumers are the shard assembly seam (manifest.ts) and the reader-only
+ * dashboard shards aggregate view.
+ */
+export const VC4A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC4A");
+
 // ---------------------------------------------------------------------------
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker).
 // Rolled numbers for one 60s window; VC0C consumes these at its breaker seam.

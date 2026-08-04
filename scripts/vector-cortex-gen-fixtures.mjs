@@ -40,6 +40,8 @@ const {
   cortexNamedCount,
   topologyCount,
   topologyNamedCount,
+  shardCount,
+  shardNamedCount,
 } = writeAll();
 
 console.log(

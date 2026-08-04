@@ -13,12 +13,14 @@ import {
 	fetchVectorCortexHealth,
 	fetchVectorCortexLedger,
 	fetchVectorCortexQuery,
+	fetchVectorCortexShards,
 	fetchVectorCortexTopology,
 	resetVectorCortexBreaker,
 	type VectorCortexEvaluationSummary,
 	type VectorCortexHealthCard,
 	type VectorCortexLedgerView,
 	type VectorCortexQueryView,
+	type VectorCortexShardsView,
 	type VectorCortexTopologyView,
 } from "../api/vector-cortex";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -51,6 +53,7 @@ export default function VectorCortexTab(): React.ReactElement {
 	const [ledger, setLedger] = useState<VectorCortexLedgerView | null>(null);
 	const [topology, setTopology] = useState<VectorCortexTopologyView | null>(null);
 	const [query, setQuery] = useState<VectorCortexQueryView | null>(null);
+	const [shards, setShards] = useState<VectorCortexShardsView | null>(null);
 
 	const poll = useCallback(() => {
 		fetchVectorCortexEvaluation()
@@ -70,6 +73,9 @@ export default function VectorCortexTab(): React.ReactElement {
 		});
 		fetchVectorCortexQuery().then(setQuery).catch(() => {
 			/* query diagnostics card is best-effort (VC3C) */
+		});
+		fetchVectorCortexShards().then(setShards).catch(() => {
+			/* dual-tier shards card is best-effort (VC4A) */
 		});
 	}, []);
 
@@ -322,6 +328,35 @@ export default function VectorCortexTab(): React.ReactElement {
 						<div className="grid grid-cols-2 gap-4 md:grid-cols-3">
 							<Metric label="Router version" value={String(query.routerVersion)} />
 						</div>
+					)}
+				</CardContent>
+			</Card>
+			<Card>
+				<CardHeader>
+					<div className="flex items-center justify-between">
+						<CardTitle>Dual-Tier Shards (VC4A)</CardTitle>
+						{shards?.enabled ? (
+							<Badge variant="success">ACTIVE</Badge>
+						) : (
+							<Badge variant="danger">OFF</Badge>
+						)}
+				</div>
+				</CardHeader>
+				<CardContent>
+					{!shards?.enabled ? (
+						<div className="vc-empty">Dual-tier shards disabled (VC4A off).</div>
+					) : (
+						<>
+							<div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+								<Metric label="Semantic shards" value={String(shards.semanticCount)} />
+								<Metric label="Exact shards" value={String(shards.exactCount)} />
+								<Metric label="Byte total" value={String(shards.byteTotal)} />
+								<Metric label="Protected bytes" value={String(shards.protectedByteTotal)} />
+							</div>
+							<div className="mt-3 text-xs text-muted-foreground">
+								Reader-only count/byte aggregate; staged in-memory this sprint.
+							</div>
+						</>
 					)}
 				</CardContent>
 			</Card>

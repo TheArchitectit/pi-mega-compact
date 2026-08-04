@@ -25,6 +25,7 @@ import { createRequire } from "node:module";
 
 import { NEW_UI } from "../../src/config.js";
 import { log, setLogPath, setDashboardServerVersion } from "./state.js";
+import { detectTailscaleIP } from "./tailscale.js";
 import {
 	buildRouteContext,
 	handleIndex,
@@ -62,6 +63,7 @@ import {
 	handleVectorCortexLedger,
 	handleVectorCortexTopology,
 	handleVectorCortexQuery,
+	handleVectorCortexShards,
 	handleStatic,
 } from "./routes.js";
 
@@ -231,15 +233,31 @@ export async function launchDashboardServer(
 		detectCrossRepoDrift,
 	});
 
+	// Bind host resolution: explicit MEGACOMPACT_DASHBOARD_HOST override wins;
+	// otherwise auto-bind to the Tailscale interface (tailnet access); fall back
+	// to loopback when Tailscale is absent. 0.0.0.0 means "all interfaces" and
+	// opts into permissive CORS below.
+	const host =
+		process.env.MEGACOMPACT_DASHBOARD_HOST ??
+		detectTailscaleIP() ??
+		"127.0.0.1";
+	const allInterfaces = host === "0.0.0.0";
+
+	// guardrails-allow PREVENT-PI-004: optional, user-triggered /dashboard server (tailnet-local via Tailscale mesh or loopback); no remote outbound calls.
 	const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-		// guardrails-allow PREVENT-PI-004: optional, user-triggered /dashboard localhost server (loopback-only) — CORS restricted to same-origin localhost browsers.
-		// CORS for local access — restricted to loopback origins (the dashboard server only binds to localhost).
+		// CORS for local access — restricted to loopback/same-origin tailnet
+		// origins (the dashboard server binds to localhost or the tailscale IP).
+		// With MEGACOMPACT_DASHBOARD_HOST=0.0.0.0 the user opted into
+		// all-interfaces binding, so we allow any origin.
 		const origin = req.headers.origin;
-		if (
-			typeof origin === "string" &&
-			/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
-		) {
-			res.setHeader("Access-Control-Allow-Origin", origin);
+		const originAllowed =
+			allInterfaces ||
+			(typeof origin === "string" &&
+				new RegExp(
+					`^http://(localhost|127\\.0\\.0\\.1|::1|${host.replace(/\./g, "\\.")})(:\\d+)?$`,
+				).test(origin));
+		if (originAllowed) {
+			res.setHeader("Access-Control-Allow-Origin", origin ?? "*");
 			res.setHeader("Vary", "Origin");
 		}
 		res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
@@ -287,6 +305,7 @@ export async function launchDashboardServer(
 		if (handleVectorCortexLedger(req, res, ctx)) return;
 		if (handleVectorCortexTopology(req, res, ctx)) return;
 		if (handleVectorCortexQuery(req, res, ctx)) return;
+		if (handleVectorCortexShards(req, res, ctx)) return;
 		handleStatic(req, res, ctx);
 	});
 
@@ -310,20 +329,28 @@ export async function launchDashboardServer(
 				}
 			});
 
-			server.listen(port, "127.0.0.1", () => {
-				const url = `http://localhost:${port}`; // guardrails-allow PREVENT-PI-004: localhost dashboard URL (loopback-only)
-				log("server running", { url });
+			server.listen(port, host, () => {
+				// When bound to the loopback, keep the legacy localhost URL so the
+				// user's browser (which resolves localhost → ::1 or 127.0.0.1) works.
+				// When bound to a tailnet/tailscale IP, surface that address instead.
+				const url =
+					host === "127.0.0.1"
+						? `http://localhost:${port}`
+						: `http://${host}:${port}`; // guardrails-allow PREVENT-PI-004: dashboard URL (tailnet-local via Tailscale mesh or loopback)
+				log("server running", { url, host });
 				// eslint-disable-next-line no-console
 				console.log(`[mega-compact] dashboard server running: ${url}`);
 
-				// v0.8.2: also bind the IPv6 loopback (::1). On many systems `localhost`
-				// resolves to ::1 first (see /etc/hosts), so an IPv4-only bind makes the
-				// browser hit ::1:port and get connection refused. PREVENT-PI-004
-				// (loopback-only) means BOTH 127.0.0.1 and ::1. Non-fatal: IPv4-only
-				// hosts or a ::1 already in use just skip the mirror.
+				// v0.8.2: also bind the IPv6 loopback (::1) when bound to the IPv4
+				// loopback. On many systems `localhost` resolves to ::1 first (see
+				// /etc/hosts), so an IPv4-only bind makes the browser hit ::1:port and
+				// get connection refused. PREVENT-PI-004 (loopback-only) means BOTH
+				// 127.0.0.1 and ::1. When bound to a tailscale/0.0.0.0 host, we do NOT
+				// bind ::1 — the tailnet address is what the user reaches. Non-fatal:
+				// IPv4-only hosts or a ::1 already in use just skip the mirror.
 				let v6: ReturnType<typeof createServer> | undefined;
 				const v4Handler = server.listeners("request")[0];
-				if (v4Handler) {
+				if (host === "127.0.0.1" && v4Handler) {
 					v6 = createServer((r, s) =>
 						(v4Handler as (a: IncomingMessage, b: ServerResponse) => void).call(
 							server,
@@ -338,7 +365,7 @@ export async function launchDashboardServer(
 							message: e.message,
 						}),
 					);
-					v6.listen(port, "::1", () => log("ipv6 loopback bound", { port })); // guardrails-allow PREVENT-PI-004: IPv6 loopback (::1) mirror of the localhost dashboard server
+					v6.listen(port, "::1", () => log("ipv6 loopback bound", { port })); // guardrails-allow PREVENT-PI-004: IPv6 loopback (::1) mirror of the dashboard server
 				}
 
 				// Write port.pid

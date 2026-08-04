@@ -562,3 +562,71 @@ schemas["schemas/router-generation-migration.schema.json"] = {
     },
   },
 };
+
+schemas["schemas/shard-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC4A shard fixture envelope",
+  description:
+    "Common structure every VC4A shard fixture validates against. `input.scenario` names the semantic/exact partition or manifest-coverage condition the acceptance test executes against the REAL shard logic (partitionSemantic / partitionExact / validateShardManifest / assembleAndValidate); `expected` gives the exact verdict (ok) or failure code (SHD_CROSS_SESSION / SHD_INVALID_TARGET_SIZE / SHD_RANGE_OVERLAP / SHD_PROTECTED_GAP).",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["shard"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: { type: "string" },
+        shardCount: { type: "integer" },
+        eventCount: { type: "integer" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario"],
+      properties: {
+        scenario: { type: "string" },
+        sessionId: { type: "string" },
+        targetSize: { type: "integer" },
+        events: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["seq", "eventId", "role", "kind", "bytesBase64"],
+            properties: {
+              seq: { type: "integer" },
+              eventId: { type: "string" },
+              role: { type: "string", enum: ["policy", "user", "assistant", "tool"] },
+              kind: { type: "string" },
+              toolCallId: { type: "string" },
+              bytesBase64: { type: "string" },
+            },
+          },
+        },
+        protected: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["case", "seqs"],
+            properties: {
+              case: { type: "string", enum: ["tool-pair", "anchor", "invalid-utf8", "anchor+invalid"] },
+              seqs: { type: "array", items: { type: "integer" } },
+            },
+          },
+        },
+        manifest: {
+          type: "object",
+          properties: {
+            semantic: { type: "array", items: { type: "object" } },
+            exact: { type: "array", items: { type: "object" } },
+            protectedSpans: { type: "array", items: { type: "object" } },
+          },
+        },
+      },
+    },
+  },
+};
