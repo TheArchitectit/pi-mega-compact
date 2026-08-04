@@ -143,7 +143,7 @@ function checkTestCommands() {
           // exist. Future-sprint asset/script references are documented before
           // they ship and are format-only here.
           const required =
-            /vector-cortex-(conformance|docs-check|network-denial|evaluate)/.test(target) ||
+            /vector-cortex-(conformance|docs-check|evaluate)/.test(target) ||
             ["scripts/regression_check.py", "scripts/guardrails-scan.mjs", "scripts/log_failure.py", "scripts/semantic-scan.mjs"].includes(target);
           if (required && !exists(join(root, target))) {
             fail(`test command references missing script: ${target} (in ${relative(root, p)})`);

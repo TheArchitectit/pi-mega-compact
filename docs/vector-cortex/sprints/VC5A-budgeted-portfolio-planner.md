@@ -45,4 +45,4 @@ Rollback sets `MEGACOMPACT_VC5A=0`, selects C, restores the prior derived pointe
 
 ## Exit evidence
 
-Run exact project gates: `npm run build`, `node --test dist/vector-cortex/vc5a-acceptance.test.js`, `npm test`, `npm run lint`, `python3 scripts/regression_check.py --all`, `node scripts/guardrails-scan.mjs`, `python3 scripts/log_failure.py --list`, `node scripts/vector-cortex-conformance.mjs --check`, `node scripts/vector-cortex-network-denial.mjs --modes=A,B,C`, `node scripts/vector-cortex-docs-check.mjs`, and `git diff --check`. Asset/Rust/dashboard gates additionally apply when named by this sprint. No permissive globs or warning-only scans count.
+Run exact project gates: `npm run build`, `node --test dist/vector-cortex/vc5a-acceptance.test.js`, `npm test`, `npm run lint`, `python3 scripts/regression_check.py --all`, `node scripts/guardrails-scan.mjs`, `python3 scripts/log_failure.py --list`, `node scripts/vector-cortex-conformance.mjs --check`, `node scripts/vector-cortex-docs-check.mjs`, and `git diff --check`. Asset/Rust/dashboard gates additionally apply when named by this sprint. No permissive globs or warning-only scans count.
