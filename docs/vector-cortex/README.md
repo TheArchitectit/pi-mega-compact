@@ -1,6 +1,6 @@
 # Vector Cortex Implementation Package
 
-**Status:** planned; no sprint is complete without durable reviewer-accepted evidence.
+**Status:** in progress (VC0 ✅, VC1A/VC1B ✅, VC1C next); no sprint is complete without durable reviewer-accepted evidence.
 
 ## Read order
 
@@ -31,8 +31,8 @@
 
 | Phase | Exit | Status |
 | --- | --- | --- |
-| VC0 | measured replay and universal safety envelope | planned |
-| VC1 | exact v2 ledger, compatibility journal, conformance | planned |
+| VC0 | measured replay and universal safety envelope | ✅ done (VC0A, VC0B, VC0C) |
+| VC1 | exact v2 ledger, compatibility journal, conformance | 🟡 in progress (VC1A ✅, VC1B ✅, VC1C next) |
 | VC2 | qualified learned A plus live B/C | planned |
 | VC3 | deterministic capability-gated topology | planned |
 | VC4 | byte-faithful reconstruction and mandatory closure | planned |
