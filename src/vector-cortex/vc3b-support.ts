@@ -66,7 +66,15 @@ export function linearScan(input: TopologyInput): ReferenceGraph {
   }
   const selected: TopologyCandidate[] = [];
   for (const g of groups.values()) {
-    g.sort((x, y) => (x.score !== y.score ? (x.score > y.score ? -1 : 1) : x.target < y.target ? -1 : x.target > y.target ? 1 : 0));
+    g.sort((x, y) =>
+      x.score !== y.score ? (x.score > y.score ? -1 : 1) :
+      x.target < y.target ? -1 : x.target > y.target ? 1 :
+      // Equal score + target: break the tie by kind bytes so the within-group sort
+      // is a TOTAL order independent of input order (Q01) — mirrors build.ts's
+      // compareCandidates and keeps the A/B reference-faithfulness claim at the
+      // top-k boundary.
+      x.kind < y.kind ? -1 : x.kind > y.kind ? 1 : 0,
+    );
     for (let i = 0; i < Math.min(g.length, TOP_K); i++) selected.push(g[i]);
   }
   // Sort score DESCENDING first so dedup keeps the MAXIMUM score per collapsed

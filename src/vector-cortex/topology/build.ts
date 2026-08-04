@@ -32,6 +32,15 @@ import {
 } from "./types.js";
 
 /**
+ * Field (`|`) and record (`~`) separators used by the canonical digest framing in
+ * index.ts. Id values (source/target/head) carrying either byte would corrupt the
+ * framing and make distinct graphs collide on an identical digest, so the build
+ * rejects such candidates with TOP_FRAMING_SEP (Q04, mirrors the dashboard's
+ * parseCandidatePayload guard) — enforced at this pure seam, not only at one caller.
+ */
+const FRAMING_SEP = /[|~]/;
+
+/**
  * Build the deterministic topology graph from calibrated-threshold candidates.
  * Order-independent across any permutation of `input.candidates`.
  */
@@ -44,6 +53,18 @@ export function buildTopology(input: TopologyInput): TopologyBuildResult {
   const rejections: TopologyRejection[] = [];
 
   for (const c of input.candidates) {
+    // Q04 — framing hardening: the canonical digest serialization in index.ts uses
+    // `|` (FIELD_SEP) and `~` (RECORD_SEP) as unambiguous delimiters. Those are
+    // collision-free only while id values (source/target/head) contain neither
+    // byte; a content-derived id carrying either would make two distinct graphs
+    // hash to an identical digest. Enforce the no-separator-in-id constraint at
+    // this pure build seam (not only at the dashboard caller) by rejecting such a
+    // candidate in isolation with TOP_FRAMING_SEP — the digest stays well-defined
+    // for ANY input.
+    if (FRAMING_SEP.test(c.source) || FRAMING_SEP.test(c.target) || FRAMING_SEP.test(c.head)) {
+      rejections.push(reject(c, "TOP_FRAMING_SEP"));
+      continue;
+    }
     // Non-finite score: reject this candidate in isolation (never poison others).
     if (!Number.isFinite(c.score)) {
       rejections.push(reject(c, "TOP_SCORE_NONFINITE"));
@@ -154,7 +175,14 @@ function dirKey(a: string, b: string, head: string, direction: string): string {
 function compareCandidates(a: TopologyCandidate, b: TopologyCandidate): number {
   if (a.score !== b.score) return a.score > b.score ? -1 : 1;
   // Equal scores: sort by unsigned target-ID bytes ascending (TOP-TIE-002).
-  return unsignedBytesCompare(a.target, b.target);
+  const byTarget = unsignedBytesCompare(a.target, b.target);
+  if (byTarget !== 0) return byTarget;
+  // Equal score + target: break the tie by kind bytes so the within-group sort is
+  // a TOTAL order, independent of input order (Q01). Without this, two tied
+  // candidates of differing kind that land exactly at the top-k=16 boundary would
+  // fall back to JS stable order = candidate input order, flipping which edge
+  // survives and changing the graph digest. Mirrors compareSelected's `kind` key.
+  return unsignedBytesCompare(a.kind, b.kind);
 }
 
 /**

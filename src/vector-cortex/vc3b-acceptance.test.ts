@@ -38,7 +38,6 @@ import {
   graphDigest,
 } from "./topology/index.js";
 import type { TopologyEdgeV1 } from "./topology/index.js";
-import { VC3B_ENABLED } from "../config/vector-cortex.js";
 import { candidates, linearScan, type CandidateRow } from "./vc3b-support.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -548,21 +547,19 @@ describe("forced triad A/B/C", () => {
 // Flag-off parity
 
 describe("flag-off parity (MEGACOMPACT_VC3B=0)", () => {
-  test("the build seam itself is flag-independent; the flag gates the view/emit", () => {
+  test("the build seam is flag-independent; the flag gates the view/emit, not the graph", () => {
     // The deterministic builder keeps working when the VC3B flag is off (it is a
     // pure function); what the flag gates is whether the dashboard view exposes
-    // nodes/edges and whether the emit seam produces topology events. This test
-    // runs with the external env unmodified, so under `MEGACOMPACT_VC3B=0` the
-    // flag reads false and we still call the pure builder to prove byte-parity
-    // of the graph itself is unaffected by the flag.
-    const flag = VC3B_ENABLED();
+    // nodes/edges and whether the emit seam produces topology events (covered by
+    // the dashboard route test "GET topology omits node/edge shapes when VC3B is
+    // OFF"). This test verifies the build seam only: it runs with the external
+    // env unmodified (so its bytes are identical whether or not MEGACOMPACT_VC3B
+    // is set) and asserts the pure builder produces an identical, deterministic
+    // graph independent of the flag.
     const res = buildTopologyGraph({ ...BASE, candidates: candidates([["a", "b", "h1", 0.9, "dependency"]]) });
     assert.equal(res.ok, true);
     if (!res.ok) throw new Error("unreachable");
-    // The graph bytes (aside from the view gate) are identical under both flag
-    // states because buildTopologyGraph is deterministic regardless of the flag.
     assert.equal(res.topology.edgeCount, 1);
-    void flag;
   });
 });
 

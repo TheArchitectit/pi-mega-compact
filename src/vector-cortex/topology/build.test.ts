@@ -318,3 +318,57 @@ describe("TOP-MAX-004: collapsed duplicates keep the maximum score (Q01)", () =>
     }
   });
 });
+
+type Row = [string, string, string, number, "dependency" | "contradiction"];
+
+describe("TOP-K-005: top-k boundary kind tie-break is input-order independent (Q01)", () => {
+  test("tied dep/contra at the 16th slot keeps the same winner under any input order", () => {
+    // 15 clearly-above-threshold neighbors plus a TIED (t15, score 0.5) dep/contra
+    // pair. The pair ties on (score, target) within the (s, h1) group, so before
+    // the Q01 `kind` tie-break the top-k=16 cutoff resolved by JS stable order =
+    // input order, flipping which kind survives (dependency emits 1 edge,
+    // contradiction emits 2) and changing the digest. The fix breaks the tie by
+    // kind bytes ('contradiction' < 'dependency'), so the outcome is fixed.
+    const high: Row[] = [];
+    for (let i = 0; i < 15; i++) {
+      high.push(["s", `t${String(i).padStart(2, "0")}`, "h1", 0.6, "dependency"]);
+    }
+    const depRow: Row = ["s", "t15", "h1", 0.5, "dependency"];
+    const contraRow: Row = ["s", "t15", "h1", 0.5, "contradiction"];
+    const depFirst = [...high, depRow, contraRow];
+    const contraFirst = [...high, contraRow, depRow];
+    const r1 = buildTopologyGraph({ ...BASE, candidates: candidates(depFirst) });
+    const r2 = buildTopologyGraph({ ...BASE, candidates: candidates(contraFirst) });
+    assert.equal(r1.ok && r2.ok, true);
+    if (!r1.ok || !r2.ok) throw new Error("unreachable");
+    assert.equal(graphDigest(r1.topology), graphDigest(r2.topology), "digest ignores input order at the kind tie");
+    assert.equal(r1.topology.edgeCount, r2.topology.edgeCount, "edge count is input-order independent");
+    const k1 = r1.topology.edges.filter((e) => e.target === "t15").map((e) => e.direction);
+    const k2 = r2.topology.edges.filter((e) => e.target === "t15").map((e) => e.direction);
+    assert.deepEqual(k1, k2, "surviving tied edge's direction is deterministic");
+  });
+});
+
+describe("TOP-K-006: separator-bearing ids are rejected as TOP_FRAMING_SEP (Q04)", () => {
+  test("a candidate id containing | or ~ is rejected in isolation without poisoning others", () => {
+    const res = buildTopology({
+      ...BASE,
+      candidates: candidates([
+        ["a|b", "c", "h1", 0.9, "dependency"],
+        ["d", "e~f", "h1", 0.9, "dependency"],
+        ["a", "b", "h1", 0.9, "dependency"],
+      ]),
+    });
+    assert.equal(res.ok, true);
+    if (!res.ok) throw new Error("unreachable");
+    const codes = res.rejected.map((r) => r.code);
+    assert.equal(codes.filter((c) => c === "TOP_FRAMING_SEP").length, 2, "both separator ids rejected");
+    assert.equal(res.topology.edgeCount, 1, "clean candidate survives");
+    for (const n of res.topology.nodes) {
+      assert.equal(/[|~]/.test(n.id), false, `no separator in node id ${n.id}`);
+    }
+    for (const e of res.topology.edges) {
+      assert.equal(/[|~]/.test(e.source) || /[|~]/.test(e.target) || /[|~]/.test(e.head), false, "no separator in edge");
+    }
+  });
+});

@@ -88,7 +88,8 @@ export interface TopologyRejection {
 /** Failure codes for a rejected candidate edge. */
 export type TopologyRejectCode =
   | "TOP_SCORE_NONFINITE"
-  | "TOP_SELF_EDGE";
+  | "TOP_SELF_EDGE"
+  | "TOP_FRAMING_SEP";
 
 /** Result of a deterministic topology build (task 3). */
 export type TopologyBuildResult =
