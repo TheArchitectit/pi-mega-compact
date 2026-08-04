@@ -140,8 +140,10 @@ describe("breaker — recovery probes + healthy residence (TRI-PROBE-002)", () =
     b.execute<number>("s1", "p1", { A: failRun, B: okRun(1), C: okRun(2) }, alwaysTrue);
     assert.equal(b.snapshot("s1").state, "PROBE_A");
     const before = b.snapshot("s1").retryAttempt;
-    // A failed probe in PROBE_A returns to OPEN_B (B failure -> OPEN_C per forced
-    // mode? Here the probe runs mode B which fails -> OPEN_C).
+    // A failed probe in PROBE_A returns to its originating OPEN state (OPEN_B)
+    // and increments backoff (TRIAD_RESILIENCE: "any probe failure returns to
+    // its open state and increments backoff") — never promotes, never mis-trips
+    // to OPEN_C.
     b.execute<number>("s1", "bad", { A: failRun, B: failRun, C: okRun(2) }, alwaysTrue);
     const after = b.snapshot("s1");
     void before;

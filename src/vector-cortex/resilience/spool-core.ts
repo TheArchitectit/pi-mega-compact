@@ -35,6 +35,7 @@ import { createHash } from "node:crypto";
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, writeSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { SpoolDrainVerdict } from "./types.js";
+import type { ResilienceReporter } from "./emit.js";
 
 export const SPOOL_SCHEMA = "spool-v1";
 /** Sentinel eventId of an acknowledgement frame (carries the committed seq). */
@@ -77,6 +78,8 @@ export interface SpoolOptions {
   readonly dir: string;
   /** True while the authority (mode-A SQLite ledger) is in OUTAGE. */
   readonly authorityOutage?: () => boolean;
+  /** Optional reporter: emits `vector_cortex_frontier_frozen` on a real freeze. */
+  readonly reporter?: ResilienceReporter;
 }
 
 export interface SpoolAppendResult {
@@ -155,6 +158,7 @@ class SessionSpoolImpl implements SessionSpool {
   readonly session: string;
   private readonly file: string;
   private readonly outage: () => boolean;
+  private readonly reporter?: ResilienceReporter;
   private header: SpoolHeader;
   private frames: SpoolFrame[] = [];
   private ackedSeq: bigint;
@@ -164,6 +168,7 @@ class SessionSpoolImpl implements SessionSpool {
     this.file = file;
     this.session = session;
     this.outage = opts.authorityOutage ?? (() => false);
+    this.reporter = opts.reporter;
     mkdirSync(join(file, ".."), { recursive: true });
     if (existsSync(file)) {
       const parsed = this.readExisting();
@@ -297,7 +302,18 @@ class SessionSpoolImpl implements SessionSpool {
   }
 
   freezeFrontier(): bigint {
+    const firstFreeze = !this.frontierFrozen && !this.outage();
     this.frontierFrozen = true;
+    // Emit vector_cortex_frontier_frozen only on an actual freeze transition
+    // (once per outage; flag-gated + non-fatal inside the reporter). No event on
+    // an already-frozen or authority-outage-covered frontier. flag OFF => no-op.
+    if (firstFreeze) {
+      this.reporter?.frontierFrozen({
+        session: this.session,
+        committedSeq: String(this.ackedSeq),
+        frozenHighWater: String(this.ackedSeq),
+      });
+    }
     return this.ackedSeq;
   }
 }

@@ -345,23 +345,43 @@ export function createBreaker(opts: BreakerOptions = {}): ConcreteBreaker {
       }
 
       s.failures.push(at);
-      // Trip rules.
+      // Probe failure: return to the OPEN state it was probing FROM and increment
+      // backoff (TRIAD_RESILIENCE §transitions: "Any probe failure returns to its
+      // open state and increments backoff"). A probe failure is NOT a fresh trip —
+      // it re-enters the originating open state/cooldown and never serves output.
+      // This governs both PROBE_A (probing OPEN_B, mode B) and PROBE_B (probing
+      // OPEN_C, mode C); without it a PROBE_A failure would mis-trip to OPEN_C and
+      // a PROBE_B failure would short-circuit with no revert and no backoff bump.
+      if (s.state === "PROBE_A" || s.state === "PROBE_B") {
+        const from: "OPEN_B" | "OPEN_C" = s.state === "PROBE_A" ? "OPEN_B" : "OPEN_C";
+        openTo(s, subsystem, from, "performance", errorCode);
+        s.retryAttempt += 1;
+        return { ok: false, mode, code: errorCode, retryable: true, breaker: record(subsystem) };
+      }
+      // Trip rules for FRESH (non-probe) failures.
       if (mode === "C") {
         // C failures are continuity-level; they do not advance the breaker but
         // surface as retryable C failures (unchanged transcript).
         return { ok: false, mode, code: errorCode, retryable: true, breaker: record(subsystem) };
       }
       if (mode === "B") {
-        // B failure -> OPEN_C.
+        // Fresh B failure -> OPEN_C.
         openTo(s, subsystem, "OPEN_C", s.failures.length >= BREAKER_CORRECTNESS_FAILURES ? "correctness" : "performance", errorCode);
         s.retryAttempt += 1;
         return { ok: false, mode, code: errorCode, retryable: true, breaker: record(subsystem) };
       }
-      // mode === "A" failure: performance or correctness trip -> OPEN_B.
+      // mode === "A" failure: correctness (output validation failed) is
+      // ZERO-TOLERANCE and trips on its first occurrence regardless of attempt
+      // count (TRIAD_RESILIENCE: "correctness trip on first failure"). The
+      // 20-attempt minimum gates only the PERFORMANCE rate trip. A first, isolated
+      // failure is a performance-rate signal (rate 1.0), so it needs the window.
       const failureRate = s.failures.length / s.attempts.length;
       const perf = s.failures.length >= BREAKER_PERF_FAILURES || failureRate >= BREAKER_PERF_FAILURE_RATE;
-      const correctness = s.failures.length >= BREAKER_CORRECTNESS_FAILURES && failureRate < BREAKER_PERF_FAILURE_RATE;
-      if (s.attempts.length >= BREAKER_MIN_ATTEMPTS && (perf || correctness)) {
+      const correctness =
+        errorCode === "TRI_OUTPUT_INVALID" ||
+        (s.failures.length >= BREAKER_CORRECTNESS_FAILURES && failureRate < BREAKER_PERF_FAILURE_RATE);
+      const trips = correctness || (s.attempts.length >= BREAKER_MIN_ATTEMPTS && perf);
+      if (trips) {
         openTo(s, subsystem, "OPEN_B", correctness ? "correctness" : "performance", errorCode);
         s.retryAttempt += 1;
       }

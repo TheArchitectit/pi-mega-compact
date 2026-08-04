@@ -100,6 +100,9 @@ export function createVectorCortexSafety(
   const spool = createSpool({
     dir: join(ctx.stateDir, "spool"),
     authorityOutage: ctx.authorityOutage,
+    // Wire the resilience emit seam (incl. vector_cortex_frontier_frozen) into
+    // the mode-B spool so a real authority-frontier freeze is observable.
+    reporter,
   });
 
   return {
