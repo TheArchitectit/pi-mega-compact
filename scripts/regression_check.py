@@ -789,6 +789,30 @@ Examples:
     parser.add_argument(
         "--quiet", "-q", action="store_true", help="Only output on issues found"
     )
+    parser.add_argument(
+        "--soft-as-hard",
+        action="store_true",
+        help=(
+            "Promote soft-limit file-size warnings to BLOCKING, but only for files "
+            "changed since a base ref (see --soft-as-hard-base, default the working "
+            "tree: staged+unstaged). Forces headroom: an agent that grows a src/ "
+            "file past 300 or an extensions/ file past 400 must split it "
+            "(delegate-shell) rather than squeeze it toward the 500 hard limit. "
+            "Pre-existing violators NOT touched by the current change are unaffected "
+            "(tech debt, tracked separately)."
+        ),
+    )
+    parser.add_argument(
+        "--soft-as-hard-base",
+        default=None,
+        help=(
+            "Base git ref for --soft-as-hard. Files changed since this ref "
+            "(git diff <base>...HEAD, plus working-tree edits) are subject to the "
+            "headroom gate. For deploy.sh use the prior release tag "
+            "(e.g. v0.20.5). If unset, defaults to the working-tree diff "
+            "(staged+unstaged) — correct for pre-commit (uncommitted agent work)."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -814,6 +838,38 @@ Examples:
         size_issues = check_file_sizes(Path.cwd())
         size_hard_count = sum(1 for i in size_issues if i["kind"] == "hard")
 
+    # Soft-as-hard: promote soft-limit violations to BLOCKING, but ONLY for
+    # files changed in the working tree. This is the headroom gate — it stops an
+    # agent from squeezing a src/ file toward the 500 hard ceiling (or a test
+    # toward 600) by forcing a split at the soft limit (300 src / 400 ext) when
+    # the file is being grown. Pre-existing violators the current change did not
+    # touch stay as non-blocking warnings (tech debt). Intersected with the
+    # changed-file set so this never retroactively blocks on historical files.
+    soft_as_hard_count = 0
+    soft_as_hard_files: list[dict] = []
+    if args.soft_as_hard and not args.no_file_sizes:
+        if args.soft_as_hard_base:
+            # Release-gate mode: files changed since the base ref (committed),
+            # plus any working-tree edits. git diff <base>...HEAD gives the
+            # committed-since-base set; add staged+unstaged for in-flight edits.
+            rc, stdout, _ = run_git_command(
+                ["diff", "--name-only", f"{args.soft_as_hard_base}...HEAD"]
+            )
+            changed: set[str] = set()
+            if rc == 0 and stdout.strip():
+                changed.update(stdout.strip().split("\n"))
+            changed.update(get_changed_files(staged=True, unstaged=True))
+        else:
+            # Pre-commit mode: only uncommitted working-tree edits.
+            changed = set(get_changed_files(staged=True, unstaged=True))
+        for issue in size_issues:
+            if issue["kind"] != "soft":
+                continue
+            rel = issue["file"]
+            if rel in changed or rel.replace("/", os.sep) in changed:
+                soft_as_hard_count += 1
+                soft_as_hard_files.append(issue)
+
     # Settings coverage check (always on unless --no-settings).
     settings_issues: list[dict] = []
     settings_count = 0
@@ -838,6 +894,7 @@ Examples:
                 {
                     "issue_count": count,
                     "size_violations_hard": size_hard_count,
+                    "soft_as_hard_blocked": soft_as_hard_count,
                     "settings_missing": settings_count,
                     "npm_audit_blocking": audit_blocking,
                     "npm_audit_warnings": audit_warnings,
@@ -873,12 +930,32 @@ Examples:
             not args.quiet or audit_blocking > 0 or not audit_issues
         ):
             print_npm_audit_report(audit_blocking, audit_warnings, audit_issues)
+        if args.soft_as_hard and soft_as_hard_count > 0:
+            print("\n" + "=" * 70)
+            print(
+                "SOFT-AS-HARD HEADROOM GATE (--soft-as-hard)"
+            )
+            print("=" * 70)
+            print(
+                "  These changed files exceeded the SOFT limit — split them (delegate-shell"
+            )
+            print("  + impl) rather than squeezing toward the hard limit:")
+            for issue in soft_as_hard_files:
+                print(
+                    f"    {issue['file']}  ({issue['lines']} lines, soft {issue['soft']})"
+                )
+            print("=" * 70)
 
     # Exit code: pre-commit fails on ANY failure-registry issue, file over
-    # hard size limit, missing settings coverage, OR a runtime HIGH/CRITICAL
+    # hard size limit, soft-limit headroom violation on a changed file
+    # (--soft-as-hard), missing settings coverage, OR a runtime HIGH/CRITICAL
     # npm vulnerability.
     if args.pre_commit and (
-        count > 0 or size_hard_count > 0 or settings_count > 0 or audit_blocking > 0
+        count > 0
+        or size_hard_count > 0
+        or soft_as_hard_count > 0
+        or settings_count > 0
+        or audit_blocking > 0
     ):
         sys.exit(1)
     sys.exit(0)

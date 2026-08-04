@@ -106,7 +106,20 @@ echo "[deploy] running gate: build + test + lint + regression (incl. npm audit) 
 npm run build
 npm test
 npm run lint
-python3 scripts/regression_check.py --all
+# --all runs the full-tree scan (hard-limit + npm audit + settings + failure
+# registry). --soft-as-hard --pre-commit promotes soft-limit violations on
+# files CHANGED since the prior release tag to blocking: an agent (or this
+# release's commits) cannot squeeze a src/ file past 300 (ext past 400) toward
+# the 500 hard limit — it must split (delegate-shell + impl). The --soft-as-hard-base
+# is the previous release tag, so only THIS release's grown files are gated;
+# pre-existing violators stay non-blocking (tech debt, tracked separately).
+PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
+if [ -n "$PREV_TAG" ]; then
+	python3 scripts/regression_check.py --all --soft-as-hard --soft-as-hard-base "$PREV_TAG" --pre-commit
+else
+	# First release (no prior tag): headroom gate over the working-tree diff.
+	python3 scripts/regression_check.py --all --soft-as-hard --pre-commit
+fi
 node scripts/guardrails-scan.mjs
 echo "[deploy] gate green."
 

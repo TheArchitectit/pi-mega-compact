@@ -74,8 +74,8 @@ Additional guardrails (from template): PREVENT-001 (JSON.parse without null chec
 
 Quick reference:
 
-* **File limits**: `src/` 300 soft / 500 hard; `extensions/` 400 soft / 500 hard; `tests/` 600 hard.
-* **Splitting pattern**: delegate-shell + impl file + context interface. Shell is 1–3 lines per method.
+* **File limits**: `src/` 300 soft / 500 hard; `extensions/` 400 soft / 500 hard; `tests/` 600 hard. **The soft limit is the split trigger, not a warning to ignore.** `scripts/regression_check.py --soft-as-hard --pre-commit` (wired into `scripts/deploy.sh` against the prior release tag) **BLOCKS** any changed file that crosses its soft limit — do NOT squeeze comments/code to fit; extract a delegate-shell sibling file instead. Growing a file toward the hard limit is a gate failure.
+* **Splitting pattern**: delegate-shell + impl file + context interface. Shell is 1–3 lines per method. When a file approaches its **soft** limit (300 `src/` / 400 `extensions/`), split BEFORE adding more — extract a sibling (`Foo.ts` → `FooBar.ts` + shell re-export), mirroring `VectorCortexTab.tsx` → `VectorCortex*Card.tsx` and `vectorStore.ts` → `vector-read.ts`/`vector-search.ts`.
 * **Contract-first**: `types.ts` (the interface) ships before any implementation. Hosts import only types + factory.
 * **Capability gating**: `store.asReader()` / `asWriter()` / `asAdmin()`. Each consumer gets only what it needs.
 * **Append-only provenance**: turns/recall/forks are appended, never mutated. `UPDATE` is forbidden in `src/store/turns/`.
