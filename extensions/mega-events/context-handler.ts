@@ -35,6 +35,7 @@ import {
 	type MegaConfig,
 } from "../mega-config.js";
 import { appendMirrorMessages } from "./mirror-append.js";
+import { appendMessagesToLedger } from "../mega-runtime/vector-cortex-ledger.js";
 import { epochIdFor } from "../../src/mirror/epoch.js";
 import { computeLiveTrimCut, liveTrimSummaryMessage } from "../mega-trim.js";
 import { messageContentText } from "./context-handler/messageText.js";
@@ -147,6 +148,14 @@ export function registerContextHandler(
 			} catch (e) {
 				runtime.logger.warn("db-mirror-append-fail", { error: String(e) });
 			}
+		}
+
+		// VC1B (S1): canonical messages -> v2 ledger occurrences. Flag-OFF opens
+		// no DB (byte-identical predecessor); non-fatal.
+		try {
+			appendMessagesToLedger(runtime.currentStateDir, runtime.rt.sessionId, messages);
+		} catch (e) {
+			runtime.logger.warn("vc1b-ledger-append-fail", { error: String(e) });
 		}
 
 		// S52 / v0.16.1: per-model threshold override. The user can tune the

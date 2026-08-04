@@ -160,6 +160,7 @@ import {
   appendOccurrence,
   advanceLedgerHighWater,
   ledgerHighWater,
+  ledgerDigest,
   readSessionOccurrences,
   readFromSeq,
   countOccurrences,
@@ -250,6 +251,10 @@ export function createLedgerStore(
     kind: "LedgerWriter",
     [_capability]: "writer" as const,
     append(input) {
+      // S2: flag OFF => the entire write path is inert. Accept the call and
+      // synthesize a NON-persisted accepted occurrence so callers keep working,
+      // but write nothing and emit nothing (byte-identical predecessor).
+      if (!VC1B_ENABLED()) return syntheticAppend(input);
       // The occurrence insert and its compat-journal record commit atomically
       // inside one nested savepoint (CONTRACTS §Store: atomically appends).
       db.exec("SAVEPOINT mc_ledger_app");
@@ -286,7 +291,10 @@ export function createLedgerStore(
       for (const input of inputs) out.push(this.append(input));
       return out;
     },
-    advanceHighWater: (session, seq) => advanceLedgerHighWater(db, session, seq),
+    // S2: flag OFF => high-water advance is a no-op (returns the caller's seq
+    // unpersisted), keeping the write path byte-identical to the predecessor.
+    advanceHighWater: (session, seq) =>
+      VC1B_ENABLED() ? advanceLedgerHighWater(db, session, seq) : seq,
   });
 
   const asAdmin = (): LedgerAdmin & AdminToken => ({
@@ -317,6 +325,35 @@ export function createLedgerStore(
   });
 
   return { reader: asReader, writer: asWriter, admin: asAdmin, close: () => db.close() };
+}
+
+/**
+ * S2 flag-off writer result: a synthesized occurrence that mirrors the input
+ * (computing the digest if omitted) but is NEVER persisted or emitted. Lets the
+ * ingestion path keep working unchanged when MEGACOMPACT_VC1B=0, matching the
+ * byte-identical-predecessor requirement (flag OFF == no ledger at all).
+ */
+function syntheticAppend(input: {
+  readonly session: string;
+  readonly seq: bigint;
+  readonly eventId: string;
+  readonly kind: string;
+  readonly toolCallId?: string;
+  readonly sourceBytes: Uint8Array;
+  readonly digest?: string;
+}): LedgerAppendResult {
+  return {
+    ok: true,
+    occurrence: {
+      session: input.session,
+      seq: input.seq,
+      eventId: input.eventId,
+      kind: input.kind,
+      toolCallId: input.toolCallId,
+      digest: input.digest ?? ledgerDigest(input.sourceBytes),
+      sourceBytes: input.sourceBytes,
+    },
+  };
 }
 
 /**

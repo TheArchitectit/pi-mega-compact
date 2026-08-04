@@ -559,24 +559,28 @@ describe("VC1B emit seam (flag-gated observability)", () => {
       : (process.env[flagEnvKey] = savedFlag),
   );
 
-  test("flag ON emits occurrence_appended; flag OFF emits zero", () => {
+  test("flag ON writes + emits; flag OFF writes nothing and emits nothing", () => {
     const emitted: Array<{ event: string; fields: Record<string, unknown> }> = [];
     process.env[flagEnvKey] = "1";
     withStore((store) => {
-      store.writer().append({
+      const res = store.writer().append({
         session: "emit", seq: 1n, eventId: "u1", kind: "user",
         sourceBytes: new TextEncoder().encode("hello"),
       });
+      assert.equal(res.ok, true);
+      assert.equal(store.reader().count("emit"), 1, "flag ON persists the row");
       assert.ok(emitted.some((e) => e.event === "vector_cortex_occurrence_appended"));
-    }, (ev, fields) => emitted.push({ event: ev, fields }));
-    emitted.length = 0;
-    process.env[flagEnvKey] = "0";
-    withStore((store) => {
-      store.writer().append({
+      // S2: flag OFF => the whole write path is inert — the writer accepts the
+      // call (ok:true) but persists NOTHING and emits NOTHING.
+      process.env[flagEnvKey] = "0";
+      emitted.length = 0;
+      const off = store.writer().append({
         session: "emit", seq: 2n, eventId: "u2", kind: "user",
         sourceBytes: new TextEncoder().encode("world"),
       });
-      assert.equal(emitted.length, 0);
+      assert.equal(off.ok, true, "flag-OFF append is accepted (no-op)");
+      assert.equal(store.reader().count("emit"), 1, "flag OFF wrote nothing (count unchanged)");
+      assert.equal(emitted.length, 0, "flag OFF emitted nothing");
     }, (ev, fields) => emitted.push({ event: ev, fields }));
   });
 
