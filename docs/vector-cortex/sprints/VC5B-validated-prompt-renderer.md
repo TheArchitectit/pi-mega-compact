@@ -1,6 +1,6 @@
 # VC5B — Validated renderer and provider profiles
 
-**Status:** planned | **Depends on:** VC5A | **Phase:** VC5
+**Status:** next | **Depends on:** VC5A | **Phase:** VC5
 **Flag:** `MEGACOMPACT_VC5B`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC5B=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs
