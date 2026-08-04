@@ -1,6 +1,6 @@
 # VC3B — Deterministic cortical topology
 
-**Status:** next | **Depends on:** VC3A | **Phase:** VC3
+**Status:** done | **Depends on:** VC3A | **Phase:** VC3
 **Flag:** `MEGACOMPACT_VC3B`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC3B=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs
