@@ -80,6 +80,16 @@ export function buildTopology(input: TopologyInput): TopologyBuildResult {
   // which identical directed edge is kept) is deterministic and INDEPENDENT of
   // the incoming candidate order. Without this, reversing the input order could
   // flip which head represents a symmetric pair and change the digest.
+  //
+  // The comparator sorts by SCORE DESCENDING FIRST, so first-writer-wins dedup
+  // keeps the MAXIMUM score per collapsed relation. Two candidates emitting the
+  // same directed edge (same source,target,head) with different scores keep the
+  // higher one; a contradiction pair a↔b with different scores is claimed by the
+  // higher-scoring candidate regardless of which end is "source". A downstream
+  // consumer (VC3C receives TopologyV1) therefore gets the strongest score for a
+  // collapsed relation, never the weakest, and the winner is decided by score —
+  // not by source-ID byte order. (Score ties fall through to bytewise keys so
+  // the total order stays deterministic.)
   selected.sort(compareSelected);
   const edges: Map<string, TopologyEdgeV1> = new Map();
   const nodes = new Map<string, TopologyNodeKind>();
@@ -152,14 +162,20 @@ function compareCandidates(a: TopologyCandidate, b: TopologyCandidate): number {
  * encoding. Independent of the incoming input order so a collapsed contradiction
  * pair always picks the same representing head and identical directed edges keep
  * the same winner.
+ *
+ * SCORE DESCENDING IS THE PRIMARY KEY: first-writer-wins dedup on this order
+ * retains the highest score for every collapsed relation (Q01). Only after
+ * scores are equal do we fall through to bytewise source/target/head/kind keys,
+ * which keeps a sound deterministic tie-break (a score tie collapses to the
+ * same representing head regardless of input order).
  */
 function compareSelected(a: TopologyCandidate, b: TopologyCandidate): number {
   return (
+    (a.score < b.score ? 1 : a.score > b.score ? -1 : 0) ||
     unsignedBytesCompare(a.source, b.source) ||
     unsignedBytesCompare(a.target, b.target) ||
     unsignedBytesCompare(a.head, b.head) ||
-    unsignedBytesCompare(a.kind, b.kind) ||
-    (a.score < b.score ? -1 : a.score > b.score ? 1 : 0)
+    unsignedBytesCompare(a.kind, b.kind)
   );
 }
 
@@ -189,9 +205,14 @@ function unsignedBytesCompare(a: string, b: string): number {
   return ba.length < bb.length ? -1 : ba.length > bb.length ? 1 : 0;
 }
 
-/** Node kind for a retained edge: contradiction edges mark both ends. */
+/**
+ * Node kind for a retained edge: a node is marked by the record kind it is
+ * derived from. A contradiction candidate marks both endpoints "contradiction";
+ * a dependency candidate marks both endpoints "dependency" (Q02) — the node
+ * kind matches the producing record kind, never a synthetic placeholder.
+ */
 function nodeKind(c: TopologyCandidate): TopologyNodeKind {
-  return c.kind === "contradiction" ? "contradiction" : "semantic";
+  return c.kind === "contradiction" ? "contradiction" : "dependency";
 }
 
 type TopologyNodeKind = "semantic" | "dependency" | "contradiction" | "synthetic";

@@ -127,6 +127,17 @@ export function handleVectorCortexTopology(
  * events (`vector_cortex_topology_built` / `vector_cortex_topology_edge_rejected`)
  * fire on this production path — not just under unit tests. Best-effort and
  * non-fatal: a failing emitter never breaks the agent loop.
+ *
+ * Q04 — DIVERGENCE RISK (documented, currently latent): the build is invoked
+ * with a hardcoded `threshold: 0` (plus `sessionId: "dashboard"` and
+ * `sourceHighWater: 0n`). This reflects the VC3B state where no production
+ * writer emits calibrated-threshold candidates yet, so retaining ALL stored
+ * "topology" records is correct for now. Once a real calibrated-threshold
+ * producer lands (VC3C), this dashboard digest will NOT derive from the
+ * authoritative threshold and can diverge from the canonical build for the same
+ * stored candidate set. The calibrated threshold must then be threaded through
+ * (e.g. sourced from the authority/config, not zero) before this route is treated
+ * as authoritative. Until then the route is explicitly best-effort display only.
  */
 function buildFromRecords(records: readonly CortexRecordV1[]): {
   nodes: { id: string; kind: string }[];

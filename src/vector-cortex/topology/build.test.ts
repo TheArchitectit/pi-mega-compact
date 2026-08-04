@@ -266,3 +266,55 @@ describe("graphDigest determinism over format", () => {
     assert.match(graphDigest(res1.topology), /^sha256:[0-9a-f]{64}$/);
   });
 });
+
+describe("TOP-MAX-004: collapsed duplicates keep the maximum score (Q01)", () => {
+  test("duplicate directed edge with different scores keeps the higher one", () => {
+    const res = buildTopology({
+      ...BASE,
+      candidates: candidates([
+        ["a", "b", "h1", 0.5, "dependency"],
+        ["a", "b", "h1", 0.9, "dependency"],
+      ]),
+    });
+    assert.equal(res.ok, true);
+    if (!res.ok) throw new Error("unreachable");
+    assert.equal(res.topology.edgeCount, 1, "duplicate directed edge collapses to one");
+    assert.equal(res.topology.edges[0].score, 0.9, "higher score wins, not lower");
+  });
+
+  test("contradiction a↔b with different scores keeps the higher score, not byte order", () => {
+    // Scores differ (0.5 vs 0.9); the higher-score record must claim the pair
+    // regardless of which end is "source" (byte order would otherwise pick 0.5).
+    const res = buildTopology({
+      ...BASE,
+      candidates: candidates([
+        ["b", "a", "h2", 0.9, "contradiction"],
+        ["a", "b", "h1", 0.5, "contradiction"],
+      ]),
+    });
+    assert.equal(res.ok, true);
+    if (!res.ok) throw new Error("unreachable");
+    assert.equal(res.topology.edgeCount, 2, "one symmetric direction pair");
+    for (const e of res.topology.edges) {
+      assert.equal(e.score, 0.9, "higher-score score retained on both records");
+    }
+  });
+
+  test("a score duplicate survives any input permutation (deterministic digest)", () => {
+    const rows: Array<[string, string, string, number, "dependency" | "contradiction"]> = [
+      ["a", "b", "h1", 0.5, "dependency"],
+      ["a", "b", "h1", 0.9, "dependency"],
+      ["c", "d", "h2", 0.4, "contradiction"],
+      ["d", "c", "h2", 0.8, "contradiction"],
+    ];
+    const r1 = buildTopologyGraph({ ...BASE, candidates: candidates(rows) });
+    const r2 = buildTopologyGraph({ ...BASE, candidates: candidates([...rows].reverse()) });
+    assert.equal(r1.ok && r2.ok, true);
+    if (!r1.ok || !r2.ok) throw new Error("unreachable");
+    assert.equal(graphDigest(r1.topology), graphDigest(r2.topology), "digest ignores input order");
+    for (const e of r1.topology.edges) {
+      assert.notEqual(e.source, e.target, "no self edge");
+      assert.ok(Number.isFinite(e.score), "no non-finite score");
+    }
+  });
+});

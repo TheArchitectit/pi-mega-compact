@@ -17,7 +17,15 @@
  * conformance IDs (TOP-001..020 + named TOP-K/TIE/KIND) live here.
  */
 
-/** A graph node — identity plus the record kind it is derived from. */
+/**
+ * A graph node — identity plus the record kind it is derived from. The build
+ * produces `"dependency"` (a dependency candidate's endpoint) and
+ * `"contradiction"` (a contradiction candidate's endpoint); `"synthetic"` is
+ * reserved for future record kinds that may be surfaced as nodes (it is not
+ * produced by the current build, but matches the CortexRecordV1 kind set).
+ * Every emitted node kind is one the node was actually derived from — a node is
+ * never labelled with a kind its producing record did not carry (Q02).
+ */
 export interface TopologyNodeV1 {
   readonly id: string;
   readonly kind:

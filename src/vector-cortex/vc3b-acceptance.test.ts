@@ -12,12 +12,15 @@
  *  - Acceptance: byte-identical graph over 1,000 runs; no self-edge/NaN;
  *    recall >= .95 (eligibility recall = recorded eligible edges recovered).
  *  - Forced triad A/B/C: A = multi-head topology index (build); B = linear
- *    VectorSet scan with same thresholds; C = source-seq/keyword traversal with
- *    vector data unavailable (empty graph). A and B agree on the digest for the
- *    same eligible set; C reports the no-data degradation.
+ *    VectorSet scan (vc3b-support.ts) with same thresholds; C = source-seq/keyword
+ *    traversal with vector data unavailable (empty graph). A and B agree on the
+ *    digest for the same eligible set; C reports the no-data degradation.
  *  - Flag-off parity: MEGACOMPACT_VC3B=0 gates the topology node/edge view and
  *    the build seam, byte-identical to the VC3A predecessor.
- * Real logic + fixtures, no mocks (no-mock-data/no-stubs memory).
+ * The mode-B linear scan and shared helper producers live in vc3b-support.ts
+ * (delegate-shell sibling) so this aggregator keeps its headroom below the hard
+ * line limit (Q03). Real logic + fixtures, no mocks (no-mock-data/no-stubs
+ * memory).
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
@@ -32,8 +35,9 @@ import {
   buildTopologyGraph,
   graphDigest,
 } from "./topology/index.js";
-import type { TopologyCandidate, TopologyEdgeV1, TopologyInput } from "./topology/index.js";
+import type { TopologyEdgeV1 } from "./topology/index.js";
 import { VC3B_ENABLED } from "../config/vector-cortex.js";
+import { candidates, linearScan, type CandidateRow } from "./vc3b-support.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 function repoRoot(from: string): string {
@@ -75,16 +79,6 @@ function fixture(id: string): TopologyFixture {
   assert.ok(row, `fixture ${id} registered in manifest`);
   assert.equal(row.algorithm, "topology", `${id} is a topology fixture`);
   return JSON.parse(readFileSync(join(V2, row.path), "utf8")) as TopologyFixture;
-}
-
-function candidates(rows: Array<[string, string, string, number, "dependency" | "contradiction"]>): TopologyCandidate[] {
-  return rows.map(([source, target, head, score, kind]) => ({
-    source,
-    target,
-    head,
-    score,
-    kind,
-  }));
 }
 
 const BASE = { sessionId: "acc", sourceHighWater: 7n, threshold: 0.3 };
@@ -148,7 +142,7 @@ describe("TOP-001..020 conformance rows", () => {
   test("TOP-003 cap-seventeenth: 17th eligible neighbor excluded", () => {
     const fx = fixture("TOP-003");
     assert.equal(fx.expected.ok, true, "manifest pins ok");
-    const rows: Array<[string, string, string, number, "dependency" | "contradiction"]> = [];
+    const rows: CandidateRow[] = [];
     for (let i = 0; i < 18; i++) {
       rows.push(["s", `t${String(i).padStart(2, "0")}`, "h1", 1.0, "dependency"]);
     }
@@ -221,7 +215,7 @@ describe("TOP-001..020 conformance rows", () => {
   test("TOP-009 digest-order-independent across shuffled inputs", () => {
     const fx = fixture("TOP-009");
     assert.equal(fx.expected.ok, true, "manifest pins ok");
-    const rows: Array<[string, string, string, number, "dependency" | "contradiction"]> = [
+    const rows: CandidateRow[] = [
       ["a", "b", "h1", 0.9, "dependency"],
       ["b", "c", "h2", 0.8, "contradiction"],
       ["c", "d", "h1", 0.7, "dependency"],
@@ -331,7 +325,7 @@ describe("TOP-001..020 conformance rows", () => {
     const fx = fixture("TOP-018");
     assert.equal(fx.expected.ok, true, "manifest pins ok");
     assert.equal(fx.input.scenario, "large-cap", "scenario matches manifest");
-    const rows: Array<[string, string, string, number, "dependency" | "contradiction"]> = [];
+    const rows: CandidateRow[] = [];
     for (let i = 0; i < 40; i++) {
       const t = `t${String(i).padStart(2, "0")}`;
       rows.push(["s", t, "h1", 1.0 - i / 400, "dependency"]);
@@ -359,7 +353,7 @@ describe("TOP-001..020 conformance rows", () => {
   test("TOP-019 digest-stable-1000: digest identical across 1,000 builds", () => {
     const fx = fixture("TOP-019");
     assert.equal(fx.expected.ok, true, "manifest pins ok");
-    const rows: Array<[string, string, string, number, "dependency" | "contradiction"]> = [
+    const rows: CandidateRow[] = [
       ["a", "b", "h1", 0.9, "dependency"],
       ["b", "c", "h2", 0.8, "contradiction"],
       ["c", "a", "h1", 0.7, "dependency"],
@@ -390,7 +384,7 @@ describe("TOP-K-001 / TOP-TIE-002 / TOP-KIND-003 (named)", () => {
     withFlagsOn(() => {
       const fx = fixture("TOP-K-001");
       assert.equal(fx.expected.ok, true, "manifest pins ok");
-      const rows: Array<[string, string, string, number, "dependency" | "contradiction"]> = [];
+      const rows: CandidateRow[] = [];
       for (let i = 0; i < 18; i++) {
         rows.push(["s", `t${String(i).padStart(2, "0")}`, "h1", 1.0, "dependency"]);
       }
@@ -438,7 +432,7 @@ describe("TOP-K-001 / TOP-TIE-002 / TOP-KIND-003 (named)", () => {
 
 describe("VC3B acceptance invariants", () => {
   test("byte-identical graph across 1,000 runs for a representative set", () => {
-    const rows: Array<[string, string, string, number, "dependency" | "contradiction"]> = [];
+    const rows: CandidateRow[] = [];
     const heads = ["h1", "h2", "h3"];
     for (let h = 0; h < heads.length; h++) {
       for (let i = 0; i < 14; i++) {
@@ -459,7 +453,7 @@ describe("VC3B acceptance invariants", () => {
   test("recall >= .95: eligible (above-threshold) edges are recovered", () => {
     // reference B scan recovers the eligible set per (source,head) without cap
     // (each group here has <=16 eligible neighbors so the cap never drops any).
-    const rows: Array<[string, string, string, number, "dependency" | "contradiction"]> = [];
+    const rows: CandidateRow[] = [];
     for (let i = 0; i < 12; i++) {
       rows.push(["sA", `t${String(i).padStart(2, "0")}`, "h1", 0.4 + i * 0.02, "dependency"]);
     }
@@ -476,7 +470,7 @@ describe("VC3B acceptance invariants", () => {
 // Forced triad A/B/C
 
 describe("forced triad A/B/C", () => {
-  const TRIAD: Array<[string, string, string, number, "dependency" | "contradiction"]> = [
+  const TRIAD: CandidateRow[] = [
     ["a", "b", "h1", 0.9, "dependency"],
     ["b", "c", "h2", 0.8, "contradiction"],
     ["c", "d", "h1", 0.7, "dependency"],
@@ -488,7 +482,7 @@ describe("forced triad A/B/C", () => {
     assert.equal(a.ok, true);
     if (!a.ok) throw new Error("unreachable");
     const b = linearScan({ ...BASE, candidates: candidates(TRIAD) });
-    assert.equal(graphDigest(a.topology), b, "A and B produce the same graph digest");
+    assert.equal(graphDigest(a.topology), b.digest, "A and B produce the same graph digest");
   });
 
   test("C source-seq/keyword with vector data unavailable degrades to empty", () => {
@@ -523,77 +517,16 @@ describe("flag-off parity (MEGACOMPACT_VC3B=0)", () => {
   });
 });
 
-function digestFrom(rows: Array<[string, string, string, number, "dependency" | "contradiction"]>): string {
+function digestFrom(rows: CandidateRow[]): string {
   const res = buildTopologyGraph({ ...BASE, candidates: candidates(rows) });
   assert.equal(res.ok, true);
   if (!res.ok) throw new Error("unreachable");
   return res.topology.generationDigest;
 }
 
-function edgesOf(rows: Array<[string, string, string, number, "dependency" | "contradiction"]>): readonly TopologyEdgeV1[] {
+function edgesOf(rows: CandidateRow[]): readonly TopologyEdgeV1[] {
   const res = buildTopology({ ...BASE, candidates: candidates(rows) });
   assert.equal(res.ok, true);
   if (!res.ok) throw new Error("unreachable");
   return res.topology.edges;
-}
-
-/**
- * Reference mode-B linear VectorSet scan: same calibrated threshold and cap as
- * THE documentation. For each (source, head) it scans ALL records, keeps those
- * strictly above threshold, sorts by score desc then target bytes, keeps the
- * top-k, and encodes dependency/contradiction directions — mirroring build.ts so
- * the two independent implementations must agree on the digest.
- */
-function linearScan(input: TopologyInput): string {
-  const groups = new Map<string, TopologyCandidate[]>();
-  for (const c of input.candidates) {
-    if (!Number.isFinite(c.score)) continue;
-    if (c.source === c.target) continue;
-    if (c.score <= input.threshold) continue;
-    const key = `${c.source}::${c.head}`;
-    const g = groups.get(key);
-    if (g) g.push(c);
-    else groups.set(key, [c]);
-  }
-  const selected: TopologyCandidate[] = [];
-  for (const g of groups.values()) {
-    g.sort((x, y) => (x.score !== y.score ? (x.score > y.score ? -1 : 1) : x.target < y.target ? -1 : x.target > y.target ? 1 : 0));
-    for (let i = 0; i < Math.min(g.length, TOP_K); i++) selected.push(g[i]);
-  }
-  selected.sort((x, y) =>
-    x.source < y.source ? -1 : x.source > y.source ? 1 :
-    x.target < y.target ? -1 : x.target > y.target ? 1 :
-    x.head < y.head ? -1 : x.head > y.head ? 1 : 0,
-  );
-  const nodes = new Map<string, "semantic" | "dependency" | "contradiction" | "synthetic">();
-  const edges: TopologyEdgeV1[] = [];
-  const seen = new Set<string>();
-  for (const c of selected) {
-    nodes.set(c.source, c.kind === "contradiction" ? "contradiction" : "semantic");
-    nodes.set(c.target, c.kind === "contradiction" ? "contradiction" : "semantic");
-    if (c.kind === "contradiction") {
-      const fwd = `${c.source}::${c.target}`;
-      const rev = `${c.target}::${c.source}`;
-      if (!seen.has(fwd) && !seen.has(rev)) {
-        seen.add(fwd); seen.add(rev);
-        edges.push({ source: c.source, target: c.target, head: c.head, score: c.score, direction: "contradiction" });
-        edges.push({ source: c.target, target: c.source, head: c.head, score: c.score, direction: "contradiction" });
-      }
-      continue;
-    }
-    const depKey = `${c.source}::${c.target}::${c.head}::dependency`;
-    if (!seen.has(depKey)) {
-      seen.add(depKey);
-      edges.push({ source: c.source, target: c.target, head: c.head, score: c.score, direction: "dependency" });
-    }
-  }
-  const nodeList = [...nodes.entries()].map(([id, kind]) => ({ id, kind })).sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
-  const edgeList = [...edges].sort((x, y) =>
-    x.source < y.source ? -1 : x.source > y.source ? 1 :
-    x.target < y.target ? -1 : x.target > y.target ? 1 :
-    x.head < y.head ? -1 : x.head > y.head ? 1 :
-    x.direction < y.direction ? -1 : x.direction > y.direction ? 1 :
-    x.score < y.score ? -1 : x.score > y.score ? 1 : 0,
-  );
-  return graphDigest({ schema: "topology-v1", sessionId: input.sessionId, sourceHighWater: input.sourceHighWater, threshold: input.threshold, nodeCount: nodeList.length, edgeCount: edgeList.length, generationDigest: "", nodes: nodeList, edges: edgeList });
 }
