@@ -25,9 +25,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
 import { VC3A_ENABLED, VC3B_ENABLED } from "../../src/config.js";
+import { Logger } from "../../src/log.js";
 import { createCortexStore } from "../../src/vector-cortex/cortex/store.js";
 import { buildTopologyGraph } from "../../src/vector-cortex/topology/index.js";
-import type { TopologyCandidate } from "../../src/vector-cortex/topology/index.js";
+import type { TopologyCandidate, TopologyEmit } from "../../src/vector-cortex/topology/index.js";
 import type { CortexRecordV1 } from "../../src/vector-cortex/cortex/types.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
 import type { VectorCortexTopologyView } from "./api-contracts/vector-cortex.js";
@@ -121,6 +122,11 @@ export function handleVectorCortexTopology(
  * (reader-only, best-effort). Only records of kind "topology" whose payload is a
  * canonical TopologyCandidate JSON are consumed; everything else is ignored.
  * Returns empty arrays + null digest when no valid candidates are stored.
+ *
+ * The build seam is invoked with a logger-derived emit so the VC3B observability
+ * events (`vector_cortex_topology_built` / `vector_cortex_topology_edge_rejected`)
+ * fire on this production path — not just under unit tests. Best-effort and
+ * non-fatal: a failing emitter never breaks the agent loop.
  */
 function buildFromRecords(records: readonly CortexRecordV1[]): {
   nodes: { id: string; kind: string }[];
@@ -135,6 +141,7 @@ function buildFromRecords(records: readonly CortexRecordV1[]): {
   }
   const result = buildTopologyGraph(
     { sessionId: "dashboard", sourceHighWater: 0n, threshold: 0, candidates },
+    topologyEmit,
   );
   if (!result.ok) return { nodes: [], edges: [], generationDigest: null };
   return {
@@ -149,6 +156,17 @@ function buildFromRecords(records: readonly CortexRecordV1[]): {
     generationDigest: result.topology.generationDigest,
   };
 }
+
+/**
+ * Logger-derived default emitter for the VC3B topology events. Mirrors the
+ * cortex store's `defaultEmitFor()` convention: a REAL structured-log producer so
+ * a caller that invokes the build seam without injecting an emitter still yields
+ * telemetry (best-effort, non-fatal). This is the production invoke point that
+ * makes the task-5 emission capable live (not dead under unit tests only).
+ */
+const topologyEmit: TopologyEmit = (event, fields) => {
+  new Logger().info(event, fields);
+};
 
 /**
  * PREVENT-001: parse + shape-check a candidate payload before use. Returns

@@ -1,6 +1,6 @@
 # VC3B Evidence
 
-Status: implementer-complete — all sprint gates green, including the mandated flag-off run, the network-denial gate (modes A/B/C) with the topology leg, and the dashboard client typecheck/build.
+Status: implementer-complete — all sprint gates green, including the mandated flag-off run, the network-denial gate (modes A/B/C), and the dashboard client typecheck/build.
 Implementation commits/sub-sprint gates: VC3B sprint on `feat/vector-cortex`; focused commit with MANDATORY `Co-Authored-By:` attribution. All sprint exit gates run and recorded below.
 
 ## Goal recap
@@ -12,7 +12,7 @@ Deterministic cortical topology (VC3B) — owns `TopologyV1` / `EdgeV1` in `src/
 Production (`src/vector-cortex/topology/`):
 - `types.ts` (new, ~190) — `TopologyNodeV1` (id, kind semantic/dependency/contradiction/synthetic), `TopologyEdgeV1` (source, target, head, score, direction `"dependency"|"contradiction"`), `TopologyCandidate` (input edge with kind), `TopologyInput` (sessionId, sourceHighWater, threshold, candidates), `TopologyRejection` (code `TOP_SCORE_NONFINITE` / `TOP_SELF_EDGE`), `TopologyBuildResult`, `TopologyV1` (schema `topology-v1`, sessionId, sourceHighWater, threshold, nodeCount, edgeCount, generationDigest, nodes, edges), `TOP_IDS` (`TOP-001..020`), `TOP_NAMED_IDS` (`TOP-K-001`/`TOP-TIE-002`/`TOP-KIND-003`), `TOP_K` (=16). Pure types + no side effects.
 - `build.ts` (new, ~230) — `buildTopology(input)`: rejects non-finite scores as `TOP_SCORE_NONFINITE` (per-edge, never poisons other heads), removes self edges as `TOP_SELF_EDGE` (never emitted), drops at/below-threshold candidates, groups by (source, head), stable-sorts score desc then unsigned target-ID bytes, caps at `top-k=16` (17th eligible neighbor excluded), then canonical-orders `selected` so dedup is input-order independent; encodes dependency edges as single directed records and contradiction edges as symmetric PAIRED records (dedup collapses a duplicate/reversed contradiction pair deterministically); nodes/edges exposed in canonical order. `Buffer`-based unsigned-byte comparator (spec-defined ordering). Pure function, no I/O/network (PREVENT-PI-004), no `any` (PREVENT-011).
-- `index.ts` (new, ~180) — re-export barrel + `buildTopologyGraph(input, emit?)` = build + stable digest + best-effort emit of `vector_cortex_topology_built` (once) and `vector_cortex_topology_edge_rejected` (per rejection), and `graphDigest(topology)` — ONE `sha256:<hex>` over canonical sorted nodes/edges, order-independent across any input permutation.
+- `index.ts` (new, ~180) — re-export barrel + `buildTopologyGraph(input, emit?)` = build + stable digest + best-effort emit of `vector_cortex_topology_built` (once) and `vector_cortex_topology_edge_rejected` (per rejection), and `graphDigest(topology)` — ONE `sha256:<hex>` over canonical sorted nodes/edges, order-independent across any input permutation. The canonical serialization uses printable `|`/`~` framing (no embedded control bytes) so the file stays text in git.
 
 Config:
 - `src/config/vector-cortex.ts` — `VC3B_ENABLED()` (default ON; `MEGACOMPACT_VC3B=0` → off, byte-identical predecessor). Re-exported by root `src/config.ts`.
@@ -24,7 +24,7 @@ Tests:
 
 Dashboard / API / SETTINGS:
 - `extensions/dashboard-server/api-contracts/vector-cortex.ts` — extended `VectorCortexTopologyView` with optional `nodes`/`edges`/`generationDigest` (present only when VC3B is on; flag-off omits them, byte-identical VC3A predecessor view). Exact node/edge shapes match TopologyV1.
-- `extensions/dashboard-server/routes-vector-cortex-topology.ts` — extended `handleVectorCortexTopology` to build the deterministic graph via `buildTopologyGraph` from accepted derived records of kind `"topology"` (canonical candidate JSON payload), reader-only, best-effort non-fatal, partial shapes omitted when VC3B off or no candidates stored.
+- `extensions/dashboard-server/routes-vector-cortex-topology.ts` — extended `handleVectorCortexTopology` to build the deterministic graph via `buildTopologyGraph` from accepted derived records of kind `"topology"` (canonical candidate JSON payload), reader-only, best-effort non-fatal, partial shapes omitted when VC3B off or no candidates stored. The build seam is invoked with a logger-derived `emit` (`new Logger().info`, same convention as the cortex store's `defaultEmitFor`), making `vector_cortex_topology_built` / `vector_cortex_topology_edge_rejected` live on this production path (not just under unit tests).
 - `extensions/dashboard-server/routes-rag-settings-helpers.ts` — `MEGACOMPACT_VC3B` added to the "Vector Cortex" SETTINGS group as a `boolDirect` toggle (NOT in `EXCLUDED_SETTINGS`).
 - `extensions/dashboard-client/src/types/vector-cortex.ts` — `nodes`/`edges`/`generationDigest` mirror on `VectorCortexTopologyView`.
 - `extensions/dashboard-client/src/tabs/VectorCortexTab.tsx` — added Nodes/Edges/Graph-digest metrics + a "Topology edges (VC3B)" table rendered from the node/edge shapes.
@@ -62,7 +62,7 @@ Triad over the topology domain: **A** = the multi-head topology index — the de
 - `python3 scripts/regression_check.py --all` → passes (see below).
 - `node scripts/vector-cortex-conformance.mjs --check` → `✓ CONFORMANCE: v2 manifest + 219 fixtures canonical (219 files).`
 - `node scripts/vector-cortex-docs-check.mjs` → `✓ DOCS-CHECK: 27 sprints / 9 phases, links+flags+commands+migrations clean.`
-- `node scripts/vector-cortex-network-denial.mjs --modes=A,B,C` → all three modes exit clean (no egress on the topology build/render path; the dashboard topology route touches only the local cortex DB).
+- `node scripts/vector-cortex-network-denial.mjs --modes=A,B,C` → all three modes exit clean. The script's VC leg exercises the pre-existing VC3A cortex store (append -> rebuild -> reader topology summary) under patched egress; it does not import the VC3B topology build/render path. The topology code is provably network-free (pure Buffer/crypto / local-sqlite + `ctx.stateDir` FS reads only, PREVENT-PI-004), so this is an evidence-coverage note, not a topology-specific egress assertion.
 - `python3 scripts/log_failure.py --list` → no new logged failures.
 - `git diff --check` → clean (no whitespace errors).
 - `cd extensions/dashboard-client && npm run typecheck && npm run build` → typecheck clean; `✓ built in 3.29s` (dashboard client).
@@ -77,7 +77,7 @@ Topology construction is a deterministic pure function; EVALUATION annotation/po
 
 ## Offline/network/asset/platform evidence
 
-Topology build and the dashboard topology route are fully local: pure bytes/JSON, no `fetch`/HTTP (PREVENT-PI-004 — the route reads only the local cortex DB under `ctx.stateDir`). No model asset, no external index requirement. The network-denial leg runs the topology build/render path under patched-egress modes A/B/C and records zero egress.
+Topology build and the dashboard topology route are fully local: pure bytes/JSON, no `fetch`/HTTP (PREVENT-PI-004 — the route reads only the local cortex DB under `ctx.stateDir`). No model asset, no external index requirement. Note on coverage: the network-denial script's only VC-related leg is the pre-existing VC3A cortex store; it does not import or exercise the VC3B topology build/render path (pure Buffer/crypto, no network APIs), so the gate does not assert topology-specific egress. The topology path is instead verified network-free by construction (pure functions + local FS-only route).
 
 ## File sizes and baseline exceptions
 
