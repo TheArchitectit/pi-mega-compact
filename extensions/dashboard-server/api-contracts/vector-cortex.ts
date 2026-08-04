@@ -202,6 +202,35 @@ export interface VectorCortexShardsView {
 }
 
 /**
+ * Reader-only residual-basis-parity aggregate for GET /api/vector-cortex/residual
+ * (VC4B). Purely an enabled-flag + COUNT/BYTE aggregate — encode attempts,
+ * admitted/rejected counts, recovery failures, and encoded/exact byte totals.
+ * Reader-only: NEVER exposes residual payloads, correction streams, shard bytes,
+ * or original source bytes (SECURITY_PRIVACY). The residual codec is pure
+ * in-memory logic in this sprint (no durable metrics store), so when no encode has
+ * been staged the aggregates are truthfully zero. Non-fatal: a missing state dir
+ * degrades to `enabled:false`.
+ */
+export interface VectorCortexResidualView {
+  /** Whether the VC4B residual basis parity flag is enabled in this process. */
+  readonly enabled: boolean;
+  /** Number of residual encode attempts observed by the process emitter. */
+  readonly encodeAttempts: number;
+  /** Number of payloads admitted under the 95% admission ceiling. */
+  readonly admittedCount: number;
+  /** Number of payloads rejected (failed encode or above ceiling). */
+  readonly rejectedCount: number;
+  /** Number of parity recoveries that failed closed (RES_TOO_MANY_ERASURES). */
+  readonly recoveryFailures: number;
+  /** Total encoded artifact bytes across admitted payloads. */
+  readonly encodedByteTotal: number;
+  /** Total exact-compressed bytes across admitted payloads (denominator). */
+  readonly exactByteTotal: number;
+  /** ISO timestamp of the snapshot. */
+  readonly updatedAt: string;
+}
+
+/**
  * Reader-only occurrence-ledger view for GET /api/vector-cortex/ledger (VC1B).
  * Built on the LedgerReader capability surface. Exposes occurrence IDENTITY
  * (seq/eventId/kind/digest/toolCallId) and the per-session high-water/count —

@@ -1,0 +1,1 @@
+{"assertion":"an int16-saturating coefficient is rejected with RES_QUANTIZE_RANGE","expected":{"code":"RES_QUANTIZE_RANGE","ok":false},"id":"RES-017","input":{"payload":{"kind":"empty"},"scenario":"quantize-saturation"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

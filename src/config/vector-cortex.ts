@@ -147,6 +147,19 @@ export const VC3C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC3C");
  */
 export const VC4A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC4A");
 
+/**
+ * VC4B — residual codec and numeric parity (ResidualCodecV1 / ParityShardV1).
+ * Default ON. `MEGACOMPACT_VC4B=0` disables and is byte-identical to the
+ * predecessor (mode C: no residual artifact is admitted, the exact compressed
+ * payload / ledger bytes remain the only representation, zero
+ * `vector_cortex_residual_admitted` / `vector_cortex_parity_recovery_failed`
+ * emissions; the VC4A shard manifest and its goldens are unchanged). The real
+ * consumers are the codec admission seam (codec.ts) and the reader-only
+ * dashboard residual aggregate view. The codec math itself is PURE — flag OFF
+ * gates the reporter/admission seam, never the arithmetic.
+ */
+export const VC4B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC4B");
+
 // ---------------------------------------------------------------------------
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker).
 // Rolled numbers for one 60s window; VC0C consumes these at its breaker seam.

@@ -1,0 +1,1 @@
+{"assertion":"a zero exact-compressed size can never admit","expected":{"admitted":false,"code":"RES_NOT_ADMITTED","ok":true},"id":"RES-043","input":{"admissionMode":"explicit","exactCompressedSize":0,"payload":{"kind":"text","length":64},"scenario":"admit-zero-exact"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

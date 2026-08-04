@@ -42,9 +42,11 @@ const {
   topologyNamedCount,
   shardCount,
   shardNamedCount,
+  residualCount,
+  residualNamedCount,
 } = writeAll();
 
 console.log(
-  `generated ${evalCount} evaluation + ${replayCount} replay + ${eventCount} event fixtures + ${resilienceCount} resilience + ${ledgerCount} ledger + ${ledgerNamedCount} named ledger + ${namedCount} named resilience fixtures + ${minhashCount} minhash + ${migrationCount} migration + ${conformanceCount} conformance fixtures + ${encoderCount} encoder-runtime + ${encoderNamedCount} named encoder-runtime fixtures + ${encoderHeadsCount} encoder-heads + ${encoderHeadsNamedCount} named encoder-heads fixtures + ${encoderQualCount} encoder-qualification + ${encoderQualNamedCount} named encoder-qualification fixtures + ${cortexCount} cortex-store + ${cortexNamedCount} named cortex-store fixtures + ${topologyCount} topology + ${topologyNamedCount} named topology fixtures + ${schemaCount} schemas + manifest under conformance/vector-cortex/v2`,
+  `generated ${evalCount} evaluation + ${replayCount} replay + ${eventCount} event fixtures + ${resilienceCount} resilience + ${ledgerCount} ledger + ${ledgerNamedCount} named ledger + ${namedCount} named resilience fixtures + ${minhashCount} minhash + ${migrationCount} migration + ${conformanceCount} conformance fixtures + ${encoderCount} encoder-runtime + ${encoderNamedCount} named encoder-runtime fixtures + ${encoderHeadsCount} encoder-heads + ${encoderHeadsNamedCount} named encoder-heads fixtures + ${encoderQualCount} encoder-qualification + ${encoderQualNamedCount} named encoder-qualification fixtures + ${cortexCount} cortex-store + ${cortexNamedCount} named cortex-store fixtures + ${topologyCount} topology + ${topologyNamedCount} named topology fixtures + ${shardCount} shard + ${shardNamedCount} named shard + ${residualCount} residual + ${residualNamedCount} named residual fixtures + ${schemaCount} schemas + manifest under conformance/vector-cortex/v2`,
 );
 console.log("next: node scripts/vector-cortex-conformance.mjs --check");

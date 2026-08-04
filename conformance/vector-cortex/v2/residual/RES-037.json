@@ -1,0 +1,1 @@
+{"assertion":"shard recovery is deterministic across repeated runs","expected":{"exactRoundTrip":true,"ok":true},"id":"RES-037","input":{"admissionMode":"generous","erasedIndices":[2,6],"payload":{"kind":"sequence","length":5000},"scenario":"parity-deterministic"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

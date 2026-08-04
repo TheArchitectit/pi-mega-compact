@@ -1,0 +1,1 @@
+{"assertion":"a complete shard set decodes without any reconstruction","expected":{"exactRoundTrip":true,"ok":true},"id":"RES-023","input":{"admissionMode":"generous","erasedIndices":[],"payload":{"kind":"sequence","length":5000},"scenario":"parity-no-erasure"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"shards 1, 4 and 8 erased reconstruct all bytes (named)","expected":{"exactRoundTrip":true,"ok":true},"id":"RES-RS-002","input":{"admissionMode":"generous","erasedIndices":[1,4,8],"payload":{"kind":"sequence","length":5000},"scenario":"parity-erase-1-4-8"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

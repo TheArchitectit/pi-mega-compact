@@ -1,0 +1,1 @@
+{"assertion":"an out-of-range correction offset is rejected with RES_CORRECTION_RANGE","expected":{"code":"RES_CORRECTION_RANGE","ok":false},"id":"RES-019","input":{"payload":{"kind":"empty"},"scenario":"corrections-out-of-range"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

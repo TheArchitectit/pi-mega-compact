@@ -1,0 +1,1 @@
+{"assertion":"an empty payload produces zero blocks and decodes to zero bytes","expected":{"admitted":true,"blockCount":0,"exactRoundTrip":true,"ok":true},"id":"RES-008","input":{"admissionMode":"generous","payload":{"kind":"empty"},"scenario":"dct-empty"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

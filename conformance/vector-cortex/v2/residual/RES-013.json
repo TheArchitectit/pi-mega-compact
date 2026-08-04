@@ -1,0 +1,1 @@
+{"assertion":"a pseudorandom block round-trips byte-exactly","expected":{"admitted":true,"blockCount":1,"exactRoundTrip":true,"ok":true},"id":"RES-013","input":{"admissionMode":"generous","payload":{"kind":"lcg","length":4096,"seed":12345},"scenario":"quantize-random"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

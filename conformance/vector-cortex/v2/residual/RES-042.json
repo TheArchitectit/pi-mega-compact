@@ -1,0 +1,1 @@
+{"assertion":"one byte above the 95% ceiling is rejected (RES_NOT_ADMITTED)","expected":{"admitted":false,"code":"RES_NOT_ADMITTED","ok":true},"id":"RES-042","input":{"admissionMode":"one-below-ceiling","payload":{"kind":"text","length":64},"scenario":"admit-one-above"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"two erased data shards reconstruct every byte","expected":{"exactRoundTrip":true,"ok":true},"id":"RES-026","input":{"admissionMode":"generous","erasedIndices":[2,5],"payload":{"kind":"sequence","length":5000},"scenario":"parity-two-data-erasures"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

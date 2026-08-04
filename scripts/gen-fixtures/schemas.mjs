@@ -630,3 +630,61 @@ schemas["schemas/shard-fixture.schema.json"] = {
     },
   },
 };
+
+schemas["schemas/residual-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC4B residual fixture envelope",
+  description:
+    "Common structure every VC4B residual fixture validates against. `input.scenario` names the DCT / quantization / parity / admission condition the acceptance test executes against the REAL residual codec (src/vector-cortex/residual/{dct,quantize,parity,codec}.js); `input.payload` describes the byte payload generatively (kind + length + seed) so a fixture never embeds a megabyte of base64; `expected` gives the exact verdict (ok) or the failure code (RES_QUANTIZE_RANGE / RES_TOO_MANY_ERASURES / RES_NOT_ADMITTED / RES_PAYLOAD_DIGEST_MISMATCH / RES_SHARD_DIGEST_MISMATCH / RES_DUPLICATE_SHARD_INDEX / RES_SHARD_LENGTH_MISMATCH / RES_HEADER_INVALID / RES_SINGULAR_MATRIX / RES_CORRECTION_DUPLICATE_OFFSET / RES_CORRECTION_RANGE).",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["residual"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: { type: "string" },
+        admitted: { type: "boolean" },
+        blockCount: { type: "integer" },
+        exactRoundTrip: { type: "boolean" },
+        minCorrections: { type: "integer" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario", "payload"],
+      properties: {
+        scenario: { type: "string" },
+        payload: {
+          type: "object",
+          required: ["kind"],
+          properties: {
+            kind: {
+              type: "string",
+              enum: ["empty", "zeros", "constant", "sequence", "lcg", "text", "invalid-utf8", "dc-outlier", "alternating", "literal"],
+            },
+            length: { type: "integer" },
+            seed: { type: "integer" },
+            value: { type: "integer" },
+            outlierOffset: { type: "integer" },
+            bytesBase64: { type: "string" },
+          },
+        },
+        exactCompressedSize: { type: "integer" },
+        admissionMode: { type: "string", enum: ["generous", "at-ceiling", "one-below-ceiling", "explicit"] },
+        erasedIndices: { type: "array", items: { type: "integer" } },
+        corruptIndices: { type: "array", items: { type: "integer" } },
+        markErased: { type: "array", items: { type: "integer" } },
+        mutate: {
+          type: "string",
+          enum: ["none", "duplicate-index", "truncate-shard", "corrupt-digest", "bad-magic", "corrupt-payload-digest"],
+        },
+      },
+    },
+  },
+};

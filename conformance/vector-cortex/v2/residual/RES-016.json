@@ -1,0 +1,1 @@
+{"assertion":"non-finite coefficients are rejected with RES_QUANTIZE_RANGE","expected":{"code":"RES_QUANTIZE_RANGE","ok":false},"id":"RES-016","input":{"payload":{"kind":"empty"},"scenario":"quantize-nonfinite"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

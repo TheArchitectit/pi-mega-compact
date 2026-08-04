@@ -1,0 +1,1 @@
+{"assertion":"a duplicate correction offset is rejected with RES_CORRECTION_DUPLICATE_OFFSET","expected":{"code":"RES_CORRECTION_DUPLICATE_OFFSET","ok":false},"id":"RES-018","input":{"payload":{"kind":"empty"},"scenario":"corrections-duplicate-offset"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

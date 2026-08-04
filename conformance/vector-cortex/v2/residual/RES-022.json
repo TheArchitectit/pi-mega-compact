@@ -1,0 +1,1 @@
+{"assertion":"encoding produces exactly 9 shards (6 data + 3 parity) of equal length","expected":{"ok":true},"id":"RES-022","input":{"admissionMode":"generous","payload":{"kind":"sequence","length":5000},"scenario":"parity-shard-geometry"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}
