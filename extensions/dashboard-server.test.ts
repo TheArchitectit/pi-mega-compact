@@ -314,6 +314,7 @@ const SERVER_ENTRY = new URL("./dashboard-server.js", import.meta.url).pathname;
 // mega-compact.test.js dashboard tests (which scan a DIFFERENT base) and never
 // collides with a leftover production server on 9320.
 process.env.MEGACOMPACT_DASHBOARD_PORT = "19320";
+process.env.MEGACOMPACT_DASHBOARD_HOST = "127.0.0.1";
 
 function waitFor(cond: () => boolean | Promise<boolean>, timeoutMs = 6000): Promise<void> {
   const start = Date.now();

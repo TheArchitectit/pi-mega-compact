@@ -108,6 +108,7 @@ test("/dashboard-status reports no server when pid file missing", async () => {
 	// Private base so this asserts "no server" on a range nothing else uses,
 	// not the machine-global 9320 family (which may hold a leftover/production server).
 	process.env.MEGACOMPACT_DASHBOARD_PORT = "49320";
+	process.env.MEGACOMPACT_DASHBOARD_HOST = "127.0.0.1";
 	try {
 		const h = harness();
 		const ctx = h.ctx();
@@ -118,6 +119,7 @@ test("/dashboard-status reports no server when pid file missing", async () => {
 		);
 	} finally {
 		delete process.env.MEGACOMPACT_DASHBOARD_PORT;
+		delete process.env.MEGACOMPACT_DASHBOARD_HOST;
 	}
 });
 
@@ -137,6 +139,7 @@ test.skip("/dashboard skips server spawn when already running", async () => {
 	// a leftover production server. Set BEFORE harness() so registerDashboardCommands
 	// reads our base for findLivePort().
 	process.env.MEGACOMPACT_DASHBOARD_PORT = "29320";
+	process.env.MEGACOMPACT_DASHBOARD_HOST = "127.0.0.1";
 	const h = harness();
 	const confirms: boolean[] = [];
 	const livPort = 29320; // inside the harness's private scan range (29320–29329)
@@ -188,5 +191,6 @@ test.skip("/dashboard skips server spawn when already running", async () => {
 
 	await new Promise<void>((r) => server.close(() => r()));
 	delete process.env.MEGACOMPACT_DASHBOARD_PORT;
+	delete process.env.MEGACOMPACT_DASHBOARD_HOST;
 });
 

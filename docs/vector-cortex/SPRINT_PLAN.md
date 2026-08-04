@@ -55,7 +55,7 @@ node scripts/vector-cortex-docs-check.mjs
 git diff --check
 ```
 
-Dashboard touch also runs `cd extensions/dashboard-client && npm run typecheck && npm run build`. Storage changes run schema integrity/foreign-key and migration interruption/resume tests. Asset release runs manifest digest, supported matrix, `npm pack --dry-run` listing only, network-denied clean-install packaged inference, and enhanced `scripts/deploy.sh` gate. No-network enforcement patches Node network modules to throw while exercising all runtime paths and statically scans TS/JS plus Rust Cargo.lock/source. VC8C evidence from external Rad workspace must include:
+Dashboard touch also runs `cd extensions/dashboard-client && npm run typecheck && npm run build`. Storage changes run schema integrity/foreign-key and migration interruption/resume tests. Asset release runs manifest digest, supported matrix, `npm pack --dry-run` listing only, network-denied clean-install packaged inference, and enhanced `scripts/deploy.sh` gate. VC8C evidence from external Rad workspace must include:
 
 ```bash
 cargo fmt --all -- --check
