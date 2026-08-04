@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createCortexStore, createCortexReporter, type CortexHandle } from "./store.js";
+import { createCortexStore, type CortexHandle } from "./store.js";
 import { openCortexStore, setStoreReadOnly } from "./sqlite.js";
 import type { CortexWriter } from "./types.js";
 
@@ -275,18 +275,30 @@ describe("CTX emit seam", () => {
     }
   });
 
-  test("flag OFF: zero VC3A emissions (byte-identical predecessor)", () => {
-    const saved = process.env.MEGACOMPACT_VC3A;
-    process.env.MEGACOMPACT_VC3A = "0";
+  test("flag OFF: zero VC3A emissions on the REAL write paths (byte-identical predecessor)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "vc3a-flagoff-"));
     try {
-      const emitted: string[] = [];
-      const reporter = createCortexReporter((e) => emitted.push(e));
-      reporter.recordAppendFailed({ id: "x" });
-      reporter.generationRebuilt({ generationId: "g" });
-      assert.deepEqual(emitted, [], "flag OFF => no emissions");
+      const saved = process.env.MEGACOMPACT_VC3A;
+      process.env.MEGACOMPACT_VC3A = "0";
+      try {
+        const emitted: string[] = [];
+        const db = openCortexStore(join(dir, "cortex.db"));
+        const store = createCortexStore({ db }, (e) => emitted.push(e));
+        // Drive the real writer + admin seams: a failed append (read-only) and a
+        // successful rebuild both fire NOTHING when the flag is OFF.
+        store.writer().append(input("r1"));
+        setStoreReadOnly(db, true);
+        store.writer().append(input("r2"));
+        setStoreReadOnly(db, false);
+        store.admin().rebuild();
+        assert.deepEqual(emitted, [], "flag OFF => zero emissions on real write paths");
+        store.close();
+      } finally {
+        if (saved === undefined) delete process.env.MEGACOMPACT_VC3A;
+        else process.env.MEGACOMPACT_VC3A = saved;
+      }
     } finally {
-      if (saved === undefined) delete process.env.MEGACOMPACT_VC3A;
-      else process.env.MEGACOMPACT_VC3A = saved;
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

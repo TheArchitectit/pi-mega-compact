@@ -36,7 +36,9 @@ import type {
 
 /** DB row shape for cortex_record_v1 (snake_case columns). */
 interface CortexRecordRow {
-  /** INTEGER — small values return as number, >MAX_SAFE_INTEGER as bigint (readBigInts). */
+  // With readBigInts:true (set in openCortexStore) node:sqlite returns EVERY
+  // INTEGER column as bigint — not only values >MAX_SAFE_INTEGER. rowToRecord
+  // normalizes via BigInt(...)/Number(...) for both the number|bigint union.
   source_high_water: number | bigint;
   algorithm_version: number;
   id: string;
@@ -362,6 +364,13 @@ function rowToGeneration(row: CortexGenerationRow): CortexGenerationV1 {
  * a fabricated generation that has no durable row. That non-ok result is what
  * prevents the caller from emitting a misleading `vector_cortex_generation_rebuilt`
  * event or exposing a generation id that does not exist.
+ *
+ * The reuse path (a prior generation already carries the same rootDigest +
+ * recordCount) also runs its activation through the SAME error-to-CTX_REBUILD_FAILED
+ * conversion: under read-only storage (`PRAGMA query_only`) the activation UPDATE
+ * is refused by SQLite, and the rebuild must surface `CTX_REBUILD_FAILED` rather
+ * than let a raw SQLITE_READONLY escape to `store.admin().rebuild()` and break
+ * the agent loop. Reads remain available, so the durable generation is intact.
  */
 export function rebuildCortexGeneration(
   db: DatabaseSync,
@@ -395,7 +404,15 @@ export function rebuildCortexGeneration(
   // return it instead of appending a fresh duplicate row.
   const reused = generationByRootDigest(db, rootDigest, sortedCount);
   if (reused) {
-    activateGeneration(db, reused.id);
+    // The generation row ALREADY exists durably (reads still work under
+    // `PRAGMA query_only`), but activating it is a write. Guard it the same way
+    // as the insert path so a storage failure (e.g. SQLITE_READONLY) degrades to
+    // CTX_REBUILD_FAILED instead of escaping uncaught into admin.rebuild().
+    try {
+      activateGeneration(db, reused.id);
+    } catch {
+      return { ok: false, code: "CTX_REBUILD_FAILED" };
+    }
     return { ok: true, generation: reused };
   }
 
@@ -445,7 +462,16 @@ export function rebuildCortexGeneration(
 /** Switch the active generation pointer (evidence retained; nothing deleted). */
 export function switchCortexGeneration(db: DatabaseSync, generationId: string): { ok: boolean; code?: string } {
   if (!generationById(db, generationId)) return { ok: false, code: "CTX_GENERATION_NOT_FOUND" };
-  activateGeneration(db, generationId);
+  // Activating writes to cortex_generation_v1.active; under read-only storage
+  // (`PRAGMA query_only`) SQLite refuses the UPDATE. Convert that storage failure
+  // into the documented `{ok:false}` result so a caller of the typed admin surface
+  // never receives an uncaught SQLITE_READONLY exception (Q02 — every store
+  // mutation is non-fatal).
+  try {
+    activateGeneration(db, generationId);
+  } catch {
+    return { ok: false, code: "CTX_SWITCH_FAILED" };
+  }
   return { ok: true };
 }
 

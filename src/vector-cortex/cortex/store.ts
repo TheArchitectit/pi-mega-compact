@@ -198,27 +198,5 @@ function defaultEmitFor(): CortexEmit {
   };
 }
 
-/** A flag-gated reporter over the store's two named events (test seam). */
-export interface CortexReporter {
-  readonly recordAppendFailed: (fields: Record<string, unknown>) => void;
-  readonly generationRebuilt: (fields: Record<string, unknown>) => void;
-}
-
-export function createCortexReporter(emit?: CortexEmit): CortexReporter {
-  const sink = emit ?? defaultEmitFor();
-  const fire = (event: string, fields: Record<string, unknown>): void => {
-    if (!VC3A_ENABLED()) return;
-    try {
-      sink(event, fields);
-    } catch {
-      /* non-fatal observability */
-    }
-  };
-  return {
-    recordAppendFailed: (fields) => fire("vector_cortex_record_append_failed", fields),
-    generationRebuilt: (fields) => fire("vector_cortex_generation_rebuilt", fields),
-  };
-}
-
 /** Re-export the generation type for convenience in admin consumers. */
 export type { CortexGenerationV1, CortexAppendInput };

@@ -27,6 +27,7 @@ import {
   listCortexGenerations,
   maxSourceHighWater,
   setStoreReadOnly,
+  switchCortexGeneration,
   cortexDigest,
 } from "./sqlite.js";
 
@@ -238,6 +239,53 @@ describe("CTX storage failure (SQLITE_FULL-class) is non-fatal", () => {
       // Recovered store accepts writes again.
       assert.equal(insertCortexRecord(db, input("more")).ok, true);
       assert.equal(countCortexRecords(db), 2);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("read-only rebuild-reuse path returns CTX_REBUILD_FAILED, not an uncaught SQLITE_READONLY (Q01)", () => {
+    const { db, cleanup } = openScratch("roreuse");
+    try {
+      insertCortexRecord(db, input("a"));
+      insertCortexRecord(db, input("b"));
+      const g1 = rebuildCortexGeneration(db);
+      assert.equal(g1.ok, true);
+      if (!g1.ok) return;
+      // A second rebuild of the SAME accepted set reuses the identical generation.
+      const g2 = rebuildCortexGeneration(db);
+      assert.equal(g2.ok, true);
+      if (!g2.ok) return;
+      assert.equal(g2.generation.id, g1.generation.id, "precondition: unchanged rebuild reuses");
+      // Freeze storage: the reuse-path activation UPDATE is now refused by SQLite.
+      // The rebuild must return CTX_REBUILD_FAILED — never throw SQLITE_READONLY.
+      setStoreReadOnly(db, true);
+      const g3 = rebuildCortexGeneration(db);
+      assert.equal(g3.ok, false);
+      if (!g3.ok) assert.equal(g3.code, "CTX_REBUILD_FAILED");
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("read-only switchGeneration returns {ok:false}, not an uncaught SQLITE_READONLY (Q02)", () => {
+    const { db, cleanup } = openScratch("roswitch");
+    try {
+      const g1 = insertCortexRecord(db, input("a"));
+      assert.equal(g1.ok, true);
+      const rebuilt = rebuildCortexGeneration(db);
+      assert.equal(rebuilt.ok, true);
+      if (!rebuilt.ok) return;
+      const gid = rebuilt.generation.id;
+      setStoreReadOnly(db, true);
+      let sw: { ok: boolean; code?: string };
+      try {
+        sw = switchCortexGeneration(db, gid);
+      } catch (e) {
+        throw new Error(`switchGeneration must not throw (Q02), got: ${(e as Error).message}`);
+      }
+      assert.equal(sw.ok, false, "switch must report ok:false, not throw");
+      assert.equal(sw.code, "CTX_SWITCH_FAILED");
     } finally {
       cleanup();
     }
