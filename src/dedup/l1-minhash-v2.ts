@@ -86,19 +86,31 @@ export interface MinHashSeedPair {
  * Derive the frozen 256 published (a_i, b_i) seed pairs. Each pair maps two
  * splitmix64 draws into [1, p-1]. Deterministic and cross-language reproducible
  * from SEED_STATE_INIT — mirrors `seeds-v2.json`.
+ *
+ * The table is frozen: computed ONCE at module load and reused for every call.
+ * Recomputing the 256 splitmix64 pairs (and re-walking all shingles) per
+ * signature/backfill row is wasteful for a large v1 index backfill, and the
+ * table is immutable by construction, so a single shared instance is safe and
+ * byte-identical. The returned sub-arrays share the frozen pair objects; they
+ * are themselves frozen so no caller can mutate the shared cache.
  */
 export function minhashV2Seeds(
   count: number = NUM_HASHES_V2,
-): MinHashSeedPair[] {
+): readonly MinHashSeedPair[] {
+  return FROZEN_SEEDS.slice(0, count);
+}
+
+/** Singleton seed table, computed exactly once and frozen (see minhashV2Seeds). */
+const FROZEN_SEEDS: readonly MinHashSeedPair[] = (() => {
   const prng = splitmix64();
   const pairs: MinHashSeedPair[] = [];
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < NUM_HASHES_V2; i++) {
     const a = (prng() % (P_V2 - 1n)) + 1n;
     const b = (prng() % (P_V2 - 1n)) + 1n;
-    pairs.push({ a, b });
+    pairs.push(Object.freeze({ a, b }));
   }
-  return pairs;
-}
+  return Object.freeze(pairs);
+})();
 
 /** 64-bit FNV-1a over a UTF-8 string (for shingle hashing). */
 function fnv1a64String(s: string): bigint {
@@ -175,13 +187,35 @@ export function encodeSignatureV2(sig: readonly bigint[]): Uint8Array {
 
 /**
  * Estimated Jaccard similarity of two v2 signatures (fraction of equal slots).
- * v1/v2 cross-version compare MUST NOT reach here — callers reject the mixed
- * version with `MINHASH_VERSION_MISMATCH` first (minhash-v2 migration).
+ *
+ * THIS IS v2-ONLY. Cross-version compare is rejected INTERNALLY with
+ * `MINHASH_VERSION_MISMATCH`: both inputs must be exact 256-slot v2 signatures,
+ * i.e. every slot a `bigint` in [0, P_V2] (the empty sentinel is exactly P_V2).
+ * A v1 signature is a `number[]` of u31 values, so passing a v1 array fails the
+ * bigint type/range check and is rejected — a mixed v1/v2 compare can never
+ * produce a similarity number. Never call this with v1 arrays.
  */
 export function signatureSimilarityV2(a: readonly bigint[], b: readonly bigint[]): number {
+  assertV2Signature(a);
+  assertV2Signature(b);
   const n = Math.min(a.length, b.length);
   if (n === 0) return 0;
   let equal = 0;
   for (let i = 0; i < n; i++) if (a[i] === b[i]) equal++;
   return equal / n;
 }
+
+/** Reject any array that is not an exact 256-slot v2 signature (bigint in [0, P_V2]). */
+function assertV2Signature(sig: readonly bigint[]): void {
+  if (sig.length !== NUM_HASHES_V2) {
+    throw new Error(MINHASH_VERSION_MISMATCH_MSG);
+  }
+  for (const s of sig) {
+    if (typeof s !== "bigint" || s < 0n || s > P_V2) {
+      throw new Error(MINHASH_VERSION_MISMATCH_MSG);
+    }
+  }
+}
+
+/** Frozen cross-version-reject message shared by the v2-only function guards. */
+const MINHASH_VERSION_MISMATCH_MSG = "MINHASH_VERSION_MISMATCH";

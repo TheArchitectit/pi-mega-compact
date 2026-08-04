@@ -138,4 +138,28 @@ describe("MinHashV2 exact arithmetic vs M4-HIGHBIT-001", () => {
     const sim = signatureSimilarityV2(a, near);
     assert.ok(sim > 0.5, `near-duplicate shares most slots (got ${sim})`);
   });
+
+  test("signatureSimilarityV2 rejects a v1 array (number values) INTERNALLY", () => {
+    // v1 signatures are number[] of u31 values; a caller passing one must get
+    // MINHASH_VERSION_MISMATCH, never a similarity number (frozen cross-version
+    // reject contract enforced inside the v2-only function).
+    const v2 = minhashV2Signature("text").map((x) => BigInt(x)); // all in [0,p]
+    const v1Shape = new Array<number>(NUM_HASHES_V2).fill(12345); // u31 numbers
+    assert.throws(
+      () => signatureSimilarityV2(v2, v1Shape as unknown as bigint[]),
+      /MINHASH_VERSION_MISMATCH/,
+      "v1 number[] rejected, not compared",
+    );
+  });
+
+  test("signatureSimilarityV2 rejects a wrong-length / out-of-range array", () => {
+    const v2 = minhashV2Signature("text");
+    assert.throws(() => signatureSimilarityV2(v2, []), /MINHASH_VERSION_MISMATCH/);
+    const bad = [...v2.slice(0, NUM_HASHES_V2 - 1), P_V2 + 1n];
+    assert.throws(
+      () => signatureSimilarityV2(v2, bad),
+      /MINHASH_VERSION_MISMATCH/,
+      "out-of-range slot is not a v2 signature",
+    );
+  });
 });

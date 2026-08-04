@@ -15,7 +15,6 @@ import {
   BAND_BYTES_V2,
   SIGNATURE_BYTES_EXPECTED_V2,
   lshBandsV2,
-  bandsForTextV2,
 } from "./l1-lsh-v2.js";
 import {
   NUM_HASHES_V2,
@@ -62,11 +61,6 @@ describe("LSH banding over a v2 signature", () => {
     const v1 = lshBandsV2(bytes, "s", 1);
     const v2 = lshBandsV2(bytes, "s", 2);
     assert.deepEqual(v1.filter((k) => v2.includes(k)), [], "version-tagged keys never collide");
-  });
-
-  test("bandsForTextV2 is a deterministic convenience wrapper", () => {
-    const bytes = encodeSignatureV2(minhashV2Signature("wrapper"));
-    assert.deepEqual(bandsForTextV2(bytes, "s"), lshBandsV2(bytes, "s"));
   });
 
   test("wrong signature length is rejected", () => {

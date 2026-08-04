@@ -74,10 +74,19 @@ function walk(dir: string, base: string, acc: string[] = []): string[] {
   return acc.sort();
 }
 
-/** Canonical JSON bytes for a value (UTF-8, NFC keys, sorted, shortest numbers). */
+/**
+ * Canonical JSON bytes for a value (UTF-8, NFC keys, sorted, shortest numbers).
+ * Matches the stricter `canonicalNumber` in scripts/vector-cortex-conformance.mjs:
+ * a non-finite number or -0 has no canonical shortest representation and is
+ * rejected, so the two "canonical" serializers can never diverge for the same
+ * value (thereby preserving the "converge to one digest" invariant).
+ */
 function canonicalValue(value: unknown): string {
   if (value === null || typeof value !== "object") {
     if (typeof value === "number") {
+      if (!Number.isFinite(value) || Object.is(value, -0)) {
+        throw new Error(`non-canonical number: ${value}`);
+      }
       if (Number.isInteger(value) && Number.isSafeInteger(value)) return String(value);
       return JSON.stringify(value);
     }

@@ -42,7 +42,6 @@ import {
   type ConformanceHandler,
   type DowngradeExporter,
 } from "./conformance/runner.js";
-
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** Walk up from the test location until the conformance corpus is found. */
 function repoRoot(from: string): string {
@@ -57,7 +56,6 @@ function repoRoot(from: string): string {
 }
 const REPO_ROOT = repoRoot(HERE);
 const V2 = join(REPO_ROOT, "conformance", "vector-cortex", "v2");
-
 interface ManifestRow {
   id: string;
   path: string;
@@ -104,7 +102,6 @@ interface ConfFixture extends BaseFixture {
   input: { scenario: string; domains?: string[]; extraPath?: string; rows?: number };
   expected: { ok: boolean; entryCount?: number; code?: string; deterministic?: boolean };
 }
-
 function readJson<T>(p: string): T {
   return JSON.parse(readFileSync(p, "utf8")) as T;
 }
@@ -114,7 +111,6 @@ function fixture<T>(rel: string): T {
 function readManifest(): Manifest {
   return readJson<Manifest>(join(V2, "manifest.json"));
 }
-
 function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
@@ -125,6 +121,7 @@ function memHost(input: MigrationFixture["input"]): {
   rows: V2SignatureRow[];
   active: () => number;
   switchCalls: () => number;
+  failSwitch: (fail: boolean) => void;
 } {
   const checkpoints = input.checkpoints;
   const texts = input.texts ?? checkpoints.map((c) => `source-of-${c}`);
@@ -132,6 +129,7 @@ function memHost(input: MigrationFixture["input"]): {
   const rows: V2SignatureRow[] = [];
   let active = input.activeStarting;
   let switches = 0;
+  let crashingSwitch = false;
   const host: M4Host = {
     v1CheckpointIds: () => checkpoints,
     sessionOf: () => "m4accept",
@@ -145,21 +143,27 @@ function memHost(input: MigrationFixture["input"]): {
       rows.push(...newRows);
     },
     switchToV2: () => {
+      if (crashingSwitch) throw new Error("M4_SWITCH_CRASH");
       active = MINHASH_VERSION;
       switches += 1;
     },
   };
-  return { host, rows, active: () => active, switchCalls: () => switches };
+  return {
+    host,
+    rows,
+    active: () => active,
+    switchCalls: () => switches,
+    failSwitch: (fail) => {
+      crashingSwitch = fail;
+    },
+  };
 }
-
 // Manifest registration
-
 const VC1C_IDS = [
   "M4-001", "M4-002", "M4-003", "M4-004", "M4-005", "M4-006", "M4-007", "M4-008",
 ];
 const VC1C_NAMED = ["M4-HIGHBIT-001", "M4-VERSION-002", "M4-RESUME-003", "M4-DUP-001"];
 const VC1C_CONF = ["CONF-MANIFEST-001", "CONF-EXTRA-002", "CONF-DOWN-003"];
-
 describe("VC1C conformance registration", () => {
   test("manifest registers every M4 + named + conformance fixture and seeds-v2", () => {
     const manifest = readManifest();
@@ -170,14 +174,11 @@ describe("VC1C conformance registration", () => {
     assert.ok(ids.includes("seeds-v2"), "missing seeds-v2");
     assert.ok(manifest.owner.includes("VC1C"), "manifest owner lists VC1C");
   });
-
   test("the VC1C corpus is canonical (a single reproducible digest)", () => {
     assert.equal(canonicalManifestsConverge(V2), true, "committed corpus converges");
   });
 });
-
 // MinHashV2 exact arithmetic (M4-HIGHBIT-001) + cross-version (M4-VERSION-002)
-
 describe("MinHashV2 exact vectors vs M4-HIGHBIT-001 (triad A/B)", () => {
   test("A: runner reproduces the committed 2048-byte signature + 64 bucket keys", () => {
     const fx = fixture<MinhashFixture>("minhash/M4-HIGHBIT-001.json");
@@ -186,7 +187,6 @@ describe("MinHashV2 exact vectors vs M4-HIGHBIT-001 (triad A/B)", () => {
     assert.equal(sha256Hex(bytes), fx.expected.signatureDigest, "signature digest");
     assert.deepEqual(lshBandsV2(bytes, fx.input.session), fx.expected.buckets, "bucket keys");
   });
-
   test("B: independent exact reader re-derives the signature byte-for-byte", () => {
     // Independent path: recompute directly from the committed text without the
     // runner module's cached seeds, then compare to the fixture digest.
@@ -194,13 +194,11 @@ describe("MinHashV2 exact vectors vs M4-HIGHBIT-001 (triad A/B)", () => {
     const indep = encodeSignatureV2(minhashV2Signature(fx.input.text));
     assert.equal(sha256Hex(indep), fx.expected.signatureDigest, "independent reader matches fixture");
   });
-
   test("M4-VERSION-002: a v1/v2 cross-version compare is rejected", () => {
     const fx = fixture<VersionFixture>("minhash/M4-VERSION-002.json");
     assert.equal(fx.expected.code, "MINHASH_VERSION_MISMATCH");
     assert.equal(crossVersionError(), M4_FAIL.VERSION_MISMATCH);
   });
-
   test("mixed versions never share buckets (version-tagged keys)", () => {
     const fx = fixture<MinhashFixture>("minhash/M4-HIGHBIT-001.json");
     const bytes = encodeSignatureV2(minhashV2Signature(fx.input.text));
@@ -209,9 +207,7 @@ describe("MinHashV2 exact vectors vs M4-HIGHBIT-001 (triad A/B)", () => {
     assert.deepEqual(v1.filter((k) => v2.includes(k)), [], "v1/v2 bucket keys never collide");
   });
 });
-
 // M4 migration lifecycle (M4-001..008 + M4-DUP-001 + M4-RESUME-003)
-
 function assertMigration(fx: MigrationFixture): void {
   const input = fx.input;
   const scenario = input.scenario;
@@ -227,11 +223,21 @@ function assertMigration(fx: MigrationFixture): void {
     assert.equal(m4Verify(h.host).ok, true, "verify ok after re-backfill");
     assert.equal(h.rows.length, fx.expected.count, "no duplicate rows");
   } else if (scenario === "halt-before-switch") {
+    // Drive the REAL switch-only-after-verify gate: the host's switch faults, so
+    // a full migrateMinhashV2 faults BETWEEN the verified backfill and the
+    // active-pointer flip. v1 must stay active; a clean rerun then completes the
+    // backfill -> verify -> switch sequence (old authority retained until then).
     m4Backfill(h.host);
     assert.equal(m4Verify(h.host).ok, true, "validate ok");
-    // Crash before switch: old authority (v1) retained.
-    assert.equal(h.active(), fx.expected.activeVersion, "v1 active before verified switch");
+    h.failSwitch(true);
+    assert.throws(() => migrateMinhashV2(h.host), /M4_SWITCH_CRASH/, "crash during switch");
+    assert.equal(h.active(), 1, "crash mid-switch leaves v1 active (old authority)");
     assert.equal(fx.expected.halted, true);
+    assert.equal(fx.expected.activeVersion, 1, "fixture pins v1 as the pre-switch authority");
+    h.failSwitch(false);
+    const res = migrateMinhashV2(h.host);
+    assert.equal(res.ok, true, `clean rerun completes, got ${res.codes.join(",")}`);
+    assert.equal(h.active(), MINHASH_VERSION, "verified switch activates v2");
   } else if (scenario === "repeat-full") {
     assert.equal(migrateMinhashV2(h.host).ok, true, "first migrate ok");
     assert.equal(migrateMinhashV2(h.host).ok, true, "second migrate idempotent");
@@ -286,7 +292,6 @@ function assertMigration(fx: MigrationFixture): void {
     assert.fail(`unknown migration scenario ${scenario}`);
   }
 }
-
 describe("M4 migration lifecycle against M4-00x fixtures", () => {
   for (const id of VC1C_IDS) {
     test(`${id}: executes its declared migration scenario`, () => {
@@ -303,16 +308,13 @@ describe("M4 migration lifecycle against M4-00x fixtures", () => {
     assertMigration(fx);
   });
 });
-
 // Canonical manifest validator (CONF-MANIFEST-001 / CONF-EXTRA-002)
-
 describe("canonical manifest validation", () => {
   test("CONF-MANIFEST-001: a canonical manifest validates and converges", () => {
     const fx = fixture<ConfFixture>("conformance/CONF-MANIFEST-001.json");
     assert.equal(fx.expected.ok, true);
     assert.equal(canonicalManifestsConverge(V2), true, "committed corpus is canonical");
   });
-
   test("shuffled-key manifests normalize to the same entries and the corpus converges", () => {
     // The canonical reader sorts keys by UTF-8 bytes, so a manifest whose object
     // keys are in ANY insertion order parses into identical entries.
@@ -323,7 +325,6 @@ describe("canonical manifest validation", () => {
     // Canonical valid manifests converge to ONE digest: the committed corpus.
     assert.equal(canonicalManifestsConverge(V2), true, "committed corpus converges");
   });
-
   test("injecting a remove mutation fails with CONF_MISSING_FIXTURE", () => {
     const root = mkdtempSync(join(tmpdir(), "vc1c-missing-"));
     try {
@@ -336,7 +337,6 @@ describe("canonical manifest validation", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
-
   test("injecting an add mutation fails with CONF_EXTRA_FIXTURE (CONF-EXTRA-002)", () => {
     const fx = fixture<ConfFixture>("conformance/CONF-EXTRA-002.json");
     assert.equal(fx.expected.code, "CONF_EXTRA_FIXTURE");
@@ -351,7 +351,6 @@ describe("canonical manifest validation", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
-
   test("injecting a drift mutation fails with CONF_DIGEST_DRIFT", () => {
     const root = mkdtempSync(join(tmpdir(), "vc1c-drift-"));
     try {
@@ -367,7 +366,6 @@ describe("canonical manifest validation", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
-
   test("removing a fixture after manifest load makes byId miss it", () => {
     const manifest = readFixtureManifestV2(V2);
     assert.ok(manifest.byId.has("M4-001"), "fixture present at load");
@@ -384,7 +382,6 @@ describe("canonical manifest validation", () => {
     }
   });
 });
-
 /** Recursively copy the committed v2 corpus into a temp root (for mutations). */
 function copyCorpus(dst: string): void {
   for (const entry of readManifest().fixtures) {
@@ -395,9 +392,7 @@ function copyCorpus(dst: string): void {
   }
   writeFileSync(join(dst, "manifest.json"), readFileSync(join(V2, "manifest.json")));
 }
-
 // Triad A/B/C: dispatcher over the minhash domain
-
 describe("triad dispatch (A/B/C)", () => {
   test("A: a registered v2 runner dispatches and yields the algorithm name", () => {
     const handlers = new Map<string, ConformanceHandler>();
@@ -424,7 +419,6 @@ describe("triad dispatch (A/B/C)", () => {
       assert.equal(res.outputDigest, fx.expected.signatureDigest);
     }
   });
-
   test("C: an unknown domain/version is rejected WITHOUT partial output", () => {
     const handlers = new Map<string, ConformanceHandler>();
     const manifest = readFixtureManifestV2(V2);
@@ -437,7 +431,6 @@ describe("triad dispatch (A/B/C)", () => {
       assert.equal(res.algorithm, "minhash-v2");
     }
   });
-
   test("runner cross-checks the expected failure code (task 5)", () => {
     const handlers = new Map<string, ConformanceHandler>();
     handlers.set(handlerKey("minhash", ["minhash-v2"]), {
@@ -449,7 +442,6 @@ describe("triad dispatch (A/B/C)", () => {
     assert.equal(res.ok, false);
     if (!res.ok) assert.equal(res.code, EXPECTATION_MISMATCH, "wrong code -> runner mismatch");
   });
-
   test("runner cross-checks the expected success bytes (task 5)", () => {
     const handlers = new Map<string, ConformanceHandler>();
     handlers.set(handlerKey("minhash", ["minhash-v2"]), {
@@ -465,9 +457,7 @@ describe("triad dispatch (A/B/C)", () => {
     if (!res.ok) assert.equal(res.code, CONF_FAIL.DIGEST_DRIFT, "wrong bytes -> CONF_DIGEST_DRIFT");
   });
 });
-
 // DowngradeReport determinism (CONF-DOWN-003)
-
 describe("DowngradeReport (CONF-DOWN-003)", () => {
   test("a deterministic exporter yields an identical report digest on a second run", () => {
     let exports = 0;
@@ -490,7 +480,6 @@ describe("DowngradeReport (CONF-DOWN-003)", () => {
     assert.equal(a.reportDigest, b.reportDigest, "report digest identical across runs");
     assert.equal(exports, 2);
   });
-
   test("a real downgrade export does not mutate the committed corpus", () => {
     // Reading the committed corpus and producing a report leaves the authority
     // digest unchanged (read-only).
@@ -501,9 +490,7 @@ describe("DowngradeReport (CONF-DOWN-003)", () => {
     assert.equal(before, after, "authority manifest untouched by validation/export");
   });
 });
-
 // Flag-off parity (MEGACOMPACT_VC1C)
-
 describe("VC1C flag-off parity", () => {
   const flagEnvKey = "MEGACOMPACT_VC1C";
   const savedFlag = process.env[flagEnvKey];
@@ -512,7 +499,6 @@ describe("VC1C flag-off parity", () => {
       ? delete process.env[flagEnvKey]
       : (process.env[flagEnvKey] = savedFlag),
   );
-
   test("flag OFF still drives the pure primitives (emit seam no-ops)", () => {
     // The minhash/migration primitives are flag-independent (pure compute). The
     // flag gates the observability emit seam.
@@ -524,7 +510,6 @@ describe("VC1C flag-off parity", () => {
     const again = encodeSignatureV2(minhashV2Signature(fx.input.text));
     assert.equal(sha256Hex(again), fx.expected.signatureDigest, "primitive identical flag on");
   });
-
   test("flag OFF yields ZERO VC1C emissions from the reporter", () => {
     process.env[flagEnvKey] = "0";
     const emitted: string[] = [];
@@ -543,7 +528,6 @@ describe("VC1C flag-off parity", () => {
     NOOP_CONFORMANCE_REPORTER.downgradeWritten({ copiedCount: 1 });
     assert.deepEqual(emitted, [], "no-op reporter never emits");
   });
-
   test("flag ON: each of the three runtime seams emits its named VC1C event", () => {
     process.env[flagEnvKey] = "1";
     const emitted: string[] = [];
@@ -582,7 +566,6 @@ describe("VC1C flag-off parity", () => {
       },
     };
     runDowngradeExport(exporter, reporter);
-
     assert.ok(
       emitted.includes("vector_cortex_minhash_v2_backfilled"),
       "backfill seam emits vector_cortex_minhash_v2_backfilled (got " + emitted.join(",") + ")",

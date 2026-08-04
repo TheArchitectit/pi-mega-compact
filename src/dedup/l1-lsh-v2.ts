@@ -76,11 +76,3 @@ export function lshBandsV2(
   }
   return keys;
 }
-
-/**
- * Derive bands directly from text (convenience for callers without a cached
- * signature). Convenience re-export keeps the delta from the v1 sibling small.
- */
-export function bandsForTextV2(signatureBytes: Uint8Array, sessionId: string): string[] {
-  return lshBandsV2(signatureBytes, sessionId);
-}
