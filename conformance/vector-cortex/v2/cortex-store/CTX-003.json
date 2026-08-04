@@ -1,0 +1,1 @@
+{"assertion":"shuffled record insertion yields an identical single root digest","expected":{"ok":true},"id":"CTX-003","input":{"scenario":"shuffle-order-digest"},"kind":"cortex-store","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/cortex-store-fixture.schema.json"}

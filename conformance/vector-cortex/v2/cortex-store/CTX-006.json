@@ -1,0 +1,1 @@
+{"assertion":"a storage failure on append returns CTX_APPEND_FAILED and the host continues","expected":{"code":"CTX_APPEND_FAILED","ok":false},"id":"CTX-006","input":{"scenario":"nonfatal-append"},"kind":"cortex-store","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/cortex-store-fixture.schema.json"}

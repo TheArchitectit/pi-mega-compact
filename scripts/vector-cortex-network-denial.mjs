@@ -56,6 +56,40 @@ function patchNetwork() {
   globalThis.fetch = deny;
 }
 
+/**
+ * VC3A cortex-store leg: exercise the real capability-gated cortex store end to
+ * end (isolated local SQLite, append -> rebuild -> reader topology summary) with
+ * the network patched. The whole derived-store path is local hashing + SQLite;
+ * it must complete without any egress (PREVENT-PI-004). Platform-independent —
+ * valid under both mode A and B. Flag-independent at the store primitive level,
+ * so it also holds under mode C (flag-OFF).
+ */
+async function cortexDenialNote() {
+  const { createCortexStore } = await loadDist("src/vector-cortex/cortex/store.js");
+  const dir = join(tmpdir(), "net-deny-cortex");
+  const { rmSync } = require("node:fs");
+  const store = createCortexStore({ dbPath: join(dir, "cortex.db") });
+  const enc = new TextEncoder();
+  store.writer().append({
+    sourceHighWater: 1n, algorithmVersion: 1, id: "a",
+    kind: "semantic", payloadBytes: enc.encode("network-denial-cortex-A"),
+  });
+  store.writer().append({
+    sourceHighWater: 2n, algorithmVersion: 1, id: "b",
+    kind: "contradiction", payloadBytes: enc.encode("network-denial-cortex-B"),
+  });
+  const rb = store.admin().rebuild();
+  if (!rb.ok) throw new Error(`cortex leg: rebuild failed`);
+  const sum = store.reader().topologySummary();
+  if (sum.recordCount !== 2 || sum.sourceHighWater !== "2") {
+    throw new Error(`cortex leg: summary mismatch (${sum.recordCount}/${sum.sourceHighWater})`);
+  }
+  const digest = rb.ok ? rb.generation.rootDigest.slice(0, 8) : "?";
+  store.close();
+  rmSync(dir, { recursive: true, force: true });
+  return `cortex=${digest}`;
+}
+
 // ── Mode scenarios (extendable modes table) ────────────────────────────────
 
 /**
@@ -168,7 +202,8 @@ const MODES = {
       const fb = selectQualificationFallback("ENC_QUALIFICATION_THRESHOLD_FAILED", [1, 2, 3]);
       if (fb.mode !== "B" || fb.width !== 512) throw new Error("mode A: vc2c fallback B failed under denial");
       const headsNote = `${vset.heads.length}heads`;
-      return `roundtrip=${bytes.length} breaker=${bk.snapshot("net").state} vc1c=${sigDigest} vc2a=A vc2b=${headsNote} vc2c=A`;
+      const cortexNote = await cortexDenialNote();
+      return `roundtrip=${bytes.length} breaker=${bk.snapshot("net").state} vc1c=${sigDigest} vc2a=A vc2b=${headsNote} vc2c=A ${cortexNote}`;
     }
     // Host is NOT the bundle's pinned platform (cross-platform Q02): the bundle
     // correctly demotes to trigram B via PLATFORM_UNSUPPORTED — still zero
@@ -178,7 +213,8 @@ const MODES = {
     }
     const encLoadB = createEncoderRuntime().load(assetDir);
     if (encLoadB.ok || encLoadB.mode !== "B") throw new Error("mode A: off-platform bundle should demote to trigram B");
-    return `roundtrip=${bytes.length} breaker=${bk.snapshot("net").state} vc1c=${sigDigest} vc2a=B`;
+    const cortexNote = await cortexDenialNote();
+    return `roundtrip=${bytes.length} breaker=${bk.snapshot("net").state} vc1c=${sigDigest} vc2a=B ${cortexNote}`;
   },
 
   /** B: independent raw byte record — same digest, no shared subroutine. */
@@ -279,16 +315,20 @@ const MODES = {
     const fbC = selectQualificationFallback("ENC_QUALIFICATION_THRESHOLD_FAILED", [1, 2, 3], { injectBError: true });
     if (fbB.mode !== "B" || fbB.width !== 512) throw new Error("mode B: vc2c fallback B failed under denial");
     if (fbC.mode !== "C" || fbC.width !== 256) throw new Error("mode B: vc2c fallback C failed under denial");
-    return `digest=${b.bytesDigest.slice(0, 8)} spool=committed vc1c=${indDigest} vc2a=B vc2b=B vc2c=B/C`;
+    const cortexNoteB = await cortexDenialNote();
+    return `digest=${b.bytesDigest.slice(0, 8)} spool=committed vc1c=${indDigest} vc2a=B vc2b=B vc2c=B/C ${cortexNoteB}`;
   },
 
-  /** C: predecessor paths unchanged (VC1C flag-OFF byte-identical). */
-  C: () => {
+  /** C: predecessor paths unchanged (VC1C flag-OFF byte-identical) + cortex local. */
+  C: async () => {
     // C must leave the host transcript unchanged (the legacy transcript codec is
     // untouched by VC1A — mode-C byte-identical predecessor, zero EventV2 writes).
     // VC0C resilience C = unchanged transcript: no breaker/spool write is forced
     // when both A and B are unavailable; the host path stays mode-C and offline.
-    return "no-op: zero event/spool writes, transcript codec unchanged";
+    // VC3A flag-OFF (mode C) still exercises the local-only cortex store primitive
+    // (append/rebuild/summary are flag-independent) with zero network egress.
+    const cortexNoteC = await cortexDenialNote();
+    return `no-op: zero event/spool writes, transcript codec unchanged; ${cortexNoteC}`;
   },
 };
 

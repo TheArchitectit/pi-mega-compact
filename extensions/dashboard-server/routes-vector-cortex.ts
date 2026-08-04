@@ -21,16 +21,18 @@ import { createHash } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { VC0A_ENABLED, VC0C_ENABLED, VC1B_ENABLED, VC2C_ENABLED } from "../../src/config.js";
+import { VC0A_ENABLED, VC0C_ENABLED, VC1B_ENABLED, VC2C_ENABLED, VC3A_ENABLED } from "../../src/config.js";
 import { readEvalRows } from "../../src/vector-cortex/eval/persist.js";
 import { summarizeEvalRows } from "../../src/vector-cortex/eval/reader.js";
 import { createVectorCortexSafety } from "../mega-runtime/vector-cortex-safety.js";
 import { createLedgerStore } from "../../src/vector-cortex/ledger/store.js";
+import { createCortexStore } from "../../src/vector-cortex/cortex/store.js";
 import { readEncoderManifest, verifyEncoderAsset, detectPlatform } from "../../src/vector-cortex/encoder/asset.js";
 import type {
   VectorCortexEvaluationSummary,
   VectorCortexHealthCard,
   VectorCortexLedgerView,
+  VectorCortexTopologyView,
   VectorCortexResetResult,
 } from "./api-contracts/vector-cortex.js";
 
@@ -432,6 +434,74 @@ export function handleVectorCortexLedger(
     highWater,
     count,
     occurrences,
+    updatedAt: new Date().toISOString(),
+  };
+  sendJson(res, 200, body);
+  return true;
+}
+
+/**
+ * Reader-only GET /api/vector-cortex/topology (VC3A).
+ *
+ * Built ENTIRELY on the CortexReader capability: opens the isolated cortex DB
+ * for this repo's state dir and returns the topology summary (enabled, active
+ * generation identity, one root digest, derived frontier, record count, ordinal).
+ * It is query-only — never append/rebuild/switch. No writer or admin capability
+ * is reachable on this path (no writer/admin leakage). Non-fatal: a missing or
+ * corrupt cortex DB degrades to `enabled:false`.
+ */
+export function handleVectorCortexTopology(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RouteContext,
+): boolean {
+  const url = req.url ?? "";
+  const path = url.split("?")[0] ?? url;
+  if (path !== "/api/vector-cortex/topology") return false;
+  if (req.method !== "GET") {
+    // Reader-only path: no mutation endpoint lives at /topology.
+    sendJson(res, 405, { error: "method_not_allowed" });
+    return true;
+  }
+
+  const enabled = VC3A_ENABLED();
+  let active = enabled;
+  let summary: {
+    generationId: string | null;
+    rootDigest: string | null;
+    sourceHighWater: string;
+    recordCount: number;
+    ordinal: string | null;
+  } = { generationId: null, rootDigest: null, sourceHighWater: "0", recordCount: 0, ordinal: null };
+
+  if (enabled) {
+    try {
+      const store = createCortexStore({ stateDir: ctx.stateDir });
+      try {
+        const s = store.reader().topologySummary();
+        summary = {
+          generationId: s.generationId,
+          rootDigest: s.rootDigest,
+          sourceHighWater: s.sourceHighWater,
+          recordCount: s.recordCount,
+          ordinal: s.ordinal,
+        };
+      } finally {
+        store.close();
+      }
+    } catch {
+      // Non-fatal: a missing/corrupt cortex DB degrades to `enabled:false`.
+      active = false;
+    }
+  }
+
+  const body: VectorCortexTopologyView = {
+    enabled: active,
+    generationId: summary.generationId,
+    rootDigest: summary.rootDigest,
+    sourceHighWater: summary.sourceHighWater,
+    recordCount: summary.recordCount,
+    ordinal: summary.ordinal,
     updatedAt: new Date().toISOString(),
   };
   sendJson(res, 200, body);

@@ -428,3 +428,33 @@ schemas["schemas/encoder-qualification-fixture.schema.json"] = {
     },
   },
 };
+
+schemas["schemas/cortex-store-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC3A cortex-store fixture envelope",
+  description:
+    "Common structure every VC3A cortex-store fixture validates against. `input.scenario` names the capability/keying/rebuild condition the acceptance test executes against the REAL capability-gated cortex store; `expected` gives the exact verdict (ok) or failure code.",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["cortex-store"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: { type: "string" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario"],
+      properties: {
+        scenario: { type: "string" },
+      },
+    },
+  },
+};

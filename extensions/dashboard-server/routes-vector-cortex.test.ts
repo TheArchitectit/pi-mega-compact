@@ -338,3 +338,97 @@ describe("/api/vector-cortex/breakers/reset (VC0C admin)", () => {
 		}
 	});
 });
+
+describe("/api/vector-cortex/topology (VC3A reader-only)", () => {
+	test("GET returns reader-only topology summary from a seeded cortex DB", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "vc3a-topology-"));
+		// Seed the cortex DB in the SAME state dir the server reads: append two
+		// records via the writer, then rebuild a generation via the admin.
+		const { createCortexStore } = await import(
+			"../../src/vector-cortex/cortex/store.js"
+		);
+		const store = createCortexStore({ stateDir: dir });
+		store.writer().append({
+			sourceHighWater: 3n,
+			algorithmVersion: 1,
+			id: "a",
+			kind: "semantic",
+			payloadBytes: new TextEncoder().encode("alpha"),
+		});
+		store
+			.writer()
+			.append({
+				sourceHighWater: 4n,
+				algorithmVersion: 1,
+				id: "b",
+				kind: "semantic",
+				payloadBytes: new TextEncoder().encode("beta"),
+			});
+		const rebuilt = store.admin().rebuild();
+		assert.equal(rebuilt.ok, true);
+		const rootDigest = rebuilt.ok ? rebuilt.generation.rootDigest : "";
+		store.close();
+
+		process.env.MEGACOMPACT_VC3A = "1";
+		try {
+			await withServer("9422", dir, async (port) => {
+				const res = await fetch(
+					`http://localhost:${port}/api/vector-cortex/topology`,
+				);
+				assert.equal(res.status, 200);
+				const body = (await res.json()) as {
+					enabled: boolean;
+					recordCount: number;
+					sourceHighWater: string;
+					rootDigest: string | null;
+					generationId: string | null;
+					ordinal: string | null;
+				};
+				assert.equal(body.enabled, true);
+				assert.equal(body.recordCount, 2);
+				// Derived frontier is the max sourceHighWater across accepted records.
+				assert.equal(body.sourceHighWater, "4");
+				// One deterministic root digest + active generation identity.
+				assert.equal(body.rootDigest, rootDigest);
+				assert.equal(body.rootDigest?.length, 64, "sha256 hex root digest");
+				assert.ok(body.generationId, "generationId present");
+				assert.equal(body.ordinal, "1");
+				// Reader-only: no payload/prompt text leaks through the summary.
+				const json = JSON.stringify(body);
+				assert.ok(!json.includes("alpha"), "no record payload text");
+				assert.ok(!json.includes("beta"), "no record payload text");
+			});
+		} finally {
+			delete process.env.MEGACOMPACT_VC3A;
+		}
+	});
+
+	test("GET topology rejects non-GET (reader-only path has no mutation)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "vc3a-topology-ro-"));
+		await withServer("9423", dir, async (port) => {
+			const res = await fetch(`http://localhost:${port}/api/vector-cortex/topology`, {
+				method: "POST",
+			});
+			assert.equal(res.status, 405);
+			assert.deepEqual(await res.json(), { error: "method_not_allowed" });
+		});
+	});
+
+	test("GET topology reports disabled (enabled:false) when flag is OFF", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "vc3a-topology-off-"));
+		process.env.MEGACOMPACT_VC3A = "0";
+		try {
+			await withServer("9424", dir, async (port) => {
+				const res = await fetch(
+					`http://localhost:${port}/api/vector-cortex/topology`,
+				);
+				assert.equal(res.status, 200);
+				const body = (await res.json()) as { enabled: boolean; recordCount: number };
+				assert.equal(body.enabled, false);
+				assert.equal(body.recordCount, 0);
+			});
+		} finally {
+			delete process.env.MEGACOMPACT_VC3A;
+		}
+	});
+});

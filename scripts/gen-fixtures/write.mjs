@@ -26,6 +26,7 @@ import { fixtures as conformanceFixtures, named as conformanceNamed } from "./co
 import { fixtures as encoderFixtures, named as encoderNamed } from "./encoder-runtime.mjs";
 import { fixtures as encoderHeadsFixtures, named as encoderHeadsNamed } from "./encoder-heads.mjs";
 import { fixtures as encQualFixtures, named as encQualNamed } from "./encoder-qualification.mjs";
+import { fixtures as cortexFixtures, named as cortexNamed } from "./cortex-store.mjs";
 
 const REPLAY_DIR = join(V2, "replay");
 const EVENTS_DIR = join(V2, "events");
@@ -37,6 +38,7 @@ const CONFORMANCE_DIR = join(V2, "conformance");
 const ENCODER_DIR = join(V2, "encoder-runtime");
 const ENCODER_HEADS_DIR = join(V2, "encoder-heads");
 const ENCODER_QUAL_DIR = join(V2, "encoder-qualification");
+const CORTEX_DIR = join(V2, "cortex-store");
 
 export function writeAll() {
   rmSync(V2, { recursive: true, force: true });
@@ -52,6 +54,7 @@ export function writeAll() {
   mkdirSync(ENCODER_DIR, { recursive: true });
   mkdirSync(ENCODER_HEADS_DIR, { recursive: true });
   mkdirSync(ENCODER_QUAL_DIR, { recursive: true });
+  mkdirSync(CORTEX_DIR, { recursive: true });
 
   const manifestRows = [];
 
@@ -288,13 +291,32 @@ export function writeAll() {
     });
   }
 
+  // Cortex-store fixtures (VC3A): kind=cortex-store. expected.ok pins the
+  // successful capability/keying/rebuild behavior; expected.code pins the exact
+  // failure code (CTX_KEY_CONFLICT / CTX_APPEND_FAILED / CTX_PAYLOAD_DIGEST_MISMATCH).
+  for (const fx of [...cortexFixtures, ...cortexNamed]) {
+    const bytes = Buffer.from(canonicalJson(fx), "utf8");
+    const rel = `cortex-store/${fx.id}.json`;
+    writeFileSync(join(CORTEX_DIR, `${fx.id}.json`), bytes);
+    manifestRows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: fx.schema,
+      algorithm: "cortex-store",
+      producer,
+      expected: fx.expected.ok ? "ok" : fx.expected.code,
+      license: "synthetic",
+    });
+  }
+
   const manifest = {
     version: "2",
     viewer: "vector-cortex-conformance.mjs",
     producer: "vector-cortex-gen-fixtures.mjs",
-    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification",
-    owner: "VC0A,VC0B,VC1A,VC0C,VC1B,VC1C,VC2A,VC2B,VC2C",
-    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification",
+    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification,cortex-store",
+    owner: "VC0A,VC0B,VC1A,VC0C,VC1B,VC1C,VC2A,VC2B,VC2C,VC3A",
+    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification;cortex-store",
     license: "synthetic",
     fixtures: manifestRows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
   };
@@ -318,5 +340,7 @@ export function writeAll() {
     encoderHeadsNamedCount: encoderHeadsNamed.length,
     encoderQualCount: encQualFixtures.length,
     encoderQualNamedCount: encQualNamed.length,
+    cortexCount: cortexFixtures.length,
+    cortexNamedCount: cortexNamed.length,
   };
 }

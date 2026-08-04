@@ -8,6 +8,7 @@ import type {
 	VectorCortexHealthCard,
 	VectorCortexLedgerView,
 	VectorCortexResetResult,
+	VectorCortexTopologyView,
 } from "../types/vector-cortex";
 
 export type {
@@ -15,6 +16,7 @@ export type {
 	VectorCortexHealthCard,
 	VectorCortexLedgerView,
 	VectorCortexResetResult,
+	VectorCortexTopologyView,
 };
 
 export async function fetchVectorCortexEvaluation(): Promise<VectorCortexEvaluationSummary> {
@@ -27,6 +29,13 @@ export async function fetchVectorCortexHealth(): Promise<VectorCortexHealthCard>
 	const r = await fetch("/api/vector-cortex/health");
 	if (!r.ok) throw new Error(`vector-cortex health: ${r.status}`);
 	return r.json() as Promise<VectorCortexHealthCard>;
+}
+
+/** Reader-only cortex topology view (VC3A). */
+export async function fetchVectorCortexTopology(): Promise<VectorCortexTopologyView> {
+	const r = await fetch("/api/vector-cortex/topology");
+	if (!r.ok) throw new Error(`vector-cortex topology: ${r.status}`);
+	return r.json() as Promise<VectorCortexTopologyView>;
 }
 
 /** Reader-only occurrence-ledger identity view (VC1B). */

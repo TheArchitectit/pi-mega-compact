@@ -1,0 +1,1 @@
+{"assertion":"rebuild rejects a record whose payload digest does not match its bytes","expected":{"code":"CTX_PAYLOAD_DIGEST_MISMATCH","ok":false},"id":"CTX-009","input":{"scenario":"payload-digest-mismatch"},"kind":"cortex-store","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/cortex-store-fixture.schema.json"}

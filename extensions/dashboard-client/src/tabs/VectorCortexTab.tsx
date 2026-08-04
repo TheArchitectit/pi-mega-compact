@@ -12,10 +12,12 @@ import {
 	fetchVectorCortexEvaluation,
 	fetchVectorCortexHealth,
 	fetchVectorCortexLedger,
+	fetchVectorCortexTopology,
 	resetVectorCortexBreaker,
 	type VectorCortexEvaluationSummary,
 	type VectorCortexHealthCard,
 	type VectorCortexLedgerView,
+	type VectorCortexTopologyView,
 } from "../api/vector-cortex";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -45,6 +47,7 @@ export default function VectorCortexTab(): React.ReactElement {
 	const [health, setHealth] = useState<VectorCortexHealthCard | null>(null);
 	const [resetMsg, setResetMsg] = useState<string | null>(null);
 	const [ledger, setLedger] = useState<VectorCortexLedgerView | null>(null);
+	const [topology, setTopology] = useState<VectorCortexTopologyView | null>(null);
 
 	const poll = useCallback(() => {
 		fetchVectorCortexEvaluation()
@@ -58,6 +61,9 @@ export default function VectorCortexTab(): React.ReactElement {
 		});
 		fetchVectorCortexLedger().then(setLedger).catch(() => {
 			/* ledger card is best-effort (VC1B) */
+		});
+		fetchVectorCortexTopology().then(setTopology).catch(() => {
+			/* topology card is best-effort (VC3A) */
 		});
 	}, []);
 
@@ -205,6 +211,34 @@ export default function VectorCortexTab(): React.ReactElement {
 							<Metric label="Spool lag" value={String(health.spoolLag)} />
 								<Metric label="Encoder mode" value={health.encoderMode} />
 								<Metric label="Encoder asset" value={health.encoderAssetDigest ? health.encoderAssetDigest.slice(0, 12) : "none"} />
+						</div>
+					)}
+				</CardContent>
+			</Card>
+			<Card>
+				<CardHeader>
+					<div className="flex items-center justify-between">
+						<CardTitle>Derived Cortex Store (VC3A)</CardTitle>
+						{topology?.enabled ? (
+							<Badge variant="success">ACTIVE</Badge>
+						) : (
+							<Badge variant="danger">OFF</Badge>
+						)}
+					</div>
+				</CardHeader>
+				<CardContent>
+					{!topology?.enabled ? (
+						<div className="vc-empty">Cortex store disabled (VC3A off).</div>
+					) : (
+						<div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+							<Metric label="Generation" value={topology.generationId ?? "—"} />
+							<Metric label="Ordinal" value={topology.ordinal ?? "—"} />
+							<Metric label="Records" value={String(topology.recordCount)} />
+							<Metric label="Frontier (HW)" value={topology.sourceHighWater} />
+							<Metric
+								label="Root digest"
+								value={topology.rootDigest ? topology.rootDigest.slice(0, 16) : "—"}
+							/>
 						</div>
 					)}
 				</CardContent>

@@ -120,6 +120,29 @@ export interface VectorCortexResetResult {
 }
 
 /**
+ * Reader-only cortex topology view for GET /api/vector-cortex/topology (VC3A).
+ * Built on the CortexReader capability surface ONLY — it exposes the flagged
+ * enabled state, active generation identity, one root digest, derived frontier
+ * and record count, and NEVER append/rebuild capability or raw record payloads.
+ */
+export interface VectorCortexTopologyView {
+  /** Whether the VC3A cortex-store flag is enabled in this process. */
+  readonly enabled: boolean;
+  /** Active generation id, or null when none rebuilt yet. */
+  readonly generationId: string | null;
+  /** Active generation root digest, or null. */
+  readonly rootDigest: string | null;
+  /** Derived frontier (active generation sourceHighWater, else "0"). */
+  readonly sourceHighWater: string;
+  /** Accepted derived record count. */
+  readonly recordCount: number;
+  /** Monotonic rebuild ordinal, or null. */
+  readonly ordinal: string | null;
+  /** ISO timestamp of the snapshot. */
+  readonly updatedAt: string;
+}
+
+/**
  * Reader-only occurrence-ledger view for GET /api/vector-cortex/ledger (VC1B).
  * Built on the LedgerReader capability surface. Exposes occurrence IDENTITY
  * (seq/eventId/kind/digest/toolCallId) and the per-session high-water/count —
