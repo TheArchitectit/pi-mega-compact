@@ -1,6 +1,6 @@
 # VC5A — PromptDagV1 and budgeted planner
 
-**Status:** planned | **Depends on:** VC4C | **Phase:** VC5
+**Status:** next | **Depends on:** VC4C | **Phase:** VC5
 **Flag:** `MEGACOMPACT_VC5A`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC5A=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs
