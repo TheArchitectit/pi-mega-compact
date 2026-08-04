@@ -168,11 +168,30 @@ function findRecordByKey(
 }
 
 /**
+ * Classify an existing-key hit: an exact `(key, digest)` match is an idempotent
+ * ack of the immutable record; the same key with a DIFFERENT digest is a
+ * `CTX_KEY_CONFLICT` (immutable derived records never mutate).
+ */
+function idempotentOrConflict(
+  existing: CortexRecordV1,
+  candidate: CortexRecordV1,
+  payloadDigest: string,
+): CortexAppendResult {
+  if (existing.payloadDigest === payloadDigest) {
+    // Idempotent ack of an identical immutable record.
+    return { ok: true, record: existing };
+  }
+  return { ok: false, code: "CTX_KEY_CONFLICT", rejected: candidate };
+}
+
+/**
  * Append one derived record. Exact `(sourceHighWater, algorithmVersion, id)`
  * with the SAME payloadDigest is acknowledged idempotently (returning the
  * existing immutable row); the same key with a DIFFERENT digest is a conflict.
  * A storage error is surfaced as `CTX_APPEND_FAILED` so the caller's writer can
- * treat it non-fatally.
+ * treat it non-fatally. A concurrent unique-constraint race is classified as an
+ * idempotent ack / key-conflict (re-checked against the committed row), never
+ * misreported as a storage failure.
  */
 export function insertCortexRecord(
   db: DatabaseSync,
@@ -198,11 +217,7 @@ export function insertCortexRecord(
 
   const existing = findRecordByKey(db, input.sourceHighWater, input.algorithmVersion, input.id);
   if (existing) {
-    if (existing.payloadDigest === payloadDigest) {
-      // Idempotent ack of an identical immutable record.
-      return { ok: true, record: existing };
-    }
-    return { ok: false, code: "CTX_KEY_CONFLICT", rejected: record };
+    return idempotentOrConflict(existing, record, payloadDigest);
   }
 
   try {
@@ -219,8 +234,15 @@ export function insertCortexRecord(
       "@bytes": Buffer.from(input.payloadBytes),
     });
   } catch {
-    // Non-fatal storage failure (e.g. SQLITE_FULL). The caller's writer logs and
-    // the host continues; the record is simply not accepted into the derived store.
+    // A UNIQUE/PK constraint race (two writers pass the SELECT above, the loser
+    // hits the composite PK) is semantically an idempotent ack or a key conflict
+    // — NOT a storage failure — so re-check the now-committed row and classify it
+    // correctly instead of misreporting CTX_APPEND_FAILED. Any other error is a
+    // genuine non-fatal storage failure (e.g. SQLITE_FULL) and surfaces as-is.
+    const recheck = readCortexRecord(db, input.sourceHighWater, input.algorithmVersion, input.id);
+    if (recheck) {
+      return idempotentOrConflict(recheck, record, payloadDigest);
+    }
     return { ok: false, code: "CTX_APPEND_FAILED", rejected: record };
   }
   return { ok: true, record };
@@ -283,6 +305,28 @@ function generationById(db: DatabaseSync, generationId: string): CortexGeneratio
   return row ? rowToGeneration(row) : undefined;
 }
 
+/**
+ * The existing generation carrying the SAME rootDigest and recordCount, or
+ * undefined. Deterministic rebuild of unchanged inputs must REUSE the identical
+ * generation already recorded durably rather than append a fresh duplicate
+ * (idempotency) — this scan is what makes that reuse reachable, since the
+ * ordinal-derived id is always new in the no-opts flow.
+ */
+function generationByRootDigest(
+  db: DatabaseSync,
+  rootDigest: string,
+  recordCount: number,
+): CortexGenerationV1 | undefined {
+  const row = db
+    .prepare(
+      `SELECT id, ordinal, source_high_water, record_count, root_digest, active
+       FROM cortex_generation_v1
+       WHERE root_digest = @digest AND record_count = @count LIMIT 1`,
+    )
+    .get({ "@digest": rootDigest, "@count": recordCount }) as CortexGenerationRow | undefined;
+  return row ? rowToGeneration(row) : undefined;
+}
+
 function rowToGeneration(row: CortexGenerationRow): CortexGenerationV1 {
   return {
     schema: "cortex-generation-v1",
@@ -299,6 +343,13 @@ function rowToGeneration(row: CortexGenerationRow): CortexGenerationV1 {
  * verifies each payload digest (CTX_PAYLOAD_DIGEST_MISMATCH on corruption),
  * computes ONE root digest, and writes + activates a new generation with an
  * incrementing ordinal. Does NOT delete prior generations (evidence retained).
+ *
+ * Idempotency (DTST-CORE invariant): a rebuild of UNCHANGED accepted inputs
+ * (same sorted set → same rootDigest + recordCount) REUSES the identical
+ * generation already recorded durably — it activates and returns that existing
+ * generation instead of appending a fresh duplicate row, so repeated rebuilds
+ * with no record changes yield one generation, not gen-1, gen-2, ... carrying
+ * the same digest.
  *
  * When `opts.authorityHighWater` is supplied, the derived frontier (max record
  * sourceHighWater) must not exceed the contiguous durable authority high-water
@@ -337,17 +388,21 @@ export function rebuildCortexGeneration(
     return { ok: false, code: "CTX_HIGH_WATER_EXCEEDED" };
   }
 
+  const sortedCount = sorted.length;
+  // Deterministic rebuild of unchanged inputs must REUSE the identical generation
+  // already recorded durably (idempotent, no duplicate generation bloat). If a
+  // prior generation carries the same rootDigest + recordCount, activate it and
+  // return it instead of appending a fresh duplicate row.
+  const reused = generationByRootDigest(db, rootDigest, sortedCount);
+  if (reused) {
+    activateGeneration(db, reused.id);
+    return { ok: true, generation: reused };
+  }
+
   const existing = listCortexGenerations(db);
   const base = opts.generationOrdinal ?? (existing.length ? existing[existing.length - 1]!.ordinal + 1n : 1n);
   const ordinal = base > 0n ? base : 1n;
   const generationId = `gen-${ordinal.toString()}`;
-
-  const confirmed = generationById(db, generationId);
-  if (confirmed && confirmed.rootDigest === rootDigest) {
-    // Idempotent rebuild of an identical generation already recorded durably.
-    activateGeneration(db, generationId);
-    return { ok: true, generation: confirmed };
-  }
 
   db.exec("SAVEPOINT mc_cortex_gen");
   try {
@@ -359,7 +414,7 @@ export function rebuildCortexGeneration(
       "@id": generationId,
       "@ordinal": ordinal,
       "@hw": sourceHighWater,
-      "@count": sorted.length,
+      "@count": sortedCount,
       "@digest": rootDigest,
     });
     activateGeneration(db, generationId);

@@ -180,6 +180,30 @@ describe("CTX rebuild + root digest", () => {
     }
   });
 
+  test("rebuild of UNCHANGED inputs REUSES the identical generation (no duplicate rows)", () => {
+    const { db, cleanup } = openScratch("idsame");
+    try {
+      insertCortexRecord(db, input("a"));
+      insertCortexRecord(db, input("b"));
+      insertCortexRecord(db, input("c"));
+      const g1 = rebuildCortexGeneration(db);
+      assert.equal(g1.ok, true);
+      if (!g1.ok) return;
+      // Same accepted set, no record changes -> identical rootDigest + recordCount.
+      const g2 = rebuildCortexGeneration(db);
+      assert.equal(g2.ok, true);
+      if (!g2.ok) return;
+      // The idempotent rebuild reuses the SAME generation row (activates it),
+      // never appends a fresh duplicate. One generation row, not gen-1, gen-2, ...
+      assert.equal(g2.generation.id, g1.generation.id, "unchanged rebuild reuses the generation");
+      assert.equal(g2.generation.rootDigest, g1.generation.rootDigest);
+      assert.equal(listCortexGenerations(db).length, 1, "no generation bloat on unchanged rebuild");
+      assert.equal(activeGeneration(db)?.id, g1.generation.id);
+    } finally {
+      cleanup();
+    }
+  });
+
   test("rebuild rejects a record whose stored payload digest does not match its bytes", () => {
     const { db, cleanup } = openScratch("badpay");
     try {

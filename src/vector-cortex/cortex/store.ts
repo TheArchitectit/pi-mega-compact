@@ -102,10 +102,16 @@ export function createCortexStore(
             : `${opts.stateDir}/vector-cortex/cortex.db`,
         );
 
+  // A caller that invokes the writer/admin seam without injecting an emitter gets
+  // a REAL default producer (structured logger) so telemetry is never silently
+  // dropped — an explicit `emit:` replaces it. The dashboard reader-only route
+  // never appends/rebuilds, so it fires nothing regardless; a future writer/admin
+  // host integration enjoys default observability out of the box (VC3B wiring).
+  const sink = emit ?? defaultEmitFor();
   const fire = (event: string, fields: Record<string, unknown>): void => {
     if (!VC3A_ENABLED()) return;
     try {
-      emit?.(event, fields);
+      sink(event, fields);
     } catch {
       /* non-fatal observability — never break the agent loop */
     }
