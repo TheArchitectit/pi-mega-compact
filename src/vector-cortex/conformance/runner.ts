@@ -17,7 +17,7 @@
  * No network, no side effects on authority (PREVENT-PI-004 / PREVENT-011).
  */
 
-import type { FixtureManifestEntry } from "./manifest.js";
+import { CONF_FAIL, type FixtureManifestEntry } from "./manifest.js";
 import {
   createConformanceReporter,
   type ConformanceReporter,
@@ -63,11 +63,29 @@ export type CaseResult =
 
 const UNKNOWN_DOMAIN = "CONF_UNKNOWN_DOMAIN";
 const UNKNOWN_VERSION = "CONF_UNKNOWN_VERSION";
+/**
+ * The runner-pinned expectation mismatch code: a dispatched handler returned an
+ * outcome that contradicts the manifest entry's frozen expectation (the wrong
+ * failure code, or a success/failure parity error). This is the runner's own
+ * cross-check (task 5: "compare both success bytes and expected failure code"),
+ * distinct from the domain's own failure codes.
+ */
+const EXPECTATION_MISMATCH = "CONF_EXPECTATION_MISMATCH";
+
+export { UNKNOWN_DOMAIN, UNKNOWN_VERSION, EXPECTATION_MISMATCH };
 
 /**
  * Run one conformance case by dispatching strictly on `(domain, algorithmTuple)`.
  * If no handler is registered for the exact domain/algorithms, returns
  * `CONF_UNKNOWN_DOMAIN`/`CONF_UNKNOWN_VERSION` WITHOUT partial output.
+ *
+ * After dispatch the runner cross-checks the handler's outcome against the
+ * manifest entry's frozen expectation (task 5):
+ *   - failure expected (`entry.failureCode` set): the handler must return
+ *     `ok:false` with that exact code, else `CONF_EXPECTATION_MISMATCH`;
+ *   - success expected (`entry.expected === "ok"`): the handler must return
+ *     `ok:true`, and when the manifest pins an `expectedOutputDigest` the
+ *     handler's `outputDigest` must match it, else `CONF_DIGEST_DRIFT`.
  */
 export function runConformanceCase(
   entry: FixtureManifestEntry,
@@ -86,9 +104,26 @@ export function runConformanceCase(
     }
   } else {
     const out = handler.run(entry, fixture);
-    result = out.ok
-      ? { ok: true, outputDigest: out.outputDigest, algorithm: entry.algorithm }
-      : { ok: false, code: out.code, algorithm: entry.algorithm };
+    if (out.ok) {
+      // Success expected? The manifest entry pins the expected success bytes.
+      if (entry.expected !== "ok") {
+        result = { ok: false, code: EXPECTATION_MISMATCH, algorithm: entry.algorithm };
+      } else if (
+        entry.expectedOutputDigest !== undefined &&
+        out.outputDigest !== entry.expectedOutputDigest
+      ) {
+        result = { ok: false, code: CONF_FAIL.DIGEST_DRIFT, algorithm: entry.algorithm };
+      } else {
+        result = { ok: true, outputDigest: out.outputDigest, algorithm: entry.algorithm };
+      }
+    } else {
+      // Failure expected? The manifest entry pins the exact failure code.
+      if (entry.failureCode !== undefined && out.code === entry.failureCode) {
+        result = { ok: false, code: out.code, algorithm: entry.algorithm };
+      } else {
+        result = { ok: false, code: EXPECTATION_MISMATCH, algorithm: entry.algorithm };
+      }
+    }
   }
   reporter.caseChecked({
     id: entry.id,

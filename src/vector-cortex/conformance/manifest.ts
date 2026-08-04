@@ -44,6 +44,7 @@ export interface FixtureManifestEntry {
   readonly expected: string;
   readonly inputDigest: string;
   readonly expectedDigest: string;
+  readonly expectedOutputDigest?: string;
   readonly failureCode?: string;
   readonly algorithmTuple: readonly string[];
 }
@@ -111,6 +112,7 @@ function parseManifest(raw: string): {
     algorithm: string;
     expected: string;
     domain?: string;
+    outputDigest?: string;
   }>;
 } {
   const obj = JSON.parse(raw) as {
@@ -131,6 +133,7 @@ function parseManifest(raw: string): {
       algorithm: string;
       expected: string;
       domain?: string;
+      outputDigest?: string;
     }>,
   };
 }
@@ -157,6 +160,10 @@ export function readFixtureManifestV2(fixtureRoot: string): FixtureManifestV2 {
       expected: fx.expected,
       inputDigest,
       expectedDigest,
+      expectedOutputDigest:
+        typeof fx.outputDigest === "string" && fx.outputDigest.length > 0
+          ? fx.outputDigest
+          : undefined,
       failureCode: fx.expected === "ok" ? undefined : fx.expected,
       algorithmTuple: String(fx.algorithm).split(";").filter(Boolean).map((s) => s.trim()),
     };

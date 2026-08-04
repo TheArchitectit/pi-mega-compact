@@ -1,10 +1,6 @@
-/** VC1C acceptance aggregator — runs the VC1C conformance corpus against the REAL
- * algorithms: MinHashV2 (M4-HIGHBIT-001 byte-exact signature/buckets), the M4
- * copy/validate/switch migration (M4-001..008 + M4-DUP-001 + M4-RESUME-003),
- * cross-version rejection (M4-VERSION-002), the canonical manifest validator
- * (CONF-MANIFEST-001 / CONF-EXTRA-002 / add/remove/drift), and the deterministic
- * DowngradeReport (CONF-DOWN-003). Real logic + committed fixtures, no mocks.
- * Triad: A = v2 runner, B = independent exact fixture reader, C = reject unknown. */
+/** VC1C acceptance aggregator — runs the v2 conformance corpus against the REAL
+ * algorithms + committed fixtures, no mocks. Triad: A=v2 runner, B=independent
+ * exact reader, C=reject unknown. */
 import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
@@ -32,6 +28,7 @@ import {
   readFixtureManifestV2,
   validateCanonicalV2,
   canonicalManifestsConverge,
+  CONF_FAIL,
 } from "./conformance/manifest.js";
 import {
   createConformanceReporter,
@@ -41,6 +38,7 @@ import {
   runConformanceCase,
   runDowngradeExport,
   handlerKey,
+  EXPECTATION_MISMATCH,
   type ConformanceHandler,
   type DowngradeExporter,
 } from "./conformance/runner.js";
@@ -154,9 +152,7 @@ function memHost(input: MigrationFixture["input"]): {
   return { host, rows, active: () => active, switchCalls: () => switches };
 }
 
-// ---------------------------------------------------------------------------
 // Manifest registration
-// ---------------------------------------------------------------------------
 
 const VC1C_IDS = [
   "M4-001", "M4-002", "M4-003", "M4-004", "M4-005", "M4-006", "M4-007", "M4-008",
@@ -180,9 +176,7 @@ describe("VC1C conformance registration", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // MinHashV2 exact arithmetic (M4-HIGHBIT-001) + cross-version (M4-VERSION-002)
-// ---------------------------------------------------------------------------
 
 describe("MinHashV2 exact vectors vs M4-HIGHBIT-001 (triad A/B)", () => {
   test("A: runner reproduces the committed 2048-byte signature + 64 bucket keys", () => {
@@ -216,9 +210,7 @@ describe("MinHashV2 exact vectors vs M4-HIGHBIT-001 (triad A/B)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // M4 migration lifecycle (M4-001..008 + M4-DUP-001 + M4-RESUME-003)
-// ---------------------------------------------------------------------------
 
 function assertMigration(fx: MigrationFixture): void {
   const input = fx.input;
@@ -312,9 +304,7 @@ describe("M4 migration lifecycle against M4-00x fixtures", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // Canonical manifest validator (CONF-MANIFEST-001 / CONF-EXTRA-002)
-// ---------------------------------------------------------------------------
 
 describe("canonical manifest validation", () => {
   test("CONF-MANIFEST-001: a canonical manifest validates and converges", () => {
@@ -381,8 +371,7 @@ describe("canonical manifest validation", () => {
   test("removing a fixture after manifest load makes byId miss it", () => {
     const manifest = readFixtureManifestV2(V2);
     assert.ok(manifest.byId.has("M4-001"), "fixture present at load");
-    // The manifest loader describes only manifest-listed entries; an on-disk
-    // removal after load is caught by validateCanonicalV2 (CONF_MISSING_FIXTURE).
+    // On-disk removal after load is caught by validateCanonicalV2.
     const root = mkdtempSync(join(tmpdir(), "vc1c-afterload-"));
     try {
       copyCorpus(root);
@@ -407,9 +396,7 @@ function copyCorpus(dst: string): void {
   writeFileSync(join(dst, "manifest.json"), readFileSync(join(V2, "manifest.json")));
 }
 
-// ---------------------------------------------------------------------------
 // Triad A/B/C: dispatcher over the minhash domain
-// ---------------------------------------------------------------------------
 
 describe("triad dispatch (A/B/C)", () => {
   test("A: a registered v2 runner dispatches and yields the algorithm name", () => {
@@ -450,11 +437,36 @@ describe("triad dispatch (A/B/C)", () => {
       assert.equal(res.algorithm, "minhash-v2");
     }
   });
+
+  test("runner cross-checks the expected failure code (task 5)", () => {
+    const handlers = new Map<string, ConformanceHandler>();
+    handlers.set(handlerKey("minhash", ["minhash-v2"]), {
+      run: () => ({ ok: false, code: "SOME_OTHER_CODE" }),
+    });
+    const entry = readFixtureManifestV2(V2).byId.get("M4-VERSION-002")!;
+    assert.equal(entry.failureCode, "MINHASH_VERSION_MISMATCH");
+    const res = runConformanceCase(entry, handlers, {});
+    assert.equal(res.ok, false);
+    if (!res.ok) assert.equal(res.code, EXPECTATION_MISMATCH, "wrong code -> runner mismatch");
+  });
+
+  test("runner cross-checks the expected success bytes (task 5)", () => {
+    const handlers = new Map<string, ConformanceHandler>();
+    handlers.set(handlerKey("minhash", ["minhash-v2"]), {
+      run: () => ({ ok: true, outputBytes: new Uint8Array(0), outputDigest: "0".repeat(64) }),
+    });
+    const entry = readFixtureManifestV2(V2).byId.get("M4-HIGHBIT-001")!;
+    assert.equal(
+      entry.expectedOutputDigest,
+      fixture<MinhashFixture>("minhash/M4-HIGHBIT-001.json").expected.signatureDigest,
+    );
+    const res = runConformanceCase(entry, handlers, {});
+    assert.equal(res.ok, false);
+    if (!res.ok) assert.equal(res.code, CONF_FAIL.DIGEST_DRIFT, "wrong bytes -> CONF_DIGEST_DRIFT");
+  });
 });
 
-// ---------------------------------------------------------------------------
 // DowngradeReport determinism (CONF-DOWN-003)
-// ---------------------------------------------------------------------------
 
 describe("DowngradeReport (CONF-DOWN-003)", () => {
   test("a deterministic exporter yields an identical report digest on a second run", () => {
@@ -490,9 +502,7 @@ describe("DowngradeReport (CONF-DOWN-003)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // Flag-off parity (MEGACOMPACT_VC1C)
-// ---------------------------------------------------------------------------
 
 describe("VC1C flag-off parity", () => {
   const flagEnvKey = "MEGACOMPACT_VC1C";

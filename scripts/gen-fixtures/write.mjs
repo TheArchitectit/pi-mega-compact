@@ -179,6 +179,11 @@ export function writeAll() {
       producer,
       expected: fx.expected.ok ? "ok" : fx.expected.code,
       license: "synthetic",
+      // Success cases pin the canonical output digest so the v2 runner (task 5)
+      // cross-checks the handler's success bytes against the manifest entry.
+      ...(fx.expected.ok && fx.expected.signatureDigest
+        ? { outputDigest: fx.expected.signatureDigest }
+        : {}),
     });
   }
 
