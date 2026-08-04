@@ -65,9 +65,22 @@ function digestStrings(values: readonly string[]): string {
  * digest is invariant to row order within the input. A caller that seeds WHOLE
  * groups into the calibration split guarantees no group crosses a boundary.
  */
+/**
+ * Render one (repository, session) group as an injective canonical string.
+ * Each field is length-prefixed (`<len>:<value>`), so two distinct pairs can
+ * never collide to the same rendering — e.g. `{r:"a", s:"b::c"}` renders as
+ * `1:a3:b::c` while `{r:"a::b", s:"c"}` renders as `4:a::b1:c`. A plain
+ * `repository::session` join would conflate those when identifiers happen to
+ * contain "::"; length-prefixing makes the split digest sound for arbitrary
+ * repository/session identifiers.
+ */
+function renderGroup(g: { repository: string; session: string }): string {
+  return `${g.repository.length}:${g.repository}${g.session.length}:${g.session}`;
+}
+
 export function calibrationSplitDigest(groups: readonly { repository: string; session: string }[]): string {
   const rendered = new Set<string>();
-  for (const g of groups) rendered.add(`${g.repository}::${g.session}`);
+  for (const g of groups) rendered.add(renderGroup(g));
   return digestStrings([...rendered]);
 }
 
@@ -76,9 +89,23 @@ function nextState(state: number): number {
   return (state * 1664525 + 1013904223) >>> 0;
 }
 
-/** Deterministic per-head temperature in a stable, healthy range (e.g. 0.8..1.5). */
+/**
+ * Deterministic per-head temperature in a stable, healthy range (e.g. 0.8..1.5).
+ *
+ * The caller-supplied `seed` is mixed into the LCG state through independent
+ * steps so it ALWAYS affects the temperature — even when it equals ENCODER_SEED.
+ * (A naive `ENCODER_SEED ^ head.length ^ seed` cancels the two seed terms when
+ * `seed === ENCODER_SEED`, leaving a pure function of the head — the default
+ * path would make the seed option inert. Here the seed seeds the PRNG first,
+ * then the head name is folded in, so both vary the fit independently.) The fit
+ * stays deterministic for a fixed (seed, head) across processes.
+ */
 function fitTemperature(head: EncoderHeadName, seed: number): number {
-  let state = (((ENCODER_SEED ^ head.length) >>> 0) ^ (seed >>> 0)) ^ 0x9e3779b9;
+  let state = (seed >>> 0) ^ 0x9e3779b9;
+  state = nextState(state);
+  state = (state ^ (head.length >>> 0)) >>> 0;
+  state = nextState(state);
+  state = (state ^ 0x85ebca6b) >>> 0;
   state = nextState(state);
   const r = (state / 4294967296) % 1;
   return 0.8 + r * 0.7; // 0.8 .. 1.5

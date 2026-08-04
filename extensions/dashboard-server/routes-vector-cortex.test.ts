@@ -11,10 +11,33 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+
+/** Locate the repo root (the directory holding `conformance/vector-cortex`). */
+const HERE = dirname(fileURLToPath(import.meta.url));
+function repoRoot(from: string): string {
+  let dir = from;
+  for (let i = 0; i < 8; i++) {
+    if (existsSync(join(dir, "conformance", "vector-cortex"))) return dir;
+    const next = dirname(dir);
+    if (next === dir) break;
+    dir = next;
+  }
+  throw new Error("conformance corpus not found above " + from);
+}
+const REPO_ROOT = repoRoot(HERE);
+/** SHA-256 of the REAL committed ModelManifestV1 — the health card's digest. */
+function realManifestDigest(): string {
+  // guardrails-allow PREVENT-PI-004: local committed asset filesystem read (loopback)
+  return createHash("sha256")
+    .update(readFileSync(join(REPO_ROOT, "assets", "vector-cortex", "encoder-v1", "manifest.json")))
+    .digest("hex");
+}
 
 const SERVER_ENTRY = new URL("./server.js", import.meta.url).pathname;
 
@@ -158,9 +181,13 @@ describe("/api/vector-cortex/health (VC0C)", () => {
 			// never present the exactly-default CLOSED_A as a LIVE circuit breaker.
 			assert.equal(body.stateSource, "ephemeral");
 			// VC2C encoder health (task 5): the committed qualified manifest digest
-			// and triad mode are surfaced as reader-only aggregates.
+			// and triad mode are surfaced as reader-only aggregates. The digest is
+			// the REAL SHA-256 of the committed manifest.json — the exact value the
+			// VC2C assetDigest seam pins (Q01) — so the cross-seam reconciliation
+			// is verified, not just checked for shape.
 			assert.equal(typeof body.encoderAssetDigest, "string");
 			assert.equal(body.encoderAssetDigest.length, 64);
+			assert.equal(body.encoderAssetDigest, realManifestDigest());
 			assert.ok(["A", "B", "C"].includes(body.encoderMode), "encoderMode a triad member");
 			// The committed encoder asset is a package invariant of this sprint, so
 			// the health card reports mode A (verified on the bundle's platform) or

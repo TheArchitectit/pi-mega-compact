@@ -22,7 +22,6 @@
 import { createEncoderHeadsReporter, type EncoderHeadsReporter } from "./emit-vc2b.js";
 import { embedTrigram512, selectTrigramBFallback, ENCODER_TRIGRAM_WIDTH } from "./trigram.js";
 import { embedLexical, selectLexicalC, ENCODER_LEXICAL_WIDTH, ENCODER_LEXICAL_LIMITATION } from "./lexical.js";
-import { ENC_QUALIFICATION_FAIL } from "./types.js";
 
 export type QualificationFallbackVerdict =
   | {
@@ -98,5 +97,3 @@ export function selectQualificationFallback(
     limitation: null,
   };
 }
-
-export { ENC_QUALIFICATION_FAIL, ENCODER_TRIGRAM_WIDTH, ENCODER_LEXICAL_WIDTH };

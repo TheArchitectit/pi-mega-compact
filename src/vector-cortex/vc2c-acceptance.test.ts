@@ -16,6 +16,7 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -75,6 +76,20 @@ function repoRoot(from: string): string {
 import { join as joinX } from "node:path";
 const REPO_ROOT = repoRoot(HERE);
 const V2 = joinX(REPO_ROOT, "conformance", "vector-cortex", "v2");
+
+/**
+ * SHA-256 of the REAL committed ModelManifestV1 (`assets/vector-cortex/
+ * encoder-v1/manifest.json`) — the same value the dashboard health card reports
+ * as `encoderAssetDigest`. A QualifiedEncoderV1 is required to pin exactly this
+ * digest (Q01: the cross-seam reconciliation is verified against the true
+ * committed asset bytes, not a sentinel), so a candidate stamps it as its
+ * `assetManifestDigest` and the assertion compares the qualified record to it.
+ */
+const REAL_MANIFEST_PATH = joinX(REPO_ROOT, "assets", "vector-cortex", "encoder-v1", "manifest.json");
+function realManifestDigest(): string {
+  // guardrails-allow PREVENT-PI-004: local committed asset filesystem read (loopback)
+  return createHash("sha256").update(readFileSync(REAL_MANIFEST_PATH)).digest("hex");
+}
 
 interface ManifestDef {
   owner: string;
@@ -157,10 +172,11 @@ function cleanCandidate(calibration: CalibrationV1, heldOut: EncoderHeldOutMetri
     modelVersion: "vc2c-test",
     asset: { maxTokens: 512, latencyP95Ms: 20, rssDeltaMib: 40 },
     onnxDigest: "a".repeat(64),
-    // Real ModelManifestV1 asset-manifest digest (SHA-256 of manifest.json
-    // bytes); distinct from the onnx digest so the asset/manifest/calibration
-    // digests are each pinned by their own value.
-    assetManifestDigest: "b".repeat(64),
+    // The REAL ModelManifestV1 asset-manifest digest (SHA-256 of the committed
+    // manifest.json bytes) — the same value the dashboard health card reports as
+    // encoderAssetDigest. Distinct from the onnx digest and calibration split
+    // digest so each pin is verified against its own true value (Q01).
+    assetManifestDigest: realManifestDigest(),
     calibration,
     heldOut,
   };
@@ -202,14 +218,19 @@ describe("ENC-017..020 conformance rows", () => {
       assert.equal(verdict.mode, "A");
       assert.equal(verdict.qualified.schema, "qualified-encoder-v1");
       assert.equal(verdict.qualified.onnxDigest.length, 64);
-      // assetDigest pins the REAL ModelManifestV1 asset-manifest digest (SHA-256
-      // of the manifest bytes), not a calibration-derived hash — reconciled with
-      // the dashboard health card's encoderAssetDigest semantics (reviewer S1/S2).
-      assert.equal(verdict.qualified.assetDigest, "b".repeat(64));
+      // assetDigest pins the REAL committed ModelManifestV1 manifest digest
+      // (SHA-256 of the manifest.json bytes) — NOT a calibration-derived hash,
+      // and NOT a sentinel. Verified against the true committed bytes here and
+      // reconciled with the dashboard health card's encoderAssetDigest (Q01):
+      // if the assetManifestDigest seam were wired incorrectly (e.g. to the
+      // calibration-derived hash), this assertion would fail.
+      const real = realManifestDigest();
+      assert.equal(real.length, 64, "committed manifest digest is a 64-char sha256");
+      assert.equal(verdict.qualified.assetDigest, real);
       assert.equal(
         verdict.qualified.assetDigest,
         cleanCandidate(validCalibration(), fullMetrics()).assetManifestDigest,
-        "assetDigest equals the candidate's ModelManifestV1 manifest digest",
+        "assetDigest equals the seed value computed from the committed manifest bytes",
       );
       // assetDigest (manifest) and calibrationDigest (split assignment) are
       // distinct non-overlapping digests.

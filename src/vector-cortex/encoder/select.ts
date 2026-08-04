@@ -82,9 +82,18 @@ export interface QualificationCandidate {
   readonly expectedQualificationManifestDigest?: string;
 }
 
+/**
+ * The qualification verdict. A successful candidate is mode A; ANY demotion here
+ * is mode B — select.ts never produces mode C. Mode C (lexical/exact) is
+ * exclusively the output of the separate fallback seam (`fallback.ts`, selected
+ * only when A is absent AND B itself errors or the caller forces C). The type is
+ * narrowed to "B" on failure to match the implementation: demoting a candidate
+ * is the same "asset-free, non-learned" fallback regardless of which field
+ * tripped; the lexical C demotion is not a property of qualification selection.
+ */
 export type QualificationVerdict =
   | { ok: true; mode: "A"; qualified: QualifiedEncoderV1; code: null }
-  | { ok: false; mode: "B" | "C"; code: string; failedField: string | null };
+  | { ok: false; mode: "B"; code: string; failedField: string | null };
 
 /** Canonical digest over a CalibrationV1's stable identity (split digest, heads,
  *  temps, thresholds, seed) — the "qualification manifest digest". */

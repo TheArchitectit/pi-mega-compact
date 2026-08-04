@@ -9,9 +9,34 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFileSync, existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { selectQualifiedEncoder, qualificationManifestDigest, type QualificationCandidate } from "./select.js";
 import { fitCalibration, type CalibrationExample } from "./calibrate.js";
 import { ENC_QUALIFICATION_FAIL, type CalibrationV1, type EncoderHeldOutMetrics } from "./types.js";
+
+/** Locate the repo root (the directory holding `conformance/vector-cortex`). */
+const HERE = dirname(fileURLToPath(import.meta.url));
+function repoRoot(from: string): string {
+  let dir = from;
+  for (let i = 0; i < 8; i++) {
+    if (existsSync(join(dir, "conformance", "vector-cortex"))) return dir;
+    const next = dirname(dir);
+    if (next === dir) break;
+    dir = next;
+  }
+  throw new Error("conformance corpus not found above " + from);
+}
+const REPO_ROOT = repoRoot(HERE);
+/** SHA-256 of the REAL committed ModelManifestV1 — what assetDigest must pin. */
+function realManifestDigest(): string {
+  // guardrails-allow PREVENT-PI-004: local committed asset filesystem read (loopback)
+  return createHash("sha256")
+    .update(readFileSync(join(REPO_ROOT, "assets", "vector-cortex", "encoder-v1", "manifest.json")))
+    .digest("hex");
+}
 
 const EXAMPLES: readonly CalibrationExample[] = [
   { itemId: "a1", head: "semantic", score: 0.2, label: 0, repository: "repoA", session: "s1" },
@@ -48,9 +73,10 @@ function candidate(over?: Partial<QualificationCandidate>): QualificationCandida
     modelVersion: "vc2c-test",
     asset: { maxTokens: 512, latencyP95Ms: 20, rssDeltaMib: 40 },
     onnxDigest: "a".repeat(64),
-    // Real ModelManifestV1 asset-manifest digest (SHA-256 of manifest.json
-    // bytes); distinct from onnxDigest and from the calibration split digest.
-    assetManifestDigest: "b".repeat(64),
+    // Real ModelManifestV1 asset-manifest digest (SHA-256 of the committed
+    // manifest.json bytes) — distinct from onnxDigest and calibration split
+    // digest; asserted equal to what the qualified record pins (Q01).
+    assetManifestDigest: realManifestDigest(),
     calibration: cal(),
     heldOut: full(),
     ...over,
@@ -88,10 +114,11 @@ describe("select.selectQualifiedEncoder — atomic eligibility (A)", () => {
       assert.equal(v.qualified.schema, "qualified-encoder-v1");
       assert.equal(v.qualified.mode, "A");
       assert.equal(v.qualified.onnxDigest, "a".repeat(64));
-      // assetDigest pins the REAL ModelManifestV1 asset-manifest digest, passed
-      // through the candidate (reviewer S1) — distinct from the calibration
-      // split digest recorded as calibrationDigest.
-      assert.equal(v.qualified.assetDigest, "b".repeat(64));
+      // assetDigest pins the REAL committed ModelManifestV1 asset-manifest
+      // digest (SHA-256 of manifest.json bytes) — verified against the true
+      // committed bytes, not a sentinel, and distinct from the calibration split
+      // digest recorded as calibrationDigest (Q01).
+      assert.equal(v.qualified.assetDigest, realManifestDigest());
       assert.notEqual(v.qualified.assetDigest, v.qualified.calibrationDigest);
       assert.equal(v.qualified.calibrationDigest, v.qualified.calibration.calibrationSplitDigest);
     }
