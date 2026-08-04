@@ -53,6 +53,7 @@ python3 scripts/log_failure.py --list
 node scripts/vector-cortex-conformance.mjs --check
 node scripts/vector-cortex-docs-check.mjs
 node scripts/vector-cortex-scope-check.mjs <SPRINT> <COMMIT...>   # assert every committed file inside the spec's Production ownership + fixed cross-cutting seams
+node scripts/vector-cortex-evidence-check.mjs <SPRINT>           # assert the evidence record's concrete claims (line counts, test counts, flag parity, fixture counts) match the shipped tree
 git diff --check
 ```
 
