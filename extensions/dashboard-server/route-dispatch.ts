@@ -55,6 +55,7 @@ import {
 	handleVectorCortexRender,
 	handleVectorCortexRollout,
 	handleVectorCortexClosureProof,
+	handleVectorCortexRestore,
 } from "./routes.js";
 
 /**
@@ -108,5 +109,6 @@ export function dispatchRoutes(
 	if (handleVectorCortexRender(req, res, ctx)) return true;
 	if (handleVectorCortexRollout(req, res, ctx)) return true;
 	if (handleVectorCortexClosureProof(req, res, ctx)) return true;
+	if (handleVectorCortexRestore(req, res, ctx)) return true;
 	return false;
 }

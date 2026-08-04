@@ -1,6 +1,6 @@
 /**
- * dashboard-server/routes-vector-cortex-heal.ts — VC6A closure-optimization
- * dashboard route.
+ * dashboard-server/routes-vector-cortex-heal.ts — VC6A closure-optimization and
+ * VC6B exact-source-restoration dashboard routes.
  *
  * Reader-only GET /api/vector-cortex/closure-proof returning aggregate-only
  * closure diagnostics: whether the flag is enabled, the runtime triad mode, and
@@ -12,15 +12,22 @@
  * (the conservative VC4C closure, no reduction) — that is exactly the spec's
  * fallback rule — so `mode:"B"` + `enabled:false` is the byte-stable OFF view.
  *
+ * Reader-only GET /api/vector-cortex/restore (VC6B) returns restore COUNTS and
+ * HEAL_RESTORE_* error codes only. There is NO payload endpoint for restoration,
+ * ever — no restored bytes, span ids, node ids, byte ranges, or ledger text.
+ *
  * Guardrails: PREVENT-PI-004 (local in-process state only), PREVENT-011 (no
  * `any`), reader-only aggregate (counts + mode only).
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
-import { VC6A_ENABLED } from "../../src/config.js";
+import { VC6A_ENABLED, VC6B_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
-import type { VectorCortexClosureProofView } from "./api-contracts/vector-cortex.js";
+import type {
+  VectorCortexClosureProofView,
+  VectorCortexRestoreView,
+} from "./api-contracts/vector-cortex.js";
 
 /** Reader-only GET /api/vector-cortex/closure-proof (VC6A). */
 export function handleVectorCortexClosureProof(
@@ -48,6 +55,46 @@ export function handleVectorCortexClosureProof(
     removedEdgeTotal: 0,
     conservativeTraversalTotal: 0,
     optimizedTraversalTotal: 0,
+    lastRejection: null,
+    updatedAt: new Date().toISOString(),
+  };
+  sendJson(res, 200, body);
+  return true;
+}
+
+/**
+ * Reader-only GET /api/vector-cortex/restore (VC6B).
+ *
+ * Counts and HEAL_RESTORE_* codes only — this is a static reader-only aggregate
+ * seam (same shape as the VC6A handler): there is no payload endpoint and never
+ * will be, so no restored bytes/span ids/node ids/ledger text can leak here.
+ */
+export function handleVectorCortexRestore(
+  req: IncomingMessage,
+  res: ServerResponse,
+  _ctx: RouteContext,
+): boolean {
+  const url = req.url ?? "";
+  const path = url.split("?")[0] ?? url;
+  if (path !== "/api/vector-cortex/restore") return false;
+  if (req.method !== "GET") {
+    sendJson(res, 405, { error: "method_not_allowed" });
+    return true;
+  }
+
+  const enabled = VC6B_ENABLED();
+  // Flag-off routes to mode C: with VC6B off there is no exact-restoration path
+  // at all, so the honest OFF view is the disclose-loss mode (old context is
+  // omitted rather than inferred) — mirroring how VC6A's OFF view reports the
+  // conservative fallback it actually takes.
+  const mode: "A" | "B" | "C" = enabled ? "A" : "C";
+  const body: VectorCortexRestoreView = {
+    enabled,
+    mode,
+    restoreAttempts: 0,
+    restoredCount: 0,
+    missingCount: 0,
+    digestRejections: 0,
     lastRejection: null,
     updatedAt: new Date().toISOString(),
   };

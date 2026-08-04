@@ -144,5 +144,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"Advanced closure optimization: deterministically reduces the already-mandatory VC4C closure by transitive reduction over depends edges, emitting a ClosureProofV2 receipt per closure and a verifier that replays reductions against the conservative oracle (HEAL_PROOF_SET_MISMATCH on selected-set divergence). Protected edges (tool-pair / anchor / contradiction / sole-dependency) are never removed. The optimized selected set is byte-identical to the conservative closure. OFF = byte-identical predecessor (VC5C); arithmetic runs, only the reporter + dashboard seam is suppressed.",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_VC6B",
+			"VC6B Exact Source Restoration",
+			"Exact source restoration: restores the original bytes of closure spans ONLY from an exact shard (mode A) or a verified ledger range scan (mode B) — never inferred, reconstructed, or paraphrased from embeddings or semantic text. Requests are hard-bounded at 64 spans / 4MiB (HEAL_RESTORE_LIMIT); every span's SHA-256 is recomputed and bytes are inserted only after all requested span metadata validates, so a single bad span fails the whole request closed (HEAL_RESTORE_DIGEST_MISMATCH, HEAL_RESTORE_RANGE_MISMATCH). When no exact source exists (HEAL_RESTORE_SOURCE_MISSING) the old context is omitted and the loss is disclosed (mode C) rather than filled in. OFF = byte-identical predecessor (VC6A).",
+			true,
+		),
 	],
 };

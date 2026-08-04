@@ -227,6 +227,20 @@ export const VC5C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC5C");
  */
 export const VC6A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC6A");
 
+/**
+ * VC6B — exact source restoration. Default ON. `MEGACOMPACT_VC6B=0` disables and
+ * is byte-identical to the predecessor (VC6A): the `restoreSources` /
+ * `verifyRestored` arithmetic STILL RUNS (it is PURE — an exact-source read plus
+ * a SHA-256 comparison, with no clock, storage, or network), but the
+ * `vector_cortex_source_restored` / `vector_cortex_restore_digest_rejected`
+ * events are never emitted and the dashboard restoration diagnostics seam is
+ * suppressed. Flag OFF gates the reporter + dashboard seam, never the
+ * restore/verify arithmetic, so flag-off outbound/predecessor golden bytes match
+ * exactly. This flag MUST also be a dashboard SETTINGS toggle (visible in config
+ * UI, never in EXCLUDED_SETTINGS), mirroring VC4A/VC4B/VC4C/VC5A/VC5B/VC5C/VC6A.
+ */
+export const VC6B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC6B");
+
 // ---------------------------------------------------------------------------
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker).
 // Rolled numbers for one 60s window; VC0C consumes these at its breaker seam.

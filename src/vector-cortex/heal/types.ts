@@ -224,3 +224,25 @@ export const HEAL_NAMED_IDS = [
 ] as const;
 
 export type { ClosureEdge, ClosureEdgeKind };
+
+// ---------------------------------------------------------------------------
+// VC6B exact source restoration (restore-types.ts). Re-exported here so the
+// heal contract has ONE entry point: `RestoreHintV1` above names the node VC6B
+// must fetch, and these types describe the fetch itself.
+// ---------------------------------------------------------------------------
+
+export type {
+  RestoreRequestV1,
+  RestoreSpanRequest,
+  RestoreResultV1,
+  RestoreSpanResult,
+  RestoreFailureCode,
+  RestoreReader,
+  RestoreVerification,
+} from "./restore-types.js";
+export {
+  RESTORE_IDS,
+  RESTORE_NAMED_IDS,
+  RESTORE_LIMIT_SPANS,
+  RESTORE_LIMIT_BYTES,
+} from "./restore-types.js";

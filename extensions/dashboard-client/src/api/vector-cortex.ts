@@ -16,6 +16,7 @@ import type {
 	VectorCortexShardsView,
 	VectorCortexTopologyView,
 	VectorCortexClosureProofView,
+	VectorCortexRestoreView,
 } from "../types/vector-cortex";
 
 export type {
@@ -31,6 +32,7 @@ export type {
 	VectorCortexShardsView,
 	VectorCortexTopologyView,
 	VectorCortexClosureProofView,
+	VectorCortexRestoreView,
 };
 
 export async function fetchVectorCortexEvaluation(): Promise<VectorCortexEvaluationSummary> {
@@ -99,6 +101,13 @@ export async function fetchVectorCortexClosureProof(): Promise<VectorCortexClosu
 	const r = await fetch("/api/vector-cortex/closure-proof");
 	if (!r.ok) throw new Error(`vector-cortex closure-proof: ${r.status}`);
 	return r.json() as Promise<VectorCortexClosureProofView>;
+}
+
+/** Reader-only exact-source-restoration view (VC6B). Counts + codes only. */
+export async function fetchVectorCortexRestore(): Promise<VectorCortexRestoreView> {
+	const r = await fetch("/api/vector-cortex/restore");
+	if (!r.ok) throw new Error(`vector-cortex restore: ${r.status}`);
+	return r.json() as Promise<VectorCortexRestoreView>;
 }
 
 /** Reader-only occurrence-ledger identity view (VC1B). */

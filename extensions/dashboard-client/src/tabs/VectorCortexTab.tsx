@@ -18,6 +18,7 @@ import {
 	fetchVectorCortexRender,
 	fetchVectorCortexRollout,
 	fetchVectorCortexClosureProof,
+	fetchVectorCortexRestore,
 	fetchVectorCortexShards,
 	fetchVectorCortexTopology,
 	resetVectorCortexBreaker,
@@ -30,6 +31,7 @@ import {
 	type VectorCortexRenderView,
 	type VectorCortexRolloutView,
 	type VectorCortexClosureProofView,
+	type VectorCortexRestoreView,
 	type VectorCortexShardsView,
 	type VectorCortexTopologyView,
 } from "../api/vector-cortex";
@@ -39,6 +41,7 @@ import { Metric } from "./VectorCortexMetric";
 import { VectorCortexRenderCard } from "./VectorCortexRenderCard";
 import { VectorCortexRolloutCard } from "./VectorCortexRolloutCard";
 import { VectorCortexClosureCard } from "./VectorCortexClosureCard";
+import { VectorCortexRestoreCard } from "./VectorCortexRestoreCard";
 import { VectorCortexPlansCard } from "./VectorCortexPlansCard";
 import { VectorCortexTopologyCard } from "./VectorCortexTopologyCard";
 import { VectorCortexLedgerCard } from "./VectorCortexLedgerCard";
@@ -67,6 +70,7 @@ export default function VectorCortexTab(): React.ReactElement {
 	const [render, setRender] = useState<VectorCortexRenderView | null>(null);
 	const [rollout, setRollout] = useState<VectorCortexRolloutView | null>(null);
 	const [closureProof, setClosureProof] = useState<VectorCortexClosureProofView | null>(null);
+	const [restore, setRestore] = useState<VectorCortexRestoreView | null>(null);
 
 	const poll = useCallback(() => {
 		fetchVectorCortexEvaluation()
@@ -104,6 +108,9 @@ export default function VectorCortexTab(): React.ReactElement {
 		});
 		fetchVectorCortexClosureProof().then(setClosureProof).catch(() => {
 			/* closure-optimization card is best-effort (VC6A) */
+		});
+		fetchVectorCortexRestore().then(setRestore).catch(() => {
+			/* exact-source-restoration card is best-effort (VC6B) */
 		});
 	}, []);
 
@@ -320,6 +327,7 @@ export default function VectorCortexTab(): React.ReactElement {
 			<VectorCortexRenderCard view={render} />
 			<VectorCortexRolloutCard view={rollout} />
 			<VectorCortexClosureCard view={closureProof} />
+			<VectorCortexRestoreCard view={restore} />
 			<VectorCortexLedgerCard ledger={ledger} />
 		</div>
 	);

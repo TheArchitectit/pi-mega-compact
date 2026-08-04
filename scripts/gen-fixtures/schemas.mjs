@@ -1103,3 +1103,121 @@ schemas["schemas/closure-optimization-fixture.schema.json"] = {
     },
   },
 };
+
+schemas["schemas/restoration-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC6B restoration fixture envelope",
+  description:
+    "Common structure every VC6B restoration fixture validates against. `input.request` is a full RestoreRequestV1 (span identity by ShardRange plus the pinned SHA-256 span digest in BARE lowercase hex, no `sha256:` prefix); `input.exactShards` and `input.ledgerEvents` are the ONLY sources the restorer may read, decoded by the acceptance test into real ExactShardV1 / EventV2 objects (bytes are base64, `seq` is a JSON number converted to BigInt) and fed verbatim into the REAL heal modules (src/vector-cortex/heal/{restore,verify}.js), no mocks. `input.scenario` names the restoration condition. `expected` pins the restore verdict: `ok` (restored AND verified) or the exact HEAL_RESTORE_* failure code, plus the span accounting (restoredCount / missingCount) and the triad `mode` (A = indexed exact shards, B = ledger range scan, C = a span no exact source covers, omitted with the semantic loss disclosed).",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["restoration"] },
+    expected: {
+      type: "object",
+      required: ["ok", "restoredCount", "missingCount", "mode"],
+      properties: {
+        ok: { type: "boolean" },
+        code: {
+          type: "string",
+          enum: [
+            "HEAL_RESTORE_LIMIT",
+            "HEAL_RESTORE_DIGEST_MISMATCH",
+            "HEAL_RESTORE_SOURCE_MISSING",
+            "HEAL_RESTORE_RANGE_MISMATCH",
+          ],
+        },
+        restoredCount: { type: "integer", minimum: 0 },
+        missingCount: { type: "integer", minimum: 0 },
+        mode: { type: "string", enum: ["A", "B", "C"] },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario", "sessionId", "request", "exactShards", "ledgerEvents"],
+      properties: {
+        scenario: { type: "string" },
+        sessionId: { type: "string" },
+        request: {
+          type: "object",
+          required: ["spans"],
+          properties: {
+            spans: {
+              type: "array",
+              items: {
+                type: "object",
+                required: ["nodeId", "range", "digest"],
+                properties: {
+                  nodeId: { type: "string" },
+                  range: { $ref: "#/definitions/shardRange" },
+                  digest: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        exactShards: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["sessionId", "range", "originalBytesBase64", "digest", "byteCount", "case"],
+            properties: {
+              sessionId: { type: "string" },
+              range: { $ref: "#/definitions/shardRange" },
+              originalBytesBase64: { type: "string" },
+              digest: { type: "string" },
+              byteCount: { type: "integer", minimum: 0 },
+              case: {
+                type: "string",
+                enum: ["tool-pair", "anchor", "invalid-utf8", "anchor+invalid"],
+              },
+            },
+          },
+        },
+        ledgerEvents: {
+          type: "array",
+          items: {
+            type: "object",
+            required: [
+              "sessionId",
+              "seq",
+              "eventId",
+              "role",
+              "kind",
+              "originalBytesBase64",
+              "bytesDigest",
+              "occurredAtMs",
+            ],
+            properties: {
+              sessionId: { type: "string" },
+              seq: { type: "integer", minimum: 0 },
+              eventId: { type: "string" },
+              role: { type: "string", enum: ["policy", "user", "assistant", "tool"] },
+              kind: { type: "string" },
+              originalBytesBase64: { type: "string" },
+              bytesDigest: { type: "string" },
+              occurredAtMs: { type: "integer", minimum: 0 },
+              toolCallId: { type: "string" },
+            },
+          },
+        },
+      },
+    },
+  },
+  definitions: {
+    shardRange: {
+      type: "object",
+      required: ["sessionId", "seqStart", "seqEnd", "byteStart", "byteEnd"],
+      properties: {
+        sessionId: { type: "string" },
+        seqStart: { type: "integer", minimum: 0 },
+        seqEnd: { type: "integer", minimum: 0 },
+        byteStart: { type: "integer", minimum: 0 },
+        byteEnd: { type: "integer", minimum: 0 },
+      },
+    },
+  },
+};

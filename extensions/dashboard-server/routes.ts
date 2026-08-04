@@ -54,4 +54,5 @@ export {
 	handleVectorCortexRender,
 	handleVectorCortexRollout,
 	handleVectorCortexClosureProof,
+	handleVectorCortexRestore,
 } from "./routes-vector-cortex.js";

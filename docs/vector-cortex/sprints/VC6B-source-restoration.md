@@ -1,11 +1,11 @@
 # VC6B — Exact source restoration
 
-**Status:** planned | **Depends on:** VC6A | **Phase:** VC6
+**Status:** next | **Depends on:** VC6A | **Phase:** VC6
 **Flag:** `MEGACOMPACT_VC6B`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC6B=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs
 
-Consume only reviewer-accepted predecessor contracts and [common contracts](../CONTRACTS.md). Own **RestoreRequestV1 / RestoreResultV1**. Production ownership: `src/vector-cortex/heal/restore.ts`; `src/vector-cortex/heal/verify.ts`. Algorithm: Read exact bytes only from ledger/exact shard by span+digest; never infer from embeddings; bounded 64 spans/4MiB; verify before insertion.
+Consume only reviewer-accepted predecessor contracts and [common contracts](../CONTRACTS.md). Own **RestoreRequestV1 / RestoreResultV1**. Production ownership: `src/vector-cortex/heal/restore.ts`; `src/vector-cortex/heal/verify.ts`; `src/vector-cortex/heal/restore-types.ts`; `src/vector-cortex/heal/restore-readers.ts`; `src/vector-cortex/heal/restore-emit.ts`; `src/vector-cortex/heal/_restore-fixture.ts`; `src/vector-cortex/heal/restore.test.ts`; `src/vector-cortex/heal/verify.test.ts`; `src/vector-cortex/vc6b-acceptance.test.ts`. Algorithm: Read exact bytes only from ledger/exact shard by span+digest; never infer from embeddings; bounded 64 spans/4MiB; verify before insertion.
 
 ## Numbered implementation tasks
 

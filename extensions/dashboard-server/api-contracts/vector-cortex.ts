@@ -374,4 +374,7 @@ export interface VectorCortexLedgerView {
   readonly updatedAt: string;
 }
 
-export type { VectorCortexClosureProofView } from "./vector-cortex-heal.js";
+export type {
+  VectorCortexClosureProofView,
+  VectorCortexRestoreView,
+} from "./vector-cortex-heal.js";

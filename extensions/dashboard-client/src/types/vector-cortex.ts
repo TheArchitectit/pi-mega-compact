@@ -209,6 +209,22 @@ export interface VectorCortexRolloutView {
   updatedAt: string;
 }
 
+/**
+ * Reader-only exact-source-restoration view (VC6B). Counts + HEAL_RESTORE_*
+ * codes only — there is no payload endpoint, so no restored bytes, span ids,
+ * node ids, or ledger text ever reach the client.
+ */
+export interface VectorCortexRestoreView {
+  enabled: boolean;
+  mode: "A" | "B" | "C";
+  restoreAttempts: number;
+  restoredCount: number;
+  missingCount: number;
+  digestRejections: number;
+  lastRejection: string | null;
+  updatedAt: string;
+}
+
 /** Reader-only closure-optimization diagnostics view (VC6A). Aggregate only. */
 export interface VectorCortexClosureProofView {
   enabled: boolean;

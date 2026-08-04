@@ -38,6 +38,7 @@ import { fixtures as renderFixtures, named as renderNamed } from "./render.mjs";
 import { fixtures as providerFixtures, named as providerNamed } from "./provider.mjs";
 import { fixtures as rolloutFixtures, named as rolloutNamed } from "./rollout.mjs";
 import { fixtures as healFixtures, named as healNamed } from "./closure-optimization.mjs";
+import { fixtures as restorationFixtures, named as restorationNamed } from "./restoration.mjs";
 
 const REPLAY_DIR = join(V2, "replay");
 const EVENTS_DIR = join(V2, "events");
@@ -61,6 +62,7 @@ const RENDER_DIR = join(V2, "render");
 const PROVIDER_DIR = join(V2, "provider");
 const ROLLOUT_DIR = join(V2, "rollout");
 const HEAL_DIR = join(V2, "closure-optimization");
+const RESTORATION_DIR = join(V2, "restoration");
 
 export function writeAll() {
   rmSync(V2, { recursive: true, force: true });
@@ -88,6 +90,7 @@ export function writeAll() {
   mkdirSync(PROVIDER_DIR, { recursive: true });
   mkdirSync(ROLLOUT_DIR, { recursive: true });
   mkdirSync(HEAL_DIR, { recursive: true });
+  mkdirSync(RESTORATION_DIR, { recursive: true });
 
   const manifestRows = [];
 
@@ -553,13 +556,33 @@ export function writeAll() {
     });
   }
 
+  // Restoration fixtures (VC6B): kind=restoration rows (HEAL-016..030 + named)
+  // pin exact source restoration — indexed exact-shard reads, ledger range
+  // scans, digest rejection, and the request bounds — with algorithm
+  // "restoration".
+  for (const fx of [...restorationFixtures, ...restorationNamed]) {
+    const bytes = Buffer.from(canonicalJson(fx), "utf8");
+    const rel = `restoration/${fx.id}.json`;
+    writeFileSync(join(RESTORATION_DIR, `${fx.id}.json`), bytes);
+    manifestRows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: fx.schema,
+      algorithm: "restoration",
+      producer,
+      expected: fx.expected.ok ? "ok" : fx.expected.code,
+      license: "synthetic",
+    });
+  }
+
   const manifest = {
     version: "2",
     viewer: "vector-cortex-conformance.mjs",
     producer: "vector-cortex-gen-fixtures.mjs",
-    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification,cortex-store,topology,topology-query,router-generation-v2,shard,residual,reconstruction,prompt-dag,planner,render,provider,rollout,closure-optimization",
-    owner: "VC0A,VC0B,VC0C,VC1A,VC1B,VC1C,VC2A,VC2B,VC2C,VC3A,VC3B,VC3C,VC4A,VC4B,VC4C,VC5A,VC5B,VC5C,VC6A",
-    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification;cortex-store;topology-fixture;topology-query-fixture;router-generation-migration;shard-fixture;residual-fixture;reconstruction-fixture;prompt-dag-fixture;planner-fixture;render-fixture;provider-fixture;rollout-fixture;closure-optimization-fixture",
+    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification,cortex-store,topology,topology-query,router-generation-v2,shard,residual,reconstruction,prompt-dag,planner,render,provider,rollout,closure-optimization,restoration",
+    owner: "VC0A,VC0B,VC0C,VC1A,VC1B,VC1C,VC2A,VC2B,VC2C,VC3A,VC3B,VC3C,VC4A,VC4B,VC4C,VC5A,VC5B,VC5C,VC6A,VC6B",
+    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification;cortex-store;topology-fixture;topology-query-fixture;router-generation-migration;shard-fixture;residual-fixture;reconstruction-fixture;prompt-dag-fixture;planner-fixture;render-fixture;provider-fixture;rollout-fixture;closure-optimization-fixture;restoration-fixture",
     license: "synthetic",
     fixtures: manifestRows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
   };
@@ -605,5 +628,7 @@ export function writeAll() {
     rolloutNamedCount: rolloutNamed.length,
     healCount: healFixtures.length,
     healNamedCount: healNamed.length,
+    restorationCount: restorationFixtures.length,
+    restorationNamedCount: restorationNamed.length,
   };
 }
