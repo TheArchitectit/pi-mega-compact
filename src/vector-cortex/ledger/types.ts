@@ -101,9 +101,11 @@ export interface ValidationIssue {
 }
 
 /**
- * Registered EVT conformance ID range (EVT-001..015). The acceptance test reads
+ * Registered EVT conformance ID range (EVT-001..030). The acceptance test reads
  * these rows from the v2 manifest and asserts each returns its manifest bytes or
  * exactly its listed failure code. Mirrors CUT_IDS / M3_IDS in replay/types.ts.
+ * EVT-001..015 are owned by VC1A (codec/validator); EVT-016..030 are owned by
+ * VC1B (occurrence ledger, see ledger/store.ts).
  */
 export const EVT_IDS = [
   "EVT-001",
@@ -121,4 +123,19 @@ export const EVT_IDS = [
   "EVT-013",
   "EVT-014",
   "EVT-015",
+  "EVT-016",
+  "EVT-017",
+  "EVT-018",
+  "EVT-019",
+  "EVT-020",
+  "EVT-021",
+  "EVT-022",
+  "EVT-023",
+  "EVT-024",
+  "EVT-025",
+  "EVT-026",
+  "EVT-027",
+  "EVT-028",
+  "EVT-029",
+  "EVT-030",
 ] as const;

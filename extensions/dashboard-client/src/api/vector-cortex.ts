@@ -6,12 +6,14 @@
 import type {
 	VectorCortexEvaluationSummary,
 	VectorCortexHealthCard,
+	VectorCortexLedgerView,
 	VectorCortexResetResult,
 } from "../types/vector-cortex";
 
 export type {
 	VectorCortexEvaluationSummary,
 	VectorCortexHealthCard,
+	VectorCortexLedgerView,
 	VectorCortexResetResult,
 };
 
@@ -25,6 +27,17 @@ export async function fetchVectorCortexHealth(): Promise<VectorCortexHealthCard>
 	const r = await fetch("/api/vector-cortex/health");
 	if (!r.ok) throw new Error(`vector-cortex health: ${r.status}`);
 	return r.json() as Promise<VectorCortexHealthCard>;
+}
+
+/** Reader-only occurrence-ledger identity view (VC1B). */
+export async function fetchVectorCortexLedger(
+	session = "default",
+): Promise<VectorCortexLedgerView> {
+	const r = await fetch(
+		`/api/vector-cortex/ledger?session=${encodeURIComponent(session)}`,
+	);
+	if (!r.ok) throw new Error(`vector-cortex ledger: ${r.status}`);
+	return r.json() as Promise<VectorCortexLedgerView>;
 }
 
 /** Admin capability: reset a breaker's cooldown (never evidence). */

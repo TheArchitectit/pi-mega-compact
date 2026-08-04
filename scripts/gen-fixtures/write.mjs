@@ -19,10 +19,12 @@ import { fixtures as evalFixtures } from "./evaluation.mjs";
 import { fixtures as replayFixtures } from "./replay.mjs";
 import { fixtures as eventFixtures } from "./events.mjs";
 import { fixtures as resilienceFixtures, named as resilienceNamed } from "./resilience.mjs";
+import { fixtures as ledgerFixtures, named as ledgerNamed } from "./ledger.mjs";
 
 const REPLAY_DIR = join(V2, "replay");
 const EVENTS_DIR = join(V2, "events");
 const RESILIENCE_DIR = join(V2, "resilience");
+const LEDGER_DIR = join(V2, "ledger");
 
 export function writeAll() {
   rmSync(V2, { recursive: true, force: true });
@@ -31,6 +33,7 @@ export function writeAll() {
   mkdirSync(REPLAY_DIR, { recursive: true });
   mkdirSync(EVENTS_DIR, { recursive: true });
   mkdirSync(RESILIENCE_DIR, { recursive: true });
+  mkdirSync(LEDGER_DIR, { recursive: true });
 
   const manifestRows = [];
 
@@ -121,13 +124,33 @@ export function writeAll() {
     });
   }
 
+  // Ledger fixtures (VC1B): kind=occurrence-v2 for ledger behavior + M2 lifecycle,
+  // kind=migrate-down for downgrade export rows. Registering M2-001..015 and
+  // MIG-DOWN-001 (plus the named M2-DUP-001/M2-TOOL-002/MIG-DOWN-003) as on-disk
+  // fixtures so every VC1B conformance ID resolves.
+  for (const fx of [...ledgerFixtures, ...ledgerNamed]) {
+    const bytes = Buffer.from(canonicalJson(fx), "utf8");
+    const rel = `ledger/${fx.id}.json`;
+    writeFileSync(join(LEDGER_DIR, `${fx.id}.json`), bytes);
+    manifestRows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: fx.schema,
+      algorithm: fx.kind === "migrate-down" ? "migrate-down" : "occurrence-v2",
+      producer,
+      expected: fx.expected.ok ? "ok" : fx.expected.code,
+      license: "synthetic",
+    });
+  }
+
   const manifest = {
     version: "2",
     viewer: "vector-cortex-conformance.mjs",
     producer: "vector-cortex-gen-fixtures.mjs",
-    domain: "evaluation,replay,events,resilience",
-    owner: "VC0A,VC0B,VC1A,VC0C",
-    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture",
+    domain: "evaluation,replay,events,resilience,ledger",
+    owner: "VC0A,VC0B,VC1A,VC0C,VC1B",
+    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture",
     license: "synthetic",
     fixtures: manifestRows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
   };
@@ -138,6 +161,8 @@ export function writeAll() {
     replayCount: replayFixtures.length,
     eventCount: eventFixtures.length,
     resilienceCount: resilienceFixtures.length,
+    ledgerCount: ledgerFixtures.length,
+    ledgerNamedCount: ledgerNamed.length,
     namedCount: resilienceNamed.length,
     schemaCount: Object.keys(schemas).length,
   };

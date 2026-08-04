@@ -228,4 +228,77 @@ describe("/api/vector-cortex/breakers/reset (VC0C admin)", () => {
 			delete process.env.MEGACOMPACT_VC0C;
 		}
 	});
+
+	test("GET ledger (VC1B) returns identity rows (never source payloads)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "vc1b-ledger-"));
+		// Seed the occurrence-v2 ledger in the SAME state dir the server reads.
+		const { createLedgerStore } = await import(
+			"../../src/vector-cortex/ledger/store.js"
+		);
+		const store = createLedgerStore({ stateDir: dir });
+		store
+			.writer()
+			.append({
+				session: "default",
+				seq: 1n,
+				eventId: "c9",
+				kind: "tool_call",
+				sourceBytes: new TextEncoder().encode("echo"),
+			});
+		store
+			.writer()
+			.append({
+				session: "default",
+				seq: 2n,
+				eventId: "r1",
+				kind: "tool_result",
+				toolCallId: "c9",
+				sourceBytes: new TextEncoder().encode("done"),
+			});
+		store.close();
+
+		process.env.MEGACOMPACT_VC1B = "1";
+		try {
+			await withServer("9420", dir, async (port) => {
+				const res = await fetch(
+					`http://localhost:${port}/api/vector-cortex/ledger?session=default`,
+				);
+				assert.equal(res.status, 200);
+				const body = (await res.json()) as {
+					enabled: boolean;
+					count: number;
+					occurrences: Array<{ seq: string; kind: string; toolCallId?: string }>;
+				};
+				assert.equal(body.enabled, true);
+				assert.equal(body.count, 2);
+				assert.equal(body.occurrences.length, 2);
+				assert.equal(body.occurrences[0]!.kind, "tool_call");
+				assert.equal(body.occurrences[1]!.toolCallId, "c9");
+				// Reader-only: no source bytes / payload text in the view.
+				const json = JSON.stringify(body);
+				assert.ok(!json.includes("echo"), "no source payload text");
+				assert.ok(!json.includes("done"), "no source payload text");
+			});
+		} finally {
+			delete process.env.MEGACOMPACT_VC1B;
+		}
+	});
+
+	test("GET ledger (VC1B) reports disabled when flag is OFF", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "vc1b-ledger-off-"));
+		process.env.MEGACOMPACT_VC1B = "0";
+		try {
+			await withServer("9421", dir, async (port) => {
+				const res = await fetch(
+					`http://localhost:${port}/api/vector-cortex/ledger`,
+				);
+				assert.equal(res.status, 200);
+				const body = (await res.json()) as { enabled: boolean; count: number };
+				assert.equal(body.enabled, false);
+				assert.equal(body.count, 0);
+			});
+		} finally {
+			delete process.env.MEGACOMPACT_VC1B;
+		}
+	});
 });

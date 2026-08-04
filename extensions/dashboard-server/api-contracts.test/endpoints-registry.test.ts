@@ -126,7 +126,7 @@ void _c_achievements;
 // correct paths.
 
 const ENDPOINT_KEYS = Object.keys(ENDPOINTS) as (keyof typeof ENDPOINTS)[];
-const EXPECTED_ENDPOINT_COUNT = 48; // 47 + 1 vector-cortex evaluation (VC0A)
+const EXPECTED_ENDPOINT_COUNT = 49; // 47 + vector-cortex evaluation (VC0A) + ledger (VC1B)
 
 /** All `/api/*` paths served by server.ts (extracted from the route handlers). */
 const SERVER_TS_PATHS: string[] = [

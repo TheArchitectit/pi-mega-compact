@@ -39,6 +39,17 @@ export const VC0B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC0B");
 export const VC1A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC1A");
 
 /**
+ * VC1B — occurrence ledger + tool identity + compat journal (LedgerReader/
+ * Writer/Admin, CompatJournalV1, M2 occurrence-v2 migration).
+ * Default ON. `MEGACOMPACT_VC1B=0` disables and is byte-identical to the
+ * predecessor (mode C: the neutral occurrence ledger is not written, no
+ * journal rows, zero `vector_cortex_occurrence_appended` emissions). The real
+ * consumers are the ledger write integration seam and the compat-journal
+ * switch seam.
+ */
+export const VC1B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC1B");
+
+/**
  * VC0C — live safety envelope (TriadResult / Breaker / KillDecision + durable
  * spool). Default ON. `MEGACOMPACT_VC0C=0` disables and is byte-identical to
  * the predecessor (mode C: selected before provider invocation, unchanged host

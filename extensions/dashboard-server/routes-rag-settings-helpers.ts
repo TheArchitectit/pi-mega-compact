@@ -294,6 +294,12 @@ export const SETTINGS: ReadonlyArray<{
 				true,
 			),
 			boolDirect(
+				"MEGACOMPACT_VC1B",
+				"VC1B Occurrence Ledger + Tool Identity",
+				"Neutral occurrence ledger (LedgerReader/Writer/Admin + CompatJournalV1): per-session monotonic seq, tool result references one earlier call, uniqueness by (eventId,digest) only, and the M2 copy-validate-switch downgrade journal. OFF = mode C, ledger unwritten, byte-identical.",
+				true,
+			),
+			boolDirect(
 				"MEGACOMPACT_VC0C",
 				"VC0C Live Safety Envelope",
 				"TriadResult/Breaker live circuit breaker (60s window, 20 attempts, 30s cooldown, 3 probes, 5min healthy residence) + durable spool before provider invocation; manual reset clears cooldown but never evidence. OFF = mode C, unchanged transcript, byte-identical.",

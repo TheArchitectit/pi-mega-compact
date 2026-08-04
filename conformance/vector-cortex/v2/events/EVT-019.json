@@ -1,0 +1,1 @@
+{"assertion":"a tool call occurrence encodifies and round-trips","expected":{"ok":true,"utf8Valid":true},"id":"EVT-019","input":{"events":[{"bytesBase64":"Y2FsbA==","eventId":"c9","kind":"tool_call","occurredAtMs":0,"role":"assistant","seq":1,"sessionId":"s-tool"}]},"kind":"encode","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/event-fixture.schema.json"}

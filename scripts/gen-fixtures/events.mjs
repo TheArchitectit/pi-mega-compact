@@ -251,7 +251,143 @@ const evt015 = validateFixture(
   { ok: true, order: ["call", "res", "tail"] },
 );
 
+// EVT-016..030 — occurrence-ledger byte fixtures (VC1B). Extends the VC1A
+// registered range to EVT-016..030 (see src/vector-cortex/ledger/types.ts).
+// These remain event-fixture rows: encode rows exercise the byte authority,
+// validate rows exercise exact failure/order codes. The VC1B acceptance reads
+// these from the v2 manifest and asserts their manifest bytes/results.
+
+// EVT-016: same bytes at two seq/eventId are two distinct occurrences (equal digest).
+const evt016 = encodeFixture(
+  "EVT-016",
+  "same message bytes at two seq/eventId are two distinct occurrences with equal digest",
+  [
+    ev({ sessionId: "s-dup", seq: 1, eventId: "dup1", bytesBase64: b64bytes(new TextEncoder().encode("repeat payload")) }),
+    ev({ sessionId: "s-dup", seq: 2, eventId: "dup2", bytesBase64: b64bytes(new TextEncoder().encode("repeat payload")) }),
+  ],
+  { ok: true, utf8Valid: true, distinctDigests: false, equalDigests: true },
+);
+
+const evt017 = encodeFixture(
+  "EVT-017",
+  "valid UTF-8 user message classifies valid with derived NFC",
+  [ev({ sessionId: "s-msg", seq: 1, eventId: "m1", bytesBase64: b64bytes(new TextEncoder().encode("hello ledger")) })],
+  { ok: true, utf8Valid: true, canonicalNfc: "hello ledger" },
+);
+
+const evt018 = encodeFixture(
+  "EVT-018",
+  "invalid UTF-8 byte 0xff round-trips as {valid:false, base64}, never replaced",
+  [ev({ sessionId: "s-bad", seq: 1, eventId: "bad", bytesBase64: b64bytes(new Uint8Array([0xff])) })],
+  { ok: true, utf8Valid: false },
+);
+
+const evt019 = encodeFixture(
+  "EVT-019",
+  "a tool call occurrence encodifies and round-trips",
+  [ev({ sessionId: "s-tool", seq: 1, eventId: "c9", role: "assistant", kind: "tool_call", bytesBase64: b64bytes(new TextEncoder().encode("call")) })],
+  { ok: true, utf8Valid: true },
+);
+
+const evt020 = encodeFixture(
+  "EVT-020",
+  "a tool result referencing one earlier call round-trips with its toolCallId",
+  [ev({ sessionId: "s-tool", seq: 2, eventId: "r1", role: "tool", kind: "tool_result", toolCallId: "c9", bytesBase64: b64bytes(new TextEncoder().encode("result")) })],
+  { ok: true, utf8Valid: true },
+);
+
+const evt021 = validateFixture(
+  "EVT-021",
+  "balanced tool call/result pair is valid and ordered",
+  [
+    ev({ sessionId: "s-pair", seq: 1, eventId: "call", role: "assistant", kind: "tool_call", toolCallId: "p1", bytesBase64: b64bytes(new TextEncoder().encode("call")) }),
+    ev({ sessionId: "s-pair", seq: 2, eventId: "res", role: "tool", kind: "tool_result", toolCallId: "p1", bytesBase64: b64bytes(new TextEncoder().encode("result")) }),
+  ],
+  { ok: true, order: ["call", "res"] },
+);
+
+const evt022 = validateFixture(
+  "EVT-022",
+  "duplicate (sessionId, seq, eventId) occurrence is rejected EVT_DUPLICATE_ID",
+  [
+    ev({ sessionId: "s-dupe", seq: 1, eventId: "e1", bytesBase64: b64bytes(new TextEncoder().encode("a")) }),
+    ev({ sessionId: "s-dupe", seq: 1, eventId: "e1", bytesBase64: b64bytes(new TextEncoder().encode("a")) }),
+  ],
+  { ok: false, codes: ["EVT_DUPLICATE_ID"] },
+);
+
+const evt023 = validateFixture(
+  "EVT-023",
+  "stored digest that is not the sha256 of its bytes is rejected EVT_DIGEST_MISMATCH",
+  [ev({ sessionId: "s-dig", seq: 1, eventId: "e1", bytesBase64: b64bytes(new TextEncoder().encode("payload")), bytesDigest: "sha256:0000000000000000000000000000000000000000000000000000000000000000" })],
+  { ok: false, codes: ["EVT_DIGEST_MISMATCH"] },
+);
+
+const evt024 = encodeFixture(
+  "EVT-024",
+  "composed and decomposed e-acute are distinct identities with equal canonical NFC",
+  [
+    ev({ sessionId: "s-nfc", seq: 1, eventId: "comp", bytesBase64: b64bytes(new TextEncoder().encode("é")) }),
+    ev({ sessionId: "s-nfc", seq: 2, eventId: "decomp", bytesBase64: b64bytes(new TextEncoder().encode("e\u0301")) }),
+  ],
+  { ok: true, utf8Valid: true, distinctDigests: true, equalNfc: true },
+);
+
+const evt025 = encodeFixture(
+  "EVT-025",
+  "same bytes in two sessions are two occurrences (session-scoped)",
+  [
+    ev({ sessionId: "sA", seq: 1, eventId: "x", bytesBase64: b64bytes(new TextEncoder().encode("shared")) }),
+    ev({ sessionId: "sB", seq: 1, eventId: "x", bytesBase64: b64bytes(new TextEncoder().encode("shared")) }),
+  ],
+  { ok: true, utf8Valid: true, distinctDigests: false, equalDigests: true },
+);
+
+const evt026 = validateFixture(
+  "EVT-026",
+  "equal session/seq sorts unsigned eventId bytes (surrogate divergence)",
+  [
+    ev({ sessionId: "s-tie", seq: 1, eventId: String.fromCodePoint(0xe000), bytesBase64: b64bytes(new TextEncoder().encode("a")) }),
+    ev({ sessionId: "s-tie", seq: 1, eventId: String.fromCodePoint(0x10000), bytesBase64: b64bytes(new TextEncoder().encode("b")) }),
+  ],
+  // Bytewise (unsigned UTF-8) ordering: U+E000(EE) sorts BEFORE U+10000(F0).
+  { ok: true, order: [String.fromCodePoint(0xe000), String.fromCodePoint(0x10000)] },
+);
+
+const evt027 = encodeFixture(
+  "EVT-027",
+  "a policy occurrence encodifies (sanctioned prompt-policy channel, not a message)",
+  [ev({ sessionId: "s-pol", seq: 1, eventId: "p1", role: "policy", kind: "policy", bytesBase64: b64bytes(new TextEncoder().encode("policy input")) })],
+  { ok: true, utf8Valid: true, canonicalNfc: "policy input" },
+);
+
+const evt028 = validateFixture(
+  "EVT-028",
+  "invalid UTF-8 mapped to {valid:false, base64} is valid once (no replacement)",
+  [ev({ sessionId: "s-bad", seq: 1, eventId: "b1", bytesBase64: b64bytes(new Uint8Array([0xff, 0xfe])) })],
+  { ok: true },
+);
+
+const evt029 = encodeFixture(
+  "EVT-029",
+  "NFC-normalized-lookalike but byte-distinct payloads stay distinct identities",
+  [
+    ev({ sessionId: "s-look", seq: 1, eventId: "l1", bytesBase64: b64bytes(new TextEncoder().encode("a\u0301")) }),
+    ev({ sessionId: "s-look", seq: 2, eventId: "l2", bytesBase64: b64bytes(new TextEncoder().encode("á")) }),
+  ],
+  { ok: true, utf8Valid: true, distinctDigests: true, equalNfc: true },
+);
+
+const evt030 = validateFixture(
+  "EVT-030",
+  "codec preserves toolCallId on a result; the ledger store enforces the single-call reference",
+  [ev({ sessionId: "s-tool", seq: 2, eventId: "r1", role: "tool", kind: "tool_result", toolCallId: "ghost", bytesBase64: b64bytes(new TextEncoder().encode("result")) })],
+  { ok: true, order: ["r1"] },
+);
+
 export const fixtures = [
   evt001, evt002, evt003, evt004, evt005, evt006, evt007, evt008,
   evt009, evt010, evt011, evt012, evt013, evt014, evt015,
+  evt016, evt017, evt018, evt019, evt020, evt021, evt022, evt023,
+  evt024, evt025, evt026, evt027, evt028, evt029, evt030,
 ];

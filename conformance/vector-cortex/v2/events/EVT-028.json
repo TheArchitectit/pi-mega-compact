@@ -1,0 +1,1 @@
+{"assertion":"invalid UTF-8 mapped to {valid:false, base64} is valid once (no replacement)","expected":{"ok":true},"id":"EVT-028","input":{"events":[{"bytesBase64":"//4=","eventId":"b1","kind":"message","occurredAtMs":0,"role":"user","seq":1,"sessionId":"s-bad"}]},"kind":"validate","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/event-fixture.schema.json"}

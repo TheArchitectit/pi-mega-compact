@@ -11,9 +11,11 @@ import { useState, useEffect, useCallback } from "react";
 import {
 	fetchVectorCortexEvaluation,
 	fetchVectorCortexHealth,
+	fetchVectorCortexLedger,
 	resetVectorCortexBreaker,
 	type VectorCortexEvaluationSummary,
 	type VectorCortexHealthCard,
+	type VectorCortexLedgerView,
 } from "../api/vector-cortex";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -42,6 +44,7 @@ export default function VectorCortexTab(): React.ReactElement {
 	const [loading, setLoading] = useState(true);
 	const [health, setHealth] = useState<VectorCortexHealthCard | null>(null);
 	const [resetMsg, setResetMsg] = useState<string | null>(null);
+	const [ledger, setLedger] = useState<VectorCortexLedgerView | null>(null);
 
 	const poll = useCallback(() => {
 		fetchVectorCortexEvaluation()
@@ -52,6 +55,9 @@ export default function VectorCortexTab(): React.ReactElement {
 			.finally(() => setLoading(false));
 		fetchVectorCortexHealth().then(setHealth).catch(() => {
 			/* health card is best-effort (VC0C) */
+		});
+		fetchVectorCortexLedger().then(setLedger).catch(() => {
+			/* ledger card is best-effort (VC1B) */
 		});
 	}, []);
 
@@ -198,6 +204,66 @@ export default function VectorCortexTab(): React.ReactElement {
 							/>
 							<Metric label="Spool lag" value={String(health.spoolLag)} />
 						</div>
+					)}
+				</CardContent>
+			</Card>
+			<Card>
+				<CardHeader>
+					<div className="flex items-center justify-between">
+						<CardTitle>Occurrence Ledger (VC1B)</CardTitle>
+						{ledger?.enabled ? (
+							<Badge variant="success">ACTIVE</Badge>
+						) : (
+							<Badge variant="danger">OFF</Badge>
+						)}
+					</div>
+				</CardHeader>
+				<CardContent>
+					{!ledger?.enabled ? (
+						<div className="vc-empty">Ledger disabled (VC1B off).</div>
+					) : (
+						<>
+							<div className="mb-3 grid grid-cols-2 gap-4 md:grid-cols-3">
+								<Metric label="Session" value={ledger.session} />
+								<Metric label="High-water" value={ledger.highWater} />
+								<Metric label="Occurrences" value={String(ledger.count)} />
+							</div>
+							{ledger.occurrences.length === 0 ? (
+								<div className="vc-empty">No occurrences recorded.</div>
+							) : (
+								<div className="max-h-64 overflow-y-auto">
+									<table className="w-full text-left text-xs">
+										<thead>
+											<tr className="border-b border-border/50 text-muted-foreground">
+												<th className="py-1 pr-2">seq</th>
+												<th className="py-1 pr-2">eventId</th>
+												<th className="py-1 pr-2">kind</th>
+												<th className="py-1 pr-2">toolCall</th>
+												<th className="py-1">digest</th>
+											</tr>
+										</thead>
+										<tbody>
+											{ledger.occurrences.map((o) => (
+												<tr
+													key={`${o.seq}-${o.eventId}`}
+													className="border-b border-border/30"
+												>
+													<td className="py-1 pr-2 font-mono">{o.seq}</td>
+													<td className="py-1 pr-2 font-mono">{o.eventId}</td>
+													<td className="py-1 pr-2">{o.kind}</td>
+													<td className="py-1 pr-2 font-mono">
+														{o.toolCallId ?? "\u2014"}
+													</td>
+													<td className="max-w-[180px] truncate font-mono text-muted-foreground">
+														{o.digest}
+													</td>
+												</tr>
+											))}
+										</tbody>
+									</table>
+								</div>
+							)}
+						</>
 					)}
 				</CardContent>
 			</Card>

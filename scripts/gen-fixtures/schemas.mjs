@@ -145,3 +145,49 @@ schemas["schemas/tri-fixture.schema.json"] = {
     input: { type: "object" },
   },
 };
+
+schemas["schemas/ledger-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "Occurrence-v2 ledger fixture envelope",
+  description:
+    "Common structure every VC1B occurrence-ledger / M2 downgrade fixture validates against. `input.occurrences` describes the v2 ledger to set up; `input.unrepresentable` names rows with no lossless legacy projection; `expected.ok`/`expected.code` gives the exact migration verdict.",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["occurrence-v2", "migrate-down"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: { type: "string" },
+        count: { type: "integer" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["occurrences"],
+      properties: {
+        scenario: { type: "string" },
+        occurrences: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["seq", "eventId", "kind", "bytesBase64"],
+            properties: {
+              seq: { type: "integer" },
+              eventId: { type: "string" },
+              kind: { type: "string" },
+              bytesBase64: { type: "string" },
+              toolCallId: { type: "string" },
+            },
+          },
+        },
+        unrepresentable: { type: "array", items: { type: "string" } },
+      },
+    },
+  },
+};

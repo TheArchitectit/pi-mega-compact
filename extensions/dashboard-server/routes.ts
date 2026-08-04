@@ -44,4 +44,5 @@ export {
 	handleVectorCortexEvaluation,
 	handleVectorCortexHealth,
 	handleVectorCortexBreakersReset,
+	handleVectorCortexLedger,
 } from "./routes-vector-cortex.js";

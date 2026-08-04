@@ -12,7 +12,10 @@
 import type { EndpointDef } from "../core.js";
 import type { RagMetricsResponse } from "../rag-metrics.js";
 import type { ModelThresholdsResponse } from "../model-thresholds.js";
-import type { VectorCortexEvaluationSummary } from "../vector-cortex.js";
+import type {
+  VectorCortexEvaluationSummary,
+  VectorCortexLedgerView,
+} from "../vector-cortex.js";
 
 /** Additive endpoint entries spread into the ENDPOINTS registry. */
 export const EXTRA_ENDPOINTS = {
@@ -48,5 +51,17 @@ export const EXTRA_ENDPOINTS = {
 		"GET",
 		undefined,
 		VectorCortexEvaluationSummary
+	>,
+
+	/** GET /api/vector-cortex/ledger — reader-only occurrence ledger view (VC1B). */
+	vectorCortexLedger: {
+		method: "GET",
+		path: "/api/vector-cortex/ledger",
+		description:
+			"Reader-only occurrence-ledger identity view: seq/eventId/kind/digest + high-water (never source payloads).",
+	} as const satisfies EndpointDef<
+		"GET",
+		undefined,
+		VectorCortexLedgerView
 	>,
 } as const;

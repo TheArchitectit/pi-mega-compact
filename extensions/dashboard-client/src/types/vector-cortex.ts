@@ -63,3 +63,22 @@ export interface VectorCortexResetResult {
   manualReason?: string;
   updatedAt: string;
 }
+
+/**
+ * Occurrence-ledger identity view (VC1B, GET /api/vector-cortex/ledger).
+ * Reader-only: seq/eventId/kind/digest + high-water, never source payloads.
+ */
+export interface VectorCortexLedgerView {
+  enabled: boolean;
+  session: string;
+  highWater: string;
+  count: number;
+  occurrences: Array<{
+    seq: string;
+    eventId: string;
+    kind: string;
+    digest: string;
+    toolCallId?: string;
+  }>;
+  updatedAt: string;
+}

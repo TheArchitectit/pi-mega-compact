@@ -1,0 +1,1 @@
+{"assertion":"M2 resume after an interrupted switch is idempotent (no duplicate rows)","expected":{"count":1,"ok":true},"id":"M2-005","input":{"occurrences":[{"bytesBase64":"eA==","eventId":"u1","kind":"user","seq":1}],"scenario":"resume-after-halt"},"kind":"occurrence-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/ledger-fixture.schema.json"}

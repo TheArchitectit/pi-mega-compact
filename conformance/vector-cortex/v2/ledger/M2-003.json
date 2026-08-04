@@ -1,0 +1,1 @@
+{"assertion":"an untouched (never-active) ledger refuses downgrade export (MIG_DOWN_NOT_ACTIVE)","expected":{"code":"MIG_DOWN_NOT_ACTIVE","ok":false},"id":"M2-003","input":{"occurrences":[],"scenario":"not-active-empty"},"kind":"occurrence-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/ledger-fixture.schema.json"}
