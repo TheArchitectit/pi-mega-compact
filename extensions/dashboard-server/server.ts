@@ -57,6 +57,8 @@ import {
 	handleModelThresholds,
 	handleWiki,
 	handleVectorCortexEvaluation,
+	handleVectorCortexHealth,
+	handleVectorCortexBreakersReset,
 	handleStatic,
 } from "./routes.js";
 
@@ -277,6 +279,8 @@ export async function launchDashboardServer(
 		if (handleModelThresholds(req, res, ctx)) return;
 		if (handleWiki(req, res, ctx)) return;
 		if (handleVectorCortexEvaluation(req, res, ctx)) return;
+		if (handleVectorCortexHealth(req, res, ctx)) return;
+		if (handleVectorCortexBreakersReset(req, res, ctx)) return;
 		handleStatic(req, res, ctx);
 	});
 

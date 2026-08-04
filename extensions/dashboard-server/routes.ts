@@ -42,4 +42,6 @@ export { handleModelThresholds } from "./routes-model-thresholds.js";
 export { handleWiki } from "./routes-wiki.js";
 export {
 	handleVectorCortexEvaluation,
+	handleVectorCortexHealth,
+	handleVectorCortexBreakersReset,
 } from "./routes-vector-cortex.js";

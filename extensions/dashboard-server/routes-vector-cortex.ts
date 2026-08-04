@@ -7,16 +7,55 @@
  * breaker health + reset endpoints into this same file, keeping it additive
  * and within extension limits.
  *
+ * VC0C (task 5) adds:
+ *   GET  /api/vector-cortex/health          — reader-only aggregate health card
+ *   POST /api/vector-cortex/breakers/reset  — explicit admin capability
+ *
  * Guardrails: PREVENT-PI-004 (local filesystem read only), PREVENT-011 (no
  * `any`), reader-only aggregate (never payloads/prompts/ledger — EVAL-REDACT-002).
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
-import { VC0A_ENABLED } from "../../src/config.js";
+import { VC0A_ENABLED, VC0C_ENABLED } from "../../src/config.js";
 import { readEvalRows } from "../../src/vector-cortex/eval/persist.js";
 import { summarizeEvalRows } from "../../src/vector-cortex/eval/reader.js";
-import type { VectorCortexEvaluationSummary } from "./api-contracts/vector-cortex.js";
+import { createVectorCortexSafety } from "../mega-runtime/vector-cortex-safety.js";
+import type {
+  VectorCortexEvaluationSummary,
+  VectorCortexHealthCard,
+  VectorCortexResetResult,
+} from "./api-contracts/vector-cortex.js";
+
+/** Admin capability: an actor-supplied subsystem selector for breaker reset. */
+function readJsonBody(
+  req: IncomingMessage,
+  cb: (
+    result: { ok: true; value: Record<string, unknown> } | { ok: false; error: string },
+  ) => void,
+): void {
+  let body = "";
+  let tooBig = false;
+  req.on("data", (chunk: Buffer) => {
+    if (body.length > 65536) {
+      tooBig = true;
+      return;
+    }
+    body += chunk.toString();
+  });
+  req.on("end", () => {
+    if (tooBig) return cb({ ok: false, error: "body_too_large" });
+    try {
+      const v = body ? JSON.parse(body) : {};
+      if (typeof v !== "object" || v === null || Array.isArray(v)) {
+        return cb({ ok: false, error: "invalid_object" });
+      }
+      cb({ ok: true, value: v as Record<string, unknown> });
+    } catch {
+      cb({ ok: false, error: "invalid_json" });
+    }
+  });
+}
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   // guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
@@ -63,5 +102,149 @@ export function handleVectorCortexEvaluation(
     updatedAt: new Date().toISOString(),
   };
   sendJson(res, 200, body);
+  return true;
+}
+
+/**
+ * Reader-only GET /api/vector-cortex/health (VC0C).
+ *
+ * Aggregate health card: breaker state (window/probe/backoff), durable spool
+ * frontier/authority/lag, and a worst-state aggregate. Constructs the safety
+ * adapter over the state dir — durable spool state (frontier-frozen, lag) is
+ * read from disk, so it reflects restart. Purely read: no mutation, never
+ * payloads/prompts/ledger.
+ */
+export function handleVectorCortexHealth(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RouteContext,
+): boolean {
+  const url = req.url ?? "";
+  if (url !== "/api/vector-cortex/health") return false;
+  if (req.method !== "GET") {
+    // Reader-only path: no mutation endpoint lives at /health.
+    sendJson(res, 405, { error: "method_not_allowed" });
+    return true;
+  }
+
+  const enabled = VC0C_ENABLED();
+  const safety = enabled ? createVectorCortexSafety({ stateDir: ctx.stateDir }) : null;
+  const card = safety ? safety.health() : null;
+
+  const fallback: VectorCortexHealthCard = {
+    enabled: false,
+    mode: "C",
+    state: "CLOSED_A",
+    subsystem: "provider",
+    sinceMs: 0,
+    windowMs: 0,
+    probeCount: 0,
+    backoffDelayMs: 0,
+    frontierFrozen: false,
+    authorityOutage: false,
+    spoolLag: 0,
+    attempts: 0,
+    failures: 0,
+    p95Ms: 0,
+    failureRate: 0,
+    updatedAt: new Date().toISOString(),
+    aggregate: "CLOSED_A",
+  };
+  if (!card) {
+    sendJson(res, 200, fallback);
+    return true;
+  }
+
+  const mode: "A" | "B" | "C" =
+    card.state === "CLOSED_A" ? "A" : card.state === "MANUAL_HALT" ? "C" : "B";
+  const aggregate =
+    card.state === "MANUAL_HALT"
+      ? "MANUAL_HALT"
+      : card.state === "OPEN_C"
+        ? "OPEN_C"
+        : card.state === "OPEN_B"
+          ? "OPEN_B"
+          : card.state === "PROBE_B" || card.state === "PROBE_A"
+            ? "PROBE"
+            : "CLOSED_A";
+
+  const body: VectorCortexHealthCard = {
+    enabled,
+    mode,
+    state: card.state,
+    subsystem: card.subsystem,
+    sinceMs: card.sinceMs,
+    reason: card.reason,
+    windowMs: card.windowMs,
+    probeCount: card.probeCount,
+    backoffDelayMs: card.backoffDelayMs,
+    frontierFrozen: card.frontierFrozen,
+    authorityOutage: card.authorityOutage,
+    spoolLag: card.spoolLag,
+    attempts: card.attempts,
+    failures: card.failures,
+    p95Ms: card.p95Ms,
+    failureRate: card.failureRate,
+    updatedAt: new Date().toISOString(),
+    aggregate,
+  };
+  sendJson(res, 200, body);
+  return true;
+}
+
+/**
+ * Admin POST /api/vector-cortex/breakers/reset (VC0C).
+ *
+ * Explicit admin capability (separate from the reader GET). Clears a breaker's
+ * cooldown — or unwires a MANUAL_HALT — but NEVER evidence (attempts/failures
+ * are retained, per TRIAD_RESILIENCE). The subsystem is actor-supplied via the
+ * JSON body `{ subsystem }`. Every reset is documented in the returned record
+ * (state, retained evidence, updatedAt) — an auditable mutation surface; the
+ * GET path can never mutate.
+ */
+export function handleVectorCortexBreakersReset(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RouteContext,
+): boolean {
+  const url = req.url ?? "";
+  if (url !== "/api/vector-cortex/breakers/reset") return false;
+  if (req.method !== "POST") {
+    sendJson(res, 405, { error: "method_not_allowed" });
+    return true;
+  }
+  if (!VC0C_ENABLED()) {
+    sendJson(res, 409, { error: "vco_c_disabled" });
+    return true;
+  }
+
+  readJsonBody(req, (parsed) => {
+    if (!parsed.ok) {
+      sendJson(res, 400, { error: parsed.error });
+      return;
+    }
+    const subsystem = parsed.value.subsystem;
+    if (typeof subsystem !== "string" || subsystem.length === 0) {
+      sendJson(res, 400, { error: "subsystem_required" });
+      return;
+    }
+    try {
+      const safety = createVectorCortexSafety({ stateDir: ctx.stateDir });
+      const rec = safety.reset(subsystem);
+      const body: VectorCortexResetResult = {
+        subsystem: rec.subsystem,
+        state: rec.state,
+        cooldownCleared: true,
+        attempts: rec.attempts,
+        failures: rec.failures,
+        probeCount: rec.probeCount,
+        manualReason: rec.manualReason,
+        updatedAt: rec.updatedAt,
+      };
+      sendJson(res, 200, body);
+    } catch {
+      sendJson(res, 500, { error: "reset_failed" });
+    }
+  });
   return true;
 }

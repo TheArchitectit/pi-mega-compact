@@ -136,3 +136,93 @@ describe("/api/vector-cortex/evaluation", () => {
 		});
 	});
 });
+
+describe("/api/vector-cortex/health (VC0C)", () => {
+	test("GET returns default CLOSED_A health card, reader-only shape", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "vc0c-health-"));
+		await withServer("9415", dir, async (port) => {
+			const res = await fetch(`http://localhost:${port}/api/vector-cortex/health`);
+			assert.equal(res.status, 200);
+			const body = await res.json();
+			assert.equal(body.enabled, true);
+			assert.equal(body.mode, "A");
+			assert.equal(body.state, "CLOSED_A");
+			assert.equal(body.subsystem, "provider");
+			assert.equal(typeof body.windowMs, "number");
+			assert.equal(typeof body.probeCount, "number");
+			assert.equal(typeof body.backoffDelayMs, "number");
+			assert.equal(typeof body.frontierFrozen, "boolean");
+			assert.equal(typeof body.spoolLag, "number");
+			assert.equal(body.aggregate, "CLOSED_A");
+			// Reader-only: never payload/prompt/ledger fields.
+			assert.equal("payload" in body, false);
+			assert.equal("prompt" in body, false);
+			assert.equal("ledger" in body, false);
+		});
+	});
+
+	test("GET health rejects non-GET (reader-only path has no mutation)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "vc0c-health-ro-"));
+		await withServer("9416", dir, async (port) => {
+			const res = await fetch(`http://localhost:${port}/api/vector-cortex/health`, {
+				method: "POST",
+			});
+			assert.equal(res.status, 405);
+			assert.deepEqual(await res.json(), { error: "method_not_allowed" });
+		});
+	});
+});
+
+describe("/api/vector-cortex/breakers/reset (VC0C admin)", () => {
+	test("POST reset clears cooldown, retains evidence (0 on fresh breaker)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "vc0c-reset-"));
+		await withServer("9417", dir, async (port) => {
+			const res = await fetch(
+				`http://localhost:${port}/api/vector-cortex/breakers/reset`,
+				{
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ subsystem: "provider" }),
+				},
+			);
+			assert.equal(res.status, 200);
+			const body = await res.json();
+			assert.equal(body.subsystem, "provider");
+			assert.equal(body.state, "CLOSED_A");
+			assert.equal(body.cooldownCleared, true);
+			assert.equal(typeof body.failures, "number");
+			assert.equal(typeof body.attempts, "number");
+		});
+	});
+
+	test("POST reset rejects missing subsystem", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "vc0c-reset-sub-"));
+		await withServer("9418", dir, async (port) => {
+			const res = await fetch(
+				`http://localhost:${port}/api/vector-cortex/breakers/reset`,
+				{ method: "POST", body: "{}" },
+			);
+			assert.equal(res.status, 400);
+		});
+	});
+
+	test("POST reset returns 409 when VC0C is disabled", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "vc0c-reset-off-"));
+		process.env.MEGACOMPACT_VC0C = "0";
+		try {
+			await withServer("9419", dir, async (port) => {
+				const res = await fetch(
+					`http://localhost:${port}/api/vector-cortex/breakers/reset`,
+					{
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ subsystem: "provider" }),
+					},
+				);
+				assert.equal(res.status, 409);
+			});
+		} finally {
+			delete process.env.MEGACOMPACT_VC0C;
+		}
+	});
+});

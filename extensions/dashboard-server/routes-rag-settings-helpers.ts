@@ -293,6 +293,12 @@ export const SETTINGS: ReadonlyArray<{
 				"EventV2 byte-authority ledger codec (original bytes + SHA-256, strict UTF-8, derived NFC) and canonical validator (EVT_DIGEST_MISMATCH / EVT_UTF8_TAG_INVALID / EVT_DUPLICATE_ID). OFF = mode C, transcript codec unchanged, byte-identical.",
 				true,
 			),
+			boolDirect(
+				"MEGACOMPACT_VC0C",
+				"VC0C Live Safety Envelope",
+				"TriadResult/Breaker live circuit breaker (60s window, 20 attempts, 30s cooldown, 3 probes, 5min healthy residence) + durable spool before provider invocation; manual reset clears cooldown but never evidence. OFF = mode C, unchanged transcript, byte-identical.",
+				true,
+			),
 		],
 	},
 	{

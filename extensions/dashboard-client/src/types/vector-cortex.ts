@@ -18,3 +18,46 @@ export interface VectorCortexEvaluationSummary {
   rejects: string[];
   updatedAt: string;
 }
+
+/**
+ * Health card (VC0C, task 5): breaker state + durable spool frontier/lag.
+ * Aggregate only — never payloads/prompts/ledger.
+ */
+export interface VectorCortexHealthCard {
+  enabled: boolean;
+  mode: "A" | "B" | "C";
+  state:
+    | "CLOSED_A"
+    | "OPEN_B"
+    | "OPEN_C"
+    | "PROBE_B"
+    | "PROBE_A"
+    | "MANUAL_HALT";
+  subsystem: string;
+  sinceMs: number;
+  reason?: string;
+  windowMs: number;
+  probeCount: number;
+  backoffDelayMs: number;
+  frontierFrozen: boolean;
+  authorityOutage: boolean;
+  spoolLag: number;
+  attempts: number;
+  failures: number;
+  p95Ms: number;
+  failureRate: number;
+  updatedAt: string;
+  aggregate: string;
+}
+
+/** Admin reset result (VC0C, task 5). */
+export interface VectorCortexResetResult {
+  subsystem: string;
+  state: string;
+  cooldownCleared: boolean;
+  attempts: number;
+  failures: number;
+  probeCount: number;
+  manualReason?: string;
+  updatedAt: string;
+}

@@ -1,13 +1,19 @@
 /**
- * VectorCortexTab.tsx — VC0A vector-cortex evaluation dashboard tab.
- * Reader-only aggregate: draws the fixed latency histogram + per-mode sample
- * counts from GET /api/vector-cortex/evaluation. Polls every 5s.
+ * VectorCortexTab.tsx — vector-cortex dashboard tab.
+ * VC0A: reader-only aggregate latency histogram + per-mode sample counts from
+ * GET /api/vector-cortex/evaluation. VC0C (task 5): live safety envelope health
+ * card (breaker state, window/probe/backoff, durable spool frontier/lag) from
+ * GET /api/vector-cortex/health plus an admin "reset cooldown" action. Polls
+ * every 5s.
  */
 
 import { useState, useEffect, useCallback } from "react";
 import {
 	fetchVectorCortexEvaluation,
+	fetchVectorCortexHealth,
+	resetVectorCortexBreaker,
 	type VectorCortexEvaluationSummary,
+	type VectorCortexHealthCard,
 } from "../api/vector-cortex";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -21,10 +27,21 @@ function ModeChip({ mode, count }: { mode: string; count: number }): React.React
 	);
 }
 
+function Metric({ label, value }: { label: string; value: string }): React.ReactElement {
+	return (
+		<div>
+			<div className="text-xs text-muted-foreground">{label}</div>
+			<div className="font-mono text-sm">{value}</div>
+		</div>
+	);
+}
+
 export default function VectorCortexTab(): React.ReactElement {
 	const [data, setData] = useState<VectorCortexEvaluationSummary | null>(null);
 	const [err, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
+	const [health, setHealth] = useState<VectorCortexHealthCard | null>(null);
+	const [resetMsg, setResetMsg] = useState<string | null>(null);
 
 	const poll = useCallback(() => {
 		fetchVectorCortexEvaluation()
@@ -33,6 +50,9 @@ export default function VectorCortexTab(): React.ReactElement {
 				setError(e instanceof Error ? e.message : String(e)),
 			)
 			.finally(() => setLoading(false));
+		fetchVectorCortexHealth().then(setHealth).catch(() => {
+			/* health card is best-effort (VC0C) */
+		});
 	}, []);
 
 	useEffect(() => {
@@ -40,6 +60,20 @@ export default function VectorCortexTab(): React.ReactElement {
 		const id = setInterval(poll, 5000);
 		return () => clearInterval(id);
 	}, [poll]);
+
+	const onReset = () => {
+		resetVectorCortexBreaker("provider")
+			.then((r) => {
+				setResetMsg(
+					`Breaker "${r.subsystem}" ${r.state}; evidence retained: ${r.failures} failures / ${r.attempts} attempts`,
+				);
+				return fetchVectorCortexHealth();
+			})
+			.then(setHealth)
+			.catch((e: unknown) =>
+				setResetMsg(e instanceof Error ? e.message : String(e)),
+			);
+	};
 
 	if (loading && !data)
 		return <div className="vc-loading">Loading vector-cortex evaluation…</div>;
@@ -116,6 +150,46 @@ export default function VectorCortexTab(): React.ReactElement {
 					</CardContent>
 				</Card>
 			</div>
+
+			<Card>
+				<CardHeader>
+					<div className="flex items-center justify-between">
+						<CardTitle>Live Safety Envelope (VC0C)</CardTitle>
+						<button
+							onClick={onReset}
+							disabled={!health?.enabled}
+							className="rounded border border-border px-2 py-1 text-xs disabled:opacity-50"
+						>
+							Reset Cooldown
+						</button>
+					</div>
+				</CardHeader>
+				<CardContent>
+					{resetMsg && (
+						<div className="mb-2 text-xs text-muted-foreground">{resetMsg}</div>
+					)}
+					{!health ? (
+						<div className="vc-empty">Health unavailable (VC0C off).</div>
+					) : (
+						<div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+							<Metric label="State" value={health.state} />
+							<Metric label="Mode" value={health.mode} />
+							<Metric label="Window" value={`${health.windowMs}ms`} />
+							<Metric label="Probes" value={String(health.probeCount)} />
+							<Metric label="Backoff" value={`${health.backoffDelayMs}ms`} />
+							<Metric
+								label="Failures"
+								value={`${health.failures}/${health.attempts}`}
+							/>
+							<Metric
+								label="Frontier"
+								value={health.frontierFrozen ? "FROZEN" : "LIVE"}
+							/>
+							<Metric label="Spool lag" value={String(health.spoolLag)} />
+						</div>
+					)}
+				</CardContent>
+			</Card>
 		</div>
 	);
 }
