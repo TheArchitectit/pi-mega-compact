@@ -27,6 +27,8 @@ const distSrc = join(root, "dist", "src");
 
 // Compiled modules (require `npm run build`).
 const { VectorStore } = await import(join(distSrc, "vectorStore.js"));
+const { vectorSearch } = await import(join(distSrc, "vector-search.js"));
+const { vectorList } = await import(join(distSrc, "vector-read.js"));
 const { loadDedupConfig } = await import(join(distSrc, "config", "dedup.js"));
 const { closeStore } = await import(join(distSrc, "store", "sqlite.js"));
 const { compressSmart } = await import(join(distSrc, "store", "compression.js"));
@@ -104,7 +106,7 @@ function runScale(n) {
 
   // A representative search to confirm retrieval works at scale (timed).
   const s0 = Date.now();
-  const hits = store.search("sess_bench", "the cache optimized the parser", 5);
+  const hits = vectorSearch(store, "sess_bench", "the cache optimized the parser", 5);
   const searchMs = Date.now() - s0;
 
   // Per-tier p95 from the structured events.log.
@@ -119,7 +121,7 @@ function runScale(n) {
     }
   }
 
-  const stored = store.list("sess_bench").length;
+  const stored = vectorList(store, "sess_bench").length;
   const dbBytes = existsSync(join(dir, "sqlite.db")) ? statSync(join(dir, "sqlite.db")).size : 0;
   const compressionRatio = compressedBytes > 0 ? rawBytes / compressedBytes : 0;
 
