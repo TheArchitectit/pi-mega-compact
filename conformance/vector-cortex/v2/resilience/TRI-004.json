@@ -1,0 +1,1 @@
+{"assertion":"correctness trip on the FIRST failure (rate < perf threshold) opens the breaker once min attempts met","expected":{"code":"TRI_OPEN_B","state":"OPEN_B"},"id":"TRI-004","input":{"scenario":"20 correctness failures at rate < perf threshold trip to OPEN_B"},"kind":"breaker","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/tri-fixture.schema.json"}

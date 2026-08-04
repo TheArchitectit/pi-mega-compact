@@ -1,0 +1,1 @@
+{"assertion":"B failure demotes OPEN_B -> OPEN_C (independent B is fallback; when B trips, only C remains)","expected":{"code":"TRI_OPEN_C","state":"OPEN_C"},"id":"TRI-003","input":{"scenario":"after A opened, a B failure trips to OPEN_C"},"kind":"breaker","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/tri-fixture.schema.json"}

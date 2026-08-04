@@ -1,0 +1,1 @@
+{"assertion":"unknown schema header throws TRI_SPOOL_SCHEMA on reopen (corrupt header is never silently accepted)","expected":{"code":"TRI_SPOOL_SCHEMA"},"id":"TRI-027","input":{"badSchema":true,"ops":[{"op":"reopen"}],"session":"sp-027"},"kind":"spool","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/tri-fixture.schema.json"}

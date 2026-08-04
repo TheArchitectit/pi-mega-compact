@@ -1,0 +1,1 @@
+{"assertion":"mode C failures are retryable continuity failures and never advance the breaker","expected":{"code":"TRI_EXEC_THREW","state":"OPEN_C"},"id":"TRI-013","input":{"scenario":"both A and B unavailable; C throws -> retryable C failure, breaker unchanged"},"kind":"breaker","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/tri-fixture.schema.json"}

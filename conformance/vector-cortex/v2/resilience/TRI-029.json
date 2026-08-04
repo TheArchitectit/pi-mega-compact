@@ -1,0 +1,1 @@
+{"assertion":"unknown manifest row otherwise: a spool row claims wrong schema but still validates","expected":{"code":"SPOOL_COMMITTED","committedSeq":0},"id":"TRI-029","input":{"ops":[{"op":"schemaOnly"}],"session":"sp-029"},"kind":"spool","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/tri-fixture.schema.json"}

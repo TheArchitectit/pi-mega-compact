@@ -1,0 +1,1 @@
+{"assertion":"empty drain after a fully-committed spool returns SPOOL_COMMITTED at the acked high-water","expected":{"code":"SPOOL_COMMITTED","committedSeq":0},"id":"TRI-024","input":{"ops":[{"commit":"ok","op":"drainEmpty"}],"session":"sp-024"},"kind":"spool","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/tri-fixture.schema.json"}

@@ -70,7 +70,15 @@ const MODES = {
     const bad = { ...env, bytesDigest: "sha256:0000000000000000000000000000000000000000000000000000000000000000" };
     const res = validateEvents([bad]);
     if (res.ok || !res.codes.includes("EVT_DIGEST_MISMATCH")) throw new Error("mode A: validator failed to reject");
-    return `roundtrip=${bytes.length}`;
+
+    // ── VC0C resilience A = live breaker (mode-A optimized path) ──────────
+    const { createBreaker: makeBreaker } = require(join(root, "dist/src/vector-cortex/resilience/breaker.js"));
+    const bk = makeBreaker({});
+    for (let i = 0; i < 20; i++) {
+      bk.execute("net", "d", { A: () => { throw new Error("down"); }, B: () => "b", C: () => "c" }, (x) => x === "c");
+    }
+    if (bk.snapshot("net").state !== "OPEN_B") throw new Error("mode A: breaker failed to open under denial");
+    return `roundtrip=${bytes.length} breaker=${bk.snapshot("net").state}`;
   },
 
   /** B: independent raw byte record — same digest, no shared subroutine. */
@@ -86,14 +94,31 @@ const MODES = {
     const b = recordRawBytesB(bytes);
     if (a.bytesDigest !== b.bytesDigest) throw new Error("mode B: A/B digest parity failed");
     if (a.utf8.valid !== b.utf8.valid) throw new Error("mode B: A/B utf8 parity failed");
-    return `digest=${b.bytesDigest.slice(0, 8)}`;
+
+    // ── VC0C resilience B = durable spool (mode-B deterministic local spool) ──
+    const { createSpool } = require(join(root, "dist/src/vector-cortex/resilience/spool.js"));
+    const { mkdtempSync, rmSync } = require("node:fs");
+    const { tmpdir } = require("node:os");
+    const { join: pathJoin } = require("node:path");
+    const spoolDir = mkdtempSync(pathJoin(tmpdir(), "net-deny-spool-"));
+    try {
+      const sp = createSpool({ dir: spoolDir }).session("net");
+      sp.append({ seq: 1n, eventId: "e1", bytes: new TextEncoder().encode("network-denial-mode-B") });
+      const d = sp.drain(() => "committed");
+      if (d.verdict !== "SPOOL_COMMITTED" || d.committedSeq !== 1n) throw new Error("mode B: spool failed to commit under denial");
+    } finally {
+      rmSync(spoolDir, { recursive: true, force: true });
+    }
+    return `digest=${b.bytesDigest.slice(0, 8)} spool=committed`;
   },
 
   /** C: current transcript codec unchanged — zero writes, no network. */
   C: () => {
     // C must leave the host transcript unchanged (the legacy transcript codec is
     // untouched by VC1A — mode-C byte-identical predecessor, zero EventV2 writes).
-    return "no-op: zero event writes, transcript codec unchanged";
+    // VC0C resilience C = unchanged transcript: no breaker/spool write is forced
+    // when both A and B are unavailable; the host path stays mode-C and offline.
+    return "no-op: zero event/spool writes, transcript codec unchanged";
   },
 };
 

@@ -1,0 +1,1 @@
+{"assertion":"TRI-PROBE-002: three successful probes (after cooldown + healthy residence) enter CLOSED_A.","expected":{"code":"OK","state":"CLOSED_A"},"id":"TRI-PROBE-002","input":{"scenario":"cooldown waits, 5min healthy residence, then exactly 3 probes promote"},"kind":"breaker","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/tri-fixture.schema.json"}

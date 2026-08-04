@@ -1,0 +1,1 @@
+{"assertion":"TRI-WINDOW-001: twentieth failed attempt inside the 60s window opens the breaker (OPEN_B).","expected":{"code":"TRI_OPEN_B","state":"OPEN_B"},"id":"TRI-WINDOW-001","input":{"scenario":"the 20th A-failure, all within 60s, trips CLOSED_A -> OPEN_B"},"kind":"breaker","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/tri-fixture.schema.json"}

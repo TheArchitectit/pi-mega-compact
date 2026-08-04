@@ -1,0 +1,1 @@
+{"assertion":"mode A failure demotes to B; OUTPUT_INVALID surfaces when A succeeds but validation fails","expected":{"code":"TRI_OUTPUT_INVALID","state":"OPEN_B"},"id":"TRI-012","input":{"scenario":"A returns but fails validation -> demotion"},"kind":"breaker","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/tri-fixture.schema.json"}

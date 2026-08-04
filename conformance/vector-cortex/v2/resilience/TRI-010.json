@@ -1,0 +1,1 @@
+{"assertion":"manual reset clears cooldown but NEVER evidence","expected":{"code":"RESET_RETAINED","state":"OPEN_B"},"id":"TRI-010","input":{"scenario":"after reset, attempts/failures are retained, cooldown cleared"},"kind":"breaker","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/tri-fixture.schema.json"}

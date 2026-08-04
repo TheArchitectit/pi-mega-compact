@@ -1,0 +1,1 @@
+{"assertion":"promotion hysteresis: p95 over the latency budget blocks promotion (stays in PROBE_B)","expected":{"code":"PROBE_AGAIN","state":"PROBE_B"},"id":"TRI-007","input":{"scenario":"probe latency p95 exceeds the 50ms budget"},"kind":"breaker","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/tri-fixture.schema.json"}
