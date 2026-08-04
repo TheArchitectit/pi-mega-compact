@@ -1,0 +1,1 @@
+{"assertion":"rolling window prunes old attempts beyond the 60s window","expected":{"code":"WINDOW_PRUNE","state":"CLOSED_A"},"id":"TRI-011","input":{"scenario":"old window entries age out; the breaker relaxes"},"kind":"breaker","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/tri-fixture.schema.json"}

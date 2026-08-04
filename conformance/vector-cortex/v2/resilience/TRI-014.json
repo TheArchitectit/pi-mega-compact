@@ -1,0 +1,1 @@
+{"assertion":"A-execution throw trips to OPEN_B once the window exceeds min attempts","expected":{"code":"TRI_EXEC_THREW","state":"OPEN_B"},"id":"TRI-014","input":{"scenario":"20 throwing A-executes open the breaker"},"kind":"breaker","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/tri-fixture.schema.json"}

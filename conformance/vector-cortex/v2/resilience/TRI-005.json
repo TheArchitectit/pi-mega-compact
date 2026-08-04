@@ -1,0 +1,1 @@
+{"assertion":"expired cooldown may PROBE, never directly promote","expected":{"code":"PROBE_A","state":"PROBE_A"},"id":"TRI-005","input":{"scenario":"after cooldown expiry the state is PROBE not CLOSED_A"},"kind":"breaker","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/tri-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"PROBE_B promotes to OPEN_B (not CLOSED_A) after cooldown + 3 probes","expected":{"code":"OPEN_B","state":"OPEN_B"},"id":"TRI-015","input":{"scenario":"B open state recovers to CLOSED_A via a B-restage probe"},"kind":"breaker","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/tri-fixture.schema.json"}

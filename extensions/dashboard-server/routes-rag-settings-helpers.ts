@@ -273,6 +273,41 @@ export const SETTINGS: ReadonlyArray<{
 		],
 	},
 	{
+		name: "Vector Cortex",
+		settings: [
+			boolDirect(
+				"MEGACOMPACT_VC0A",
+				"VC0A Baseline Observability",
+				"Structured evaluation observer (MetricEventV1 + latency histogram). OFF = mode C, byte-identical to predecessor.",
+				true,
+			),
+			boolDirect(
+				"MEGACOMPACT_VC0B",
+				"VC0B Replay Correctness",
+				"ReplayCutV2 effective-cut (min of boundary-safe/commit/capture high-water + pair retreat + anchor floor) and M3 effective-cut-v2 migration. OFF = legacy capped replay, byte-identical.",
+				true,
+			),
+			boolDirect(
+				"MEGACOMPACT_VC1A",
+				"VC1A Canonical Byte Events",
+				"EventV2 byte-authority ledger codec (original bytes + SHA-256, strict UTF-8, derived NFC) and canonical validator (EVT_DIGEST_MISMATCH / EVT_UTF8_TAG_INVALID / EVT_DUPLICATE_ID). OFF = mode C, transcript codec unchanged, byte-identical.",
+				true,
+			),
+			boolDirect(
+				"MEGACOMPACT_VC1B",
+				"VC1B Occurrence Ledger + Tool Identity",
+				"Neutral occurrence ledger (LedgerReader/Writer/Admin + CompatJournalV1): per-session monotonic seq, tool result references one earlier call, uniqueness by (eventId,digest) only, and the M2 copy-validate-switch downgrade journal. OFF = mode C, ledger unwritten, byte-identical.",
+				true,
+			),
+			boolDirect(
+				"MEGACOMPACT_VC0C",
+				"VC0C Live Safety Envelope",
+				"TriadResult/Breaker live circuit breaker (60s window, 20 attempts, 30s cooldown, 3 probes, 5min healthy residence) + durable spool before provider invocation; manual reset clears cooldown but never evidence. OFF = mode C, unchanged transcript, byte-identical.",
+				true,
+			),
+		],
+	},
+	{
 		name: "Cost API",
 		settings: [
 			boolDirect(

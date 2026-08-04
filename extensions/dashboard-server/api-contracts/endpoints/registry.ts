@@ -32,8 +32,7 @@ import type {
 	RagSettingsRequest,
 	RagSettingsResponsePost,
 } from "../rag-settings.js";
-import type { RagMetricsResponse } from "../rag-metrics.js";
-import type { ModelThresholdsResponse } from "../model-thresholds.js";
+import { EXTRA_ENDPOINTS } from "./registry-ext.js";
 import type {
 	TurnsResponse,
 	ConversationTurnsResponse,
@@ -491,23 +490,7 @@ export const ENDPOINTS = {
 		RagSettingsResponsePost
 	>,
 
-	// ─── RAG Metrics (Sprint H2) ──────────────────────────────────────
-
-	/** GET /api/rag-metrics — HyDE + recall-quality telemetry aggregates. */
-	ragMetrics: {
-		method: "GET",
-		path: "/api/rag-metrics",
-		description:
-			"HyDE invocation + recall-quality telemetry: flags, totals, recent turns, and daily series.",
-	} as const satisfies EndpointDef<"GET", undefined, RagMetricsResponse>,
-
-	// ─── Per-model compaction thresholds (S52 / v0.16.1) ───────────────
-
-	/** GET /api/model-thresholds — List known models + their thresholds. */
-	modelThresholds: {
-		method: "GET",
-		path: "/api/model-thresholds",
-		description:
-			"Every known model (from model_snapshots) with its per-model threshold override (or defaults).",
-	} as const satisfies EndpointDef<"GET", undefined, ModelThresholdsResponse>,
+	// ─── Additive groups (rag-metrics, thresholds, vector-cortex) live in
+	// ─── registry-ext.ts so this registry stays under the 500-line limit.
+	...EXTRA_ENDPOINTS,
 } as const;

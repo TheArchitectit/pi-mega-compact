@@ -242,6 +242,9 @@ export type {
 // Embedder health probe
 export type { EmbedderHealthResponse } from "./embedder-health.js";
 
+// VC0A — vector-cortex evaluation summary (reader-only)
+export type { VectorCortexEvaluationSummary } from "./vector-cortex.js";
+
 // S46/D3 — memory graph (visual memory map) + validation report
 export type {
 	MemoryMapResponse,

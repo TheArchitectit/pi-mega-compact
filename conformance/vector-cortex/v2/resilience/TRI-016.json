@@ -1,0 +1,1 @@
+{"assertion":"append fsyncs before acknowledging SPOOLED; committed drain advances the high-water","expected":{"code":"SPOOL_COMMITTED","committedSeq":1},"id":"TRI-016","input":{"ops":[{"eventId":"e1","op":"append","seq":1},{"commit":"ok","op":"drain"}],"session":"sp-016"},"kind":"spool","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/tri-fixture.schema.json"}

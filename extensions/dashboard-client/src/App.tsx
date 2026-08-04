@@ -36,6 +36,7 @@ const TurnsTab = React.lazy(() => import("./tabs/TurnsTab"));
 const MaintenanceTab = React.lazy(() => import("./tabs/MaintenanceTab"));
 const MemoryMapTab = React.lazy(() => import("./tabs/MemoryMapTab"));
 const HealthTab = React.lazy(() => import("./tabs/HealthTab"));
+const VectorCortexTab = React.lazy(() => import("./tabs/VectorCortexTab"));
 
 interface AppState {
   snapshot: SnapshotResponse | null;
@@ -65,6 +66,7 @@ function TabContent({
       {activeTab === "maintenance" && <MaintenanceTab />}
       {activeTab === "memory-map" && <MemoryMapTab />}
       {activeTab === "health" && <HealthTab />}
+      {activeTab === "vector-cortex" && <VectorCortexTab />}
     </React.Suspense>
   );
 }

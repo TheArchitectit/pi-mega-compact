@@ -39,6 +39,23 @@
 
 ---
 
+## Vector Cortex (docs/vector-cortex/)
+
+| Lookup | Document / section |
+| --------- | -------------------- |
+| Program vision, locked decisions, dependency graph, status, read order | `README.md` |
+| Ledger, prompt DAG, multi-head cortex, shards/residual math, reconstruction, healing, cache/provider/controller/security/storage | `ARCHITECTURE.md` §§1–13 |
+| Universal subsystem A/B/C matrix, common breaker, probes, chaos, dashboard/events | `TRIAD_RESILIENCE.md` |
+| Neutral schemas, canonical serialization v2, algorithm versions, fixture/golden matrix, migration compatibility | `CONFORMANCE.md` |
+| Baselines, corpus, metrics, experiments, shadow/live, rollout/stop/reporting | `EVALUATION.md` |
+| VC0–VC8 roadmap, dependencies, seams, M2–M7, gates, rollout/release, decisions/risks | `SPRINT_PLAN.md` |
+| Nine three-sprint phase contracts and acceptance/handoffs | `phases/VC0-foundation.md` through `phases/VC8-adaptive-platform.md` |
+| 27 implementation-ready sprint specs (metadata through handoff) | `sprints/VC0A-baseline-observability.md` through `sprints/VC8C-canary-platform-rust-parity.md` |
+
+**Targeted read order:** `README.md` → architecture → triad → conformance → evaluation → master plan → active phase → active sprint. Vector Cortex documents intentionally avoid brittle line references; use their stable headings.
+
+---
+
 ## PLAN.md (repo root)
 
 | Section | Line | Offset |
@@ -888,3 +905,19 @@
 | Component + state | 30 | 0 |
 | Conversation list | 90 | 0 |
 | TurnDetail (per-turn viz + recall) | 150 | 0 |
+## VECTOR CORTEX
+
+- `vector-cortex/README.md`: read order, locked decisions, status
+- `vector-cortex/IMPLEMENTATION_READINESS.md`: pre-start checklist
+- `vector-cortex/CONTRACTS.md`: EventV2; PromptDagV1; plans/closure; ProviderProfileV1/crystals; triads; downgrade
+- `vector-cortex/ARCHITECTURE.md`: authority, planes, capability boundaries, cache/local-only/repair
+- `vector-cortex/MODEL_ASSET.md`: architecture, labels/losses, reproducibility, qualification/package
+- `vector-cortex/RESIDUAL_CODEC.md`: byte transform, quantization/corrections, RS parity, admission/experiments
+- `vector-cortex/SECURITY_PRIVACY.md`: threat model, lifecycle, consent/datasets/network denial
+- `vector-cortex/TRIAD_RESILIENCE.md`: state machine constants, spool, outage, chaos/dashboard
+- `vector-cortex/CONFORMANCE.md`: fixture root, canonical form, migrations/downgrade, commands
+- `vector-cortex/EVALUATION.md`: annotation/adjudication, metrics/power, cache causality/rollout
+- `vector-cortex/SPRINT_PLAN.md`: roadmap, migrations/current defects, flags/dashboard, gates/release
+- `vector-cortex/EVIDENCE_TEMPLATE.md`: durable evidence and attestation
+- `vector-cortex/phases/*.md`: 9 phase boundaries
+- `vector-cortex/sprints/*.md`: 27 unique implementation contracts

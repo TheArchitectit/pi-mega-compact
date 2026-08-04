@@ -12,6 +12,7 @@ import {
   BookOpen,
   Wrench,
   Network,
+  Activity,
 } from "lucide-react";
 
 export type TabId =
@@ -26,7 +27,8 @@ export type TabId =
   | "turns"
   | "maintenance"
   | "memory-map"
-  | "health";
+  | "health"
+  | "vector-cortex";
 
 export interface TabDef {
   id: TabId;
@@ -50,6 +52,7 @@ export const ADVANCED_TABS: TabDef[] = [
   { id: "wiki", label: "Wiki", icon: BookOpen },
   { id: "maintenance", label: "Maintenance", icon: Wrench },
   { id: "memory-map", label: "Memory Map", icon: Network },
+  { id: "vector-cortex", label: "Vector Cortex", icon: Activity },
 ];
 
 export const ADVANCED_TAB_IDS: ReadonlySet<TabId> = new Set(

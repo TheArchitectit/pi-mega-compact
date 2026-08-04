@@ -1,0 +1,1 @@
+{"assertion":"manual halt requires a reason and unwires only via explicit admin reset","expected":{"code":"TRI_MANUAL_HALT","state":"MANUAL_HALT"},"id":"TRI-009","input":{"scenario":"authority/digest corruption halts all subsystems; reset returns to OPEN_B"},"kind":"breaker","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/tri-fixture.schema.json"}

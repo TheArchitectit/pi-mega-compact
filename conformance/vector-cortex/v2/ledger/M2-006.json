@@ -1,0 +1,1 @@
+{"assertion":"M2 validation before copy reports M2_COPY_MISSING (no staged export)","expected":{"code":"M2_COPY_MISSING","ok":false},"id":"M2-006","input":{"occurrences":[{"bytesBase64":"eA==","eventId":"u1","kind":"user","seq":1}],"scenario":"validate-before-copy"},"kind":"occurrence-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/ledger-fixture.schema.json"}

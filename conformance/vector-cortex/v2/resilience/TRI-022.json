@@ -1,0 +1,1 @@
+{"assertion":"authority outage freezes the derived frontier at the contiguous high-water","expected":{"code":"FRONTIER_FROZEN"},"id":"TRI-022","input":{"ops":[{"eventId":"e1","op":"append","seq":1},{"op":"assertFrozen"}],"outage":true,"session":"sp-022"},"kind":"spool","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/tri-fixture.schema.json"}
