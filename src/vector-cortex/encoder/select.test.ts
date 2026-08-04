@@ -67,6 +67,9 @@ function contradiction(ece: number): EncoderHeldOutMetrics {
 function cache(precision: number): EncoderHeldOutMetrics {
   return { ...full(), cacheStability: { precision, recall: 0.95 } };
 }
+function prRouting(exactAnchorRecall: number): EncoderHeldOutMetrics {
+  return { ...full(), payloadRouting: { macroF1: 0.98, exactAnchorRecall } };
+}
 function noVotes(): EncoderHeldOutMetrics {
   const m = full();
   return { ...m, reconstruction: { ...m.reconstruction, votesOk: false } };
@@ -137,6 +140,16 @@ describe("select.selectQualifiedEncoder — per-head thresholds", () => {
     const v = selectQualifiedEncoder(candidate({ heldOut: noVotes() }));
     assert.equal(v.ok, false);
     if (!v.ok) assert.equal(v.failedField, "reconstruction");
+  });
+
+  test("a payloadRouting exact/anchor recall failure (zero-tolerance) demotes A", () => {
+    const v = selectQualifiedEncoder(candidate({ heldOut: prRouting(0.9) }));
+    assert.equal(v.ok, false);
+    if (!v.ok) {
+      assert.equal(v.code, ENC_QUALIFICATION_FAIL.THRESHOLD_FAILED);
+      assert.equal(v.mode, "B");
+      assert.equal(v.failedField, "head.payloadRouting");
+    }
   });
 });
 
