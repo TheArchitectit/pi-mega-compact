@@ -23,6 +23,7 @@ import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { pathToFileURL } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const V2 = join(root, "conformance", "vector-cortex", "v2");
@@ -111,7 +112,32 @@ function exportOnce() {
   };
 }
 
-function main() {
+/**
+ * Emit the `vector_cortex_downgrade_copy_written` observability event after the
+ * legacy copy + report are written (spec task 6). Flag-gated on
+ * MEGACOMPACT_VC1C via the built seam; zero emissions when OFF. Non-fatal: a
+ * missing dist build or an emission failure never breaks the export.
+ */
+async function emitDowngradeWritten(out) {
+  try {
+    const { createConformanceReporter } = await import(
+      pathToFileURL(join(root, "dist", "vector-cortex", "conformance", "emit.js")).href
+    );
+    createConformanceReporter((event, fields) => {
+      // Structured JSON line to stdout, mirroring src/log.ts (ts + event).
+      process.stdout.write(`${JSON.stringify({ ...fields, event })}\n`);
+    }).downgradeWritten({
+      exportedCopyId: out.reportBody.exportedCopyId,
+      copiedCount: out.reportBody.copiedCount,
+      unrepresentableIds: out.reportBody.unrepresentableIds,
+      reportDigest: out.reportBody.reportDigest,
+    });
+  } catch {
+    /* non-fatal observability; export already succeeded */
+  }
+}
+
+async function main() {
   // Regenerate fresh each run (never mutate authority: we only write our OWN
   // downgrade copies under the downgrade/ dir, which are not authority data).
   const out = exportOnce();
@@ -119,6 +145,7 @@ function main() {
   mkdirSync(OUT_DIR, { recursive: true });
   writeFileSync(OUT_COPY, out.copyCanonical);
   writeFileSync(OUT_REPORT, canonicalBytes(out.reportBody));
+  await emitDowngradeWritten(out);
 
   console.log(`Downgrade export ${SCHEMA}: ${out.reportBody.copiedCount} seeds, copy ${out.copyDigest.slice(0, 16)}, digest ${out.reportDigest.slice(0, 16)}`);
   console.log(`  copy:    ${OUT_COPY}`);

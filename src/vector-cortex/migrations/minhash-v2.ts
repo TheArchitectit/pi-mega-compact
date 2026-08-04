@@ -29,6 +29,10 @@ import {
   encodeSignatureV2,
 } from "../../dedup/l1-minhash-v2.js";
 import { lshBandsV2, BANDS_V2 } from "../../dedup/l1-lsh-v2.js";
+import {
+  createConformanceReporter,
+  type ConformanceReporter,
+} from "../conformance/emit.js";
 
 /** M4 failure codes. */
 export const M4_FAIL = {
@@ -108,7 +112,10 @@ function sha256Hex(bytes: Uint8Array): string {
  * and the active pointer stays at v1 until a verified switch. Returns the rows
  * written this call (delta), never duplicates.
  */
-export function m4Backfill(host: M4Host): readonly V2SignatureRow[] {
+export function m4Backfill(
+  host: M4Host,
+  reporter: ConformanceReporter = createConformanceReporter(),
+): readonly V2SignatureRow[] {
   const wanted = host.v1CheckpointIds();
   const existing = new Map(host.storedV2().map((r) => [r.checkpointId, r]));
   const writes: V2SignatureRow[] = [];
@@ -117,7 +124,13 @@ export function m4Backfill(host: M4Host): readonly V2SignatureRow[] {
     const row = computeV2Row(host, id);
     writes.push(row);
   }
-  if (writes.length > 0) host.putV2(writes);
+  if (writes.length > 0) {
+    host.putV2(writes);
+    reporter.backfilled({
+      written: writes.length,
+      checkpointIds: writes.map((r) => r.checkpointId),
+    });
+  }
   return writes;
 }
 
@@ -164,8 +177,11 @@ export function m4Switch(host: M4Host): void {
 }
 
 /** Full M4 lifecycle: backfill -> verify -> switch; returns verify result. */
-export function migrateMinhashV2(host: M4Host): M4ValidateResult {
-  m4Backfill(host);
+export function migrateMinhashV2(
+  host: M4Host,
+  reporter: ConformanceReporter = createConformanceReporter(),
+): M4ValidateResult {
+  m4Backfill(host, reporter);
   const v = m4Verify(host);
   if (v.ok) m4Switch(host);
   return v;

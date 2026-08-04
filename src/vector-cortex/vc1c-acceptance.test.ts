@@ -34,6 +34,10 @@ import {
   canonicalManifestsConverge,
 } from "./conformance/manifest.js";
 import {
+  createConformanceReporter,
+  NOOP_CONFORMANCE_REPORTER,
+} from "./conformance/emit.js";
+import {
   runConformanceCase,
   runDowngradeExport,
   handlerKey,
@@ -499,10 +503,9 @@ describe("VC1C flag-off parity", () => {
       : (process.env[flagEnvKey] = savedFlag),
   );
 
-  test("flag OFF still drives the pure primitives (only the emit seam is gated)", () => {
+  test("flag OFF still drives the pure primitives (emit seam no-ops)", () => {
     // The minhash/migration primitives are flag-independent (pure compute). The
-    // flag gates the observability emit seam. With the flag off, emitting must
-    // be a no-op — verified via the emitter in conformance/emit.
+    // flag gates the observability emit seam.
     process.env[flagEnvKey] = "0";
     const fx = fixture<MinhashFixture>("minhash/M4-HIGHBIT-001.json");
     const bytes = encodeSignatureV2(minhashV2Signature(fx.input.text));
@@ -510,5 +513,78 @@ describe("VC1C flag-off parity", () => {
     process.env[flagEnvKey] = "1";
     const again = encodeSignatureV2(minhashV2Signature(fx.input.text));
     assert.equal(sha256Hex(again), fx.expected.signatureDigest, "primitive identical flag on");
+  });
+
+  test("flag OFF yields ZERO VC1C emissions from the reporter", () => {
+    process.env[flagEnvKey] = "0";
+    const emitted: string[] = [];
+    const reporter = createConformanceReporter((event) => emitted.push(event));
+    reporter.backfilled({ written: 1 });
+    reporter.caseChecked({ id: "x", ok: true });
+    reporter.downgradeWritten({ copiedCount: 1 });
+    assert.deepEqual(
+      emitted,
+      [],
+      "flag OFF => the emit seam fires nothing (byte-identical predecessor parity)",
+    );
+    // The exported no-op reporter is a structural no-op regardless of flag.
+    NOOP_CONFORMANCE_REPORTER.backfilled({ written: 1 });
+    NOOP_CONFORMANCE_REPORTER.caseChecked({ id: "x", ok: true });
+    NOOP_CONFORMANCE_REPORTER.downgradeWritten({ copiedCount: 1 });
+    assert.deepEqual(emitted, [], "no-op reporter never emits");
+  });
+
+  test("flag ON: each of the three runtime seams emits its named VC1C event", () => {
+    process.env[flagEnvKey] = "1";
+    const emitted: string[] = [];
+    const reporter = createConformanceReporter((event) => emitted.push(event));
+
+    // Seam 1 — M4 minhash-v2 backfill (vector_cortex_minhash_v2_backfilled).
+    const migFx = fixture<MigrationFixture>("migrations/M4-001.json");
+    const h = memHost(migFx.input);
+    migrateMinhashV2(h.host, reporter);
+    assert.ok(h.rows.length > 0, "backfill wrote v2 rows");
+
+    // Seam 2 — conformance case dispatch (vector_cortex_conformance_case_checked).
+    const handlers = new Map<string, ConformanceHandler>();
+    handlers.set(handlerKey("minhash", ["minhash-v2"]), {
+      run: (_e, f) => {
+        const ff = f as MinhashFixture;
+        const bytes = encodeSignatureV2(minhashV2Signature(ff.input.text));
+        return { ok: true, outputBytes: bytes, outputDigest: sha256Hex(bytes) };
+      },
+    });
+    const manifest = readFixtureManifestV2(V2);
+    const entry = manifest.byId.get("M4-HIGHBIT-001")!;
+    const mfx = fixture<MinhashFixture>("minhash/M4-HIGHBIT-001.json");
+    runConformanceCase(entry, handlers, mfx, reporter);
+
+    // Seam 3 — downgrade export (vector_cortex_downgrade_copy_written).
+    const exporter: DowngradeExporter = {
+      exportOnce: () => {
+        const body = {
+          schema: "downgrade-report-v1" as const,
+          exportedCopyId: "abcdef0123456789",
+          copiedCount: 1,
+          unrepresentableIds: [] as string[],
+        };
+        return { ...body, reportDigest: "0".repeat(64) };
+      },
+    };
+    runDowngradeExport(exporter, reporter);
+
+    assert.ok(
+      emitted.includes("vector_cortex_minhash_v2_backfilled"),
+      "backfill seam emits vector_cortex_minhash_v2_backfilled (got " + emitted.join(",") + ")",
+    );
+    assert.ok(
+      emitted.includes("vector_cortex_conformance_case_checked"),
+      "runner seam emits vector_cortex_conformance_case_checked",
+    );
+    assert.ok(
+      emitted.includes("vector_cortex_downgrade_copy_written"),
+      "downgrade seam emits vector_cortex_downgrade_copy_written",
+    );
+    assert.equal(emitted.length, 3, "exactly the three VC1C named events");
   });
 });

@@ -18,6 +18,10 @@
  */
 
 import type { FixtureManifestEntry } from "./manifest.js";
+import {
+  createConformanceReporter,
+  type ConformanceReporter,
+} from "./emit.js";
 
 /** A registered conformance algorithm handler for a (domain, tuple) key. */
 export interface ConformanceHandler {
@@ -69,20 +73,31 @@ export function runConformanceCase(
   entry: FixtureManifestEntry,
   handlers: ReadonlyMap<string, ConformanceHandler>,
   fixture: unknown,
+  reporter: ConformanceReporter = createConformanceReporter(),
 ): CaseResult {
   const key = `${entry.domain}::${entry.algorithmTuple.join(";")}`;
   const handler = handlers.get(key);
+  let result: CaseResult;
   if (!handler) {
     if (entry.domain === "") {
-      return { ok: false, code: UNKNOWN_DOMAIN, algorithm: entry.algorithm };
+      result = { ok: false, code: UNKNOWN_DOMAIN, algorithm: entry.algorithm };
+    } else {
+      result = { ok: false, code: UNKNOWN_VERSION, algorithm: entry.algorithm };
     }
-    return { ok: false, code: UNKNOWN_VERSION, algorithm: entry.algorithm };
+  } else {
+    const out = handler.run(entry, fixture);
+    result = out.ok
+      ? { ok: true, outputDigest: out.outputDigest, algorithm: entry.algorithm }
+      : { ok: false, code: out.code, algorithm: entry.algorithm };
   }
-  const out = handler.run(entry, fixture);
-  if (out.ok) {
-    return { ok: true, outputDigest: out.outputDigest, algorithm: entry.algorithm };
-  }
-  return { ok: false, code: out.code, algorithm: entry.algorithm };
+  reporter.caseChecked({
+    id: entry.id,
+    domain: entry.domain,
+    algorithm: entry.algorithm,
+    ok: result.ok,
+    ...(result.ok ? { outputDigest: result.outputDigest } : { code: result.code }),
+  });
+  return result;
 }
 
 /**
@@ -100,6 +115,16 @@ export function handlerKey(
  * Run a downgrade export and recompute its report digest deterministically.
  * A second invocation produces a byte-identical report (CONF-DOWN-003).
  */
-export function runDowngradeExport(exporter: DowngradeExporter): DowngradeReport {
-  return exporter.exportOnce();
+export function runDowngradeExport(
+  exporter: DowngradeExporter,
+  reporter: ConformanceReporter = createConformanceReporter(),
+): DowngradeReport {
+  const report = exporter.exportOnce();
+  reporter.downgradeWritten({
+    exportedCopyId: report.exportedCopyId,
+    copiedCount: report.copiedCount,
+    unrepresentableIds: report.unrepresentableIds,
+    reportDigest: report.reportDigest,
+  });
+  return report;
 }
