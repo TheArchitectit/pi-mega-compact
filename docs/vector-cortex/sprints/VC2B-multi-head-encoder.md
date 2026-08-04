@@ -1,6 +1,6 @@
 # VC2B — Train multi-head encoder
 
-**Status:** next | **Depends on:** VC2A | **Phase:** VC2
+**Status:** done | **Depends on:** VC2A | **Phase:** VC2
 **Flag:** `MEGACOMPACT_VC2B`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC2B=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs
