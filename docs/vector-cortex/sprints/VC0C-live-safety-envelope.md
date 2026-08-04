@@ -1,6 +1,6 @@
 # VC0C — Live safety envelope
 
-**Status:** planned | **Depends on:** VC0B | **Phase:** VC0
+**Status:** done | **Depends on:** VC0B | **Phase:** VC0
 **Flag:** `MEGACOMPACT_VC0C`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC0C=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs

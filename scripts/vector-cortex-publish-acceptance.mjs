@@ -44,6 +44,8 @@ const SRC_VECTOR = join(REPO_ROOT, "dist", "src", "vector-cortex");
 const DEST_VECTOR = join(REPO_ROOT, "dist", "vector-cortex");
 const SRC_CONFIG = join(REPO_ROOT, "dist", "src", "config");
 const DEST_CONFIG = join(REPO_ROOT, "dist", "config");
+const SRC_DEDUP = join(REPO_ROOT, "dist", "src", "dedup");
+const DEST_DEDUP = join(REPO_ROOT, "dist", "dedup");
 
 const ACCEPTANCE_RE = /^[a-z0-9]+-acceptance\.test\.js$/;
 
@@ -108,6 +110,22 @@ function main() {
         name.endsWith(".js") && !name.endsWith(".test.js"),
       )
     : 0;
+  // VC1C added the conformance subtree (manifest/runner/emit). Mirror its runtime
+  // .js so the vc1c-acceptance aggregator's `./conformance/...` imports resolve
+  // at the published dist/vector-cortex/ offset (tests excluded).
+  const nConformance = existsSync(join(SRC_VECTOR, "conformance"))
+    ? copyTree(join(SRC_VECTOR, "conformance"), join(DEST_VECTOR, "conformance"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
+  // VC1C MinHashV2 lives in src/dedup/. Mirror the runtime .js to dist/dedup/ so
+  // the acceptance aggregator's `../dedup/l1-minhash-v2.js` import (from the
+  // published dist/vector-cortex/ offset) resolves at dist/dedup/.
+  if (existsSync(SRC_DEDUP)) {
+    copyTree(SRC_DEDUP, DEST_DEDUP, (name) =>
+      name.endsWith(".js") && !name.endsWith(".test.js"),
+    );
+  }
   if (existsSync(join(SRC_CONFIG, "vector-cortex.js"))) {
     mkdirSync(DEST_CONFIG, { recursive: true });
     copyFileSync(
@@ -116,7 +134,7 @@ function main() {
     );
   }
   console.log(
-    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience files`,
+    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance files`,
   );
 }
 

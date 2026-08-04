@@ -18,10 +18,21 @@
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+/**
+ * Load a compiled dist module by import (file:// URL). The project is ESM
+ * ('"type": "module"'), so every compiled `dist` module is ESM — `require()` of
+ * an ESM module throws ERR_REQUIRE_ESM on Node < 22.12, and CLAUDE.md declares
+ * Node >= 18. Dynamic import works on every supported Node floor, so the
+ * compiled-dist legs of this gate use it rather than `require`.
+ */
+async function loadDist(relPath) {
+  return import(pathToFileURL(join(root, "dist", relPath)).href);
+}
 
 // ── Network patch: every egress primitive throws. ──────────────────────────
 
@@ -56,9 +67,9 @@ function patchNetwork() {
  */
 const MODES = {
   /** A: EventV2 codec — encode + strict UTF-8 + NFC + byte round-trip. */
-  A: () => {
-    const { createEventCodec } = require(join(root, "dist/src/vector-cortex/ledger/event-codec.js"));
-    const { validateEvents } = require(join(root, "dist/src/vector-cortex/ledger/validator.js"));
+  A: async () => {
+    const { createEventCodec } = await loadDist("src/vector-cortex/ledger/event-codec.js");
+    const { validateEvents } = await loadDist("src/vector-cortex/ledger/validator.js");
     const codec = createEventCodec();
     const env = codec.encode({
       sessionId: "s1", seq: 1n, eventId: "e1", role: "user", kind: "message",
@@ -72,19 +83,31 @@ const MODES = {
     if (res.ok || !res.codes.includes("EVT_DIGEST_MISMATCH")) throw new Error("mode A: validator failed to reject");
 
     // ── VC0C resilience A = live breaker (mode-A optimized path) ──────────
-    const { createBreaker: makeBreaker } = require(join(root, "dist/src/vector-cortex/resilience/breaker.js"));
+    const { createBreaker: makeBreaker } = await loadDist("src/vector-cortex/resilience/breaker.js");
     const bk = makeBreaker({});
     for (let i = 0; i < 20; i++) {
       bk.execute("net", "d", { A: () => { throw new Error("down"); }, B: () => "b", C: () => "c" }, (x) => x === "c");
     }
     if (bk.snapshot("net").state !== "OPEN_B") throw new Error("mode A: breaker failed to open under denial");
-    return `roundtrip=${bytes.length} breaker=${bk.snapshot("net").state}`;
+
+    // ── VC1C minhash-v2 runner (mode A): exact signature + LSH buckets, plus
+    //     deterministic manifest digest — all local, no egress. ──
+    const { minhashV2Signature, encodeSignatureV2 } = await loadDist("src/dedup/l1-minhash-v2.js");
+    const { lshBandsV2 } = await loadDist("src/dedup/l1-lsh-v2.js");
+    const { createHash } = require("node:crypto");
+    const sig = minhashV2Signature("network-denial-mode-A vc1c");
+    const bytes2 = encodeSignatureV2(sig);
+    if (bytes2.length !== 2048) throw new Error("mode A: vc1c signature length");
+    const buckets = lshBandsV2(bytes2, "net");
+    if (buckets.length !== 64) throw new Error("mode A: vc1c bucket count");
+    const sigDigest = createHash("sha256").update(bytes2).digest("hex").slice(0, 8);
+    return `roundtrip=${bytes.length} breaker=${bk.snapshot("net").state} vc1c=${sigDigest}`;
   },
 
   /** B: independent raw byte record — same digest, no shared subroutine. */
-  B: () => {
-    const { createEventCodec } = require(join(root, "dist/src/vector-cortex/ledger/event-codec.js"));
-    const { recordRawBytesB } = require(join(root, "dist/src/vector-cortex/ledger/event-codecB.js"));
+  B: async () => {
+    const { createEventCodec } = await loadDist("src/vector-cortex/ledger/event-codec.js");
+    const { recordRawBytesB } = await loadDist("src/vector-cortex/ledger/event-codecB.js");
     const codec = createEventCodec();
     const bytes = new TextEncoder().encode("network-denial-mode-B");
     const a = codec.encode({
@@ -96,7 +119,7 @@ const MODES = {
     if (a.utf8.valid !== b.utf8.valid) throw new Error("mode B: A/B utf8 parity failed");
 
     // ── VC0C resilience B = durable spool (mode-B deterministic local spool) ──
-    const { createSpool } = require(join(root, "dist/src/vector-cortex/resilience/spool.js"));
+    const { createSpool } = await loadDist("src/vector-cortex/resilience/spool.js");
     const { mkdtempSync, rmSync } = require("node:fs");
     const { tmpdir } = require("node:os");
     const { join: pathJoin } = require("node:path");
@@ -109,10 +132,27 @@ const MODES = {
     } finally {
       rmSync(spoolDir, { recursive: true, force: true });
     }
-    return `digest=${b.bytesDigest.slice(0, 8)} spool=committed`;
+
+    // ── VC1C independent exact fixture reader (mode-B second leg): re-derive the
+    //     signature byte-for-byte from the committed corpus WITHOUT the runner
+    //     module (independent implementation in triadB-reader), so A (runner) /
+    //     B (independent) must agree under denial. ──
+    const { readFileSync } = require("node:fs");
+    const { createHash } = require("node:crypto");
+    const { independentReaderV2 } = await loadDist("src/vector-cortex/conformance/triadB-reader.js");
+    const fixtureDir = join(root, "conformance/vector-cortex/v2/minhash");
+    const fx = JSON.parse(readFileSync(join(fixtureDir, "M4-HIGHBIT-001.json"), "utf8"));
+    const seeds = JSON.parse(readFileSync(join(fixtureDir, "seeds-v2.json"), "utf8")).seedPairs;
+    const text = String(fx.input?.text ?? fx.text ?? "");
+    const indep = independentReaderV2(text, "net", seeds, false);
+    if (indep.bytes.length !== 2048 || indep.digest !== fx.expected.signatureDigest) {
+      throw new Error("mode B: independent vc1c signature mismatch");
+    }
+    const indDigest = indep.digest.slice(0, 8);
+    return `digest=${b.bytesDigest.slice(0, 8)} spool=committed vc1c=${indDigest}`;
   },
 
-  /** C: current transcript codec unchanged — zero writes, no network. */
+  /** C: predecessor paths unchanged (VC1C flag-OFF byte-identical). */
   C: () => {
     // C must leave the host transcript unchanged (the legacy transcript codec is
     // untouched by VC1A — mode-C byte-identical predecessor, zero EventV2 writes).
@@ -139,7 +179,7 @@ for (const mode of modes) {
   }
   try {
     patchNetwork();
-    const note = MODES[mode]();
+    const note = await MODES[mode]();
     console.log(`✓ NETWORK-DENIAL mode ${mode}: clean (${note})`);
   } catch (e) {
     failures.push(`mode ${mode}: ${e.message}`);

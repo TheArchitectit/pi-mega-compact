@@ -1,0 +1,1 @@
+{"assertion":"M4 backfill->verify->switch activates v2 on a balanced checkpoint set","expected":{"activeVersion":2,"count":3,"ok":true},"id":"M4-001","input":{"activeStarting":1,"checkpoints":["c1","c2","c3"],"scenario":"full"},"kind":"minhash-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/minhash-migration.schema.json"}

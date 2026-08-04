@@ -1,0 +1,1 @@
+{"assertion":"M4 a stored row at a wrong version fails MINHASH_VERSION_MISMATCH","expected":{"code":"MINHASH_VERSION_MISMATCH","ok":false},"id":"M4-007","input":{"activeStarting":1,"checkpoints":["c1"],"scenario":"bad-version-row"},"kind":"minhash-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/minhash-migration.schema.json"}

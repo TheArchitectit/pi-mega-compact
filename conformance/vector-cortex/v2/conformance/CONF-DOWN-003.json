@@ -1,0 +1,1 @@
+{"assertion":"a repeated downgrade export has an identical report digest","expected":{"deterministic":true,"ok":true},"id":"CONF-DOWN-003","input":{"rows":3,"scenario":"downgrade-repeat"},"kind":"conformance-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/conformance-fixture.schema.json"}

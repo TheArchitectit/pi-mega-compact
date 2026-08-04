@@ -1,0 +1,141 @@
+# VC1C Evidence
+
+Status: implementer-complete (code-quality review CHANGES REQUESTED → fixes applied below)
+Implementation commits/sub-sprint gates: VC1C sprint on `feat/vector-cortex`; git log for the focused commits. All sprint exit gates run and recorded below.
+Contract review: not yet performed — pending independent reviewer.
+
+## Reviewer CHANGES REQUESTED fixes (Q01-Q03)
+
+The code-quality reviewer requested three changes; all three are fixed, the full gate list re-run green, and recorded below.
+
+- **Q01 [IMPORTANT — triad B independence]**: Triad mode B previously called the exact same runner subroutine as mode A (`encodeSignatureV2(minhashV2Signature(text))`), which shares the module-level `FROZEN_SEEDS` cache — so a systematic seed-derivation/signature bug could pass both legs while the test falsely claimed an "independent exact reader". Fixed by introducing a genuinely independent reader: `src/vector-cortex/conformance/triadB-reader.ts` (110 lines) shares NO code and NO cached seed instance with the runner. It reads the published `(a,b)` pairs from `seeds-v2.json` (authored independently by `scripts/gen-fixtures/minhash.mjs`) and re-derives FNV-1a-64, 5-codepoint shingling, exact BigInt min-hash arithmetic, the 256×u64-LE encoder, and the 64 bucket keys from first principles. The acceptance `B` test and network-denial mode B both use this reader, and `B` cross-checks its exact bytes against the runner's bytes. A shared-constant/arithmetic bug in `l1-minhash-v2.ts` can no longer satisfy both triad legs.
+- **Q02 [MINOR — backfill corruption self-heal]**: `m4Backfill` skipped an existing row on checkpoint-id presence alone, never verifying its digest/version; a crash-mid-write corrupt row was frozen and `m4Verify` failed `DIGEST_MISMATCH` forever despite the docstring implying digest-matched rows were preserved. Fixed: `m4Backfill` now recomputes every wanted row and only skips when the persisted row digest-verifies (`v2RowMatches` — version + id + session + digest); a corrupt/absent row is rewritten (the host `putV2` is a replace-by-checkpoint-id upsert, so the rewrite heals rather than duplicates). A new acceptance test ("corrupt persisted v2 rows are repaired by backfill, not skipped by id") proves verify passes after backfill self-heal.
+- **Q03 [MINOR — Node >= 18 ESM require]**: `scripts/vector-cortex-network-denial.mjs` used `require()` on compiled ESM `dist` modules (throws `ERR_REQUIRE_ESM` on Node < 22.12; CLAUDE.md declares Node >= 18). Fixed: the gate now loads all compiled-dist modules via dynamic `await import()` (`loadDist` helper using `pathToFileURL`), modes A/B are async, and built-in `node:` modules are the only `require()`d ones. Confirmed clean for `--modes=A,B,C`.
+
+## Reviewer CHANGES REQUESTED round 2 fixes (Q01-Q03)
+
+The code-quality reviewer requested three further changes; all three are fixed, the full gate list re-run green, and recorded below.
+
+- **Q01 [MINOR — evidence record factual accuracy]**: `docs/vector-cortex/evidence/VC1C.md` (the authoritative handoff to later sprints) previously cited an export `bandsForTextV2` from `src/dedup/l1-lsh-v2.ts` that does not exist (the file exports only `BANDS_V2`/`VALUES_PER_BAND_V2`/`BAND_BYTES_V2`/`SIGNATURE_BYTES_EXPECTED_V2`/`lshBandsV2`), claimed `l1-lsh-v2.test.ts` had 6 tests including a never-existing "wrapper parity" test (it has 5), and listed stale file sizes (l1-minhash-v2.ts 187 vs 221 actual, l1-lsh-v2.ts 86 vs 78, manifest.ts 289 vs 298) and stale test counts (l1-minhash-v2 8 vs 10). All of these have been corrected to match the merged code.
+- **Q02 [MINOR — bucket-VALUE verification]**: `m4Verify` checked only the bucket COUNT (and the row digest); it never re-derived `lshBandsV2(r.signatureBytes, sessionId)` to compare the resulting 64 VALUES, and `m4Backfill.v2RowMatches` treated a row as healthy on digest+length+version+id+session alone. A persisted v2 row whose signatureBytes+digest were correct but whose bucket VALUES were wrong would therefore pass verify and be switched as the active v2 index, and backfill would not self-heal it — yet the buckets are exactly the data the live LSH-dedup path queries. Fixed by a `bucketsMatch` helper: `m4Verify` now re-derives and compares all 64 bucket values (a drift reports `M4_COUNT_MISMATCH`), and `v2RowMatches` includes the same comparison so a wrong-bucket row is rewritten (healed) rather than skipped by id. New unit tests prove both the verify detection and the backfill self-heal. (Not triggerable by the current writer — buckets are deterministic from sigBytes+sessionId and written with their checksums — but closes the defensive gap.)
+- **Q03 [MINOR — locale-independent case fold]**: the byte-exact shingle normalization used `toLocaleLowerCase()`, which is locale-dependent (dotted capital I / sharp-s / Lithuanian I-dot fold differently per locale), contradicting the sprint's "CROSS-LANGUAGE deterministic and byte-exact" guarantee. Fixed by using the locale-independent `toLowerCase()` (Unicode default case conversion) in `src/dedup/normalize.ts` and in both mirror sites: `src/vector-cortex/conformance/triadB-reader.ts` (`independentReaderV2`) and `scripts/gen-fixtures/minhash.mjs`. All committed fixtures are ASCII, so no fixture byte changed and every previous gate still passes; the guarantee now actually holds for non-ASCII input. Zero runtime-network impact (pure in-process compute).
+
+## Goal recap
+
+Cross-language conformance v2 (VC1C). Ships `FixtureManifestV2` (canonical manifest validator), `DowngradeReport` (deterministic downgrade export), and `MinHashV2` (exact big-integer minhash signatures) plus the M4 `copy/validate/switch` minhash-v2 migration. MinHashV2 freezes a **cross-language deterministic, byte-exact** scheme: the 256 published `(a_i, b_i)` seed pairs (stored as decimal strings because values exceed 2^53), 5-code-point shingles hashed with 64-bit FNV-1a, `p = 2^61-1` with exact BigInt multiply/modulo (a_i·x can reach ~2^124 where Number math would corrupt), 256×u64-LE signature bytes (2048 total), banded 64×4 into LSH bucket keys scoped by session + frozen version tag. Cross-version compare is rejected (`MINHASH_VERSION_MISMATCH`). M4 copies v2 rows beside v1, verifies exact-once counts/digests/version, and only then switches the active pointer — interruption keeps v1 authority and resumes idempotently. `FixtureManifestV2` validates a corpus is canonical (sorted UTF-8 keys, shortest numbers, final LF) and rejects extra/missing/drift with the frozen codes; canonical valid manifests converge to ONE digest. `MEGACOMPACT_VC1C` gate (default ON, `=0` → byte-identical predecessor) and the `vector_cortex_minhash_v2_backfilled` / `vector_cortex_conformance_case_checked` / `vector_cortex_downgrade_copy_written` emit seam.
+
+## Changed production / tests / docs
+
+Production (`src/`):
+- `src/config/vector-cortex.ts` — `VC1C_ENABLED()` (default ON; `MEGACOMPACT_VC1C=0` → off). Re-exported by root `src/config.ts`.
+- `src/dedup/l1-minhash-v2.ts` (221) — `MINHASH_VERSION=2`, `NUM_HASHES_V2=256`, `SHINGLE_CP=5`, `P_V2=(1n<<61n)-1n`, `U64_BYTES=8`, `SIGNATURE_BYTES_V2=2048`, `splitmix64`, `minhashV2Seeds`, `shinglesV2`, `minhashV2Signature`, `encodeSignatureV2`, `signatureSimilarityV2`. Exact BigInt FNV-1a-64, no Number corruption of high-bit products.
+- `src/dedup/l1-lsh-v2.ts` (78) — `BANDS_V2=64`, `VALUES_PER_BAND_V2=4`, `BAND_BYTES_V2=32`, `SIGNATURE_BYTES_EXPECTED_V2`, `lshBandsV2`. Bucket keys FNV-1a-64 over the band's 32 LE bytes prefixed by `<sessionId>|v<version>|` — so v1/v2 never share buckets and cross-session keys never collide.
+- `src/vector-cortex/migrations/minhash-v2.ts` (263) — **M4** copy/validate/switch: `computeV2Row`, `m4Backfill` (resumable by checkpoint id, no duplicate v2 rows; a persisted row is digest/version-verified via `v2RowMatches` before skip, so a corrupt row self-heals), `m4Verify` (exact-once counts, digest re-hash, 64 buckets, version check, and a re-derived bucket-VALUE comparison), `m4Switch`, `migrateMinhashV2`. Failure codes `MINHASH_VERSION_MISMATCH`, `M4_BACKFILL_PARTIAL`, `M4_COUNT_MISMATCH`, `M4_DIGEST_MISMATCH`. `M4_IDS`/`M4_NAMED` conformance registries. Cross-version compare always rejected (`crossVersionError`).
+- `src/vector-cortex/conformance/triadB-reader.ts` (110) — **triad-B independent exact reader** (Q01): shares no code/cache with the runner; re-derives signature + bucket bytes from published seed pairs read from `seeds-v2.json`.
+- `src/vector-cortex/conformance/manifest.ts` (298) — `FixtureManifestEntry` (`expectedOutputDigest`)/`FixtureManifestV2`, `readFixtureManifestV2`, `validateCanonicalV2`, `canonicalManifestsConverge`, `domainOf`, `CONF_FAIL` (`CONF_EXTRA_FIXTURE`/`CONF_MISSING_FIXTURE`/`CONF_DIGEST_DRIFT`/`CONF_NONCANONICAL`/`CONF_UNKNOWN_DOMAIN`). A missing fixture reports `CONF_MISSING_FIXTURE` instead of throwing (robustness fix below).
+- `src/vector-cortex/conformance/runner.ts` (165) — `ConformanceHandler`, `DowngradeReport` (schema `"downgrade-report-v1"`, `reportDigest`), `DowngradeExporter`, `runConformanceCase` (strict domain/version dispatch; unknown → reject WITHOUT partial output; then cross-checks the handler's outcome against the manifest entry: expected failure code → `CONF_EXPECTATION_MISMATCH`; expected success bytes → `CONF_DIGEST_DRIFT`), `handlerKey`, `runDowngradeExport`.
+- `src/vector-cortex/conformance/emit.ts` (56) — `createConformanceReporter` emitting the three VC1C events, all gated on `MEGACOMPACT_VC1C`, non-fatal.
+
+Dashboard (`extensions/dashboard-server/`):
+- `routes-rag-settings-helpers.ts` — `MEGACOMPACT_VC1C` added to the "Vector Cortex" SETTINGS group as a `boolDirect` on/off toggle (NOT in `EXCLUDED_SETTINGS`).
+- `routes-rag-settings.test.ts` — VC1C flag round-trip test (toggle OFF writes `MEGACOMPACT_VC1C="false"` and `VC1C_ENABLED()` → false; toggle ON restores).
+
+Tests:
+- `src/dedup/l1-minhash-v2.test.ts` (165) — 10 tests: frozen constants, exact-BigInt high-bit products, splitmix64 determinism, empty-sentinel signature, byte-exact against `M4-HIGHBIT-001` (2048-byte LE signature, sha256 digest, 64 bucket keys), similarity determinism, and v1-array / wrong-length rejection of `signatureSimilarityV2`.
+- `src/dedup/l1-lsh-v2.test.ts` (69) — 5 tests: band geometry, determinism, session scoping, version-tagged keys (v1/v2 never share), length rejection.
+- `src/vector-cortex/migrations/minhash-v2.test.ts` (215) — 12 tests: M4 backfill/verify/switch, idempotent re-backfill, resume without duplicates, halt-before-switch keeps v1, partial/count/digest/version failure codes, cross-version rejection, `computeV2Row` shape, plus bucket-VALUE corruption detected by verify and self-healed by backfill (Q02).
+- `src/vector-cortex/conformance/manifest.test.ts` (202) — 8 tests: canonical corpus passes + converges, shuffled-key reader normalization, real committed corpus converges, extra/missing/drift/noncanonical rejections, domain derivation.
+- `src/vector-cortex/conformance/downgrade.test.ts` (79) — 3 tests: deterministic report digest + copy id across runs, unrepresentable ids listed, report digest covers the body.
+- `src/vector-cortex/vc1c-acceptance.test.ts` (599, under the 600 test hard limit) — 32-test acceptance aggregator over the REAL algorithms + committed fixtures: manifest registration (M4-001..008, M4-HIGHBIT-001, M4-VERSION-002, M4-RESUME-003, M4-DUP-001, CONF-MANIFEST-001, CONF-EXTRA-002, CONF-DOWN-003, seeds-v2, owner VC1C); MinHashV2 exact vectors + genuinely independent triad-B reader (via `triadB-reader.ts`, cross-checks exact bytes vs the runner); mixed-version rejection + no shared buckets; M4 lifecycle against every M4-00x fixture scenario + a backfill self-heal test (Q02); canonical manifest convergence + injected add/remove/drift mutations; triad A/B/C dispatch + runner cross-check of the expected failure code and expected success bytes; DowngradeReport determinism + read-only authority; flag-off parity. Runs green in BOTH flag states.
+
+Scripts:
+- `scripts/gen-fixtures/minhash.mjs` (211) — mirrors the TS MinHashV2 algorithm (splitmix64 seeds, FNV-1a-64, 5-CP shingles, exact BigInt, 2048-byte encode, 64 buckets) and emits `M4-HIGHBIT-001`, `M4-VERSION-002` + `seeds-v2.json` (seed pairs as `{a,b}` DECIMAL STRINGS, schema `schemas/minhash-seeds.schema.json`).
+- `scripts/gen-fixtures/migrations.mjs` (102) — `M4-001..008`, `M4-DUP-001`, `M4-RESUME-003` (schema `schemas/minhash-migration.schema.json`, algorithm `minhash-v2-migration`).
+- `scripts/gen-fixtures/conformance.mjs` (41) — `CONF-MANIFEST-001`, `CONF-EXTRA-002`, `CONF-DOWN-003` (schema `schemas/conformance-fixture.schema.json`, algorithm `conformance-v2`).
+- `scripts/gen-fixtures/schemas.mjs` — appended `minhash-fixture`/`minhash-migration`/`conformance-fixture`/`minhash-seeds` schemas.
+- `scripts/gen-fixtures/write.mjs` — `minhash`/`migrations`/`conformance` dirs, writes `seeds-v2.json` + new fixtures; manifest `domain` adds `minhash,migrations,conformance`, `owner` adds `VC1C`.
+- `scripts/vector-cortex-gen-fixtures.mjs` — reports minhash/migration/conformance counts.
+- `scripts/vector-cortex-publish-acceptance.mjs` — mirrors the `conformance/` subtree + `src/dedup` → `dist/dedup` so the acceptance aggregator's `./conformance/…` and `../dedup/…` imports resolve at the published `dist/vector-cortex/` offset.
+- `scripts/vector-cortex-network-denial.mjs` — mode A exercises the MinHashV2 runner (signature + 64 buckets + digest), mode B adds the independent exact fixture reader (`triadB-reader.ts`, re-derives the high-bit signature + compares its digest), mode C confirms predecessor (v1) paths unchanged. All compiled-dist modules load via `await import()` (`loadDist`, Q03) so the gate honors the declared Node >= 18 floor.
+- `scripts/vector-cortex-downgrade-export.mjs` (NEW, 155) — deterministic downgrade export: writes a NEW legacy copy + `DowngradeReport` under `conformance/vector-cortex/downgrade/` (outside the v2 conformance root so `--check` stays clean), never mutates authority; a second run is byte-identical (CONF-DOWN-003).
+
+Docs: `docs/vector-cortex/evidence/VC1C.md` (this record).
+
+## Fixtures and corpus digests
+
+`conformance/vector-cortex/v2/minhash/` — `M4-HIGHBIT-001.json`, `M4-VERSION-002.json`, `seeds-v2.json` (256 pairs as decimal strings, `p = 2305843009213693951`).
+`conformance/vector-cortex/v2/migrations/` — `M4-001..008`, `M4-DUP-001`, `M4-RESUME-003`.
+`conformance/vector-cortex/v2/conformance/` — `CONF-MANIFEST-001`, `CONF-EXTRA-002`, `CONF-DOWN-003`.
+`conformance/vector-cortex/v2/schemas/` — `minhash-fixture`, `minhash-migration`, `conformance-fixture`, `minhash-seeds` schemas.
+
+`node scripts/vector-cortex-conformance.mjs --check` → `✓ CONFORMANCE: v2 manifest + 149 fixtures canonical (149 files).`
+
+All fixtures canonical (UTF-8/NFC/sorted keys/shortest numbers/final LF); SHA-256 pinned in the manifest. The behavior fixtures (CONF-EXTRA-002 etc.) declare scenarios the acceptance test executes against TEMP conformance roots so the committed corpus stays canonical (matching the prior M2-sprint precedent). `M4-HIGHBIT-001` pins the byte-exact 2048-byte signature (hex), its sha256 digest, and all 64 bucket keys; `M4-VERSION-002` pins `MINHASH_VERSION_MISMATCH`.
+
+## Migration
+
+M4 (`minhash-v2.ts`) copy → validate → switch, atomic + resumable: backfill writes v2 rows beside v1 by checkpoint id (idempotent — a re-run writes nothing); verify enforces exact-once counts (`M4_BACKFILL_PARTIAL`/`M4_COUNT_MISMATCH`), digest re-hash (`M4_DIGEST_MISMATCH`), and version (`MINHASH_VERSION_MISMATCH`); switch flips the active pointer to v2. A crash before switch leaves v1 active (old authority retained) and the next run resumes without duplicate signatures or pointer drift (M4-003/M4-RESUME-003). Cross-version compare never runs — it is always rejected with `MINHASH_VERSION_MISMATCH`.
+
+## A/B/C and independence evidence
+
+Triad over the MinHashV2 domain: **A** = the real v2 runner (`l1-minhash-v2.ts` + `l1-lsh-v2.ts`) reproducing every committed signature/bucket byte; **B** = an independent exact fixture reader that re-derives the high-bit signature directly from the committed text and compares its digest (no shared subroutine with the runner); **C** = reject any unknown domain/version WITHOUT partial output (`CONF_UNKNOWN_VERSION`). Cross-checked by the acceptance test ("A: runner reproduces", "B: independent exact reader", "C: unknown domain/version rejected"). Separately, the migrated M4 index is verified by independent re-hash in `m4Verify` (not the backfill path).
+
+## Commands and verbatim summaries
+
+- `npm run build` → tsc clean; postbuild `vector-cortex-publish-acceptance` → `published 6 acceptance + 6 eval + 5 replay + 3 migrations + 9 ledger + 6 resilience + 3 conformance files`.
+- Acceptance, mandated command, both flag states:
+  ```bash
+  node --test dist/vector-cortex/vc1c-acceptance.test.js
+  # → ℹ tests 32, ℹ pass 32, ℹ fail 0   (flag ON)
+  MEGACOMPACT_VC1C=0 node --test dist/vector-cortex/vc1c-acceptance.test.js
+  # → ℹ tests 32, ℹ pass 32, ℹ fail 0   (flag OFF: same 32 green — parity at the seam)
+  ```
+- Unit tests (each 0 fail): `dist/src/dedup/l1-minhash-v2.test.js` (10), `l1-lsh-v2.test.js` (5), `dist/src/vector-cortex/migrations/minhash-v2.test.js` (12), `conformance/manifest.test.js` (8), `conformance/downgrade.test.js` (3).
+- `npm test` → full gate (see Evaluation: 0 failed).
+- `npm run lint` → `tsc --noEmit` + `guardrails-scan` + `semantic-scan` all clean (`GUARDRAILS: pi pattern scan clean` / `semantic scan clean`).
+- `python3 scripts/regression_check.py --all` → coverage of every `MEGACOMPACT_*` env var → `✓ All MEGACOMPACT_* env vars have dashboard settings entries`; 0 blocking vulns. (Pre-existing baseline note below.)
+- `node scripts/vector-cortex-conformance.mjs --check` → `✓ CONFORMANCE: v2 manifest + 149 fixtures canonical (149 files).`
+- `node scripts/vector-cortex-docs-check.mjs` → `✓ DOCS-CHECK: 27 sprints / 9 phases, links+flags+commands+migrations clean.`
+- `node scripts/guardrails-scan.mjs` → `GUARDRAILS: pi pattern scan clean`.
+- Network denial (this sprint runs VC1C runtime paths): `--modes=A` → `✓ NETWORK-DENIAL mode A: clean (roundtrip=21 breaker=OPEN_B vc1c=f51dc111)`; `--modes=B` → `✓ … mode B: clean (digest=sha256:7 spool=committed vc1c=60733c45)` (mode-B `vc1c=` digest matches `M4-HIGHBIT-001`'s signatureDigest prefix `60733c45`, derived via the independent `triadB-reader`); `--modes=C` → `✓ … mode C: clean (no-op: zero event/spool writes, transcript codec unchanged)`. All exit 0.
+- `scripts/vector-cortex-downgrade-export.mjs` → deterministic: two runs both report `256 seeds, copy c14fa79d47bc5770, digest 9dae67d3d09d9f01`; the report file is byte-identical across runs.
+- `git diff --check` → clean (exit 0).
+
+## Evaluation
+
+All 32 acceptance tests pass in both flag states (0 failed each). MinHashV2 verified byte-exact against `M4-HIGHBIT-001`: the 2048-byte LE signature, its sha256 digest, and all 64 bucket keys match the committed fixture exactly under exact BigInt arithmetic (the fixture's `maxProduct` exceeds 2^110, which Number math would corrupt) — and the independent `triadB-reader` re-derives the same bytes from the published seed table (Q01), so no shared runner constant can satisfy both legs. Cross-version compare and bucket sharing are rejected (`M4-VERSION-002`, version-tagged keys never collide). M4 lifecycle verified through the real modules: full backfill/verify/switch (M4-001/008), idempotent repeat (M4-002), halt-before-switch keeps v1 (M4-003), partial/count/digest/version failure codes (M4-004..007), duplicate-content identity by checkpoint id (M4-DUP-001), interrupted-backfill resume without duplicates (M4-RESUME-003), and corrupt-row backfill self-heal (Q02). Manifest validator verified on committed corpus (converges to one digest) and on temp roots with injected add/remove/drift mutations → `CONF_EXTRA_FIXTURE` / `CONF_MISSING_FIXTURE` / `CONF_DIGEST_DRIFT` / `CONF_NONCANONICAL`. DowngradeReport deterministic (CONF-DOWN-003) and read-only against authority. Full `npm test` gate: `TOTAL: 1592 passed, 0 failed across 199 files in 24.6s`.
+
+## Dashboard / API / config / SETTINGS evidence
+
+- `MEGACOMPACT_VC1C` surfaced in the "Vector Cortex" SETTINGS group as a working `boolDirect` on/off toggle — NOT in `EXCLUDED_SETTINGS` (regression_check confirms every `MEGACOMPACT_*` var has a settings entry).
+- Flag toggle round-trip verified in `routes-rag-settings.test.ts` ("VC1C flag round-trips through settings").
+- No new dashboard API endpoint this sprint (manifest/migration/downgrade are local, engine-side; the observable surface is the emit seam).
+
+## Offline / network / asset / platform evidence
+
+Zero runtime network egress (PREVENT-PI-004): MinHashV2 is pure in-process BigInt compute; the manifest/downgrade/runner are pure FS reads/writes; no `fetch`/HTTP. No new third-party asset. `scripts/vector-cortex-network-denial.mjs` modes A/B/C confirm the VC1C runtime paths make no network calls (cleans pass under the network patch that fails any egress).
+
+## File sizes and baseline exceptions
+
+All new files within limits: l1-minhash-v2.ts 221, l1-lsh-v2.ts 78, migrations/minhash-v2.ts 263, conformance/manifest.ts 298, conformance/runner.ts 165, conformance/emit.ts 56, conformance/triadB-reader.ts 110, vc1c-acceptance.test.ts 599 (under the 600 test hard limit), l1-minhash-v2.test.ts 165, l1-lsh-v2.test.ts 69, migrations/minhash-v2.test.ts 215, conformance/manifest.test.ts 202, conformance/downgrade.test.ts 79, scripts/vector-cortex-downgrade-export.mjs 155, gen-fixtures/minhash.mjs 211, migrations.mjs 102, conformance.mjs 41. Pre-existing over-hard-limit `extensions/mega-events/context-handler.ts` remains a documented baseline exception (530 lines, UNTOUCHED this sprint — VC1C did not modify it).
+
+## Rollback / downgrade rehearsal
+
+`MEGACOMPACT_VC1C=0` → the VC1C emit seam emits zero events and the v1 sync dedup scan path is unchanged (byte-identical predecessor); the pure minhash/migration primitives remain functional (the test asserts the same exact signature with the flag off). Downgrade rehearsal: `vector-cortex-downgrade-export.mjs` writes a NEW legacy copy + deterministic report, never mutates authority (the committed corpus digest is read-only under validation/export) and a second run is byte-identical.
+
+## Issues found during implementation
+
+- **VC1C-I01 [type: robustness, state: fixed-in-this-sprint]**: `readFixtureManifestV2` eagerly hashed every listed fixture; a manifest entry with no on-disk file threw `ENOENT` part-way, so `validateCanonicalV2` could not reach its missing-check. Fixed: the per-file digest helper returns `""` for a missing file, letting the validator report `CONF_MISSING_FIXTURE` (verified by the temp-root remove/fixture tests).
+- **VC1C-I02 [type: test, state: fixed-in-this-sprint]**: `memHost.putV2` must model the REAL store as a replace-by-checkpoint-id upsert (so the Q02 backfill rewrite heals a corrupt row instead of creating a duplicate), yet still let duplicate/corrupt rows be injected for the failure scenarios. The duplicate-row scenario (M4-006) now injects physical duplicates directly into the rows array (simulating a genuinely broken prior write) rather than via `putV2`, so the upsert semantics and the COUNT_MISMATCH detection both hold.
+- **VC1C-I03 [type: test, state: fixed-in-this-sprint]**: manifest unit tests initially wrote non-canonical (unsorted-key) temp manifests, which the strict validator correctly rejects. Fixed `tempRoot` to emit canonical key order; the "shuffled keys" test now verifies the READER normalizes arbitrary key order (not that the validator accepts a noncanonical manifest).
+- **VC1C-I04 [type: conformance, state: fixed-in-this-sprint]**: reviewer S1 — the v2 runner dispatched by domain/version and rejected unknown domains without partial output but did not ITSELF cross-check a handler's returned success bytes / failure code against the manifest entry; the comparison lived in callers/handlers. Fixed: `runConformanceCase` now enforces the manifest entry's frozen expectation post-dispatch (expected failure code → `CONF_EXPECTATION_MISMATCH`; expected success bytes via the new `expectedOutputDigest` manifest field → `CONF_DIGEST_DRIFT`), with two acceptance tests guarding it. The minhash success fixture `M4-HIGHBIT-001` gained a manifest `outputDigest` (its canonical signature digest) so the runner can cross-check success bytes; all other corpus bytes are unchanged (verified by a semantic diff of manifest.json).
+
+## Residual risks / carried-forward OPEN issues
+
+- **Carried forward OPEN (VC1 family):** the writer/ledger producer hook-up and the toolCallId back-edge on the live path remain deferred to the VC1 producer-wiring sprint (unchanged from VC1B).
+- MinHashV2 is shipped (algorithm + M4 migration + fixtures) but is NOT yet wired as the live L1 dedup path — the sync cosine/FTS scan remains authoritative; a later sprint wires the v2 index as the byte-exact dedup source. `MEGACOMPACT_VC1C` gates the observability seam.
+- `vc1c-acceptance.test.ts` (599) exceeds the `tests/` 300-line SOFT limit — consistent single-file acceptance aggregator, under the 600 HARD limit.
+
+## Reviewer attestation
+
+Not yet attested — pending independent reviewer.

@@ -58,6 +58,17 @@ export const VC1B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC1B");
  */
 export const VC0C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC0C");
 
+/**
+ * VC1C — cross-language conformance v2 (FixtureManifestV2 / DowngradeReport /
+ * MinHashV2 + M4 minhash-v2 migration).
+ * Default ON. `MEGACOMPACT_VC1C=0` disables and is byte-identical to the
+ * predecessor (mode C: a v2 conformance runner that accepts authority fixtures
+ * and the manifest validator idle; the sync dedup scan stays on the v1 path;
+ * zero `vector_cortex_*` VC1C emissions). The real consumers are the conformance
+ * emit seam, the minhash-v2 backfill seam and the downgrade-export seam.
+ */
+export const VC1C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC1C");
+
 // ---------------------------------------------------------------------------
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker).
 // Rolled numbers for one 60s window; VC0C consumes these at its breaker seam.

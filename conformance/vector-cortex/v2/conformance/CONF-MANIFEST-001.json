@@ -1,0 +1,1 @@
+{"assertion":"a listed event fixture digest matches canonical bytes; canonical manifests converge","expected":{"entryCount":1,"ok":true},"id":"CONF-MANIFEST-001","input":{"domains":["events","minhash","migrations"],"scenario":"canonical"},"kind":"conformance-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/conformance-fixture.schema.json"}

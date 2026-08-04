@@ -1,6 +1,6 @@
 # VC1B — Occurrence ledger and tool identity
 
-**Status:** planned | **Depends on:** VC1A | **Phase:** VC1
+**Status:** done | **Depends on:** VC1A | **Phase:** VC1
 **Flag:** `MEGACOMPACT_VC1B`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC1B=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs

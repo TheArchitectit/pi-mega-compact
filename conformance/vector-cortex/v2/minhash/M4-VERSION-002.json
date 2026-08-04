@@ -1,0 +1,1 @@
+{"assertion":"a v1-v2 cross-version comparison fails with MINHASH_VERSION_MISMATCH","expected":{"code":"MINHASH_VERSION_MISMATCH","ok":false},"id":"M4-VERSION-002","input":{"textA":"hello world","textB":"hell0 world","v1":true,"v2":true},"kind":"minhash-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/minhash-fixture.schema.json"}
