@@ -134,6 +134,21 @@ function main() {
         name.endsWith(".js") && !name.endsWith(".test.js"),
       )
     : 0;
+  // VC3B added the topology subtree (types/build/index). Mirror its runtime .js
+  // so the vc3b-acceptance aggregator's `./topology/...` imports resolve at the
+  // published dist/vector-cortex/ offset (tests excluded).
+  const nTopology = existsSync(join(SRC_VECTOR, "topology"))
+    ? copyTree(join(SRC_VECTOR, "topology"), join(DEST_VECTOR, "topology"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
+  // VC3B support file (mode-B linear reference scan + helper producers) lives at
+  // src/vector-cortex/vc3b-support.ts. Mirror its runtime .js so the
+  // vc3b-acceptance aggregator's `./vc3b-support.js` import resolves at the
+  // published dist/vector-cortex/ offset (test-support, not itself a test).
+  const nSupport = copyTree(SRC_VECTOR, DEST_VECTOR, (name) =>
+    name === "vc3b-support.js",
+  );
   // VC1C MinHashV2 lives in src/dedup/. Mirror the runtime .js to dist/dedup/ so
   // the acceptance aggregator's `../dedup/l1-minhash-v2.js` import (from the
   // published dist/vector-cortex/ offset) resolves at dist/dedup/.
@@ -164,7 +179,7 @@ function main() {
     }
   }
   console.log(
-    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder + ${nCortex} cortex files`,
+    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder + ${nCortex} cortex + ${nTopology} topology + ${nSupport} support files`,
   );
 }
 

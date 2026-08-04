@@ -1,6 +1,6 @@
 # VC3C — Topology query and router invalidation
 
-**Status:** planned | **Depends on:** VC3B | **Phase:** VC3
+**Status:** next | **Depends on:** VC3B | **Phase:** VC3
 **Flag:** `MEGACOMPACT_VC3C`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC3C=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs

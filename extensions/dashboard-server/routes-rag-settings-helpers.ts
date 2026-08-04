@@ -337,6 +337,12 @@ export const SETTINGS: ReadonlyArray<{
 				"Capability-gated derived cortex store (CortexReader/Writer/Admin + CortexRecordV1): additive, keyed (sourceHighWater, algorithmVersion, id), immutable records, deterministic generation rebuild + one root digest. OFF = mode C, no cortex records written, byte-identical predecessor.",
 				true,
 			),
+			boolDirect(
+				"MEGACOMPACT_VC3B",
+				"VC3B Deterministic Topology",
+				"Deterministic cortical topology (TopologyV1/EdgeV1): per-(source,head) top-k=16/head calibrated-threshold edges, stable score-desc/then-target-ID sort, dependency directed + contradiction symmetric paired records, one stable generation digest. OFF = mode C, no topology graph built/emitted, predecessor-precise topology view, byte-identical predecessor.",
+				true,
+			),
 		],
 	},
 	{

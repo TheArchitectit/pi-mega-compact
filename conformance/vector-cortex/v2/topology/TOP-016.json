@@ -1,0 +1,1 @@
+{"assertion":"scores strictly above threshold retained, equal/below dropped","expected":{"ok":true},"id":"TOP-016","input":{"scenario":"threshold-boundary"},"kind":"topology","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/topology-fixture.schema.json"}

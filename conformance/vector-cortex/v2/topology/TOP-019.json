@@ -1,0 +1,1 @@
+{"assertion":"the digest is stable across 1,000 repeated builds","expected":{"ok":true},"id":"TOP-019","input":{"scenario":"digest-stable-1000"},"kind":"topology","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/topology-fixture.schema.json"}

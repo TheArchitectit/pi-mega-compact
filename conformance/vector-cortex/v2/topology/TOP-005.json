@@ -1,0 +1,1 @@
+{"assertion":"self edges are removed and never emitted","expected":{"ok":true},"id":"TOP-005","input":{"scenario":"self-edge-removal"},"kind":"topology","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/topology-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"the derived source high-water is preserved on the graph","expected":{"ok":true},"id":"TOP-013","input":{"scenario":"high-water-preserve"},"kind":"topology","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/topology-fixture.schema.json"}

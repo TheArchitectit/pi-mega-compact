@@ -1,0 +1,1 @@
+{"assertion":"equal scores sort target IDs by unsigned bytes then score desc","expected":{"ok":true},"id":"TOP-004","input":{"scenario":"stable-sort"},"kind":"topology","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/topology-fixture.schema.json"}

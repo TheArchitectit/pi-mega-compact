@@ -27,6 +27,7 @@ import { fixtures as encoderFixtures, named as encoderNamed } from "./encoder-ru
 import { fixtures as encoderHeadsFixtures, named as encoderHeadsNamed } from "./encoder-heads.mjs";
 import { fixtures as encQualFixtures, named as encQualNamed } from "./encoder-qualification.mjs";
 import { fixtures as cortexFixtures, named as cortexNamed } from "./cortex-store.mjs";
+import { fixtures as topologyFixtures, named as topologyNamed } from "./topology.mjs";
 
 const REPLAY_DIR = join(V2, "replay");
 const EVENTS_DIR = join(V2, "events");
@@ -39,6 +40,7 @@ const ENCODER_DIR = join(V2, "encoder-runtime");
 const ENCODER_HEADS_DIR = join(V2, "encoder-heads");
 const ENCODER_QUAL_DIR = join(V2, "encoder-qualification");
 const CORTEX_DIR = join(V2, "cortex-store");
+const TOPOLOGY_DIR = join(V2, "topology");
 
 export function writeAll() {
   rmSync(V2, { recursive: true, force: true });
@@ -55,6 +57,7 @@ export function writeAll() {
   mkdirSync(ENCODER_HEADS_DIR, { recursive: true });
   mkdirSync(ENCODER_QUAL_DIR, { recursive: true });
   mkdirSync(CORTEX_DIR, { recursive: true });
+  mkdirSync(TOPOLOGY_DIR, { recursive: true });
 
   const manifestRows = [];
 
@@ -310,13 +313,31 @@ export function writeAll() {
     });
   }
 
+  // Topology fixtures (VC3B): kind=topology. expected.ok pins the deterministic
+  // graph build; expected.code pins the exact rejection code (TOP_SCORE_NONFINITE).
+  for (const fx of [...topologyFixtures, ...topologyNamed]) {
+    const bytes = Buffer.from(canonicalJson(fx), "utf8");
+    const rel = `topology/${fx.id}.json`;
+    writeFileSync(join(TOPOLOGY_DIR, `${fx.id}.json`), bytes);
+    manifestRows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: fx.schema,
+      algorithm: "topology",
+      producer,
+      expected: fx.expected.ok ? "ok" : fx.expected.code,
+      license: "synthetic",
+    });
+  }
+
   const manifest = {
     version: "2",
     viewer: "vector-cortex-conformance.mjs",
     producer: "vector-cortex-gen-fixtures.mjs",
-    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification,cortex-store",
-    owner: "VC0A,VC0B,VC1A,VC0C,VC1B,VC1C,VC2A,VC2B,VC2C,VC3A",
-    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification;cortex-store",
+    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification,cortex-store,topology",
+    owner: "VC0A,VC0B,VC0C,VC1A,VC1B,VC1C,VC2A,VC2B,VC2C,VC3A,VC3B",
+    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification;cortex-store;topology-fixture",
     license: "synthetic",
     fixtures: manifestRows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
   };
@@ -342,5 +363,7 @@ export function writeAll() {
     encoderQualNamedCount: encQualNamed.length,
     cortexCount: cortexFixtures.length,
     cortexNamedCount: cortexNamed.length,
+    topologyCount: topologyFixtures.length,
+    topologyNamedCount: topologyNamed.length,
   };
 }

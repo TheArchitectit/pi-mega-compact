@@ -1,0 +1,1 @@
+{"assertion":"the graph digest is independent of input ordering","expected":{"ok":true},"id":"TOP-009","input":{"scenario":"digest-order-independent"},"kind":"topology","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/topology-fixture.schema.json"}

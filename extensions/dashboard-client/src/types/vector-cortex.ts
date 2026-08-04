@@ -87,6 +87,19 @@ export interface VectorCortexTopologyView {
   sourceHighWater: string;
   recordCount: number;
   ordinal: string | null;
+  /**
+   * VC3B deterministic topology node/edge shapes. Present only when the VC3B
+   * flag is on; flag-off omits them (byte-identical predecessor view).
+   */
+  nodes?: Array<{ id: string; kind: string }>;
+  edges?: Array<{
+    source: string;
+    target: string;
+    head: string;
+    score: number;
+    direction: string;
+  }>;
+  generationDigest?: string | null;
   updatedAt: string;
 }
 
