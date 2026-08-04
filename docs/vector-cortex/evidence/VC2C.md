@@ -101,7 +101,7 @@ Zero runtime network egress (PREVENT-PI-004): `calibrate.ts`/`select.ts`/`fallba
 
 ## File sizes and baseline exceptions
 
-All new files within limits: calibrate.ts ~175, select.ts ~206, fallback.ts ~102, emit-vc2c.ts ~69 (src soft limit 300, hard 500), calibrate.test.ts ~120, select.test.ts ~171, fallback.test.ts ~76, vc2c-acceptance.test.ts ~526 (under the 600 test hard limit; over the 300 src test soft limit — same as the VC2A/VC2B aggregators, warning not failure). Pre-existing over-soft-limit `extensions/mega-events/agent-handlers/turnEndHandler/errorRetry.ts` (421) remains UNTOUCHED this sprint.
+All new files within limits: calibrate.ts ~225 (under the 300 src soft limit), select.ts ~237, fallback.ts ~102, emit-vc2c.ts ~70 (src soft limit 300, hard 500), calibrate.test.ts ~120, select.test.ts ~228, fallback.test.ts ~76, vc2c-acceptance.test.ts ~563 (under the 600 test hard limit; over the 300 src test soft limit — same as the VC2A/VC2B aggregators, warning not failure). Pre-existing over-soft-limit `extensions/mega-events/agent-handlers/turnEndHandler/errorRetry.ts` (421) remains UNTOUCHED this sprint.
 
 ## Rollback / downgrade rehearsal
 
@@ -120,8 +120,12 @@ All new files within limits: calibrate.ts ~175, select.ts ~206, fallback.ts ~102
 
 ## Reviewer attestation
 
-CHANGES REQUESTED raised by spec-compliance reviewer, resolved in a follow-up commit:
-- **S1** — `QualifiedEncoderV1.assetDigest` now holds the REAL ModelManifestV1 asset-manifest digest (passed through `QualificationCandidate.assetManifestDigest`), matching its documented contract and the dashboard health card's `encoderAssetDigest`; pinned by a new assertion.
-- **S2** — naming reconciled: `assetDigest` (record) and `encoderAssetDigest` (health card) now both mean SHA-256 of the ModelManifestV1 manifest bytes; `calibrationDigest` is documented as the calibration split-assignment digest. Downstream VC3A pins the correct digest.
+CHANGES REQUESTED raised by the code-quality reviewer, resolved in a follow-up commit:
+- **Q01** — `ENC_QUALIFICATION_FAIL.ASSET_FAILED` was dead (declared, never emitted). `selectQualifiedEncoder` now routes any asset-field failure (`asset.maxTokens`/`asset.latencyP95Ms`/`asset.rssDeltaMib`) through `ASSET_FAILED`; per-head/reconstruction failures keep `THRESHOLD_FAILED`. `select.test.ts` asserts the `ASSET_FAILED` code for all three asset fields. The enum now advertises a code the seam actually emits.
+- **Q02** — removed the dead `NOOP_VC2C_REPORTER` export and the never-exercised `EncoderQualificationEmitOptions`/`opts.logPath` surface from `emit-vc2c.ts`. The reporter narrows to `createEncoderQualificationReporter(emit?)`, defaulting to a real `Logger`-backed sink; no caller/tester passed a `logPath`, so the surface was pure dead weight.
+- **Q03** — `fitThreshold`'s docstring claimed the returned value was "the score at the positive-class balance point", but it picked `floor(negatives*0.5)` into the score-sorted array — which could re-admit the lowest negative on sparse heads (e.g. one negative 0.2 + one positive 0.9 → threshold 0.2). Rewrote both the docstring (now an honest between-class balance point) and the math: with both classes present the threshold is the midpoint between the highest negative and the lowest positive (so a calibration negative's own score is never re-admitted); degenerate single-class heads fall back conservatively (no positives → just above the top observed score; no negatives → just below the lowest observed positive); empty head stays 0.5. Deterministic and row-order-invariant; no threshold value is pinned by any test, so the change is assertion-safe.
+- **Q04** — `emit-vc2c.ts`'s `fire()` injected `ts` as an ISO string, overriding the numeric epoch-ms `Logger` injects (`LogEntry.ts` is `number`). Removed the override: the default sink now emits the numeric `ts` from `Logger`, so the two VC2C events are consistent with the rest of the log stream. (The predecessor `emit-vc2b.ts` still uses the ISO-string pattern; VC2C no longer mirrors it.)
 
-Not yet re-attested — pending independent reviewer.
+S1/S2 (prior spec-compliance review, resolved earlier): `QualifiedEncoderV1.assetDigest` holds the REAL ModelManifestV1 asset-manifest digest (passed through `QualificationCandidate.assetManifestDigest`), matching its documented contract and the dashboard health card's `encoderAssetDigest`; `calibrationDigest` is documented as the calibration split-assignment digest. Downstream VC3A pins the correct digest.
+
+All 20 acceptance tests + 8/11/7 encoder unit tests pass in both flag states; full `npm test` 1785 passed / 0 failed; lint, regression, conformance, docs, network-denial (modes A/B/C) and dashboard typecheck/build all green.

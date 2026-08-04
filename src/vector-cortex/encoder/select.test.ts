@@ -124,21 +124,30 @@ describe("select.selectQualifiedEncoder — atomic eligibility (A)", () => {
     }
   });
 
-  test("every MODEL_ASSET asset field is enforced (atomic)", () => {
+  test("every MODEL_ASSET asset field is enforced (atomic, ASSET_FAILED)", () => {
     const tokens = selectQualifiedEncoder(candidate({ asset: { maxTokens: 600, latencyP95Ms: 20, rssDeltaMib: 40 } }));
     assert.equal(tokens.ok, false);
     if (!tokens.ok) {
-      assert.equal(tokens.code, ENC_QUALIFICATION_FAIL.THRESHOLD_FAILED);
+      // An asset-field failure reports the dedicated ASSET_FAILED code, not the
+      // generic threshold failure (code-review Q01): a consumer looking for an
+      // asset-failure code must actually observe it at the seam.
+      assert.equal(tokens.code, ENC_QUALIFICATION_FAIL.ASSET_FAILED);
       assert.equal(tokens.failedField, "asset.maxTokens");
     }
 
     const latency = selectQualifiedEncoder(candidate({ asset: { maxTokens: 512, latencyP95Ms: 200, rssDeltaMib: 40 } }));
     assert.equal(latency.ok, false);
-    if (!latency.ok) assert.equal(latency.failedField, "asset.latencyP95Ms");
+    if (!latency.ok) {
+      assert.equal(latency.code, ENC_QUALIFICATION_FAIL.ASSET_FAILED);
+      assert.equal(latency.failedField, "asset.latencyP95Ms");
+    }
 
     const rss = selectQualifiedEncoder(candidate({ asset: { maxTokens: 512, latencyP95Ms: 20, rssDeltaMib: 900 } }));
     assert.equal(rss.ok, false);
-    if (!rss.ok) assert.equal(rss.failedField, "asset.rssDeltaMib");
+    if (!rss.ok) {
+      assert.equal(rss.code, ENC_QUALIFICATION_FAIL.ASSET_FAILED);
+      assert.equal(rss.failedField, "asset.rssDeltaMib");
+    }
   });
 });
 

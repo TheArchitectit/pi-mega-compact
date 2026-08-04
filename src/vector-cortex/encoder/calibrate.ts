@@ -113,9 +113,18 @@ function fitTemperature(head: EncoderHeadName, seed: number): number {
 
 /**
  * Deterministic per-head decision threshold derived from the calibration
- * distribution. Examples are sorted STABLY by (score, itemId) — never arrival
- * order — so ties in score resolve by item ID bytewise. The threshold is the
- * score at the positive-class balance point (a frozen calibration reference).
+ * distribution. For a head with BOTH classes present the threshold is the
+ * midpoint between the highest-scoring negative (label 0) and the lowest-scoring
+ * positive (label 1) — a true between-class balance point that NEVER lands on a
+ * negative example's own score (code-review Q03): a future inference at the
+ * highest calibration negative is still classified negative, and one at the
+ * lowest calibration positive is still classified positive. Degenerate heads with
+ * a single class fall back conservatively (no positives -> just above the top
+ * observed score; no negatives -> just below the lowest observed positive) and an
+ * empty head defaults to 0.5. Scoring is order-invariant: ties in score resolve by
+ * item ID bytewise (stable score/id ties), never by arrival order, so the fit is
+ * invariant to row order. This frozen threshold is a normative placeholder (real
+ * trained weights land later).
  */
 function fitThreshold(
   head: EncoderHeadName,
@@ -126,12 +135,26 @@ function fitThreshold(
     .slice()
     .sort((a, b) => (a.score - b.score) || (a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0));
   if (headEx.length === 0) return 0.5;
-  const positives = headEx.filter((e) => e.label === 1).length;
-  const thresholdIdx = Math.min(
-    Math.max(Math.floor((headEx.length - positives) * 0.5), 0),
-    headEx.length - 1,
-  );
-  return headEx[thresholdIdx]!.score;
+  let highestNeg = -Infinity;
+  let lowestPos = Infinity;
+  for (const e of headEx) {
+    if (e.label === 0) highestNeg = Math.max(highestNeg, e.score);
+    else lowestPos = Math.min(lowestPos, e.score);
+  }
+  if (lowestPos === Infinity) {
+    // Only negatives observed — no positive class to balance against. Set the
+    // threshold just above the top observed score so no observed negative is
+    // re-admitted (a genuine future positive must exceed all calibration negatives).
+    return Math.max(0.5, highestNeg + 0.05);
+  }
+  if (highestNeg === -Infinity) {
+    // Only positives observed — set the threshold just below the lowest observed
+    // positive so every observed positive is admitted.
+    return Math.max(0, lowestPos - 0.05);
+  }
+  // Both classes present: the midpoint strictly between the highest negative and
+  // the lowest positive is the between-class balance point (Q03).
+  return (highestNeg + lowestPos) / 2;
 }
 
 /**

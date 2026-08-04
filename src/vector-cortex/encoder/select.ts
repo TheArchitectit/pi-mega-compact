@@ -8,7 +8,10 @@
  * can inspect which threshold tripped.
  *
  *   - asset fields (MODEL_ASSET §qualification): maxTokens <= 512, p95 latency
- *     <= 40 ms, encoder RSS delta <= 150 MiB.
+ *     <= 40 ms, encoder RSS delta <= 150 MiB. When an asset field fails, the
+ *     demotion code is `ENC_QUALIFICATION_ASSET_FAILED`; per-head / reconstruction
+ *     failures report `ENC_QUALIFICATION_THRESHOLD_FAILED`. Either way the check is
+ *     atomic — the field that tripped is surfaced via `failedField`.
  *   - per-head EVALUATION thresholds (EVALUATION.md §metrics):
  *       semantic      spearman >= .75, recall@10 >= .90
  *       dependency    precision >= .97, recall >= .95
@@ -188,9 +191,17 @@ export function selectQualifiedEncoder(
   if (!reconstructionPasses(candidate.heldOut)) failed.push("reconstruction");
 
   if (failed.length > 0) {
-    // Any failed field demotes all of A — no partial A.
+    // Any failed field demotes all of A — no partial A. Route the demotion code
+    // by the failed-field class: an asset-field failure (maxTokens/latency/RSS)
+    // reports ENC_QUALIFICATION_ASSET_FAILED; a per-head/reconstruction failure
+    // reports ENC_QUALIFICATION_THRESHOLD_FAILED. `failedField` always carries the
+    // specific field that tripped, so the code + field together fully identify it.
+    const assetFailed = failed.some((f) => f.startsWith("asset."));
+    const code = assetFailed
+      ? ENC_QUALIFICATION_FAIL.ASSET_FAILED
+      : ENC_QUALIFICATION_FAIL.THRESHOLD_FAILED;
     reporter.qualificationDemoted({
-      reason: ENC_QUALIFICATION_FAIL.THRESHOLD_FAILED,
+      reason: code,
       failed: failed.join("/"),
       modelVersion: candidate.modelVersion,
       mode: "B",
@@ -198,7 +209,7 @@ export function selectQualifiedEncoder(
     return {
       ok: false,
       mode: "B",
-      code: ENC_QUALIFICATION_FAIL.THRESHOLD_FAILED,
+      code,
       failedField: failed[0] ?? null,
     };
   }
