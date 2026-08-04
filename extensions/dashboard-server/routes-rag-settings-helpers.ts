@@ -343,6 +343,12 @@ export const SETTINGS: ReadonlyArray<{
 				"Deterministic cortical topology (TopologyV1/EdgeV1): per-(source,head) top-k=16/head calibrated-threshold edges, stable score-desc/then-target-ID sort, dependency directed + contradiction symmetric paired records, one stable generation digest. OFF = mode C, no topology graph built/emitted, predecessor-precise topology view, byte-identical predecessor.",
 				true,
 			),
+			boolDirect(
+				"MEGACOMPACT_VC3C",
+				"VC3C Topology Query + Router Invalidation",
+				"TopologyQueryV1/RouterKeyV2 structured keys (length-delimited, unsigned-byte order, no prefix ambiguity), exact (session,generation) invalidation, stale-generation rejection (TOP_GENERATION_STALE), and the M6 router-generation-v2 copy/validate/switch migration. OFF = mode C, no structured router key / generation invalidation, byte-identical predecessor.",
+				true,
+			),
 		],
 	},
 	{

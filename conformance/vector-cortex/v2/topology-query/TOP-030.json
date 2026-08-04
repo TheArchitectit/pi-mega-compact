@@ -1,0 +1,1 @@
+{"assertion":"the canonical key digest is a stable sha256 over the structured key bytes","expected":{"ok":true},"id":"TOP-030","input":{"activeGeneration":4,"generation":4,"scenario":"key-digest","session":"s1"},"kind":"topology-query","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/topology-query-fixture.schema.json"}

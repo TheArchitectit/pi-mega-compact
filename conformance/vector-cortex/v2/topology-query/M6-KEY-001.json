@@ -1,0 +1,1 @@
+{"assertion":"sessions a and aa cannot prefix-collide at the key or invalidation-identity level","expected":{"noCollision":true,"ok":true},"id":"M6-KEY-001","input":{"generation":1,"scenario":"no-prefix-sessions","secondSession":"aa","session":"a"},"kind":"topology-query","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/topology-query-fixture.schema.json"}

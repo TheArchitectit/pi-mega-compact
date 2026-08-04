@@ -1,0 +1,1 @@
+{"assertion":"M6 repeated copy is idempotent (no duplicate v2 rows)","expected":{"activeVersion":2,"count":2,"noDuplicates":true,"ok":true},"id":"M6-002","input":{"activeStarting":1,"scenario":"repeat-copy","sessions":["s1"]},"kind":"router-generation-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/router-generation-migration.schema.json"}

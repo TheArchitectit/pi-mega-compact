@@ -104,6 +104,18 @@ export interface VectorCortexTopologyView {
 }
 
 /**
+ * Reader-only query-layer diagnostics view (VC3C, GET /api/vector-cortex/query).
+ * Purely a flag-status + structural diagnostic: VC3C flag enabled state and the
+ * router-generation v2 version constant. Aggregate only — the in-memory query
+ * index is not durable and never exposes payloads/prompts.
+ */
+export interface VectorCortexQueryView {
+  enabled: boolean;
+  routerVersion: number;
+  updatedAt: string;
+}
+
+/**
  * Occurrence-ledger identity view (VC1B, GET /api/vector-cortex/ledger).
  * Reader-only: seq/eventId/kind/digest + high-water, never source payloads.
  */

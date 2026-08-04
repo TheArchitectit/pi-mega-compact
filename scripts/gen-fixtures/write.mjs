@@ -28,6 +28,7 @@ import { fixtures as encoderHeadsFixtures, named as encoderHeadsNamed } from "./
 import { fixtures as encQualFixtures, named as encQualNamed } from "./encoder-qualification.mjs";
 import { fixtures as cortexFixtures, named as cortexNamed } from "./cortex-store.mjs";
 import { fixtures as topologyFixtures, named as topologyNamed } from "./topology.mjs";
+import { fixtures as topologyQueryFixtures, named as topologyQueryNamed } from "./topology-query.mjs";
 
 const REPLAY_DIR = join(V2, "replay");
 const EVENTS_DIR = join(V2, "events");
@@ -41,6 +42,7 @@ const ENCODER_HEADS_DIR = join(V2, "encoder-heads");
 const ENCODER_QUAL_DIR = join(V2, "encoder-qualification");
 const CORTEX_DIR = join(V2, "cortex-store");
 const TOPOLOGY_DIR = join(V2, "topology");
+const TOPOLOGY_QUERY_DIR = join(V2, "topology-query");
 
 export function writeAll() {
   rmSync(V2, { recursive: true, force: true });
@@ -58,6 +60,7 @@ export function writeAll() {
   mkdirSync(ENCODER_QUAL_DIR, { recursive: true });
   mkdirSync(CORTEX_DIR, { recursive: true });
   mkdirSync(TOPOLOGY_DIR, { recursive: true });
+  mkdirSync(TOPOLOGY_QUERY_DIR, { recursive: true });
 
   const manifestRows = [];
 
@@ -331,13 +334,34 @@ export function writeAll() {
     });
   }
 
+  // Topology-query fixtures (VC3C): kind=topology-query rows (TOP-021..030 +
+  // named) pin the query/key/invalidation behavior with algorithm
+  // "topology-query"; kind=router-generation-v2 rows (M6-001..012) pin the M6
+  // copy/validate/switch migration with algorithm "router-generation-v2". Both
+  // live under `topology-query/` — the VC3C sprint fixture root.
+  for (const fx of [...topologyQueryFixtures, ...topologyQueryNamed]) {
+    const bytes = Buffer.from(canonicalJson(fx), "utf8");
+    const rel = `topology-query/${fx.id}.json`;
+    writeFileSync(join(TOPOLOGY_QUERY_DIR, `${fx.id}.json`), bytes);
+    manifestRows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: fx.schema,
+      algorithm: fx.kind === "router-generation-v2" ? "router-generation-v2" : "topology-query",
+      producer,
+      expected: fx.expected.ok ? "ok" : fx.expected.code,
+      license: "synthetic",
+    });
+  }
+
   const manifest = {
     version: "2",
     viewer: "vector-cortex-conformance.mjs",
     producer: "vector-cortex-gen-fixtures.mjs",
-    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification,cortex-store,topology",
-    owner: "VC0A,VC0B,VC0C,VC1A,VC1B,VC1C,VC2A,VC2B,VC2C,VC3A,VC3B",
-    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification;cortex-store;topology-fixture",
+    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification,cortex-store,topology,topology-query,router-generation-v2",
+    owner: "VC0A,VC0B,VC0C,VC1A,VC1B,VC1C,VC2A,VC2B,VC2C,VC3A,VC3B,VC3C",
+    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification;cortex-store;topology-fixture;topology-query-fixture;router-generation-migration",
     license: "synthetic",
     fixtures: manifestRows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
   };

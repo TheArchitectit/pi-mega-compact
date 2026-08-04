@@ -1,0 +1,1 @@
+{"assertion":"an old generation misses immediately after the active generation switches","expected":{"mode":"B","ok":true},"id":"M6-STALE-002","input":{"activeGeneration":5,"generation":4,"scenario":"stale-after-switch","session":"s1"},"kind":"topology-query","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/topology-query-fixture.schema.json"}

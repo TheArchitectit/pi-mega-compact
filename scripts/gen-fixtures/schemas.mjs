@@ -488,3 +488,77 @@ schemas["schemas/topology-fixture.schema.json"] = {
     },
   },
 };
+
+schemas["schemas/topology-query-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC3C topology-query fixture envelope",
+  description:
+    "Common structure every VC3C topology-query fixture validates against. `input.scenario` names the key-encoding / unsigned-byte-order / no-prefix / invalidation / staleness / triad-demotion condition the acceptance test executes against the REAL query layer; `expected` gives the exact verdict (ok) or failure code.",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["topology-query"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: { type: "string" },
+        mode: { type: "string", enum: ["A", "B", "C"] },
+        key: { type: "string" },
+        noCollision: { type: "boolean" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario"],
+      properties: {
+        scenario: { type: "string" },
+        session: { type: "string" },
+        generation: { type: "integer" },
+        secondSession: { type: "string" },
+        activeGeneration: { type: "integer" },
+      },
+    },
+  },
+};
+
+schemas["schemas/router-generation-migration.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "M6 router-generation-v2 migration fixture envelope",
+  description:
+    "Common structure every VC3C M6 router-generation-v2 migration fixture validates against. `input` names the old per-session query set + migration scenario; `expected` gives the exact migration verdict (activeVersion, count, or failure code).",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["router-generation-v2"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: { type: "string" },
+        activeVersion: { type: "integer" },
+        count: { type: "integer" },
+        halted: { type: "boolean" },
+        noDuplicates: { type: "boolean" },
+        noKeyCollision: { type: "boolean" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario"],
+      properties: {
+        scenario: { type: "string" },
+        sessions: { type: "array", items: { type: "string" } },
+        activeStarting: { type: "integer" },
+      },
+    },
+  },
+};

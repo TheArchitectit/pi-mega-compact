@@ -161,6 +161,23 @@ export interface VectorCortexTopologyView {
 }
 
 /**
+ * Reader-only query-layer diagnostics view for GET /api/vector-cortex/query
+ * (VC3C). Purely a flag-status + structural diagnostic — reports whether the
+ * VC3C flag is enabled and the router-generation v2 version constant. The VC3C
+ * query index is in-memory (not durable), so no payloads, prompts, or index
+ * contents are ever exposed. Non-fatal: a missing state dir or internal error
+ * degrades to `enabled:false`.
+ */
+export interface VectorCortexQueryView {
+  /** Whether the VC3C query-layer flag is enabled in this process. */
+  readonly enabled: boolean;
+  /** Router-generation v2 key version constant (query index format). */
+  readonly routerVersion: number;
+  /** ISO timestamp of the snapshot. */
+  readonly updatedAt: string;
+}
+
+/**
  * Reader-only occurrence-ledger view for GET /api/vector-cortex/ledger (VC1B).
  * Built on the LedgerReader capability surface. Exposes occurrence IDENTITY
  * (seq/eventId/kind/digest/toolCallId) and the per-session high-water/count —

@@ -1,0 +1,1 @@
+{"assertion":"M6 a duplicated v2 row fails exact-once count (M6_COUNT_MISMATCH)","expected":{"code":"M6_COUNT_MISMATCH","ok":false},"id":"M6-006","input":{"activeStarting":1,"scenario":"duplicate-row","sessions":["s1"]},"kind":"router-generation-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/router-generation-migration.schema.json"}

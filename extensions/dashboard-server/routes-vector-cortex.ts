@@ -18,3 +18,4 @@ export { handleVectorCortexEvaluation } from "./routes-vector-cortex-eval.js";
 export { handleVectorCortexHealth, handleVectorCortexBreakersReset } from "./routes-vector-cortex-health.js";
 export { handleVectorCortexLedger } from "./routes-vector-cortex-ledger.js";
 export { handleVectorCortexTopology } from "./routes-vector-cortex-topology.js";
+export { handleVectorCortexQuery } from "./routes-vector-cortex-query.js";

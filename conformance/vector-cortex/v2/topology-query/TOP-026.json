@@ -1,0 +1,1 @@
+{"assertion":"a stale A key forces a fresh linear scan (mode B)","expected":{"mode":"B","ok":true},"id":"TOP-026","input":{"activeGeneration":5,"generation":3,"scenario":"demote-b","session":"s1"},"kind":"topology-query","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/topology-query-fixture.schema.json"}
