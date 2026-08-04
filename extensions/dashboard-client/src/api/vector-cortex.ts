@@ -10,6 +10,7 @@ import type {
 	VectorCortexPlansView,
 	VectorCortexQueryView,
 	VectorCortexReconstructView,
+	VectorCortexRenderView,
 	VectorCortexResetResult,
 	VectorCortexShardsView,
 	VectorCortexTopologyView,
@@ -22,6 +23,7 @@ export type {
 	VectorCortexPlansView,
 	VectorCortexQueryView,
 	VectorCortexReconstructView,
+	VectorCortexRenderView,
 	VectorCortexResetResult,
 	VectorCortexShardsView,
 	VectorCortexTopologyView,
@@ -72,6 +74,13 @@ export async function fetchVectorCortexPlans(): Promise<VectorCortexPlansView> {
 	const r = await fetch("/api/vector-cortex/plans");
 	if (!r.ok) throw new Error(`vector-cortex plans: ${r.status}`);
 	return r.json() as Promise<VectorCortexPlansView>;
+}
+
+/** Reader-only render + provider-profile view (VC5B). */
+export async function fetchVectorCortexRender(): Promise<VectorCortexRenderView> {
+	const r = await fetch("/api/vector-cortex/render");
+	if (!r.ok) throw new Error(`vector-cortex render: ${r.status}`);
+	return r.json() as Promise<VectorCortexRenderView>;
 }
 
 /** Reader-only occurrence-ledger identity view (VC1B). */

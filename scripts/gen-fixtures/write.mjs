@@ -34,6 +34,8 @@ import { fixtures as residualFixtures, named as residualNamed } from "./residual
 import { fixtures as reconstructionFixtures, named as reconstructionNamed } from "./reconstruction.mjs";
 import { fixtures as promptDagFixtures, named as promptDagNamed } from "./prompt-dag.mjs";
 import { fixtures as plannerFixtures, named as plannerNamed } from "./planner.mjs";
+import { fixtures as renderFixtures, named as renderNamed } from "./render.mjs";
+import { fixtures as providerFixtures, named as providerNamed } from "./provider.mjs";
 
 const REPLAY_DIR = join(V2, "replay");
 const EVENTS_DIR = join(V2, "events");
@@ -53,6 +55,8 @@ const RESIDUAL_DIR = join(V2, "residual");
 const RECONSTRUCTION_DIR = join(V2, "reconstruction");
 const PROMPT_DAG_DIR = join(V2, "prompt-dag");
 const PLANNER_DIR = join(V2, "planner");
+const RENDER_DIR = join(V2, "render");
+const PROVIDER_DIR = join(V2, "provider");
 
 export function writeAll() {
   rmSync(V2, { recursive: true, force: true });
@@ -76,6 +80,8 @@ export function writeAll() {
   mkdirSync(RECONSTRUCTION_DIR, { recursive: true });
   mkdirSync(PROMPT_DAG_DIR, { recursive: true });
   mkdirSync(PLANNER_DIR, { recursive: true });
+  mkdirSync(RENDER_DIR, { recursive: true });
+  mkdirSync(PROVIDER_DIR, { recursive: true });
 
   const manifestRows = [];
 
@@ -465,13 +471,51 @@ export function writeAll() {
     });
   }
 
+  // Render fixtures (VC5B): kind=render rows (REN-001..020 + named) pin
+  // render-in-order / exact-tool-bytes / canonical-request-hash / profile-gated
+  // validation / clean-bypass behavior with algorithm "render".
+  for (const fx of [...renderFixtures, ...renderNamed]) {
+    const bytes = Buffer.from(canonicalJson(fx), "utf8");
+    const rel = `render/${fx.id}.json`;
+    writeFileSync(join(RENDER_DIR, `${fx.id}.json`), bytes);
+    manifestRows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: fx.schema,
+      algorithm: "render",
+      producer,
+      expected: fx.expected.ok ? "ok" : fx.expected.code,
+      license: "synthetic",
+    });
+  }
+
+  // Provider fixtures (VC5B): kind=provider rows (PRO-001..015 + named) pin
+  // known-resolution / unknown-clean-bypass / version-gating / fixture-proven
+  // exclusion / cache-identity behavior with algorithm "provider".
+  for (const fx of [...providerFixtures, ...providerNamed]) {
+    const bytes = Buffer.from(canonicalJson(fx), "utf8");
+    const rel = `provider/${fx.id}.json`;
+    writeFileSync(join(PROVIDER_DIR, `${fx.id}.json`), bytes);
+    manifestRows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: fx.schema,
+      algorithm: "provider",
+      producer,
+      expected: fx.expected.ok ? "ok" : fx.expected.code,
+      license: "synthetic",
+    });
+  }
+
   const manifest = {
     version: "2",
     viewer: "vector-cortex-conformance.mjs",
     producer: "vector-cortex-gen-fixtures.mjs",
-    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification,cortex-store,topology,topology-query,router-generation-v2,shard,residual,reconstruction,prompt-dag,planner",
-    owner: "VC0A,VC0B,VC0C,VC1A,VC1B,VC1C,VC2A,VC2B,VC2C,VC3A,VC3B,VC3C,VC4A,VC4B,VC4C,VC5A",
-    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification;cortex-store;topology-fixture;topology-query-fixture;router-generation-migration;shard-fixture;residual-fixture;reconstruction-fixture;prompt-dag-fixture;planner-fixture",
+    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification,cortex-store,topology,topology-query,router-generation-v2,shard,residual,reconstruction,prompt-dag,planner,render,provider",
+    owner: "VC0A,VC0B,VC0C,VC1A,VC1B,VC1C,VC2A,VC2B,VC2C,VC3A,VC3B,VC3C,VC4A,VC4B,VC4C,VC5A,VC5B",
+    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification;cortex-store;topology-fixture;topology-query-fixture;router-generation-migration;shard-fixture;residual-fixture;reconstruction-fixture;prompt-dag-fixture;planner-fixture;render-fixture;provider-fixture",
     license: "synthetic",
     fixtures: manifestRows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
   };
@@ -509,5 +553,9 @@ export function writeAll() {
     promptDagNamedCount: promptDagNamed.length,
     plannerCount: plannerFixtures.length,
     plannerNamedCount: plannerNamed.length,
+    renderCount: renderFixtures.length,
+    renderNamedCount: renderNamed.length,
+    providerCount: providerFixtures.length,
+    providerNamedCount: providerNamed.length,
   };
 }

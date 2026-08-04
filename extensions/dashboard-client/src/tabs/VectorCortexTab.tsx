@@ -15,6 +15,7 @@ import {
 	fetchVectorCortexQuery,
 	fetchVectorCortexReconstruct,
 	fetchVectorCortexPlans,
+	fetchVectorCortexRender,
 	fetchVectorCortexShards,
 	fetchVectorCortexTopology,
 	resetVectorCortexBreaker,
@@ -24,26 +25,21 @@ import {
 	type VectorCortexQueryView,
 	type VectorCortexReconstructView,
 	type VectorCortexPlansView,
+	type VectorCortexRenderView,
 	type VectorCortexShardsView,
 	type VectorCortexTopologyView,
 } from "../api/vector-cortex";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
+import { Metric } from "./VectorCortexMetric";
+import { VectorCortexRenderCard } from "./VectorCortexRenderCard";
+import { VectorCortexPlansCard } from "./VectorCortexPlansCard";
 
 function ModeChip({ mode, count }: { mode: string; count: number }): React.ReactElement {
 	return (
 		<div className="flex items-center justify-between border-b border-border/50 py-1 text-sm">
 			<span className="text-muted-foreground">Mode {mode}</span>
 			<span className="font-mono">{count}</span>
-		</div>
-	);
-}
-
-function Metric({ label, value }: { label: string; value: string }): React.ReactElement {
-	return (
-		<div>
-			<div className="text-xs text-muted-foreground">{label}</div>
-			<div className="font-mono text-sm">{value}</div>
 		</div>
 	);
 }
@@ -60,6 +56,7 @@ export default function VectorCortexTab(): React.ReactElement {
 	const [shards, setShards] = useState<VectorCortexShardsView | null>(null);
 	const [reconstruct, setReconstruct] = useState<VectorCortexReconstructView | null>(null);
 	const [plans, setPlans] = useState<VectorCortexPlansView | null>(null);
+	const [render, setRender] = useState<VectorCortexRenderView | null>(null);
 
 	const poll = useCallback(() => {
 		fetchVectorCortexEvaluation()
@@ -88,6 +85,9 @@ export default function VectorCortexTab(): React.ReactElement {
 		});
 		fetchVectorCortexPlans().then(setPlans).catch(() => {
 			/* plan manifest card is best-effort (VC5A) */
+		});
+		fetchVectorCortexRender().then(setRender).catch(() => {
+			/* render conformance card is best-effort (VC5B) */
 		});
 	}, []);
 
@@ -403,35 +403,8 @@ export default function VectorCortexTab(): React.ReactElement {
 					)}
 				</CardContent>
 			</Card>
-			<Card>
-				<CardHeader>
-					<div className="flex items-center justify-between">
-						<CardTitle>Plan Manifests (VC5A)</CardTitle>
-						{plans?.enabled ? (
-							<Badge variant="success">ACTIVE</Badge>
-						) : (
-							<Badge variant="danger">OFF</Badge>
-						)}
-					</div>
-				</CardHeader>
-				<CardContent>
-					{!plans?.enabled ? (
-						<div className="vc-empty">PromptDagV1 + budgeted planner disabled (VC5A off).</div>
-					) : (
-					<>
-						<div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-							<Metric label="DAG fixtures" value={String(plans.dagCount)} />
-							<Metric label="Plan fixtures" value={String(plans.plannerCount)} />
-							<Metric label="Plans exposed" value={String(plans.plans.length)} />
-						</div>
-						<div className="mt-3 text-xs text-muted-foreground">
-							Reader-only plan manifests only — no session payloads or prompt text.
-							Per-run plan outputs are staged in-memory this sprint.
-						</div>
-					</>
-					)}
-				</CardContent>
-			</Card>
+			<VectorCortexPlansCard view={plans} />
+			<VectorCortexRenderCard view={render} />
 			<Card>
 				<CardHeader>
 					<div className="flex items-center justify-between">

@@ -182,3 +182,12 @@ export interface VectorCortexPlansView {
   plans: VectorCortexPlanManifest[];
   updatedAt: string;
 }
+
+/** Reader-only render + provider-profile view (VC5B). */
+export interface VectorCortexRenderView {
+  enabled: boolean;
+  renderCount: number;
+  providerCount: number;
+  knownProfiles: string[];
+  updatedAt: string;
+}

@@ -1,0 +1,1 @@
+{"assertion":"the request digest depends on byte length, not map order","expected":{"digestOrderIndependent":true,"ok":true},"id":"REN-013","input":{"graph":"linear","profile":"anthropic-claude-opus","scenario":"render-digest-byte-length"},"kind":"render","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/render-fixture.schema.json"}

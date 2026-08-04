@@ -1,0 +1,1 @@
+{"assertion":"unknown model bypasses without partial render (named, registry-level)","expected":{"bypassClean":true,"code":"PRO_PROFILE_UNKNOWN","ok":false},"id":"PRO-UNKNOWN-003","input":{"model":"v1","provider":"does-not-exist","scenario":"resolve-unknown"},"kind":"provider","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/provider-fixture.schema.json"}

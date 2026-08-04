@@ -51,4 +51,5 @@ export {
 	handleVectorCortexResidual,
 	handleVectorCortexReconstruct,
 	handleVectorCortexPlans,
+	handleVectorCortexRender,
 } from "./routes-vector-cortex.js";

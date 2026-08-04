@@ -1,0 +1,1 @@
+{"assertion":"a reordered tool fails REN_TOOL_BYTE_MISMATCH","expected":{"code":"REN_TOOL_BYTE_MISMATCH","ok":false},"id":"REN-010","input":{"graph":"single","profile":"anthropic-claude-opus","scenario":"render-tool-reordered"},"kind":"render","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/render-fixture.schema.json"}

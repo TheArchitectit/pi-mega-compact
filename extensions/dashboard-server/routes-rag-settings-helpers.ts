@@ -373,6 +373,12 @@ export const SETTINGS: ReadonlyArray<{
 				"Single-session DAG (PromptDagV1) + budgeted 0/1 portfolio planner: builds a stable Kahn-ordered DAG, computes the mandatory dependency/tool/anchor closure before optional selection, returns MANDATORY_CLOSURE_OVER_BUDGET with evidence preserved on overflow, and runs a utility-per-token portfolio that never exceeds the remaining budget. Framing is owned here, not in VC4C. OFF = byte-identical predecessor (VC4C).",
 				true,
 			),
+			boolDirect(
+				"MEGACOMPACT_VC5B",
+				"VC5B Validated Renderer + Provider Profiles",
+				"Validated prompt renderer: replays VC5A's stable Kahn order verbatim, preserves exact tool bytes (PREVENT-PI-002), places compacted context via the host before_agent_start prepend seam — never role:system (PREVENT-PI-003) — and SHA-256 hashes the entire canonical outbound request before provider invocation. Unknown provider/model cleanly bypasses to the predecessor prompt path. OFF = byte-identical predecessor (VC5A).",
+				true,
+			),
 		],
 	},
 	{

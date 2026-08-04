@@ -222,6 +222,12 @@ export function crossCuttingExceptions(sprintId) {
 		// handler per domain (routes-vector-cortex-shards.ts, -query.ts, ...) to
 		// stay under the 500-line hard limit, so the whole family is a seam.
 		/^extensions\/dashboard-server\/routes-vector-cortex[\w.-]*\.(ts|tsx)$/,
+		// VectorCortexTab.tsx presentational sub-components (VectorCortex*Card.tsx,
+		// VectorCortexMetric.tsx, ...). Sprints extract cards into sibling files
+		// to keep the tab itself under the 500-line hard limit (delegate-shell
+		// pattern); the whole family is a dashboard-client seam, like the routes
+		// family above and VectorCortexTab.tsx in the exact set.
+		/^extensions\/dashboard-client\/src\/tabs\/VectorCortex[\w.-]*\.(ts|tsx)$/,
 		// The sprint's own spec file. A sprint may amend its Production ownership
 		// line (contract-first deviations, helper additions surfaced by THIS gate);
 		// the amendment is a per-sprint artifact the controller ratifies, the same

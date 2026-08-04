@@ -1,0 +1,1 @@
+{"assertion":"a single DAG node renders in stable Kahn order","expected":{"nodeOrder":["n1"],"ok":true,"orderReplay":true},"id":"REN-001","input":{"graph":"single","profile":"anthropic-claude-opus","scenario":"render-single"},"kind":"render","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/render-fixture.schema.json"}

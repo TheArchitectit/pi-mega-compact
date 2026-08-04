@@ -188,6 +188,19 @@ export const VC4C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC4C");
  */
 export const VC5A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC5A");
 
+/**
+ * VC5B — validated prompt renderer + provider profiles. Default ON.
+ * `MEGACOMPACT_VC5B=0` disables and is byte-identical to the predecessor
+ * (VC5A): no render manifest is produced, no canonical request is hashed, the
+ * `vector_cortex_render_validated` / `vector_cortex_provider_bypassed` events are
+ * never emitted, and the prompt continues to be built by the predecessor VC5A
+ * DAG/plan path (its goldens are unchanged). The render/validate functions are
+ * PURE — flag OFF gates the reporter + dashboard seam, never the arithmetic.
+ * This flag MUST also be a dashboard SETTINGS toggle (visible in config UI, never
+ * in EXCLUDED_SETTINGS), mirroring VC4A/VC4B/VC4C/VC5A.
+ */
+export const VC5B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC5B");
+
 // ---------------------------------------------------------------------------
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker).
 // Rolled numbers for one 60s window; VC0C consumes these at its breaker seam.

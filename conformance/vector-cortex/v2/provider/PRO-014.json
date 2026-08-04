@@ -1,0 +1,1 @@
+{"assertion":"a profile's excluded pointers are versioned and listed","expected":{"excludedPointers":["/requestId"],"ok":true},"id":"PRO-014","input":{"model":"v1","provider":"google-gemini","scenario":"resolve-exclusion-versioned"},"kind":"provider","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/provider-fixture.schema.json"}

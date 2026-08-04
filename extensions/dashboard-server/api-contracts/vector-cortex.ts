@@ -297,6 +297,26 @@ export interface VectorCortexPlansView {
 }
 
 /**
+ * Reader-only render/profile view for GET /api/vector-cortex/render (VC5B).
+ * Reports the registered render (REN-001..) and provider-profile (PRO-001..)
+ * identifier counts + the known provider-profile keys. NEVER exposes rendered
+ * node bytes, prompt text, or the canonical outbound request (reader-only,
+ * SECURITY_PRIVACY: the exact ledger is not training data).
+ */
+export interface VectorCortexRenderView {
+  /** Whether the VC5B render + provider-profile flag is enabled. */
+  readonly enabled: boolean;
+  /** Count of registered render fixtures (REN-001..). */
+  readonly renderCount: number;
+  /** Count of registered provider-profile fixtures (PRO-001..). */
+  readonly providerCount: number;
+  /** Known base provider-profile keys (provider//model), reader-only. */
+  readonly knownProfiles: readonly string[];
+  /** ISO timestamp of the snapshot. */
+  readonly updatedAt: string;
+}
+
+/**
  * Reader-only occurrence-ledger view for GET /api/vector-cortex/ledger (VC1B).
  * Built on the LedgerReader capability surface. Exposes occurrence IDENTITY
  * (seq/eventId/kind/digest/toolCallId) and the per-session high-water/count —

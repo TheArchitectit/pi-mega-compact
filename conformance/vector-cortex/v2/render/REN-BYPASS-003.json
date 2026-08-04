@@ -1,0 +1,1 @@
+{"assertion":"unknown model bypasses without partial render (named, render-level)","expected":{"bypassClean":true,"code":"REN_PROFILE_UNKNOWN","ok":false},"id":"REN-BYPASS-003","input":{"graph":"single","profile":"unknown","scenario":"render-profile-unknown"},"kind":"render","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/render-fixture.schema.json"}

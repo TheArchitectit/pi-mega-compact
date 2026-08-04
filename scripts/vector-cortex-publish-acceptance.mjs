@@ -181,6 +181,20 @@ function main() {
         name.endsWith(".js") && !name.endsWith(".test.js"),
       )
     : 0;
+  // VC5B added the render + provider subtrees (renderer/validator/types +
+  // registry/types). Mirror their runtime .js so the vc5b-acceptance aggregator's
+  // `./render/...` and `./provider/...` imports resolve at the published
+  // dist/vector-cortex/ offset (tests excluded like the other subtrees).
+  const nRender = existsSync(join(SRC_VECTOR, "render"))
+    ? copyTree(join(SRC_VECTOR, "render"), join(DEST_VECTOR, "render"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
+  const nProvider = existsSync(join(SRC_VECTOR, "provider"))
+    ? copyTree(join(SRC_VECTOR, "provider"), join(DEST_VECTOR, "provider"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
   // VC3B support file (mode-B linear reference scan + helper producers) lives at
   // src/vector-cortex/vc3b-support.ts. Mirror its runtime .js so the
   // vc3b-acceptance aggregator's `./vc3b-support.js` import resolves at the
@@ -218,7 +232,7 @@ function main() {
     }
   }
   console.log(
-    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder + ${nCortex} cortex + ${nTopology} topology + ${nShards} shards + ${nResidual} residual + ${nReconstruct} reconstruct + ${nPromptDag} prompt-dag + ${nPlanner} planner + ${nSupport} support files`,
+    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder + ${nCortex} cortex + ${nTopology} topology + ${nShards} shards + ${nResidual} residual + ${nReconstruct} reconstruct + ${nPromptDag} prompt-dag + ${nPlanner} planner + ${nRender} render + ${nProvider} provider + ${nSupport} support files`,
   );
 }
 

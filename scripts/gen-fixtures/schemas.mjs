@@ -862,3 +862,102 @@ schemas["schemas/planner-fixture.schema.json"] = {
     },
   },
 };
+
+schemas["schemas/render-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC5B render fixture envelope",
+  description:
+    "Common structure every VC5B render fixture validates against. `input.scenario` names the render/validate condition the acceptance test executes against the REAL render module (src/vector-cortex/render/{renderer,validator}.js); `input.graph` names a declaratively-described DAG the test materializes (no byte payload embedded); `input.profile` names the (provider, model) looked up in the registry. `expected.ok` pins a clean render (optionally the exact `nodeOrder`, `requestDigestStable`, `toolBytesExact`, `bypassClean`) or an exact failure `code` (REN_ORDER_MISMATCH / REN_TOOL_BYTE_MISMATCH / REN_BYTE_LENGTH_MISMATCH / REN_PROVIDER_CONSTRAINT_VIOLATED / REN_PROFILE_DIGEST_MISMATCH / REN_PROFILE_UNKNOWN).",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["render"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: {
+          type: "string",
+          enum: [
+            "REN_ORDER_MISMATCH",
+            "REN_TOOL_BYTE_MISMATCH",
+            "REN_BYTE_LENGTH_MISMATCH",
+            "REN_PROVIDER_CONSTRAINT_VIOLATED",
+            "REN_PROFILE_DIGEST_MISMATCH",
+            "REN_PROFILE_UNKNOWN",
+          ],
+        },
+        nodeOrder: { type: "array", items: { type: "string" } },
+        orderReplay: { type: "boolean" },
+        permutationInvariant: { type: "boolean" },
+        toolBytesExact: { type: "boolean" },
+        invalidUtf8Survives: { type: "boolean" },
+        requestDigestStable: { type: "boolean" },
+        requestDigestSensitive: { type: "boolean" },
+        digestOrderIndependent: { type: "boolean" },
+        hashModeEntire: { type: "boolean" },
+        bypassClean: { type: "boolean" },
+        profileResolved: { type: "boolean" },
+        selectsTriadC: { type: "boolean" },
+        usesHostPrependSeam: { type: "boolean" },
+        forbidsSystemRole: { type: "boolean" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario", "graph", "profile"],
+      properties: {
+        scenario: { type: "string" },
+        graph: { type: "string" },
+        profile: { type: "string" },
+        mutateByteAfterRender: { type: "boolean" },
+        swapProfileAfterRender: { type: "boolean" },
+      },
+    },
+  },
+};
+
+schemas["schemas/provider-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC5B provider fixture envelope",
+  description:
+    "Common structure every VC5B provider fixture validates against. `input.scenario` names the resolution / cache-identity condition the acceptance test executes against the REAL provider registry (src/vector-cortex/provider/registry.js); `input.provider`/`input.model` name the exact-match lookup key. `expected.ok` pins a clean resolution (optionally the exact `profileId` / `hashMode` / `excludedPointers`) or an exact bypass `code` (PRO_PROFILE_UNKNOWN / PRO_PROFILE_VERSION_UNSUPPORTED).",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["provider"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: {
+          type: "string",
+          enum: ["PRO_PROFILE_UNKNOWN", "PRO_PROFILE_VERSION_UNSUPPORTED"],
+        },
+        profileId: { type: "string" },
+        hashMode: { type: "string", enum: ["entire-canonical-request"] },
+        excludedPointers: { type: "array", items: { type: "string" } },
+        bypassClean: { type: "boolean" },
+        cacheStable: { type: "boolean" },
+        deterministic: { type: "boolean" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario", "provider", "model"],
+      properties: {
+        scenario: { type: "string" },
+        provider: { type: "string" },
+        model: { type: "string" },
+      },
+    },
+  },
+};

@@ -67,6 +67,7 @@ import {
 	handleVectorCortexResidual,
 	handleVectorCortexReconstruct,
 	handleVectorCortexPlans,
+	handleVectorCortexRender,
 	handleStatic,
 } from "./routes.js";
 
@@ -313,6 +314,7 @@ export async function launchDashboardServer(
 		if (handleVectorCortexResidual(req, res, ctx)) return;
 		if (handleVectorCortexReconstruct(req, res, ctx)) return;
 		if (handleVectorCortexPlans(req, res, ctx)) return;
+		if (handleVectorCortexRender(req, res, ctx)) return;
 		handleStatic(req, res, ctx);
 	});
 
