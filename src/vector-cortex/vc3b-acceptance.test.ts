@@ -9,8 +9,10 @@
  *  - Named assertions: TOP-K-001 (seventeenth eligible neighbor excluded),
  *    TOP-TIE-002 (equal scores sort target IDs by unsigned bytes),
  *    TOP-KIND-003 (dependency one direction, contradiction two).
- *  - Acceptance: byte-identical graph over 1,000 runs; no self-edge/NaN;
- *    recall >= .95 (eligibility recall = recorded eligible edges recovered).
+ *  - Acceptance: byte-identical graph over 1,000 distinct input ORDERINGS (each
+ *    iteration feeds a shuffled permutation of the same candidate set — Q02);
+ *    no self-edge/NaN; recall >= .95 (eligibility recall = recorded eligible
+ *    edges recovered).
  *  - Forced triad A/B/C: A = multi-head topology index (build); B = linear
  *    VectorSet scan (vc3b-support.ts) with same thresholds; C = source-seq/keyword
  *    traversal with vector data unavailable (empty graph). A and B agree on the
@@ -350,7 +352,7 @@ describe("TOP-001..020 conformance rows", () => {
       }
     }
   });
-  test("TOP-019 digest-stable-1000: digest identical across 1,000 builds", () => {
+  test("TOP-019 digest-stable-1000: digest identical across 1,000 orderings", () => {
     const fx = fixture("TOP-019");
     assert.equal(fx.expected.ok, true, "manifest pins ok");
     const rows: CandidateRow[] = [
@@ -359,8 +361,19 @@ describe("TOP-001..020 conformance rows", () => {
       ["c", "a", "h1", 0.7, "dependency"],
     ];
     const first = digestFrom(rows);
+    // Each of the 1,000 iterations feeds a DIFFERENT shuffled order of the same
+    // candidate set, so the loop proves the digest is order-independent across
+    // 1,000 distinct input orderings — not merely deterministic for one fixed
+    // order (Q02). The seed is fixed for reproducibility.
+    let seed = 123456789;
     for (let i = 1; i < 1000; i++) {
-      assert.equal(digestFrom(rows), first, `run ${i}`);
+      const shuffled = [...rows];
+      seed = lcg(seed, i);
+      for (let k = shuffled.length - 1; k > 0; k--) {
+        const j = seed % (k + 1);
+        [shuffled[k], shuffled[j]] = [shuffled[j] as CandidateRow, shuffled[k] as CandidateRow];
+      }
+      assert.equal(digestFrom(shuffled), first, `ordering ${i}`);
     }
   });
 
@@ -431,7 +444,7 @@ describe("TOP-K-001 / TOP-TIE-002 / TOP-KIND-003 (named)", () => {
 // Acceptance: byte-identical graph, no self-edge/NaN, recall >= .95
 
 describe("VC3B acceptance invariants", () => {
-  test("byte-identical graph across 1,000 runs for a representative set", () => {
+  test("byte-identical graph across 1,000 input orderings for a representative set", () => {
     const rows: CandidateRow[] = [];
     const heads = ["h1", "h2", "h3"];
     for (let h = 0; h < heads.length; h++) {
@@ -441,8 +454,20 @@ describe("VC3B acceptance invariants", () => {
     }
     const first = digestFrom(rows);
     const edges = edgesOf(rows);
-    for (let i = 0; i < 1000; i++) {
-      assert.equal(digestFrom(rows), first, `run ${i}`);
+    // Each iteration shuffles the candidate set into a DIFFERENT order, so this
+    // proves digest + edge bytes are order-independent across 1,000 distinct
+    // orderings (not just deterministic for one fixed order — Q02).
+    let seed = 987654321;
+    for (let i = 1; i < 1000; i++) {
+      const shuffled = [...rows];
+      seed = lcg(seed, i);
+      for (let k = shuffled.length - 1; k > 0; k--) {
+        const j = seed % (k + 1);
+        [shuffled[k], shuffled[j]] = [shuffled[k] as CandidateRow, shuffled[j] as CandidateRow];
+      }
+      const d = digestFrom(shuffled);
+      assert.equal(d, first, `ordering ${i}`);
+      assert.deepEqual(edgesOf(shuffled), edges, `edge bytes identical at ordering ${i}`);
     }
     for (const e of edges) {
       assert.ok(Number.isFinite(e.score), "no non-finite score");
@@ -483,6 +508,30 @@ describe("forced triad A/B/C", () => {
     if (!a.ok) throw new Error("unreachable");
     const b = linearScan({ ...BASE, candidates: candidates(TRIAD) });
     assert.equal(graphDigest(a.topology), b.digest, "A and B produce the same graph digest");
+  });
+
+  test("A/B kind tie-break: equal-(score,source,target,head) dep+contra agree (Q01)", () => {
+    // Q01 regression: a node participating in BOTH a dependency and a
+    // contradiction edge to the SAME (target, head) with the SAME score is the
+    // last-writer for that node's kind. mode B (linearScan) must pick the same
+    // last-writer as mode A (build.ts) — both sort by kind bytes in the tie-break
+    // ('contradiction' < 'dependency'), independent of input order. Before the
+    // Q01 fix, mode B fell back to stable input order and could diverge from A.
+    const rows: CandidateRow[] = [
+      ["a", "d", "h3", 0.225, "dependency"],
+      ["d", "a", "h3", 0.225, "contradiction"],
+    ];
+    const a = buildTopologyGraph({ ...BASE, candidates: candidates(rows) });
+    assert.equal(a.ok, true);
+    if (!a.ok) throw new Error("unreachable");
+    const b = linearScan({ ...BASE, candidates: candidates(rows) });
+    const forward = buildTopologyGraph({ ...BASE, candidates: candidates([...rows].reverse()) });
+    assert.equal(forward.ok, true);
+    if (!forward.ok) throw new Error("unreachable");
+    // Both directions of input must agree with A, and the mode-B reference must
+    // reproduce A's digest exactly (kinds included, not just edges).
+    assert.equal(graphDigest(a.topology), b.digest, "B matches A on the kind tie-break");
+    assert.equal(graphDigest(a.topology), graphDigest(forward.topology), "input order does not flip the node kind");
   });
 
   test("C source-seq/keyword with vector data unavailable degrades to empty", () => {
@@ -530,3 +579,23 @@ function edgesOf(rows: CandidateRow[]): readonly TopologyEdgeV1[] {
   if (!res.ok) throw new Error("unreachable");
   return res.topology.edges;
 }
+
+/**
+ * Deterministic linear-congruential generator (LCG) for reproducible shuffles in
+ * the 1,000-ordering acceptance loops. Gives a distinct, stable pseudo-random
+ * permutation per iteration index without needing `Math.random` (which would make
+ * the test non-reproducible). Pure local helper — no I/O, no network.
+ *
+ * `Math.imul` overflows int32 to a SIGNED value, so the raw sum can be negative;
+ * the JS `%` operator keeps that sign. We fold any negative remainder back into
+ * [0, 2^31-1) so `seed % (k+1)` below is always a valid in-range index — never
+ * a negative one that would index an `undefined` array slot.
+ */
+function lcg(state: number, salt: number): number {
+  // 2^31-1 prime modulus; multiplier/salt keep successive permutations distinct.
+  let s = (Math.imul(1103515245, state) + 12345 + Math.imul(seedSalt[salt % seedSalt.length], salt)) % 2147483647;
+  if (s < 0) s += 2147483647;
+  return s;
+}
+
+const seedSalt = [97, 101, 111, 117, 128, 137, 149, 163, 179, 191];

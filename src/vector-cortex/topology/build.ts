@@ -210,6 +210,19 @@ function unsignedBytesCompare(a: string, b: string): number {
  * derived from. A contradiction candidate marks both endpoints "contradiction";
  * a dependency candidate marks both endpoints "dependency" (Q02) — the node
  * kind matches the producing record kind, never a synthetic placeholder.
+ *
+ * NODE-KIND SEMANTICS (documented, Q03): a node participates in the kind of
+ * whichever retained edge LABELLED it LAST during the linear pass over `selected`.
+ * Because `selected` is sorted SCORE-DESCENDING first, the last label a node
+ * receives comes from its LOWEST-scoring retained edge — i.e. when a node is
+ * touched by both a dependency and a contradiction edge (of equal or lower
+ * score), the WEAKEST relation's kind wins the node's `kind` field, not the
+ * strongest. This is deliberate and DETERMINISTIC (the total compareSelected
+ * order, with the Q01 `kind` tie-break, fixes the pass order independent of
+ * input order), and mode B reproduces it exactly. A downstream VC3C consumer
+ * must read node.kind as "the relation kind of the weakest retained edge
+ * incident to this node", not "the dominant/strongest relation". Per-edge
+ * direction + kind are authoritative on the edges themselves.
  */
 function nodeKind(c: TopologyCandidate): TopologyNodeKind {
   return c.kind === "contradiction" ? "contradiction" : "dependency";

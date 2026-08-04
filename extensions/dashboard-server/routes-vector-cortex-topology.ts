@@ -182,6 +182,17 @@ const topologyEmit: TopologyEmit = (event, fields) => {
 /**
  * PREVENT-001: parse + shape-check a candidate payload before use. Returns
  * undefined on any malformed/non-object input (best-effort, non-fatal).
+ *
+ * Q04 — FRAMING HARDENING: the canonical digest serialization in index.ts uses
+ * `|` (FIELD_SEP) and `~` (RECORD_SEP) as unambiguous delimiters between node
+ * ids/kinds and edge fields. That framing is collision-free only while id values
+ * (source/target/head) contain neither byte. Today ids are project-controlled, so
+ * this is latent, but a stored topology record could in principle carry a
+ * content-derived id containing those bytes, making the digest ambiguous
+ * (distinct graphs could collide) or the serialization injection-prone. To keep
+ * the digest well-defined for ANY input, reject candidates whose source/target/
+ * head contain the field/record separators; such a record is skipped (non-fatal)
+ * rather than fed into the digest.
  */
 function parseCandidatePayload(r: CortexRecordV1): TopologyCandidate | undefined {
   let text: string;
@@ -209,6 +220,14 @@ function parseCandidatePayload(r: CortexRecordV1): TopologyCandidate | undefined
     ) {
       return undefined;
     }
+    // Q04: reject any id that would corrupt the `|`/`~` digest framing.
+    if (
+      FRAMING_SEP.test(o.source) ||
+      FRAMING_SEP.test(o.target) ||
+      FRAMING_SEP.test(o.head)
+    ) {
+      return undefined;
+    }
     return {
       source: o.source,
       target: o.target,
@@ -220,3 +239,6 @@ function parseCandidatePayload(r: CortexRecordV1): TopologyCandidate | undefined
     return undefined;
   }
 }
+
+/** Field (`|`) and record (`~`) separators used by the canonical digest framing. */
+const FRAMING_SEP = /[|~]/;

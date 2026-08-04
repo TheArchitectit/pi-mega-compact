@@ -70,13 +70,21 @@ export function linearScan(input: TopologyInput): ReferenceGraph {
     for (let i = 0; i < Math.min(g.length, TOP_K); i++) selected.push(g[i]);
   }
   // Sort score DESCENDING first so dedup keeps the MAXIMUM score per collapsed
-  // relation, mirroring build.ts (Q01). Score ties fall through to bytewise keys
-  // for a deterministic total order independent of input order.
+  // relation, mirroring build.ts (Q01). Score ties fall through to bytewise
+  // source/target/head/kind keys — INCLUDING `kind` as the final tie-break — so
+  // the total order is exactly compareSelected in build.ts (mode A). Without the
+  // `kind` tie-break, two equal-(score,source,target,head) candidates of
+  // differing kind would fall back to stable input order, which depends on input
+  // ordering: the deterministic last-writer for a node's kind (and hence the
+  // graph digest) would diverge from mode A whenever such a pair produces the
+  // node-kind map entry. Adding `kind` keeps mode B reference-faithful to mode A
+  // (Q01: 'contradiction' sorts before 'dependency', bytewise).
   selected.sort((x, y) =>
     x.score !== y.score ? (x.score > y.score ? -1 : 1) :
     x.source < y.source ? -1 : x.source > y.source ? 1 :
     x.target < y.target ? -1 : x.target > y.target ? 1 :
-    x.head < y.head ? -1 : x.head > y.head ? 1 : 0,
+    x.head < y.head ? -1 : x.head > y.head ? 1 :
+    x.kind < y.kind ? -1 : x.kind > y.kind ? 1 : 0,
   );
   const nodes = new Map<string, "dependency" | "contradiction">();
   const edges: TopologyEdgeV1[] = [];

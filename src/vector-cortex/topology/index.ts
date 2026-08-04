@@ -11,7 +11,7 @@
  * Ordinal-order independence: the digest is computed over nodes sorted by id
  * bytes and edges sorted by (source, target, head, direction) then score, so
  * any permutation of the build input yields an identical digest (verified by the
- * acceptance consumer over 1,000 runs).
+ * acceptance consumer across 1,000 distinct input orderings — Q02).
  *
  * Pure deterministic helpers: no I/O, no console, no network (PREVENT-PI-004),
  * no `any` (PREVENT-011).
