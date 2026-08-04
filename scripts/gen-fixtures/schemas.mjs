@@ -764,3 +764,101 @@ schemas["schemas/reconstruction-fixture.schema.json"] = {
     },
   },
 };
+
+schemas["schemas/prompt-dag-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC5A PromptDagV1 fixture envelope",
+  description:
+    "Common structure every VC5A prompt-dag fixture validates against. `input.scenario` names the build/validate condition the acceptance test executes against the REAL prompt-dag module (src/vector-cortex/prompt-dag/{builder,validator}.js); `input.graph` names a declaratively-described DAG the test materializes (no byte payload embedded). `expected.ok` pins a clean build/validate (optionally the exact topological `order`); failure rows pin an exact `code` (DAG_MIXED_SESSION / DAG_DUPLICATE_ID / DAG_MISSING_ENDPOINT / DAG_INVALID_SPAN / DAG_SPAN_DIGEST_CONFLICT / DAG_REVERSED_PRECEDES / DAG_CYCLE / DAG_TOOL_PAIR_SPLIT / DAG_UNKNOWN_INCOMPATIBLE).",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["prompt-dag"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: { type: "string" },
+        codes: { type: "array", items: { type: "string" } },
+        order: { type: "array", items: { type: "string" } },
+        orderLength: { type: "integer" },
+        stableKahn: { type: "boolean" },
+        permutationInvariant: { type: "boolean" },
+        digestStable: { type: "boolean" },
+        digestSensitive: { type: "boolean" },
+        totalOrder: { type: "boolean" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario"],
+      properties: {
+        scenario: { type: "string" },
+        graph: { type: "string" },
+        permute: { type: "boolean" },
+        mutateDigest: { type: "boolean" },
+      },
+    },
+  },
+};
+
+schemas["schemas/planner-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC5A PlanV1 fixture envelope",
+  description:
+    "Common structure every VC5A planner fixture validates against. `input.scenario` names the budget-admission / selection / closure condition the acceptance test executes against the REAL planner module (src/vector-cortex/planner/{portfolio,manifest}.js); `input.candidates` names a candidate set the test materializes together with `tokenBudget`. `expected.ok` pins the accepted plan (optionally the exact `selected` ids, `tokenTotal`, or tie-break verdicts) or an exact failure `code` (MANDATORY_CLOSURE_OVER_BUDGET / PLN_INVALID_BUDGET / PLN_MANIFEST_DIGEST_MISMATCH).",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["planner"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: {
+          type: "string",
+          enum: [
+            "MANDATORY_CLOSURE_OVER_BUDGET",
+            "PLN_UNKNOWN_NODE",
+            "PLN_INCOMPATIBLE_SELECTION",
+            "PLN_MANIFEST_DIGEST_MISMATCH",
+            "PLN_INVALID_BUDGET",
+          ],
+        },
+        selected: { type: "array", items: { type: "string" } },
+        tokenTotal: { type: "integer" },
+        firstSelected: { type: "string" },
+        mandatoryPreserved: { type: "boolean" },
+        demotesToC: { type: "boolean" },
+        omittedOverBudget: { type: "boolean" },
+        omittedZeroUtility: { type: "boolean" },
+        omittedIncompatible: { type: "boolean" },
+        noPartialSelection: { type: "boolean" },
+        withinBudget: { type: "boolean" },
+        planIsClosed: { type: "boolean" },
+        permutationInvariant: { type: "boolean" },
+        manifestStable: { type: "boolean" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario", "candidates", "tokenBudget"],
+      properties: {
+        scenario: { type: "string" },
+        candidates: { type: "string" },
+        tokenBudget: { type: "integer" },
+        zeroFraming: { type: "boolean" },
+        permute: { type: "boolean" },
+        mutateTokensAfterPlan: { type: "boolean" },
+      },
+    },
+  },
+};

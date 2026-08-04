@@ -1,0 +1,1 @@
+{"assertion":"the accepted plan is closed — every mandatory node is present","expected":{"ok":true,"planIsClosed":true},"id":"PLN-017","input":{"candidates":"mixed","scenario":"plan-closed","tokenBudget":100,"zeroFraming":true},"kind":"planner","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/planner-fixture.schema.json"}

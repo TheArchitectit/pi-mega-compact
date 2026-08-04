@@ -1,0 +1,1 @@
+{"assertion":"mandatory cost exactly equal to the budget is admitted","expected":{"ok":true,"tokenTotal":30},"id":"PLN-005","input":{"candidates":"mandatory-only","scenario":"plan-mandatory-exact","tokenBudget":30,"zeroFraming":true},"kind":"planner","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/planner-fixture.schema.json"}

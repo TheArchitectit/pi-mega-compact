@@ -1,0 +1,1 @@
+{"assertion":"changing a node payload digest changes the DAG digest","expected":{"digestSensitive":true,"ok":true},"id":"DAG-029","input":{"graph":"linear","scenario":"validate-digest-sensitive"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

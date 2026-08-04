@@ -1,0 +1,1 @@
+{"assertion":"a tool-pair edge orders the pair adjacently","expected":{"ok":true,"order":["toolcall","toolresult"]},"id":"DAG-026","input":{"graph":"toolpair","scenario":"validate-tool-pair-order"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

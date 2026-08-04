@@ -259,6 +259,44 @@ export interface VectorCortexReconstructView {
 }
 
 /**
+ * Reader-only plan manifest view for GET /api/vector-cortex/plans (VC5A).
+ *
+ * Exposes ONLY plan manifests — the VC5A PromptDagV1 + budgeted-planner output:
+ * registered DAG/plan identifiers, the mandatory-closure status, selected-node
+ * manifests, and the mandatory-overflow signal. NEVER exposes session payloads,
+ * prompt text, byte spans, or source bytes (reader-only, SECURITY_PRIVACY).
+ *
+ * Flag-gated on MEGACOMPACT_VC5A: `enabled:false` when off (byte-identical to the
+ * pre-VC5A predecessor). Non-fatal: a missing manifest store degrades to
+ * `enabled:false` with empty arrays.
+ */
+export interface VectorCortexPlanManifest {
+  /** Stable plan id (e.g. "PLN-009"). */
+  readonly id: string;
+  /** Whether the mandatory dependency/tool/anchor closure fit within budget. */
+  readonly mandatoryInBudget: boolean;
+  /** Selected optional node ids under the budgeted portfolio (sorted by id bytes). */
+  readonly selectedNodeIds: readonly string[];
+  /** Total planned token estimate (mandatory framed + selected framed). */
+  readonly tokenTotal: number;
+  /** true when the mandatory closure exceeded budget (demoted to mode C). */
+  readonly demotedToC: boolean;
+}
+
+export interface VectorCortexPlansView {
+  /** Whether the VC5A PromptDagV1 + budgeted-planner flag is enabled. */
+  readonly enabled: boolean;
+  /** Count of registered PromptDagV1 fixtures (DAG-001..). */
+  readonly dagCount: number;
+  /** Count of registered plan fixtures (PLN-001..). */
+  readonly plannerCount: number;
+  /** Plan manifests (reader-only, no payloads). */
+  readonly plans: readonly VectorCortexPlanManifest[];
+  /** ISO timestamp of the snapshot. */
+  readonly updatedAt: string;
+}
+
+/**
  * Reader-only occurrence-ledger view for GET /api/vector-cortex/ledger (VC1B).
  * Built on the LedgerReader capability surface. Exposes occurrence IDENTITY
  * (seq/eventId/kind/digest/toolCallId) and the per-session high-water/count —

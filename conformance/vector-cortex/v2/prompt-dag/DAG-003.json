@@ -1,0 +1,1 @@
+{"assertion":"two nodes sharing an id reject with DAG_DUPLICATE_ID","expected":{"code":"DAG_DUPLICATE_ID","ok":false},"id":"DAG-003","input":{"graph":"duplicate-id","scenario":"build-duplicate-id"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

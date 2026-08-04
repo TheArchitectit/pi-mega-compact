@@ -14,6 +14,7 @@ import {
 	fetchVectorCortexLedger,
 	fetchVectorCortexQuery,
 	fetchVectorCortexReconstruct,
+	fetchVectorCortexPlans,
 	fetchVectorCortexShards,
 	fetchVectorCortexTopology,
 	resetVectorCortexBreaker,
@@ -22,6 +23,7 @@ import {
 	type VectorCortexLedgerView,
 	type VectorCortexQueryView,
 	type VectorCortexReconstructView,
+	type VectorCortexPlansView,
 	type VectorCortexShardsView,
 	type VectorCortexTopologyView,
 } from "../api/vector-cortex";
@@ -57,6 +59,7 @@ export default function VectorCortexTab(): React.ReactElement {
 	const [query, setQuery] = useState<VectorCortexQueryView | null>(null);
 	const [shards, setShards] = useState<VectorCortexShardsView | null>(null);
 	const [reconstruct, setReconstruct] = useState<VectorCortexReconstructView | null>(null);
+	const [plans, setPlans] = useState<VectorCortexPlansView | null>(null);
 
 	const poll = useCallback(() => {
 		fetchVectorCortexEvaluation()
@@ -82,6 +85,9 @@ export default function VectorCortexTab(): React.ReactElement {
 		});
 		fetchVectorCortexReconstruct().then(setReconstruct).catch(() => {
 			/* reconstruction-fidelity card is best-effort (VC4C) */
+		});
+		fetchVectorCortexPlans().then(setPlans).catch(() => {
+			/* plan manifest card is best-effort (VC5A) */
 		});
 	}, []);
 
@@ -394,6 +400,35 @@ export default function VectorCortexTab(): React.ReactElement {
 								Reader-only closure/validation aggregate; staged in-memory this sprint.
 							</div>
 						</>
+					)}
+				</CardContent>
+			</Card>
+			<Card>
+				<CardHeader>
+					<div className="flex items-center justify-between">
+						<CardTitle>Plan Manifests (VC5A)</CardTitle>
+						{plans?.enabled ? (
+							<Badge variant="success">ACTIVE</Badge>
+						) : (
+							<Badge variant="danger">OFF</Badge>
+						)}
+					</div>
+				</CardHeader>
+				<CardContent>
+					{!plans?.enabled ? (
+						<div className="vc-empty">PromptDagV1 + budgeted planner disabled (VC5A off).</div>
+					) : (
+					<>
+						<div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+							<Metric label="DAG fixtures" value={String(plans.dagCount)} />
+							<Metric label="Plan fixtures" value={String(plans.plannerCount)} />
+							<Metric label="Plans exposed" value={String(plans.plans.length)} />
+						</div>
+						<div className="mt-3 text-xs text-muted-foreground">
+							Reader-only plan manifests only — no session payloads or prompt text.
+							Per-run plan outputs are staged in-memory this sprint.
+						</div>
+					</>
 					)}
 				</CardContent>
 			</Card>

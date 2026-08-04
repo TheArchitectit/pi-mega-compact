@@ -1,0 +1,1 @@
+{"assertion":"every accepted DAG emits an order covering every node exactly once","expected":{"ok":true,"orderIsTotal":true},"id":"DAG-030","input":{"graph":"diamond","scenario":"validate-order-total"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

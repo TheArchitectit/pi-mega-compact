@@ -1,0 +1,1 @@
+{"assertion":"disconnected components both appear in source order","expected":{"ok":true,"order":["a","x","b","y"]},"id":"DAG-025","input":{"graph":"disconnected","scenario":"validate-disconnected"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

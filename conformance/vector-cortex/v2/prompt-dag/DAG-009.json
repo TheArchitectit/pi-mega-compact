@@ -1,0 +1,1 @@
+{"assertion":"incompatibleWith naming an absent node rejects with DAG_UNKNOWN_INCOMPATIBLE","expected":{"code":"DAG_UNKNOWN_INCOMPATIBLE","ok":false},"id":"DAG-009","input":{"graph":"unknown-incompatible","scenario":"build-unknown-incompatible"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

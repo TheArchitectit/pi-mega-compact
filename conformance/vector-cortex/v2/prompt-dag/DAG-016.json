@@ -1,0 +1,1 @@
+{"assertion":"synthetic nodes tie-break by syntheticOrdinal then ID bytes","expected":{"ok":true,"order":["a","s1","s2"]},"id":"DAG-016","input":{"graph":"synthetic-ordinal","scenario":"validate-synthetic-ordinal"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

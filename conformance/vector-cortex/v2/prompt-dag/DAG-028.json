@@ -1,0 +1,1 @@
+{"assertion":"the DAG digest is stable across input permutation","expected":{"digestStable":true,"ok":true},"id":"DAG-028","input":{"graph":"scrambled","permute":true,"scenario":"validate-digest-stable"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

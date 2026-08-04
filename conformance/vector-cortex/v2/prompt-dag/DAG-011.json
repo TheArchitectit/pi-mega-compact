@@ -1,0 +1,1 @@
+{"assertion":"a dependency cycle rejects with DAG_CYCLE","expected":{"code":"DAG_CYCLE","ok":false},"id":"DAG-011","input":{"graph":"cycle","scenario":"validate-cycle"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

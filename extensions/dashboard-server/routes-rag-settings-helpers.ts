@@ -367,6 +367,12 @@ export const SETTINGS: ReadonlyArray<{
 				"Conservative closure + source-order assembly + reconstruction validator: recursively closes dependencies and whole tool pairs to a fixed point, resolves contradictions by retaining the later exact source resolution, assembles spans solely by source range, and rejects missing anchors / split pairs / digest mismatch / unresolved contradiction. Mandatory token estimate is content-only and handed unchanged to VC5A. OFF = mode C, no closure/validator, byte-identical predecessor (VC4B).",
 				true,
 			),
+			boolDirect(
+				"MEGACOMPACT_VC5A",
+				"VC5A PromptDagV1 + Budgeted Planner",
+				"Single-session DAG (PromptDagV1) + budgeted 0/1 portfolio planner: builds a stable Kahn-ordered DAG, computes the mandatory dependency/tool/anchor closure before optional selection, returns MANDATORY_CLOSURE_OVER_BUDGET with evidence preserved on overflow, and runs a utility-per-token portfolio that never exceeds the remaining budget. Framing is owned here, not in VC4C. OFF = byte-identical predecessor (VC4C).",
+				true,
+			),
 		],
 	},
 	{

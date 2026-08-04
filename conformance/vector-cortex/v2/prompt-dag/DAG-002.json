@@ -1,0 +1,1 @@
+{"assertion":"a node whose span names another session rejects with DAG_MIXED_SESSION","expected":{"code":"DAG_MIXED_SESSION","ok":false},"id":"DAG-002","input":{"graph":"mixed-session","scenario":"build-mixed-session"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"a zero budget with a non-empty mandatory closure demotes","expected":{"code":"MANDATORY_CLOSURE_OVER_BUDGET","ok":false},"id":"PLN-008","input":{"candidates":"mandatory-only","scenario":"plan-zero-budget","tokenBudget":0,"zeroFraming":true},"kind":"planner","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/planner-fixture.schema.json"}

@@ -7,6 +7,7 @@ import type {
 	VectorCortexEvaluationSummary,
 	VectorCortexHealthCard,
 	VectorCortexLedgerView,
+	VectorCortexPlansView,
 	VectorCortexQueryView,
 	VectorCortexReconstructView,
 	VectorCortexResetResult,
@@ -18,6 +19,7 @@ export type {
 	VectorCortexEvaluationSummary,
 	VectorCortexHealthCard,
 	VectorCortexLedgerView,
+	VectorCortexPlansView,
 	VectorCortexQueryView,
 	VectorCortexReconstructView,
 	VectorCortexResetResult,
@@ -63,6 +65,13 @@ export async function fetchVectorCortexReconstruct(): Promise<VectorCortexRecons
 	const r = await fetch("/api/vector-cortex/reconstruct");
 	if (!r.ok) throw new Error(`vector-cortex reconstruct: ${r.status}`);
 	return r.json() as Promise<VectorCortexReconstructView>;
+}
+
+/** Reader-only plan manifest view (VC5A). Exposes only plan manifests. */
+export async function fetchVectorCortexPlans(): Promise<VectorCortexPlansView> {
+	const r = await fetch("/api/vector-cortex/plans");
+	if (!r.ok) throw new Error(`vector-cortex plans: ${r.status}`);
+	return r.json() as Promise<VectorCortexPlansView>;
 }
 
 /** Reader-only occurrence-ledger identity view (VC1B). */

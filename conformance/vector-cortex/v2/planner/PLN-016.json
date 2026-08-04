@@ -1,0 +1,1 @@
+{"assertion":"an optional candidate incompatible with a mandatory node is omitted","expected":{"ok":true,"omittedIncompatible":true},"id":"PLN-016","input":{"candidates":"incompatible","scenario":"plan-incompatible","tokenBudget":100,"zeroFraming":true},"kind":"planner","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/planner-fixture.schema.json"}

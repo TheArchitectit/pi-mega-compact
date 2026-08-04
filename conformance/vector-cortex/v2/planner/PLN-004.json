@@ -1,0 +1,1 @@
+{"assertion":"framing cost is added on top of the VC4C content-only estimate","expected":{"ok":true,"tokenTotal":46},"id":"PLN-004","input":{"candidates":"mandatory-only","scenario":"plan-framing-added","tokenBudget":100},"kind":"planner","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/planner-fixture.schema.json"}

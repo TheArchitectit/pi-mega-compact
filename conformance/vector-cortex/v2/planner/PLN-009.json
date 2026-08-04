@@ -1,0 +1,1 @@
+{"assertion":"optional candidates fill the remaining budget by utility-per-token","expected":{"ok":true,"selected":["hi","mid"],"tokenTotal":20},"id":"PLN-009","input":{"candidates":"ratio","scenario":"plan-optional-ratio","tokenBudget":20,"zeroFraming":true},"kind":"planner","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/planner-fixture.schema.json"}

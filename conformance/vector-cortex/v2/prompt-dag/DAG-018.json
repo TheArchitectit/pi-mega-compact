@@ -1,0 +1,1 @@
+{"assertion":"a contradicts edge does not constrain the topological order","expected":{"ok":true,"order":["a","b"]},"id":"DAG-018","input":{"graph":"contradicts","scenario":"validate-contradicts-not-ordering"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

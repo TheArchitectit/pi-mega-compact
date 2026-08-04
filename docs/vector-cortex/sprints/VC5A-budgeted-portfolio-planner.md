@@ -5,7 +5,9 @@
 
 ## Goal and inputs/outputs
 
-Consume only reviewer-accepted predecessor contracts and [common contracts](../CONTRACTS.md). Own **PromptDagV1 / PlanV1**. Production ownership: `src/vector-cortex/prompt-dag/{types,builder,validator}.ts; src/vector-cortex/planner/{types,portfolio}.ts`. Algorithm: own the exact single-session DAG schema; stable Kahn order; compute mandatory dependency/tool/anchor closure before optional selection; return `MANDATORY_CLOSURE_OVER_BUDGET` and demote to C when mandatory tokens exceed budget; otherwise run a 0/1 portfolio sorted by utility-per-token then source seq/id and never exceed the remaining budget.
+Consume only reviewer-accepted predecessor contracts and [common contracts](../CONTRACTS.md). Own **PromptDagV1 / PlanV1**. Production ownership: `src/vector-cortex/prompt-dag/{types,builder,validator,manifest}.ts; src/vector-cortex/prompt-dag/{_acceptance-helpers,_acceptance-fixture,_acceptance-dag,_acceptance-planner,_acceptance-shuffle}.ts; src/vector-cortex/planner/{types,portfolio,manifest}.ts`. Algorithm: own the exact single-session DAG schema; stable Kahn order; compute mandatory dependency/tool/anchor closure before optional selection; return `MANDATORY_CLOSURE_OVER_BUDGET` and demote to C when mandatory tokens exceed budget; otherwise run a 0/1 portfolio sorted by utility-per-token then source seq/id and never exceed the remaining budget.
+
+> **Ownership amendment (hard-limit split):** the five `_acceptance-*.ts` files under `prompt-dag/` are fixture-materialization helpers extracted from `vc5a-acceptance.test.ts` to keep the acceptance aggregator under the 600-line test hard limit (the same pattern VC4C established with `reconstruct/_acceptance-helpers.ts`). `manifest.ts` appears in both subtrees because the prompt-DAG digest and the planner manifest are distinct concerns split for the 300-line soft limit.
 
 ## Numbered implementation tasks
 

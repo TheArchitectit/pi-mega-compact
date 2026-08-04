@@ -1,0 +1,1 @@
+{"assertion":"overlapping spans agreeing on the digest are accepted","expected":{"ok":true},"id":"DAG-008","input":{"graph":"digest-agree","scenario":"build-digest-agree"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

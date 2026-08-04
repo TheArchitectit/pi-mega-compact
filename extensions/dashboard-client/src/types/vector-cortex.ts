@@ -162,3 +162,23 @@ export interface VectorCortexLedgerView {
   }>;
   updatedAt: string;
 }
+
+/**
+ * Plan manifest (VC5A, GET /api/vector-cortex/plans). Reader-only: registered
+ * DAG/PLN counts + plan manifests, never session payloads or prompt text.
+ */
+export interface VectorCortexPlanManifest {
+  id: string;
+  mandatoryInBudget: boolean;
+  selectedNodeIds: string[];
+  tokenTotal: number;
+  demotedToC: boolean;
+}
+
+export interface VectorCortexPlansView {
+  enabled: boolean;
+  dagCount: number;
+  plannerCount: number;
+  plans: VectorCortexPlanManifest[];
+  updatedAt: string;
+}
