@@ -1,6 +1,6 @@
 # VC3A — Capability-gated cortex store
 
-**Status:** planned | **Depends on:** VC2C | **Phase:** VC3
+**Status:** next | **Depends on:** VC2C | **Phase:** VC3
 **Flag:** `MEGACOMPACT_VC3A`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC3A=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs
