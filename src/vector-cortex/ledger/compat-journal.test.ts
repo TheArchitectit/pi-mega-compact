@@ -65,6 +65,11 @@ function makeOccurrence(o: {
   };
 }
 
+/** A digest-verifiable legacy projection embedding the base64 source (Q03). */
+function projOf(occ: LedgerOccurrence): string {
+  return JSON.stringify({ source: Buffer.from(occ.sourceBytes).toString("base64") });
+}
+
 /** Build an M2Host over a live journal (mirrors store.ts's migrateHost seam). */
 function hostFor(db: import("node:sqlite").DatabaseSync, journal: ReturnType<typeof createCompatJournal>): M2Host {
   let staged: readonly LegacyExportRow[] | null = null;
@@ -144,8 +149,10 @@ describe("CompatJournalV1 — downgrade-safety journal", () => {
     const h = hostFor(db, journal);
 
     // Journal two rows (a call + a result) then run the M2 lifecycle.
-    journal.record({ occurrence: makeOccurrence({ seq: 1n, eventId: "c1", bytes: "call" }), legacyProjection: "{}" });
-    journal.record({ occurrence: makeOccurrence({ seq: 2n, eventId: "r1", bytes: "res" }), legacyProjection: "{}" });
+    const call = makeOccurrence({ seq: 1n, eventId: "c1", bytes: "call" });
+    const res = makeOccurrence({ seq: 2n, eventId: "r1", bytes: "res" });
+    journal.record({ occurrence: call, legacyProjection: projOf(call) });
+    journal.record({ occurrence: res, legacyProjection: projOf(res) });
 
     const staged = m2Copy(h);
     assert.equal(staged.length, 2, "copy staged both rows");

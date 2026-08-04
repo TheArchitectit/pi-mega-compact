@@ -159,11 +159,10 @@ function rawAppend(
     sourceBytes,
   });
   if (result.ok) {
-    h.compat.record({
-      occurrence: result.occurrence,
-      // Lossless legacy form exists only when source is valid UTF-8.
-      legacyProjection: hasLosslessLegacy(sourceBytes) ? "representable" : null,
-    });
+    const proj = hasLosslessLegacy(sourceBytes)
+      ? JSON.stringify({ source: Buffer.from(sourceBytes).toString("base64") })
+      : null;
+    h.compat.record({ occurrence: result.occurrence, legacyProjection: proj });
   }
   return result;
 }

@@ -151,9 +151,16 @@ export function registerContextHandler(
 		}
 
 		// VC1B (S1): canonical messages -> v2 ledger occurrences. Flag-OFF opens
-		// no DB (byte-identical predecessor); non-fatal.
+		// no DB (byte-identical predecessor); non-fatal. onFailure surfaces
+		// per-append rejections (e.g. EVT_SEQ_REGRESSION on rewind/fork) as
+		// structured warnings rather than swallowing them silently.
 		try {
-			appendMessagesToLedger(runtime.currentStateDir, runtime.rt.sessionId, messages);
+			appendMessagesToLedger(
+				runtime.currentStateDir,
+				runtime.rt.sessionId,
+				messages,
+				runtime.logger,
+			);
 		} catch (e) {
 			runtime.logger.warn("vc1b-ledger-append-fail", { error: String(e) });
 		}

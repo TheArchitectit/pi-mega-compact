@@ -63,8 +63,6 @@ CREATE TABLE IF NOT EXISTS ledger_high_water (
 ) STRICT;
 `;
 
-const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
 /** Default digest for a row when the caller omits one (sha256 over bytes). */
 export function ledgerDigest(bytes: Uint8Array): string {
   const hex = createHash("sha256").update(bytes).digest("hex");
@@ -145,6 +143,23 @@ export function hasOccurrence(db: DatabaseSync, session: string, eventId: string
   return row !== undefined;
 }
 
+/** The stored occurrence matching a `(event_id, digest)` pair, or undefined. */
+function findOccurrence(
+  db: DatabaseSync,
+  session: string,
+  eventId: string,
+  digest: string,
+): LedgerOccurrence | undefined {
+  const row = db
+    .prepare(
+      `SELECT session, seq, event_id, digest, kind, tool_call_id, source_bytes
+       FROM occurrence_v2
+       WHERE session = @session AND event_id = @event_id AND digest = @digest LIMIT 1`,
+    )
+    .get({ "@session": session, "@event_id": eventId, "@digest": digest }) as OccurrenceDBRow | undefined;
+  return row ? rowToOccurrence(row) : undefined;
+}
+
 /** Whether a prior call row with the given eventId exists in the session. */
 function hasCallRef(db: DatabaseSync, session: string, eventId: string): boolean {
   const row = db
@@ -184,9 +199,14 @@ export function appendOccurrence(
     sourceBytes: input.sourceBytes,
   };
 
-  // (3) exact (event_id,digest) re-append is acknowledged idempotently.
-  if (hasOccurrence(db, input.session, input.eventId, digest)) {
-    return { ok: true, occurrence };
+  // (3) exact (event_id,digest) re-append is acknowledged idempotently, WITHOUT
+  // inserting a new row. Return the EXISTING stored occurrence (its real seq) —
+  // not the caller's input — so a journal record written from this result carries
+  // the existing seq, which always corresponds to a real occurrence_v2 row (Q01:
+  // never a phantom journal row at a seq with no backing occurrence).
+  const existing = findOccurrence(db, input.session, input.eventId, digest);
+  if (existing) {
+    return { ok: true, occurrence: existing };
   }
 
   // (1) monotonic seq: must be exactly the next expected seq (highWater+1).
@@ -238,28 +258,8 @@ export function appendOccurrenceBatch(
   return inputs.map((input) => appendOccurrence(db, input));
 }
 
-/** Advance the durable contiguous high-water to `seq` (never regresses). */
-export function advanceLedgerHighWater(db: DatabaseSync, session: string, seq: bigint): bigint {
-  const cur = ledgerHighWater(db, session);
-  if (seq <= cur) return cur;
-  db.prepare(
-    `INSERT INTO ledger_high_water (session, seq) VALUES (@session, @seq)
-     ON CONFLICT(session) DO UPDATE SET seq = excluded.seq`,
-  ).run({ "@session": session, "@seq": Number(seq) });
-  return seq;
-}
-
 /** Diagnostic: total accepted occurrences across all sessions. */
 export function countAllOccurrences(db: DatabaseSync): number {
   const row = db.prepare(`SELECT COUNT(*) AS cnt FROM occurrence_v2`).get() as { cnt: number };
   return row.cnt;
-}
-
-/**
- * Diagnostic helper only — expose the base64 alphabet deterministically so an
- * independent raw-record path (mode B) can derive the same encoding rule without
- * sharing a subroutine with mode A's encode logic.
- */
-export function base64Alphabet(): string {
-  return CHARS;
 }

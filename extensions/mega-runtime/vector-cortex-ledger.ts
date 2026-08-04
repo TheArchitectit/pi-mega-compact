@@ -51,17 +51,24 @@ export function openLedgerWriter(stateDir: string): LedgerWriterHandle | null {
  * Append one occurrence for a canonical message. `kind` is the neutral kind;
  * when `toolCallId` is present the ledger enforces exactly-one reference to an
  * earlier call. Flag-OFF (null handle) and the writer's own inert path are
- * no-ops. Non-fatal: a failure returns false, never throws to the loop.
+ * no-ops. Non-fatal: never throws to the loop — a failure is surfaced as
+ * `{ ok: false, code }` so the caller can log the reason (Q02).
  */
 export function appendLedgerMessage(
 	handle: LedgerWriterHandle,
 	input: LedgerMessageInput,
-): boolean {
+): { ok: boolean; code?: string } {
 	try {
-		return handle.writer.append(input).ok;
-	} catch {
-		return false;
+		const res = handle.writer.append(input);
+		return res.ok ? { ok: true } : { ok: false, code: res.code };
+	} catch (e) {
+		return { ok: false, code: String(e) };
 	}
+}
+
+/** Structured logger sink for seam append failures (wired by the extension). */
+export interface LedgerAppendLogger {
+	readonly warn: (event: string, fields: Record<string, unknown>) => void;
 }
 
 /**
@@ -69,19 +76,38 @@ export function appendLedgerMessage(
  * sequence = 1-based index). Opens the writer, appends each, closes the handle.
  * Returns the number of accepted occurrences (0 when disabled OR when every
  * append was a non-fatal no-op). This is the S1 ingestion seam.
+ *
+ * Monotonic-prefix assumption (Q02): the FIRST accepted append establishes the
+ * per-session high-water, and each subsequent append must carry `seq =
+ * highWater + 1`. Append order here follows `messages` array order with 1-based
+ * indices, so a shorter/mid-removal/reordered `messages` list after a prior
+ * taller run (rewind/fork) can drive `seq` backwards and be rejected with
+ * `EVT_SEQ_REGRESSION`. Such appends fail on the ledger and, without `onFailure`,
+ * are swallowed silently — so the caller should pass `onFailure` to log them.
  */
 export function appendMessagesToLedger(
 	stateDir: string,
 	sessionId: string,
 	messages: AgentMessage[],
+	onFailure?: Readonly<LedgerAppendLogger>,
 ): number {
 	const ledger = openLedgerWriter(stateDir);
 	if (!ledger) return 0;
 	try {
 		let accepted = 0;
 		for (let i = 0; i < messages.length; i++) {
-			if (appendLedgerMessage(ledger, messageToLedgerInput(messages[i]!, sessionId, i))) {
+			const input = messageToLedgerInput(messages[i]!, sessionId, i);
+			const res = appendLedgerMessage(ledger, input);
+			if (res.ok) {
 				accepted++;
+			} else if (onFailure) {
+				onFailure.warn("vc1b-ledger-append-skip", {
+					session: sessionId,
+					seq: input.seq.toString(),
+					eventId: input.eventId,
+					kind: input.kind,
+					reason: res.code ?? "unknown",
+				});
 			}
 		}
 		return accepted;

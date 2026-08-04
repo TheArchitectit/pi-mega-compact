@@ -96,8 +96,6 @@ export interface LedgerWriter {
   }): LedgerAppendResult;
   /** Append a batch, all-or-nothing per occurrence (each returns its outcome). */
   appendBatch(inputs: ReadonlyArray<Parameters<LedgerWriter["append"]>[0]>): LedgerAppendResult[];
-  /** Advance the durable contiguous high-water to `seq` (never regresses). */
-  advanceHighWater(session: string, seq: bigint): bigint;
 }
 
 /**
@@ -111,8 +109,6 @@ export interface LedgerAdmin {
   readonly compat: CompatJournalV1;
   /** Prepare + validate + switch the v2 ledger (M2), idempotently. */
   migrateOccurrenceV2(): { ok: boolean; codes: readonly string[] };
-  /** Freeze the derived frontier at the durable contiguous high-water. */
-  freezeDerivedFrontier(session: string): bigint;
 }
 
 /**
@@ -158,7 +154,6 @@ import { VC1B_ENABLED } from "../../config/vector-cortex.js";
 import {
   openOccurrenceStore,
   appendOccurrence,
-  advanceLedgerHighWater,
   ledgerHighWater,
   readSessionOccurrences,
   readFromSeq,
@@ -286,7 +281,6 @@ export function createLedgerStore(
       for (const input of inputs) out.push(this.append(input));
       return out;
     },
-    advanceHighWater: (session, seq) => advanceLedgerHighWater(db, session, seq),
   });
 
   const asAdmin = (): LedgerAdmin & AdminToken => ({
@@ -308,11 +302,7 @@ export function createLedgerStore(
           unrepresentable,
         });
       }
-      return { ok: v.ok, codes: v.codes as unknown as string[] };
-    },
-    freezeDerivedFrontier(session) {
-      // The derived frontier cannot exceed the contiguous durable high-water.
-      return ledgerHighWater(db, session);
+      return { ok: v.ok, codes: v.codes };
     },
   });
 

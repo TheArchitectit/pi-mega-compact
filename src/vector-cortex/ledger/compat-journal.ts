@@ -21,7 +21,8 @@
  */
 
 import { DatabaseSync } from "node:sqlite";
-import type { CompatJournalV1, LedgerOccurrence } from "./store.js";
+import { createHash } from "node:crypto";
+import type { CompatJournalV1 } from "./store.js";
 
 /** Journal lifecycle phase (append-only; the singleton state row advances). */
 export type JournalPhase = "prepared" | "copied" | "validated" | "switched";
@@ -90,14 +91,27 @@ function setPhase(db: DatabaseSync, phase: JournalPhase): void {
   });
 }
 
-/** Lossless default legacy projection: the eventId + base64 source bytes. */
-function defaultLegacyProjection(occ: LedgerOccurrence): string {
-  return JSON.stringify({
-    session: occ.session,
-    eventId: occ.eventId,
-    kind: occ.kind,
-    source: Buffer.from(occ.sourceBytes).toString("base64"),
-  });
+/**
+ * Verify a recorded digest by RECOMPUTING sha256 over the base64 source embedded
+ * in the legacy projection and comparing it to the recorded digest (Q03: real
+ * digest parity, not a `sha256:` prefix check). Returns false when the projection
+ * is absent or malformed, or the digest does not match the recomputed hash.
+ */
+export function verifyLegacyDigest(
+  digest: string,
+  legacyProjection: string | null,
+): boolean {
+  if (legacyProjection === null) return false;
+  let rec: unknown;
+  try {
+    rec = JSON.parse(legacyProjection);
+  } catch {
+    return false;
+  }
+  const source = (rec as { source?: unknown }).source;
+  if (typeof source !== "string") return false;
+  const recomputed = `sha256:${createHash("sha256").update(Buffer.from(source, "base64")).digest("hex")}`;
+  return recomputed === digest;
 }
 
 /**
@@ -132,7 +146,9 @@ export function createCompatJournal(db: DatabaseSync): CompatJournalV1 {
           "@event_id": occurrence.eventId,
           "@digest": occurrence.digest,
           "@kind": occurrence.kind,
-          "@legacy": legacyProjection ?? defaultLegacyProjection(occurrence),
+          // Q06: an unrepresentable row stores NO projection (legacy_projection
+          // stays NULL); we never write a base64 body we cannot round-trip.
+          "@legacy": legacyProjection,
           "@unrep": unrep ? 1 : 0,
         });
       } catch {
@@ -183,14 +199,17 @@ export function createCompatJournal(db: DatabaseSync): CompatJournalV1 {
         if (last !== undefined && r.seq <= last) codes.push(MIG_DOWN_FAIL.SEQ_REGRESSION);
         prev.set(r.session, r.seq);
       }
-      // Digests must match their recorded sha256 over the source projection.
+      // Digests must verify: recompute sha256 over the stored source and compare
+      // to the recorded digest (Q03 — real parity, not just a `sha256:` prefix).
       for (const r of db
         .prepare(
           `SELECT digest, legacy_projection FROM compat_journal_v1 WHERE unrepresentable = 0`,
         )
         .all() as unknown as Array<{ digest: string; legacy_projection: string | null }>) {
         if (r.legacy_projection === null) continue;
-        if (!r.digest.startsWith("sha256:")) codes.push(MIG_DOWN_FAIL.DIGEST_MISMATCH);
+        if (!verifyLegacyDigest(r.digest, r.legacy_projection)) {
+          codes.push(MIG_DOWN_FAIL.DIGEST_MISMATCH);
+        }
       }
       const ok = codes.length === 0;
       if (ok) setPhase(db, "validated");

@@ -20,7 +20,7 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import { MIG_DOWN_FAIL } from "../ledger/compat-journal.js";
+import { MIG_DOWN_FAIL, verifyLegacyDigest } from "../ledger/compat-journal.js";
 
 /** M2 failure codes (downgrade export). */
 export const M2_FAIL = {
@@ -110,9 +110,10 @@ export function m2Validate(host: M2Host): M2ValidateResult {
       if (last !== undefined && r.seq <= last) codes.push(M2_FAIL.SEQ_REGRESSION);
       prev.set(r.session, r.seq);
     }
-    // Well-formed digests on representable rows.
+    // Digests on representable rows must verify: recompute sha256 over the stored
+    // source and compare to the recorded digest (Q03 — real parity).
     for (const r of staged) {
-      if (!r.unrepresentable && !r.digest.startsWith("sha256:")) {
+      if (!r.unrepresentable && !verifyLegacyDigest(r.digest, r.legacyProjection)) {
         codes.push(M2_FAIL.DIGEST_MISMATCH);
       }
     }
@@ -132,7 +133,11 @@ export function m2Validate(host: M2Host): M2ValidateResult {
 
   if (codes.length === 0) {
     const v = host.validateStaged();
-    if (!v.ok) codes.push(...(v.codes as M2MigrationCode[]));
+    if (!v.ok) {
+      // Q05: narrow the host's string codes through a runtime type guard instead
+      // of an unchecked cast — unknown codes are dropped, never mis-typed.
+      for (const c of v.codes) if (isM2MigrationCode(c)) codes.push(c);
+    }
   }
   const ok = codes.length === 0;
   return { ok, codes: dedupe(codes) };
@@ -174,6 +179,11 @@ export const M2_IDS = [
 
 /** Registered MIG-DOWN conformance ID (MIG-DOWN-001). */
 export const MIG_DOWN_IDS = ["MIG-DOWN-001"] as const;
+
+/** Runtime narrowing: is `code` a known M2 migration failure code? */
+function isM2MigrationCode(code: string): code is M2MigrationCode {
+  return (Object.values(M2_FAIL) as string[]).includes(code);
+}
 
 function dedupe(codes: M2MigrationCode[]): M2MigrationCode[] {
   const out: M2MigrationCode[] = [];
