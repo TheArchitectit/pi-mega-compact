@@ -419,6 +419,33 @@ describe("multi-head invariant + independence + triad", () => {
     });
   });
 
+  test("forced fallback (B/C) wins over the empty-input degenerate case (Q02)", () => {
+    // Q02: a caller that explicitly forces a fallback mode must get that mode
+    // even for EMPTY input — empty tokens must NOT silently short-circuit to B.
+    // Asserts fallback_selected emissions → ON-dependent, so it self-pins via
+    // withFlagsOn (valid under either external env, same as the forced-triad test).
+    withFlagsOn(() => {
+    const emittedC: string[] = [];
+    const reporterC = createEncoderHeadsReporter((e) => emittedC.push(e));
+    const c = encodeOrFallback({ tokens: EMPTY_TOKENS }, "", { reporter: reporterC, forceFallback: "C" });
+    assert.equal(c.ok, true);
+    assert.equal(c.mode, "C", "forced C must win over empty-input B selection");
+    if (c.ok && c.mode === "C") {
+      assert.equal(c.vector.length, ENCODER_LEXICAL_WIDTH);
+    }
+    assert.ok(emittedC.includes("vector_cortex_encoder_fallback_selected"));
+    // Forced B on empty input also stays B (force mode is honored, code = ROLLBACK).
+    const emittedB: string[] = [];
+    const reporterB = createEncoderHeadsReporter((e) => emittedB.push(e));
+    const b = encodeOrFallback({ tokens: EMPTY_TOKENS }, "", { reporter: reporterB, forceFallback: "B" });
+    assert.equal(b.ok, true);
+    assert.equal(b.mode, "B");
+    if (b.ok && b.mode === "B") {
+      assert.equal(b.vector.length, ENCODER_TRIGRAM_WIDTH);
+    }
+    });
+  });
+
   test("A/B/C use disjoint widths and independent algorithms", () => {
     // A head widths are 384/128/128/64/32; B is 512; C is 256 — no shared space.
     const aWidths = Object.values(ENCODER_HEAD_DIMS);

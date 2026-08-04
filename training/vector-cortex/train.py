@@ -67,19 +67,6 @@ def split_digest(groups):
     return h.hexdigest()
 
 
-def assign_split(group: str, seed: int):
-    """Deterministic group-level train/calibration/test split by repository/session
-    group, seeded at 1729. A group never crosses a split (EVALUATION.md)."""
-    # Use the seed to perturb which groups fall into calibration/test so the
-    # assignment is stable for a given seed (reproducible) but spread differs.
-    rnd = (int(hashlib.sha256(f"{seed}:{group}".encode()).hexdigest(), 16) % 1000) / 1000.0
-    if rnd < 0.70:
-        return "train"
-    if rnd < 0.85:
-        return "calibration"
-    return "test"
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(prog="train.py", description=__doc__)
     parser.add_argument("--config", required=True, help="path to train-v1.json")
@@ -101,7 +88,15 @@ def main() -> int:
     corpus = corpus_digest(root)
     # Corpus records are not yet collected (VC2B scaffold); groups is empty.
     groups = config.get("groups", {})
-    split = split_digest(groups)
+    group_count = len(groups)
+    # Honest split provenance: only when groups are actually populated does a
+    # train/calibration/test assignment exist, and only then is a `splitDigest`
+    # meaningful. With an empty `groups` mapping there IS no split, so we persist
+    # `splitDigest: null` + an explicit `splitState: "none-yet"` rather than a
+    # digest of an empty mapping that reads as real split provenance (Q03). Real
+    # corpus records replace this under VC2B+.
+    split_state = "assigned" if group_count > 0 else "none-yet"
+    split_dgst = split_digest(groups) if group_count > 0 else None
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -113,9 +108,9 @@ def main() -> int:
         "losses": HEAD_LOSSES,
         "lossSum": round(sum(HEAD_LOSSES.values()), 15),
         "corpusDigest": corpus,
-        "splitDigest": split,
-        "split": split_digest(groups),
-        "groupCount": len(groups),
+        "splitDigest": split_dgst,
+        "splitState": split_state,
+        "groupCount": group_count,
         "epochs": args.epochs,
     }
     (out_dir / "training-report.json").write_text(

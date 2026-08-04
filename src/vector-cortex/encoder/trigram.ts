@@ -37,12 +37,13 @@ function trigrams(text: string): string[] {
   if (bytes.length === 0) return [];
   const out: string[] = [];
   const n = bytes.length;
+  // `Math.max(1, n - 2)` already emits a single whole-string shingle for 1- and
+  // 2-byte phrases (slice(0,3) covers the whole buffer), so there is NO separate
+  // short-phrase block — adding one would hash the same shingle twice (Q05).
   for (let i = 0; i < Math.max(1, n - 2); i++) {
     const chunk = bytes.slice(i, i + 3);
     out.push(chunk.toString("hex"));
   }
-  // For phrases shorter than 3 bytes, the whole string is one shingle.
-  if (n < 3) out.push(bytes.toString("hex"));
   return out;
 }
 

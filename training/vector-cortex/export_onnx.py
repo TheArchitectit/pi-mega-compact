@@ -56,15 +56,24 @@ def main() -> int:
     # reproducible byte image, not derived from any training signal.
     import hashlib
     header = f"onnx-opset{args.opset}-batch{BATCH}-max{MAX_TOKENS}".encode()
-    digest = hashlib.sha256(header).hexdigest()
-    payload = (
+    # A split digest is only present once real corpus records exist (train.py
+    # persists `splitDigest: null` + `splitState: "none-yet"` until then); pin it
+    # as `split=null` rather than fabricating a meaningful split pin (Q03).
+    split_dgst = report.get("splitDigest")
+    split_field = b"null" if split_dgst is None else str(split_dgst).encode()
+    body = (
         header
         + b"|seed=" + str(args.seed).encode()
         + b"|dims=" + ",".join(str(HEAD_DIMS[h]) for h in HEAD_ORDER).encode()
         + b"|corpus=" + report["corpusDigest"].encode()
-        + b"|split=" + report["splitDigest"].encode()
-        + b"|sha=" + digest.encode()
+        + b"|split=" + split_field
     )
+    # The digest covers the full artifact bytes written (header + seed + dims +
+    # corpus + split), not just a short header, so a later digest-before-load
+    # verification validates the payload it is attached to (Q04). The `sha=` field
+    # itself is excluded to avoid a self-referential digest.
+    digest = hashlib.sha256(body).hexdigest()
+    payload = body + b"|sha=" + digest.encode()
 
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(payload + b"\n")

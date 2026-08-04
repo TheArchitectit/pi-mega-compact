@@ -85,45 +85,49 @@ export function encodeOrFallback(
   const tokens = Array.isArray(input?.tokens) ? input.tokens : [];
   const runtime = options.runtime ?? createEncoderRuntime();
 
+  // A caller that explicitly forces a fallback mode wins even over the empty-
+  // input degenerate case: the forced-mode contract must hold for ANY input, so
+  // handle forceFallback before the empty-input selection below (Q02).
+  if (options.forceFallback !== undefined) {
+    const forced: Extract<EncoderLoadResult, { ok: false }> = {
+      ok: false,
+      mode: options.forceFallback,
+      code: ENC_FAIL.ROLLBACK,
+    };
+    return fallbackFromLoad(forced, reporter, tokens);
+  }
+
   // Empty input yields the asset-free fallback (finite, deterministic zero
   // vector, ENC-ZERO-002). This is legitimate degenerate behavior, NOT a shape
   // failure, so the verdict carries no failure code (code === null) — a consumer
   // that interprets `code` as "what went wrong" must not misread a valid all-zero
-  // B vector as a shape rejection (Q05).
+  // B vector as a shape rejection (Q05). Only reached when no mode is forced, so
+  // a forced B/C is never subverted by empty tokens.
   if (tokens.length === 0) {
     const sel = selectTrigramBFallback({ reporter });
     const vector = embedTrigram512("");
     return { ok: true, mode: "B", vector, width: sel.width, limitation: null, code: null };
   }
 
-  // Mode A attempt — only when not explicitly forced to a fallback.
-  if (options.forceFallback === undefined) {
-    const loaded = runtime.load(assetDir);
-    if (!loaded.ok) {
-      return fallbackFromLoad(loaded, reporter, tokens);
-    }
-    // Q01/Q03: a qualified mode-A load is not enough — the verified per-manifest
-    // token capacity (maxTokens, <= global 512) must also be enforced before we
-    // produce a VectorSetV1. run inference over the input; an over-cap sequence
-    // (e.g. 100 tokens against a verified maxTokens=64 manifest) or an
-    // over-budget inference is rejected here and routed to the B/C fallback with
-    // the real failure code, rather than silently emitting an ok:true mode-A
-    // set whose inputTokens breach the model's declared capacity.
-    const inferred = runtime.infer({ tokens });
-    if (!inferred.ok) {
-      return fallbackFromLoad({ ok: false, mode: "B", code: inferred.code }, reporter, tokens);
-    }
-    const vectorSet = encodeVectorSet(tokens, { reporter, seed: options.seed });
-    return { ok: true, mode: "A", vectorSet, code: null };
+  // Mode A attempt — reached only when no mode is forced (the forceFallback
+  // guard at the top already returned), so `options.forceFallback` is undefined here.
+  const loaded = runtime.load(assetDir);
+  if (!loaded.ok) {
+    return fallbackFromLoad(loaded, reporter, tokens);
   }
-
-  // Forced fallback skips the A load entirely (rollback / triad drill path).
-  const forced: Extract<EncoderLoadResult, { ok: false }> = {
-    ok: false,
-    mode: options.forceFallback,
-    code: ENC_FAIL.ROLLBACK,
-  };
-  return fallbackFromLoad(forced, reporter, tokens);
+  // Q01/Q03: a qualified mode-A load is not enough — the verified per-manifest
+  // token capacity (maxTokens, <= global 512) must also be enforced before we
+  // produce a VectorSetV1. run inference over the input; an over-cap sequence
+  // (e.g. 100 tokens against a verified maxTokens=64 manifest) or an
+  // over-budget inference is rejected here and routed to the B/C fallback with
+  // the real failure code, rather than silently emitting an ok:true mode-A
+  // set whose inputTokens breach the model's declared capacity.
+  const inferred = runtime.infer({ tokens });
+  if (!inferred.ok) {
+    return fallbackFromLoad({ ok: false, mode: "B", code: inferred.code }, reporter, tokens);
+  }
+  const vectorSet = encodeVectorSet(tokens, { reporter, seed: options.seed });
+  return { ok: true, mode: "A", vectorSet, code: null };
 }
 
 /**
