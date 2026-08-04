@@ -185,15 +185,16 @@ def _collect_env_vars(repo_root: Path) -> set:
 
 def _collect_settings_keys(repo_root: Path) -> set:
     """Collect env var keys from the dashboard SETTINGS array + EXCLUDED_SETTINGS
-    set in routes-rag-settings.ts (or a helper file)."""
-    candidates = (
-        "extensions/dashboard-server/routes-rag-settings.ts",
-        "extensions/dashboard-server/routes-rag-settings-helpers.ts",
-    )
+    set in routes-rag-settings.ts and its sibling group modules."""
+    # The SETTINGS inventory may be split across sibling files (groups extracted
+    # to keep each under the extensions/ soft limit), so glob every
+    # routes-rag-settings-*.ts file rather than hardcoding a tuple that must be
+    # hand-updated each time a group is extracted (which would silently drop
+    # flags and false-block the deploy).
+    server_dir = repo_root / "extensions" / "dashboard-server"
     text = ""
-    for rel in candidates:
-        path = repo_root / rel
-        if path.is_file():
+    if server_dir.is_dir():
+        for path in sorted(server_dir.glob("routes-rag-settings*.ts")):
             with contextlib.suppress(OSError):
                 text += path.read_text(encoding="utf-8", errors="replace") + "\n"
     if not text:

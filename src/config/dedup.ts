@@ -75,6 +75,14 @@ export interface DedupConfigShape {
    *  topical structure before detailed checkpoint hits. */
   RAPTOR_INJECT_SUMMARIES: boolean;
   // Monitoring / alerting.
+  /**
+   * Durable dedup audit trail (external-audit item #2). ON appends one
+   * structured JSON line per tier DECISION to events.log so an operator can see
+   * which layer collapsed a region, onto what, and at what similarity — the
+   * inputs needed to tune the thresholds above. OFF writes nothing at all;
+   * dedup behavior is identical either way (pure instrumentation).
+   */
+  DEDUP_AUDIT: boolean;
   FP_RATE_L0: number; // FP alert threshold for exact tier
   FP_RATE_L1L2: number; // FP alert threshold for fuzzy tiers
   ALERT_WINDOW_MS: number;
@@ -115,6 +123,7 @@ export function loadDedupConfig(): DedupConfigShape {
     RAPTOR_MAX_LEAF_EXPANSION: envNum("MEGACOMPACT_RAPTOR_MAX_LEAF_EXP", 10),
     RAPTOR_FRESHNESS_HOURS: envNum("MEGACOMPACT_RAPTOR_FRESHNESS_HOURS", 4),
     RAPTOR_INJECT_SUMMARIES: envBool("MEGACOMPACT_RAPTOR_INJECT_SUMMARIES", true),
+    DEDUP_AUDIT: envBool("MEGACOMPACT_DEDUP_AUDIT", true),
     FP_RATE_L0: envNum("MEGACOMPACT_FP_RATE_L0", 0.01),
     FP_RATE_L1L2: envNum("MEGACOMPACT_FP_RATE_L1L2", 0.05),
     ALERT_WINDOW_MS: envNum("MEGACOMPACT_ALERT_WINDOW_MS", 600_000),
