@@ -1,0 +1,1 @@
+{"assertion":"gate advancement is strictly monotonic and never skips a gate","expected":{"gateIndex":1,"ok":true,"promotionBlocked":false},"id":"ROL-011","input":{"evidence":{"events":12000,"powered":true,"sessions":250,"windowStartMs":0},"scenario":"gate-power"},"kind":"rollout","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/rollout-fixture.schema.json"}

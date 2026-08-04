@@ -317,7 +317,38 @@ export interface VectorCortexRenderView {
 }
 
 /**
- * Reader-only occurrence-ledger view for GET /api/vector-cortex/ledger (VC1B).
+ * Reader-only live graduated-rollout view for GET /api/vector-cortex/rollout
+ * (VC5C). Purely an enabled-flag + aggregate over the rollout state — current
+ * gate, bucket count, sessions/events counts, and promotion-blocked state.
+ * Reader-only: NEVER exposes session payloads, prompt text, or bucket→session
+ * mappings (reader-only, SECURITY_PRIVACY). The rollout evidence is in-memory in
+ * this sprint (no durable store), so when no epoch has been observed the
+ * aggregates are truthfully zero. Non-fatal: a missing state degrades to
+ * `enabled:false`.
+ */
+export interface VectorCortexRolloutView {
+  /** Whether the VC5C live graduated-rollout flag is enabled. */
+  readonly enabled: boolean;
+  /** Current gate index (0..4). */
+  readonly gateIndex: number;
+  /** Current gate percentage (ROLLOUT_GATES[gateIndex]). */
+  readonly gatePct: number;
+  /** Total stable buckets (10,000). */
+  readonly buckets: number;
+  /** Count of buckets currently exposed under the active gate. */
+  readonly bucketCount: number;
+  /** Total observed events in the window. */
+  readonly events: number;
+  /** Total distinct sessions observed in the window. */
+  readonly sessions: number;
+  /** True when a hard failure froze promotion. */
+  readonly promotionBlocked: boolean;
+  /** ISO timestamp of the snapshot. */
+  readonly updatedAt: string;
+}
+
+/**
+ * Reader-only occurrence-ledger identity view for GET /api/vector-cortex/ledger (VC1B).
  * Built on the LedgerReader capability surface. Exposes occurrence IDENTITY
  * (seq/eventId/kind/digest/toolCallId) and the per-session high-water/count —
  * NEVER sourceBytes or prompt text, honoring the reader-only no-ledger-text rule.

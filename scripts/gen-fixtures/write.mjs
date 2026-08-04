@@ -36,6 +36,7 @@ import { fixtures as promptDagFixtures, named as promptDagNamed } from "./prompt
 import { fixtures as plannerFixtures, named as plannerNamed } from "./planner.mjs";
 import { fixtures as renderFixtures, named as renderNamed } from "./render.mjs";
 import { fixtures as providerFixtures, named as providerNamed } from "./provider.mjs";
+import { fixtures as rolloutFixtures, named as rolloutNamed } from "./rollout.mjs";
 
 const REPLAY_DIR = join(V2, "replay");
 const EVENTS_DIR = join(V2, "events");
@@ -57,6 +58,7 @@ const PROMPT_DAG_DIR = join(V2, "prompt-dag");
 const PLANNER_DIR = join(V2, "planner");
 const RENDER_DIR = join(V2, "render");
 const PROVIDER_DIR = join(V2, "provider");
+const ROLLOUT_DIR = join(V2, "rollout");
 
 export function writeAll() {
   rmSync(V2, { recursive: true, force: true });
@@ -82,6 +84,7 @@ export function writeAll() {
   mkdirSync(PLANNER_DIR, { recursive: true });
   mkdirSync(RENDER_DIR, { recursive: true });
   mkdirSync(PROVIDER_DIR, { recursive: true });
+  mkdirSync(ROLLOUT_DIR, { recursive: true });
 
   const manifestRows = [];
 
@@ -509,13 +512,32 @@ export function writeAll() {
     });
   }
 
+  // Rollout fixtures (VC5C): kind=rollout rows (ROL-001..020 + named) pin
+  // stable-bucket assignment / monotonic gate-advance / hard-fault-freeze
+  // behavior with algorithm "rollout".
+  for (const fx of [...rolloutFixtures, ...rolloutNamed]) {
+    const bytes = Buffer.from(canonicalJson(fx), "utf8");
+    const rel = `rollout/${fx.id}.json`;
+    writeFileSync(join(ROLLOUT_DIR, `${fx.id}.json`), bytes);
+    manifestRows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: fx.schema,
+      algorithm: "rollout",
+      producer,
+      expected: fx.expected.ok ? "ok" : fx.expected.code,
+      license: "synthetic",
+    });
+  }
+
   const manifest = {
     version: "2",
     viewer: "vector-cortex-conformance.mjs",
     producer: "vector-cortex-gen-fixtures.mjs",
-    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification,cortex-store,topology,topology-query,router-generation-v2,shard,residual,reconstruction,prompt-dag,planner,render,provider",
-    owner: "VC0A,VC0B,VC0C,VC1A,VC1B,VC1C,VC2A,VC2B,VC2C,VC3A,VC3B,VC3C,VC4A,VC4B,VC4C,VC5A,VC5B",
-    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification;cortex-store;topology-fixture;topology-query-fixture;router-generation-migration;shard-fixture;residual-fixture;reconstruction-fixture;prompt-dag-fixture;planner-fixture;render-fixture;provider-fixture",
+    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification,cortex-store,topology,topology-query,router-generation-v2,shard,residual,reconstruction,prompt-dag,planner,render,provider,rollout",
+    owner: "VC0A,VC0B,VC0C,VC1A,VC1B,VC1C,VC2A,VC2B,VC2C,VC3A,VC3B,VC3C,VC4A,VC4B,VC4C,VC5A,VC5B,VC5C",
+    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification;cortex-store;topology-fixture;topology-query-fixture;router-generation-migration;shard-fixture;residual-fixture;reconstruction-fixture;prompt-dag-fixture;planner-fixture;render-fixture;provider-fixture;rollout-fixture",
     license: "synthetic",
     fixtures: manifestRows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
   };
@@ -557,5 +579,7 @@ export function writeAll() {
     renderNamedCount: renderNamed.length,
     providerCount: providerFixtures.length,
     providerNamedCount: providerNamed.length,
+    rolloutCount: rolloutFixtures.length,
+    rolloutNamedCount: rolloutNamed.length,
   };
 }

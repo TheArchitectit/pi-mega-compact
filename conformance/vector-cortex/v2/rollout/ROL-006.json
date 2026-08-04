@@ -1,0 +1,1 @@
+{"assertion":"assignment is a pure function (empty session id still yields a bucket)","expected":{"ok":true},"id":"ROL-006","input":{"scenario":"assign-stable","sessionId":""},"kind":"rollout","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/rollout-fixture.schema.json"}

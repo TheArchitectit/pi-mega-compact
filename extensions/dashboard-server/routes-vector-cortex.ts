@@ -24,3 +24,4 @@ export { handleVectorCortexResidual } from "./routes-vector-cortex-residual.js";
 export { handleVectorCortexReconstruct } from "./routes-vector-cortex-reconstruct.js";
 export { handleVectorCortexPlans } from "./routes-vector-cortex-plans.js";
 export { handleVectorCortexRender } from "./routes-vector-cortex-render.js";
+export { handleVectorCortexRollout } from "./routes-vector-cortex-rollout.js";

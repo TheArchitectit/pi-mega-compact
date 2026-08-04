@@ -961,3 +961,57 @@ schemas["schemas/provider-fixture.schema.json"] = {
     },
   },
 };
+
+schemas["schemas/rollout-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC5C rollout fixture envelope",
+  description:
+    "Common structure every VC5C rollout fixture validates against. `input.scenario` names the assignment/gate condition the acceptance test executes against the REAL rollout module (src/vector-cortex/rollout/{assign,gate}.js): `assign-stable` (deterministic bucket for a fixed session digest), `gate-power` (72h residency + powered sample + >=10k events + >=200 sessions advances ONE gate, else blocked), `gate-safety` (a single hard causal/tool/anchor/exact fault freezes promotion and selects pre-VC path). `input.sessionId` names the session the test assigns; `input.evidence` carries the window evidence. `expected.ok` pins a clean assignment/advance (optionally the exact `bucket`, `gateIndex`, `promotionBlocked`, `selectsPreVc`) or a precise blocked outcome.",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["rollout"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        bucket: { type: "integer", minimum: 0, maximum: 9999 },
+        gateIndex: { type: "integer", minimum: 0, maximum: 4 },
+        promotionBlocked: { type: "boolean" },
+        selectsPreVc: { type: "boolean" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario"],
+      properties: {
+        scenario: { type: "string", enum: ["assign-stable", "gate-power", "gate-safety"] },
+        sessionId: { type: "string" },
+        evidence: {
+          type: "object",
+          properties: {
+            windowStartMs: { type: "integer" },
+            powered: { type: "boolean" },
+            events: { type: "integer" },
+            sessions: { type: "integer" },
+            hardFaults: {
+              type: "array",
+              items: {
+                type: "object",
+                required: ["kind", "detail"],
+                properties: {
+                  kind: { type: "string", enum: ["causal", "tool", "anchor", "exact"] },
+                  detail: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+};

@@ -191,3 +191,20 @@ export interface VectorCortexRenderView {
   knownProfiles: string[];
   updatedAt: string;
 }
+
+/**
+ * Reader-only live graduated-rollout view (VC5C, GET /api/vector-cortex/rollout).
+ * Aggregate only — current gate, bucket count, sessions/events counts, promotion
+ * state. Never session payloads or bucket→session mappings.
+ */
+export interface VectorCortexRolloutView {
+  enabled: boolean;
+  gateIndex: number;
+  gatePct: number;
+  buckets: number;
+  bucketCount: number;
+  events: number;
+  sessions: number;
+  promotionBlocked: boolean;
+  updatedAt: string;
+}

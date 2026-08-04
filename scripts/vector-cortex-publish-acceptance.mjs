@@ -195,6 +195,32 @@ function main() {
         name.endsWith(".js") && !name.endsWith(".test.js"),
       )
     : 0;
+  // VC5C added the rollout subtree (types/assign/gate/emit). Mirror its runtime
+  // .js so the vc5c-acceptance aggregator's `./rollout/...` imports resolve at the
+  // published dist/vector-cortex/ offset (tests excluded like the other subtrees).
+  const nRollout = existsSync(join(SRC_VECTOR, "rollout"))
+    ? copyTree(join(SRC_VECTOR, "rollout"), join(DEST_VECTOR, "rollout"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
+  // VC5C's live integration seam lives under dist/extensions/mega-runtime/ (tsc
+  // compiles extensions/ at rootDir="."). The vc5c-acceptance aggregator imports
+  // it via `../extensions/mega-runtime/vector-cortex-live.js` from the published
+  // dist/vector-cortex/ offset, which resolves to dist/extensions/mega-runtime/
+  // (the tsc build output). Copy it into the published dist/extensions/ mirror so
+  // the aggregator's relative import resolves without a full extensions build in
+  // the publish step. Its own `../../src/...` imports resolve to dist/src/... (the
+  // already-mirrored subtrees + config), so the mirror is self-contained.
+  const SRC_MEGA_RUNTIME = join(REPO_ROOT, "dist", "extensions", "mega-runtime");
+  const DEST_MEGA_RUNTIME = join(REPO_ROOT, "dist", "extensions", "mega-runtime");
+  const nLive = existsSync(join(SRC_MEGA_RUNTIME, "vector-cortex-live.js"))
+    ? (mkdirSync(DEST_MEGA_RUNTIME, { recursive: true }),
+      copyFileSync(
+        join(SRC_MEGA_RUNTIME, "vector-cortex-live.js"),
+        join(DEST_MEGA_RUNTIME, "vector-cortex-live.js"),
+      ),
+      1)
+    : 0;
   // VC3B support file (mode-B linear reference scan + helper producers) lives at
   // src/vector-cortex/vc3b-support.ts. Mirror its runtime .js so the
   // vc3b-acceptance aggregator's `./vc3b-support.js` import resolves at the
@@ -232,7 +258,7 @@ function main() {
     }
   }
   console.log(
-    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder + ${nCortex} cortex + ${nTopology} topology + ${nShards} shards + ${nResidual} residual + ${nReconstruct} reconstruct + ${nPromptDag} prompt-dag + ${nPlanner} planner + ${nRender} render + ${nProvider} provider + ${nSupport} support files`,
+    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder + ${nCortex} cortex + ${nTopology} topology + ${nShards} shards + ${nResidual} residual + ${nReconstruct} reconstruct + ${nPromptDag} prompt-dag + ${nPlanner} planner + ${nRender} render + ${nProvider} provider + ${nRollout} rollout + ${nLive} live-seam + ${nSupport} support files`,
   );
 }
 

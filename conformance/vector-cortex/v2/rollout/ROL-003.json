@@ -1,0 +1,1 @@
+{"assertion":"different session ids map to different buckets (no collision for the pair)","expected":{"ok":true},"id":"ROL-003","input":{"scenario":"assign-stable","sessionId":"session-beta-0002"},"kind":"rollout","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/rollout-fixture.schema.json"}

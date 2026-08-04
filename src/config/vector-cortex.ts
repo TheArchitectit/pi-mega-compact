@@ -201,6 +201,19 @@ export const VC5A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC5A");
  */
 export const VC5B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC5B");
 
+/**
+ * VC5C — live graduated rollout. Default ON. `MEGACOMPACT_VC5C=0` disables and
+ * is byte-identical to the predecessor (VC5B): no session is assigned a stable
+ * 10k bucket, no gate-advance decision runs, the `vector_cortex_rollout_assigned`
+ * / `vector_cortex_rollout_promotion_blocked` events are never emitted, and the
+ * prompt continues to be built by the predecessor VC5B renderer path (its goldens
+ * are unchanged). The assign/gate/emit functions are PURE — flag OFF gates the
+ * reporter + dashboard seam, never the arithmetic. This flag MUST also be a
+ * dashboard SETTINGS toggle (visible in config UI, never in EXCLUDED_SETTINGS),
+ * mirroring VC4A/VC4B/VC4C/VC5A/VC5B.
+ */
+export const VC5C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC5C");
+
 // ---------------------------------------------------------------------------
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker).
 // Rolled numbers for one 60s window; VC0C consumes these at its breaker seam.

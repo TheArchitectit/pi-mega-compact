@@ -1,0 +1,1 @@
+{"assertion":"a session id deterministically hashes into a stable 0..9999 bucket","expected":{"ok":true},"id":"ROL-001","input":{"scenario":"assign-stable","sessionId":"session-alpha-0001"},"kind":"rollout","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/rollout-fixture.schema.json"}

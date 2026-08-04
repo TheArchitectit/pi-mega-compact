@@ -12,6 +12,7 @@ import type {
 	VectorCortexReconstructView,
 	VectorCortexRenderView,
 	VectorCortexResetResult,
+	VectorCortexRolloutView,
 	VectorCortexShardsView,
 	VectorCortexTopologyView,
 } from "../types/vector-cortex";
@@ -25,6 +26,7 @@ export type {
 	VectorCortexReconstructView,
 	VectorCortexRenderView,
 	VectorCortexResetResult,
+	VectorCortexRolloutView,
 	VectorCortexShardsView,
 	VectorCortexTopologyView,
 };
@@ -81,6 +83,13 @@ export async function fetchVectorCortexRender(): Promise<VectorCortexRenderView>
 	const r = await fetch("/api/vector-cortex/render");
 	if (!r.ok) throw new Error(`vector-cortex render: ${r.status}`);
 	return r.json() as Promise<VectorCortexRenderView>;
+}
+
+/** Reader-only live graduated-rollout view (VC5C). */
+export async function fetchVectorCortexRollout(): Promise<VectorCortexRolloutView> {
+	const r = await fetch("/api/vector-cortex/rollout");
+	if (!r.ok) throw new Error(`vector-cortex rollout: ${r.status}`);
+	return r.json() as Promise<VectorCortexRolloutView>;
 }
 
 /** Reader-only occurrence-ledger identity view (VC1B). */

@@ -16,6 +16,7 @@ import {
 	fetchVectorCortexReconstruct,
 	fetchVectorCortexPlans,
 	fetchVectorCortexRender,
+	fetchVectorCortexRollout,
 	fetchVectorCortexShards,
 	fetchVectorCortexTopology,
 	resetVectorCortexBreaker,
@@ -26,6 +27,7 @@ import {
 	type VectorCortexReconstructView,
 	type VectorCortexPlansView,
 	type VectorCortexRenderView,
+	type VectorCortexRolloutView,
 	type VectorCortexShardsView,
 	type VectorCortexTopologyView,
 } from "../api/vector-cortex";
@@ -33,6 +35,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Badge } from "../components/ui/badge";
 import { Metric } from "./VectorCortexMetric";
 import { VectorCortexRenderCard } from "./VectorCortexRenderCard";
+import { VectorCortexRolloutCard } from "./VectorCortexRolloutCard";
 import { VectorCortexPlansCard } from "./VectorCortexPlansCard";
 
 function ModeChip({ mode, count }: { mode: string; count: number }): React.ReactElement {
@@ -57,6 +60,7 @@ export default function VectorCortexTab(): React.ReactElement {
 	const [reconstruct, setReconstruct] = useState<VectorCortexReconstructView | null>(null);
 	const [plans, setPlans] = useState<VectorCortexPlansView | null>(null);
 	const [render, setRender] = useState<VectorCortexRenderView | null>(null);
+	const [rollout, setRollout] = useState<VectorCortexRolloutView | null>(null);
 
 	const poll = useCallback(() => {
 		fetchVectorCortexEvaluation()
@@ -88,6 +92,9 @@ export default function VectorCortexTab(): React.ReactElement {
 		});
 		fetchVectorCortexRender().then(setRender).catch(() => {
 			/* render conformance card is best-effort (VC5B) */
+		});
+		fetchVectorCortexRollout().then(setRollout).catch(() => {
+			/* rollout card is best-effort (VC5C) */
 		});
 	}, []);
 
@@ -405,6 +412,7 @@ export default function VectorCortexTab(): React.ReactElement {
 			</Card>
 			<VectorCortexPlansCard view={plans} />
 			<VectorCortexRenderCard view={render} />
+			<VectorCortexRolloutCard view={rollout} />
 			<Card>
 				<CardHeader>
 					<div className="flex items-center justify-between">

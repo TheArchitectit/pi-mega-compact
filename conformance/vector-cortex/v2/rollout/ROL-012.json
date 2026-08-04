@@ -1,0 +1,1 @@
+{"assertion":"already at 100% gate cannot advance further","expected":{"gateIndex":4,"ok":true,"promotionBlocked":false},"id":"ROL-012","input":{"evidence":{"events":12000,"powered":true,"sessions":250,"windowStartMs":0},"scenario":"gate-power"},"kind":"rollout","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/rollout-fixture.schema.json"}
