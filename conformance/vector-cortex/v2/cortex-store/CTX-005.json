@@ -1,0 +1,1 @@
+{"assertion":"the same composite key with a different payload digest is a CTX_KEY_CONFLICT","expected":{"code":"CTX_KEY_CONFLICT","ok":false},"id":"CTX-005","input":{"scenario":"key-conflict"},"kind":"cortex-store","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/cortex-store-fixture.schema.json"}

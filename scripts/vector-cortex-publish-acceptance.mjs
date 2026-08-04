@@ -126,6 +126,14 @@ function main() {
         name.endsWith(".js") && !name.endsWith(".test.js"),
       )
     : 0;
+  // VC3A added the cortex subtree (types/store/sqlite). Mirror its runtime .js
+  // so the vc3a-acceptance aggregator's `./cortex/...` imports resolve at the
+  // published dist/vector-cortex/ offset (tests excluded).
+  const nCortex = existsSync(join(SRC_VECTOR, "cortex"))
+    ? copyTree(join(SRC_VECTOR, "cortex"), join(DEST_VECTOR, "cortex"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
   // VC1C MinHashV2 lives in src/dedup/. Mirror the runtime .js to dist/dedup/ so
   // the acceptance aggregator's `../dedup/l1-minhash-v2.js` import (from the
   // published dist/vector-cortex/ offset) resolves at dist/dedup/.
@@ -156,7 +164,7 @@ function main() {
     }
   }
   console.log(
-    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder files`,
+    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder + ${nCortex} cortex files`,
   );
 }
 

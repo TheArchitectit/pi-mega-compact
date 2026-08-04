@@ -1,0 +1,1 @@
+{"assertion":"the cortex writer exposes append only (no query or admin member)","expected":{"ok":true},"id":"CTX-001","input":{"scenario":"writer-append-only"},"kind":"cortex-store","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/cortex-store-fixture.schema.json"}

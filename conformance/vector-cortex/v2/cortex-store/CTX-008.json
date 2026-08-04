@@ -1,0 +1,1 @@
+{"assertion":"the reader-only topology summary exposes aggregates without writer/admin leakage","expected":{"ok":true},"id":"CTX-008","input":{"scenario":"reader-only-summary"},"kind":"cortex-store","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/cortex-store-fixture.schema.json"}

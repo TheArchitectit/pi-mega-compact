@@ -76,6 +76,21 @@ export interface VectorCortexResetResult {
 }
 
 /**
+ * Reader-only cortex topology view (VC3A, GET /api/vector-cortex/topology).
+ * Aggregate only — active generation identity, one root digest, derived frontier
+ * and record count. Never append/rebuild capability or raw record payloads.
+ */
+export interface VectorCortexTopologyView {
+  enabled: boolean;
+  generationId: string | null;
+  rootDigest: string | null;
+  sourceHighWater: string;
+  recordCount: number;
+  ordinal: string | null;
+  updatedAt: string;
+}
+
+/**
  * Occurrence-ledger identity view (VC1B, GET /api/vector-cortex/ledger).
  * Reader-only: seq/eventId/kind/digest + high-water, never source payloads.
  */

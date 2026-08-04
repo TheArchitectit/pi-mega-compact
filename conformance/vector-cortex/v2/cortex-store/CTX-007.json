@@ -1,0 +1,1 @@
+{"assertion":"the admin rebuilds and switches generations without deleting evidence","expected":{"ok":true},"id":"CTX-007","input":{"scenario":"generation-rebuild-switch"},"kind":"cortex-store","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/cortex-store-fixture.schema.json"}

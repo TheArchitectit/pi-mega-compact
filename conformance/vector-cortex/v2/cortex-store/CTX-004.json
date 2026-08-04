@@ -1,0 +1,1 @@
+{"assertion":"re-appending an exact key + payload digest is an idempotent acknowledge","expected":{"ok":true},"id":"CTX-004","input":{"scenario":"idempotent-ack"},"kind":"cortex-store","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/cortex-store-fixture.schema.json"}

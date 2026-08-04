@@ -100,6 +100,17 @@ export const VC2B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC2B");
  */
 export const VC2C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC2C");
 
+/**
+ * VC3A — capability-gated cortex store (CortexReader/Writer/Admin, CortexRecordV1).
+ * Default ON. `MEGACOMPACT_VC3A=0` disables and is byte-identical to the
+ * predecessor (mode C: the derived cortex store is absent, mode B in-memory is
+ * not consulted, zero `vector_cortex_record_append_failed` /
+ * `vector_cortex_generation_rebuilt` emissions; the predecessor derived pointer
+ * and goldens are unchanged). The real consumers are the cortex append seam, the
+ * cortex rebuild/admin seam and the reader-only topology summary seam.
+ */
+export const VC3A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC3A");
+
 // ---------------------------------------------------------------------------
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker).
 // Rolled numbers for one 60s window; VC0C consumes these at its breaker seam.

@@ -60,6 +60,7 @@ import {
 	handleVectorCortexHealth,
 	handleVectorCortexBreakersReset,
 	handleVectorCortexLedger,
+	handleVectorCortexTopology,
 	handleStatic,
 } from "./routes.js";
 
@@ -283,6 +284,7 @@ export async function launchDashboardServer(
 		if (handleVectorCortexHealth(req, res, ctx)) return;
 		if (handleVectorCortexBreakersReset(req, res, ctx)) return;
 		if (handleVectorCortexLedger(req, res, ctx)) return;
+		if (handleVectorCortexTopology(req, res, ctx)) return;
 		handleStatic(req, res, ctx);
 	});
 
