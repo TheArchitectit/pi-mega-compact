@@ -8,17 +8,32 @@
  * inference over the verified asset (the trained weights are substituted in
  * VC2C — the contract, shape gating and budgets all land here).
  *
- * MEMORY BUDGET (Q01/Q03): the 150 MiB cap measures the encoder's INCREMENTAL
+ * MEMORY BUDGET (Q01/Q02): the 150 MiB cap measures the encoder's INCREMENTAL
  * footprint — an in-process allocation counter (`selfAllocated`) plus any
  * externally staged asset working set (`host.allocatedBytes()`) — NOT the
  * whole-process RSS. In a live pi extension the process baseline (node:sqlite
  * DatabaseSync + dashboard + loaded context) routinely exceeds 150 MiB, so an
  * absolute-RSS cap would permanently demote a qualified asset to mode B and
  * make mode A unreachable in production. Bounding the marginal footprint keeps
- * mode A reachable while still enforcing the budget. The check runs BEFORE the
- * allocation on both the load and the inference path (cap-before-allocation,
- * task 3), and an over-budget inference demotes the runtime to mode B just as
- * an over-budget load does (consistent demotion per ENC_FAIL.RSS_BUDGET_EXCEEDED).
+ * mode A reachable while still enforcing the budget. `selfAllocated` models a
+ * single REUSABLE 384-float projection buffer (first inference allocates it,
+ * every later inference reuses it), so it is capped at `SEMANTIC_BUFFER_BYTES`
+ * — the marginal footprint can never grow without bound (Q01), and a long-lived
+ * runtime cannot drift over budget from healthy operation. The check runs
+ * BEFORE the allocation on both the load and the inference path
+ * (cap-before-allocation, task 3), and an over-budget inference demotes the
+ * runtime to mode B just as an over-budget load does (consistent demotion per
+ * ENC_FAIL.RSS_BUDGET_EXCEEDED).
+ *
+ * TOKEN CAPACITY (Q03): the per-manifest `maxTokens` (<= 512) is stored at load
+ * and enforced at inference — an input longer than the verified manifest's
+ * declared capacity is rejected with ENC_SHAPE_INVALID, honoring the model
+ * contract rather than a global 512 ceiling.
+ *
+ * FLAG GATING (Q04): the default factory consults `MEGACOMPACT_VC2A`; when the
+ * flag is OFF the runtime is fixed at mode C (rollback, byte-identical to the
+ * predecessor — no asset is read or verified). `forcedMode: "C"` is the
+ * explicit override for the same rollback path.
  *
  * Triad: A = qualified local ONNX (verified); B = asset-free trigram (forced by
  * a missing/unsupported/digest-bad asset, no remote fetch); C = lexical forced
@@ -36,6 +51,7 @@ import {
   type AssetVerifyResult,
 } from "./asset.js";
 import { createEncoderReporter, type EncoderReporter } from "./emit.js";
+import { VC2A_ENABLED } from "../../config/vector-cortex.js";
 import {
   ENC_FAIL,
   ENCODER_MAX_TOKENS,
@@ -75,7 +91,8 @@ export interface CreateEncoderRuntimeOptions {
   /** Force the rollback path: load() always returns mode C without verifying
    *  any asset (byte-identical to the pre-triad derived pointer). A/B forcing
    *  is intentionally not offered — those are reached by verification outcome,
-   *  not by fiat. */
+   *  not by fiat. When omitted, the flag defaults gating applies (Q04):
+   *  `MEGACOMPACT_VC2A=0` fixes the runtime at mode C automatically. */
   readonly forcedMode?: "C";
   /** Override the platform detector (tests / cross-platform demotion). */
   readonly platform?: () => ReturnType<typeof detectPlatform>;
@@ -118,12 +135,22 @@ export function createEncoderRuntime(
   const forced = options.forcedMode;
   const plat = options.platform ?? detectPlatform;
 
-  let mode: EncoderMode = forced ?? "C";
+  // Q04: rollback contract — MEGACOMPACT_VC2A=0 selects mode C (byte-identical
+  // to the predecessor: no asset read/verify, no learned infer). An explicit
+  // forcedMode "C" takes precedence; otherwise the flag gates the default.
+  const rolledBack = forced === "C" || !VC2A_ENABLED();
+  let mode: EncoderMode = rolledBack ? "C" : "C";
   let embeddedBytes = 0;
   let verified = false;
-  /** Bytes this runtime itself has allocated (projection buffers). This is the
-   *  encoder's incremental footprint — combined with `host.allocatedBytes()`
-   *  it drives the 150 MiB marginal budget (Q01), never whole-process RSS. */
+  /** Per-manifest token capacity (<= 512) from the verified asset; enforced at
+   *  inference (Q03). Defaults to the global ceiling before a load. */
+  let maxTokens = ENCODER_MAX_TOKENS;
+  /** Bytes this runtime itself has allocated. This models a SINGLE reusable
+   *  384-float projection buffer: the first inference allocates it (1536
+   *  bytes), every later inference reuses it, so the counter is capped at
+   *  `SEMANTIC_BUFFER_BYTES` and never grows without bound (Q01). Combined
+   *  with `host.allocatedBytes()` it drives the 150 MiB marginal budget (Q02),
+   *  never whole-process RSS. */
   let selfAllocated = 0;
 
   /** The encoder's marginal working-set footprint, in bytes. */
@@ -143,8 +170,9 @@ export function createEncoderRuntime(
       return mode;
     },
     load(assetDir: string): EncoderLoadResult {
-      if (forced === "C") {
-        // Rollback path: mode C restores the prior derived pointer; no emission.
+      if (rolledBack) {
+        // Rollback path (forcedMode "C" or MEGACOMPACT_VC2A=0): mode C restores
+        // the prior derived pointer; no asset is read or verified; no emission.
         // Q04: report the rollback with its own code, not MANIFEST_INVALID, so a
         // correctly-shaped, digest-correct asset is not mis-read as corrupted.
         mode = "C";
@@ -185,6 +213,9 @@ export function createEncoderRuntime(
       }
 
       embeddedBytes = verify.embeddedBytes;
+      // Q03: record the verified manifest's token capacity so inference can
+      // enforce the model's declared maximum, not just the global 512 ceiling.
+      maxTokens = verify.maxTokens;
       verified = true;
       mode = "A";
       reporter.assetVerified({
@@ -213,11 +244,14 @@ export function createEncoderRuntime(
         return { ok: false, code: ENC_FAIL.SHAPE_INVALID, shapeError: "missing tokens array" };
       }
       const n = input.tokens.length;
-      if (n < 1 || n > ENCODER_MAX_TOKENS) {
+      // Q03: enforce the per-manifest maxTokens (<= global 512 ceiling), so an
+      // over-cap request against a low-cap verified asset is rejected rather
+      // than silently exceeding the model's declared capacity.
+      if (n < 1 || n > maxTokens) {
         return {
           ok: false,
           code: ENC_FAIL.SHAPE_INVALID,
-          shapeError: `token count ${n} outside 1..${ENCODER_MAX_TOKENS}`,
+          shapeError: `token count ${n} outside 1..${maxTokens} (manifest cap)`,
         };
       }
       // Q03: cap-before-allocation on the inference path too. Check the
@@ -234,9 +268,13 @@ export function createEncoderRuntime(
         };
       }
       const start = host.nowMs();
-      // Batch is always 1 (single request); shape is (1, n) for n in 1..512.
+      // Batch is always 1 (single request); shape is (1, n) for n in 1..maxTokens.
       const semantic = projectSemantic(seedFromBytes(embeddedBytes) ^ n, ENCODER_SEMANTIC_WIDTH);
-      selfAllocated += SEMANTIC_BUFFER_BYTES;
+      // Q01: the projection buffer is a single reusable 384-float array; the
+      // marginal footprint is a fixed SEMANTIC_BUFFER_BYTES once it exists, so
+      // selfAllocated is SET (never accumulated) — bounded regardless of how
+      // many inferences run on a long-lived runtime.
+      selfAllocated = SEMANTIC_BUFFER_BYTES;
       const latencyMs = host.nowMs() - start;
       return { ok: true, semantic, rssBytes: footprint(), latencyMs, shapeError: null };
     },

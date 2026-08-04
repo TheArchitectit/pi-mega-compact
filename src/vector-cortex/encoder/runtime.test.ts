@@ -12,6 +12,13 @@ import { createEncoderRuntime } from "./runtime.js";
 import { detectPlatform } from "./asset.js";
 import { createEncoderReporter, NOOP_ENCODER_REPORTER } from "./emit.js";
 
+// Q04: the default createEncoderRuntime() honors MEGACOMPACT_VC2A ("-0 selects
+// mode C"). Pin the flag ON at module scope so the mode-A scenarios are
+// deterministic under either the default-ON run or any flag-off parity run; the
+// flag-off rollback behavior is covered by the dedicated tests that manage their
+// own env.
+process.env.MEGACOMPACT_VC2A = "1";
+
 /** The temp asset's declared platform follows the LIVE detector, so the
  *  manifest's platform always matches the runtime host and verification does
  *  not spuriously demote to PLATFORM_UNSUPPORTED on non-linux-x64 hosts

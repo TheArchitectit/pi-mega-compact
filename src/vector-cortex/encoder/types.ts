@@ -42,10 +42,12 @@ export const ENCODER_BATCH = 1;
 export const ENCODER_MAX_TOKENS = 512;
 /** Caps the encoder's MARGINAL footprint (bytes) at 150 MiB (MODEL_ASSET
  *  §qualification). The budget bounds the encoder's own incremental allocation
- *  (in-process allocation counter + any externally staged asset working set),
+ *  (a reusable projection buffer + any externally staged asset working set),
  *  NOT the whole-process RSS — in a live pi extension the process baseline
  *  routinely exceeds 150 MiB, so measuring absolute RSS would make mode A
- *  unreachable in production (code-review Q01). */
+ *  unreachable in production. This is the "RSS" figure the acceptance metric
+ *  and ENC_FAIL.RSS_BUDGET_EXCEEDED refer to: it is the encoder's marginal
+ *  footprint, never the process RSS (code-review Q01/Q02). */
 export const ENCODER_RSS_BUDGET_BYTES = 150 * 1024 * 1024;
 /** p95 inference budget in milliseconds (MODEL_ASSET §qualification). */
 export const ENCODER_LATENCY_P95_MS = 40;
@@ -138,7 +140,10 @@ export const ENC_FAIL = {
   PLATFORM_UNSUPPORTED: "ENC_PLATFORM_UNSUPPORTED",
   /** manifest missing/invalid (selects trigram B). */
   MANIFEST_INVALID: "ENC_MANIFEST_INVALID",
-  /** measured RSS over the 150 MiB budget (selects trigram B). */
+  /** encoder MARGINAL footprint over the 150 MiB budget (selects trigram B).
+   *  This is the encoder's own incremental allocation (a reusable projection
+   *  buffer + any externally staged asset working set), NOT whole-process RSS
+   *  — see ENCODER_RSS_BUDGET_BYTES. */
   RSS_BUDGET_EXCEEDED: "ENC_RSS_BUDGET_EXCEEDED",
   /** mode C forced by the rollback path (MEGACOMPACT_VC2A=0 / forcedMode "C").
    *  Distinct from MANIFEST_INVALID so a non-corrupt, correctly-shaped asset

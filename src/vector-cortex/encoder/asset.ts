@@ -25,7 +25,7 @@ import {
 } from "./types.js";
 
 export type AssetVerifyResult =
-  | { ok: true; embeddedBytes: number; onnxDigest: string; tokenizerDigest: string }
+  | { ok: true; embeddedBytes: number; maxTokens: number; onnxDigest: string; tokenizerDigest: string }
   | { ok: false; code: string };
 
 /** True when `p` is a single basename: non-empty, no path separators, no "..",
@@ -96,7 +96,9 @@ function isManifest(m: unknown): m is ModelManifestV1 {
  *
  * Returns ok only when EVERY constraint passes and both files hash to the
  * declared digests (the "only batch1/max512 verified assets reach inference"
- * invariant).
+ * invariant). The ok result surfaces the verified manifest's `maxTokens`
+ * (<= 512) so the runtime can enforce the per-manifest token capacity at
+ * inference (Q03), not just the global 512 ceiling.
  */
 export function verifyEncoderAsset(
   assetDir: string,
@@ -136,7 +138,7 @@ export function verifyEncoderAsset(
   } catch {
     return { ok: false, code: ENC_FAIL.ASSET_UNREADABLE };
   }
-  return { ok: true, embeddedBytes, onnxDigest, tokenizerDigest: tokDigest };
+  return { ok: true, embeddedBytes, maxTokens: manifest.maxTokens, onnxDigest, tokenizerDigest: tokDigest };
 }
 
 /**

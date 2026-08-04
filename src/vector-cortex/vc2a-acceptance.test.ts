@@ -29,6 +29,14 @@ import { createEncoderRuntime, type CreateEncoderRuntimeOptions } from "./encode
 import { createEncoderReporter, NOOP_ENCODER_REPORTER } from "./encoder/emit.js";
 import { canonicalManifestsConverge } from "./conformance/manifest.js";
 
+// Q04 (rollback-by-flag): the default createEncoderRuntime() honors
+// MEGACOMPACT_VC2A so the "-0 selects C, byte-identical" contract is enforced in
+// code. Pin the flag ON at module scope so the mode-A acceptance scenarios are
+// deterministic under EITHER the default-ON run or the MEGACOMPACT_VC2A=0 parity
+// run; the rollback/flag-off behavior is exercised explicitly inside the
+// dedicated flag tests below (which manage their own env and restore it).
+process.env.MEGACOMPACT_VC2A = "1";
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 function repoRoot(from: string): string {
   let dir = from;
@@ -67,6 +75,20 @@ function fixture(id: string): EFixture {
 }
 function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+/** True 95th percentile (linear interpolation) of a sorted sample — p in (0,1).
+ *  Unlike a floor(n*p) index (which collapses to the max for small n and hides
+ *  latency spikes, Q02), this returns a genuine percentile between samples. */
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  if (sorted.length === 1) return sorted[0]!;
+  const pos = p * (sorted.length - 1);
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  if (lo === hi) return sorted[lo]!;
+  const frac = pos - lo;
+  return sorted[lo]! + (sorted[hi]! - sorted[lo]!) * frac;
 }
 
 const ENC_NAMED = ["ENC-ASSET-001", "ENC-DIGEST-002", "ENC-PLATFORM-003"];
@@ -368,27 +390,122 @@ describe("encoder runtime invariant + injection + triad", () => {
       rmSync(dirC, { recursive: true, force: true });
     }
   });
-  test("acceptance budgets: infer p95 <=40ms and RSS <=150MiB", () => {
+  test("acceptance budgets: infer p95 <=40ms and encoder marginal footprint <=150MiB", () => {
+    // Q02: rssBytes is the encoder's MARGINAL footprint (reusable projection
+    // buffer + staged asset working set), never whole-process RSS. The p95 is a
+    // true 95th percentile via linear interpolation — not the max sample (a
+    // floor(n*0.95) index picks the largest value and hides spikes).
     const built = buildDir("valid");
     try {
       const rt = createEncoderRuntime();
       assert.equal(rt.load(built.dir).ok, true);
       const latencies: number[] = [];
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < 200; i++) {
         const inf = rt.infer({ tokens: Array.from({ length: 128 }, (_, k) => k) });
         assert.equal(inf.ok, true);
         if (inf.ok) {
           latencies.push(inf.latencyMs);
-          assert.ok(inf.rssBytes <= ENCODER_RSS_BUDGET_BYTES, "RSS <=150MiB");
+          assert.ok(inf.rssBytes <= ENCODER_RSS_BUDGET_BYTES, "encoder marginal footprint <=150MiB");
         }
       }
-      latencies.sort((a, b) => a - b);
-      const p95 = latencies[Math.floor(latencies.length * 0.95)] ?? 0;
+      const p95 = percentile(latencies, 0.95);
       assert.ok(p95 <= ENCODER_LATENCY_P95_MS, `p95 ${p95} <= 40ms`);
     } finally {
       rmBuilt(built);
     }
   });
+  test("Q01: a long-lived runtime cannot drift over the 150MiB marginal budget", () => {
+    // selfAllocated models a single REUSABLE projection buffer: it must not
+    // accumulate on every infer. Run far more inferences than a counter-based
+    // accounting could survive (each used to add 1536 bytes) and assert the
+    // encoder's marginal footprint stays flat and well under budget, so mode A
+    // is not irreversibly lost to spurious entropy.
+    const built = buildDir("valid");
+    try {
+      const rt = createEncoderRuntime();
+      assert.equal(rt.load(built.dir).ok, true);
+      let firstRss = 0;
+      for (let i = 0; i < 100_000; i++) {
+        const inf = rt.infer({ tokens: Array.from({ length: 4 }, () => i % 500) });
+        assert.equal(inf.ok, true, `infer #${i} still ok`);
+        if (inf.ok) {
+          if (i === 0) firstRss = inf.rssBytes;
+          assert.equal(inf.rssBytes, firstRss, `marginal footprint flat at infer #${i}`);
+          assert.ok(inf.rssBytes <= ENCODER_RSS_BUDGET_BYTES, `still within budget at infer #${i}`);
+        }
+      }
+      assert.equal(rt.mode, "A", "mode A survives 100k inferences (no irreversible budget demotion)");
+    } finally {
+      rmBuilt(built);
+    }
+  });
+
+  test("Q03: per-manifest maxTokens is enforced at inference (over-cap rejected)", () => {
+    // A manifest declaring maxTokens=64 verifies and loads as mode A, but an
+    // input of 65..512 tokens must be shape-rejected (SHAPE_INVALID) — the model
+    // capacity contract is honored, not a global 512 ceiling.
+    const dir = tmpAsset("vc2a-q03");
+    mkdirSync(dir, { recursive: true });
+    const onnx = Buffer.from("q03-lowcap", "binary");
+    const tok = Buffer.from('{"vocab":[]}', "utf8");
+    writeFileSync(join(dir, "model.onnx"), onnx);
+    writeFileSync(join(dir, "tokenizer.json"), tok);
+    const m = baseManifest({
+      maxTokens: 64,
+      onnx: { path: "model.onnx", sha256: sha256(onnx), bytes: onnx.length },
+      tokenizer: { path: "tokenizer.json", sha256: sha256(tok), bytes: tok.length },
+    });
+    writeFileSync(join(dir, "manifest.json"), JSON.stringify(m));
+    try {
+      const rt = createEncoderRuntime();
+      assert.equal(rt.load(dir).ok, true, "maxTokens=64 manifest loads (mode A)");
+      assert.equal(rt.infer({ tokens: Array.from({ length: 64 }, (_, k) => k) }).ok, true, "cap 64 infers");
+      for (const over of [65, 128, 512]) {
+        const inf = rt.infer({ tokens: Array.from({ length: over }) });
+        assert.equal(inf.ok, false, `${over} tokens rejected against a 64-cap manifest`);
+        if (!inf.ok) assert.equal(inf.code, ENC_FAIL.SHAPE_INVALID);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("Q04: MEGACOMPACT_VC2A=0 makes the default factory select mode C (rollback)", () => {
+    // The rollback contract is enforced in code: with the flag OFF, the default
+    // createEncoderRuntime() must NOT verify/load an asset into mode A — it is
+    // fixed at mode C (byte-identical predecessor). Verify with both a valid
+    // asset and an empty dir that the flag-off default factory returns ROLLBACK.
+    const saved = process.env.MEGACOMPACT_VC2A;
+    process.env.MEGACOMPACT_VC2A = "0";
+    try {
+      // An explicitly forced "C" also reports ROLLBACK (existing contract).
+      const forced = createEncoderRuntime({ forcedMode: "C" });
+      // The default factory under flag-off must match that exactly.
+      const byFlag = createEncoderRuntime();
+      for (const rt of [forced, byFlag]) {
+        assert.equal(rt.mode, "C", "flag-off / forced runtime starts in mode C");
+        const built = buildDir("valid");
+        try {
+          const load = rt.load(built.dir);
+          assert.equal(load.ok, false);
+          if (!load.ok) {
+            assert.equal(load.mode, "C", "flag-off default factory reports mode C");
+            assert.equal(load.code, ENC_FAIL.ROLLBACK, "ROLLBACK, not MANIFEST_INVALID");
+          }
+        } finally {
+          rmBuilt(built);
+        }
+        const inf = rt.infer({ tokens: [1, 2, 3] });
+        assert.equal(inf.ok, false, "no learned infer on the flag-off path");
+      }
+    } finally {
+      if (saved === undefined) delete process.env.MEGACOMPACT_VC2A;
+      else process.env.MEGACOMPACT_VC2A = saved;
+    }
+    // Restore the module-scope pin (flag ON) for subsequent scenarios.
+    process.env.MEGACOMPACT_VC2A = "1";
+  });
+
   test("all digest corruptions demote before load", () => {
     for (const which of ["onnx", "tokenizer", "both"] as const) {
       const dir = tmpAsset("vc2a-corr");

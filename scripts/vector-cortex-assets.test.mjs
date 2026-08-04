@@ -55,6 +55,12 @@ const { createEncoderRuntime } = runtimeMod;
 
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
+// Q04: the default createEncoderRuntime() honors MEGACOMPACT_VC2A ("-0 selects
+// mode C"). Pin the flag ON so this bundle test exercises the verify/load/infer
+// path deterministically regardless of the caller's env (flag-off rollback is
+// covered by the dedicated acceptance/flag tests).
+process.env.MEGACOMPACT_VC2A = "1";
+
 // The committed placeholder bundle is digest-pinned to linux-x64 (the dev/CI
 // host). On any OTHER supported platform it correctly demotes PLATFORM_UNSUPPORTED
 // (mode B) rather than verifying as mode A — cross-platform handling (Q02). The
