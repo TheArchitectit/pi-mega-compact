@@ -52,8 +52,13 @@ node scripts/guardrails-scan.mjs
 python3 scripts/log_failure.py --list
 node scripts/vector-cortex-conformance.mjs --check
 node scripts/vector-cortex-docs-check.mjs
+node scripts/vector-cortex-scope-check.mjs <SPRINT> <COMMIT...>   # assert every committed file inside the spec's Production ownership + fixed cross-cutting seams
 git diff --check
 ```
+
+### Scope discipline
+
+A sprint ships **only** what the spec's `Production ownership:` block names (plus the fixed cross-cutting seams every sprint wires: the flag in `src/config/`, the dashboard wiring files, the conformance gen fixtures, the evidence record). No side repos, no "prep for a later sprint", no speculative tooling. If an implementer starts anything outside that set, the scope-check fails and the controller kills it. All work lands in this repo. External-provided work (e.g. the VC8C Rust parity artifact) is *supplied by the user* — never scaffolded here.
 
 Dashboard touch also runs `cd extensions/dashboard-client && npm run typecheck && npm run build`. Storage changes run schema integrity/foreign-key and migration interruption/resume tests. Asset release runs manifest digest, supported matrix, `npm pack --dry-run` listing only, network-denied clean-install packaged inference, and enhanced `scripts/deploy.sh` gate. VC8C evidence from external Rad workspace must include:
 
