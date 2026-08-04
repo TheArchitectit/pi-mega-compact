@@ -62,6 +62,14 @@ export interface QualificationCandidate {
   readonly asset: CandidateAssetFacts;
   /** The verified ONNX digest of the candidate asset. */
   readonly onnxDigest: string;
+  /**
+   * SHA-256 of the asset manifest bytes (ModelManifestV1) that qualified — the
+   * same digest the dashboard health card reports as `encoderAssetDigest`
+   * (SHA-256 of the committed manifest.json bytes). select.ts stamps this into
+   * `QualifiedEncoderV1.assetDigest` verbatim so the record pins the true
+   * asset-manifest digest, not a calibration-derived hash.
+   */
+  readonly assetManifestDigest: string;
   /** Calibration digest the asset is qualified against (from `CalibrationV1`). */
   readonly calibration: CalibrationV1;
   /** Held-out metrics as evidence (EVALUATION.md). */
@@ -190,7 +198,10 @@ export function selectQualifiedEncoder(
     schema: "qualified-encoder-v1",
     modelVersion: candidate.modelVersion,
     mode: "A",
-    assetDigest: qualificationManifestDigest(candidate.calibration),
+    // The REAL ModelManifestV1 asset-manifest digest (passed through the
+    // candidate), not a calibration-derived hash — matches the documented
+    // contract and the dashboard health card's encoderAssetDigest.
+    assetDigest: candidate.assetManifestDigest,
     calibrationDigest: candidate.calibration.calibrationSplitDigest,
     onnxDigest: candidate.onnxDigest,
     heldOut: candidate.heldOut,

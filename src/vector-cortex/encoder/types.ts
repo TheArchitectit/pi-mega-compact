@@ -353,9 +353,13 @@ export interface QualifiedEncoderV1 {
   readonly schema: "qualified-encoder-v1";
   readonly modelVersion: string;
   readonly mode: "A";
-  /** SHA-256 of the asset manifest bytes (ModelManifestV1) that qualified. */
+  /** SHA-256 of the asset manifest bytes (ModelManifestV1) that qualified.
+   *  Identical semantics to the dashboard health card's `encoderAssetDigest`
+   *  (both hash the committed manifest.json ModelManifestV1 bytes), so
+   *  downstream consumers (VC3A) pin the same digest across the seam. */
   readonly assetDigest: string;
-  /** SHA-256 of the CalibrationV1 bytes that qualified. */
+  /** SHA-256 of the calibration split assignment (grouped repository+session)
+   *  that the CalibrationV1 was fitted on — the calibration's core identity. */
   readonly calibrationDigest: string;
   /** SHA-256 of the qualified asset's verified ONNX bytes (digest-pinned). */
   readonly onnxDigest: string;

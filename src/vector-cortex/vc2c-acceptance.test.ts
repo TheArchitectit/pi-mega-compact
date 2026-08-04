@@ -157,6 +157,10 @@ function cleanCandidate(calibration: CalibrationV1, heldOut: EncoderHeldOutMetri
     modelVersion: "vc2c-test",
     asset: { maxTokens: 512, latencyP95Ms: 20, rssDeltaMib: 40 },
     onnxDigest: "a".repeat(64),
+    // Real ModelManifestV1 asset-manifest digest (SHA-256 of manifest.json
+    // bytes); distinct from the onnx digest so the asset/manifest/calibration
+    // digests are each pinned by their own value.
+    assetManifestDigest: "b".repeat(64),
     calibration,
     heldOut,
   };
@@ -198,6 +202,18 @@ describe("ENC-017..020 conformance rows", () => {
       assert.equal(verdict.mode, "A");
       assert.equal(verdict.qualified.schema, "qualified-encoder-v1");
       assert.equal(verdict.qualified.onnxDigest.length, 64);
+      // assetDigest pins the REAL ModelManifestV1 asset-manifest digest (SHA-256
+      // of the manifest bytes), not a calibration-derived hash — reconciled with
+      // the dashboard health card's encoderAssetDigest semantics (reviewer S1/S2).
+      assert.equal(verdict.qualified.assetDigest, "b".repeat(64));
+      assert.equal(
+        verdict.qualified.assetDigest,
+        cleanCandidate(validCalibration(), fullMetrics()).assetManifestDigest,
+        "assetDigest equals the candidate's ModelManifestV1 manifest digest",
+      );
+      // assetDigest (manifest) and calibrationDigest (split assignment) are
+      // distinct non-overlapping digests.
+      assert.notEqual(verdict.qualified.assetDigest, verdict.qualified.calibrationDigest);
     }
   });
 

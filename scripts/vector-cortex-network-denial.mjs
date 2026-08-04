@@ -160,6 +160,7 @@ const MODES = {
         modelVersion: "vc2c-netdenial",
         asset: { maxTokens: 512, latencyP95Ms: 20, rssDeltaMib: 40 },
         onnxDigest: "a".repeat(64),
+        assetManifestDigest: "e".repeat(64),
         calibration: calibration.calibration,
         heldOut,
       });
@@ -252,6 +253,7 @@ const MODES = {
       modelVersion: "vc2c-netdenial-B",
       asset: { maxTokens: 512, latencyP95Ms: 20, rssDeltaMib: 40 },
       onnxDigest: "b".repeat(64),
+      assetManifestDigest: "e".repeat(64),
       calibration: {
         schema: "calibration-v1",
         headOrder: ["semantic", "dependency", "contradiction", "cacheStability", "payloadRouting"],

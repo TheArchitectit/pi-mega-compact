@@ -1,8 +1,8 @@
 # VC2C Evidence
 
-Status: implementer-complete (all sprint gates green, including the mandated flag-off run; pending independent reviewer)
-Implementation commits/sub-sprint gates: VC2C sprint on `feat/vector-cortex`; focused commit with MANDATORY `Co-Authored-By:` attribution. All sprint exit gates run and recorded below.
-Contract review: not yet performed — pending independent reviewer.
+Status: implementer-complete — reviewer CHANGES REQUESTED (S1 assetDigest contract, S2 naming reconciliation) resolved; all sprint gates green, including the mandated flag-off run.
+Implementation commits/sub-sprint gates: VC2C sprint on `feat/vector-cortex`; focused commits with MANDATORY `Co-Authored-By:` attribution (VC2C implementation + reviewer-fix for S1/S2). All sprint exit gates run and recorded below.
+Contract review: reviewer CHANGES REQUESTED (S1/S2) addressed and committed; pending re-review.
 
 ## Goal recap
 
@@ -13,7 +13,7 @@ Encoder qualification + calibration (VC2C) — consumes the VC2A `ModelManifestV
 Production (`src/vector-cortex/encoder/`):
 - `types.ts` — added the VC2C contract section: `EncoderHeldOutMetrics` (semantic/dependency/contradiction/cacheStability/payloadRouting rows + reconstruction gates), `EVALUATION_THRESHOLDS` (normative per-head + asset + reconstruction constants mirrored from MODEL_ASSET/EVALUATION), `CalibrationV1` (schema `calibration-v1`, headOrder, calibrationSplitDigest, fittedOnCalibrationOnly, temperatures, thresholds, seed), `QualifiedEncoderV1` (schema `qualified-encoder-v1`, modelVersion, mode A, assetDigest, calibrationDigest, onnxDigest, heldOut, calibration), `ENC_QUALIFICATION_FAIL` (`DIGEST_MISMATCH`/`THRESHOLD_FAILED`/`ASSET_FAILED`/`HELD_OUT_IN_FIT`), and `ENC2C_IDS` (`ENC-017..020`). VC2A/VC2B contracts untouched.
 - `calibrate.ts` (new, ~175) — **calibration fit (task 2)**. `fitCalibration`/`calibrationSplitDigest`: the fit rejects ANY example whose `itemId` is in the caller's held-out set (`ENC_QUALIFICATION_HELD_OUT_IN_FIT` — held-out labels are strictly prohibited from fit inputs); splits are grouped by repository+session (a whole group never crosses a split boundary); ties in score resolve by item ID bytewise (never arrival order); the split digest is canonical/sorted/deduped (invariant to row order); per-head deterministic temperature (0.8..1.5) + threshold sealed into a `CalibrationV1`.
-- `select.ts` (new, ~206) — **atomic qualification selection (task 3)**. `selectQualifiedEncoder`/`qualificationManifestDigest`: the eligibility check is ATOMIC — EVERY MODEL_ASSET constraint (maxTokens<=512, p95<=40ms, RSS<=150MiB) AND every per-head EVALUATION threshold AND reconstruction gate must pass, or the ENTIRE candidate demotes to mode B (never a partial A), reporting the first failed field (`asset.*`, `head.<name>`, `reconstruction`). Unique failure injection: a supplied `expectedQualificationManifestDigest` that mismatches the presented calibration's digest demotes with `ENC_QUALIFICATION_DIGEST_MISMATCH` (corrupt qualification manifest after calibration, before selection) and chooses B.
+- `select.ts` (new, ~206) — **atomic qualification selection (task 3)**. `selectQualifiedEncoder`/`qualificationManifestDigest`: the eligibility check is ATOMIC — EVERY MODEL_ASSET constraint (maxTokens<=512, p95<=40ms, RSS<=150MiB) AND every per-head EVALUATION threshold AND reconstruction gate must pass, or the ENTIRE candidate demotes to mode B (never a partial A), reporting the first failed field (`asset.*`, `head.<name>`, `reconstruction`). Unique failure injection: a supplied `expectedQualificationManifestDigest` that mismatches the presented calibration's digest demotes with `ENC_QUALIFICATION_DIGEST_MISMATCH` (corrupt qualification manifest after calibration, before selection) and chooses B. Reviewer S1/S2 reconciliation: `QualifiedEncoderV1.assetDigest` is now populated with the candidate's REAL ModelManifestV1 asset-manifest digest (`QualificationCandidate.assetManifestDigest`, SHA-256 of the manifest.json bytes) — identical semantics to the dashboard health card's `encoderAssetDigest` — rather than a calibration-derived hash; `calibrationDigest` remains the calibration split-assignment digest. An assertion pins `assetDigest` to the passed-through manifest digest.
 - `fallback.ts` (new, ~102) — **B/C qualification fallback (task 4)**. `selectQualificationFallback(qualificationCode, tokens, {forceC, injectBError})`: a qualification demotion selects independently-initialized trigram B (width 512, no limitation); `forceC` or `injectBError` (absent A + injected B error) selects lexical C (width 256) reporting `ENCODER_LEXICAL_LIMITATION`.
 - `emit-vc2c.ts` (new, ~69) — `createEncoderQualificationReporter`/`NOOP_VC2C_REPORTER`, flag-gated on `MEGACOMPACT_VC2C`; emits `vector_cortex_encoder_qualification_passed` / `vector_cortex_encoder_qualification_demoted` (JSON `ts`+`event`, non-fatal) (task 5).
 
@@ -120,4 +120,8 @@ All new files within limits: calibrate.ts ~175, select.ts ~206, fallback.ts ~102
 
 ## Reviewer attestation
 
-Not yet attested — pending independent reviewer.
+CHANGES REQUESTED raised by spec-compliance reviewer, resolved in a follow-up commit:
+- **S1** — `QualifiedEncoderV1.assetDigest` now holds the REAL ModelManifestV1 asset-manifest digest (passed through `QualificationCandidate.assetManifestDigest`), matching its documented contract and the dashboard health card's `encoderAssetDigest`; pinned by a new assertion.
+- **S2** — naming reconciled: `assetDigest` (record) and `encoderAssetDigest` (health card) now both mean SHA-256 of the ModelManifestV1 manifest bytes; `calibrationDigest` is documented as the calibration split-assignment digest. Downstream VC3A pins the correct digest.
+
+Not yet re-attested — pending independent reviewer.

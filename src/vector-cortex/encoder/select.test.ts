@@ -48,6 +48,9 @@ function candidate(over?: Partial<QualificationCandidate>): QualificationCandida
     modelVersion: "vc2c-test",
     asset: { maxTokens: 512, latencyP95Ms: 20, rssDeltaMib: 40 },
     onnxDigest: "a".repeat(64),
+    // Real ModelManifestV1 asset-manifest digest (SHA-256 of manifest.json
+    // bytes); distinct from onnxDigest and from the calibration split digest.
+    assetManifestDigest: "b".repeat(64),
     calibration: cal(),
     heldOut: full(),
     ...over,
@@ -85,6 +88,11 @@ describe("select.selectQualifiedEncoder — atomic eligibility (A)", () => {
       assert.equal(v.qualified.schema, "qualified-encoder-v1");
       assert.equal(v.qualified.mode, "A");
       assert.equal(v.qualified.onnxDigest, "a".repeat(64));
+      // assetDigest pins the REAL ModelManifestV1 asset-manifest digest, passed
+      // through the candidate (reviewer S1) — distinct from the calibration
+      // split digest recorded as calibrationDigest.
+      assert.equal(v.qualified.assetDigest, "b".repeat(64));
+      assert.notEqual(v.qualified.assetDigest, v.qualified.calibrationDigest);
       assert.equal(v.qualified.calibrationDigest, v.qualified.calibration.calibrationSplitDigest);
     }
   });
