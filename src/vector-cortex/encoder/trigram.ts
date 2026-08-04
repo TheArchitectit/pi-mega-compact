@@ -22,6 +22,10 @@
 
 import { createHash } from "node:crypto";
 import { l2Normalize } from "./heads.js";
+import {
+  createEncoderHeadsReporter,
+  type EncoderHeadsReporter,
+} from "./emit-vc2b.js";
 
 /** Fixed output width of trigram B (VC2B task 4). */
 export const ENCODER_TRIGRAM_WIDTH = 512;
@@ -68,10 +72,18 @@ export function embedTrigram512(text: string): Float32Array {
 /**
  * The 512-dim vector is produced even when the learned asset is absent: this is
  * the mode-B selection point. Returns `{ ok: true, dim, width }` always — there
- * is no asset to consult (task 4 + ENC-FALLBACK-003).
+ * is no asset to consult (task 4 + ENC-FALLBACK-003). Selecting mode B also
+ * emits `vector_cortex_encoder_fallback_selected` via the flag-gated reporter
+ * (task 5) — the production seam that makes the fallback event live in the
+ * runtime, not dead test-only wiring.
  */
-export function selectTrigramBFallback(): { ok: true; dim: number; width: number; mode: "B" } {
-  return { ok: true, mode: "B", dim: ENCODER_TRIGRAM_WIDTH, width: ENCODER_TRIGRAM_WIDTH };
+export function selectTrigramBFallback(
+  options: { readonly reporter?: EncoderHeadsReporter } = {},
+): { ok: true; dim: number; width: number; mode: "B" } {
+  const reporter = options.reporter ?? createEncoderHeadsReporter();
+  const selection = { ok: true as const, mode: "B" as const, dim: ENCODER_TRIGRAM_WIDTH, width: ENCODER_TRIGRAM_WIDTH };
+  reporter.fallbackSelected({ mode: selection.mode, dim: selection.dim, width: selection.width });
+  return selection;
 }
 
 export { l2Normalize };

@@ -22,6 +22,10 @@
 
 import { createHash } from "node:crypto";
 import { l2Normalize } from "./heads.js";
+import {
+  createEncoderHeadsReporter,
+  type EncoderHeadsReporter,
+} from "./emit-vc2b.js";
 
 /** Fixed output width of lexical C. */
 export const ENCODER_LEXICAL_WIDTH = 256;
@@ -63,20 +67,30 @@ export function embedLexical(tokensOrText: readonly string[] | string): Float32A
 }
 
 /** The documented limitation string, surfaced when lexical C is selected. */
-export function selectLexicalC(): {
+export function selectLexicalC(
+  options: { readonly reporter?: EncoderHeadsReporter } = {},
+): {
   ok: true;
   mode: "C";
   dim: number;
   width: number;
   limitation: string;
 } {
-  return {
-    ok: true,
-    mode: "C",
+  const reporter = options.reporter ?? createEncoderHeadsReporter();
+  const selection = {
+    ok: true as const,
+    mode: "C" as const,
     dim: ENCODER_LEXICAL_WIDTH,
     width: ENCODER_LEXICAL_WIDTH,
     limitation: ENCODER_LEXICAL_LIMITATION,
   };
+  reporter.fallbackSelected({
+    mode: selection.mode,
+    dim: selection.dim,
+    width: selection.width,
+    limitation: selection.limitation,
+  });
+  return selection;
 }
 
 export { l2Normalize };

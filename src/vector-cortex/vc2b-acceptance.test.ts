@@ -5,38 +5,53 @@
  *  (before training/export logic), every conformance row resolved through the
  *  real producers, the shape/norm invariant (all norms 0 or within 1e-6 of 1,
  *  repeat drift <= 1e-6), loss/seed constants, unique failure injection (delete
- *  the learned asset after A selection but before inference -> router selects
- *  independently initialized B), forced triad A/B/C, flag-OFF parity, and the
- *  VC2B emit seam (both named events).
+ *  the learned asset after A selection but before inference -> the router
+ *  catches the REAL load() failure and selects independently initialized B,
+ *  emitting vector_cortex_encoder_fallback_selected from the production seam),
+ *  forced triad A/B/C through the encode-or-fallback router, flag-OFF parity,
+ *  and the VC2B emit seam (both named events).
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, mkdirSync, rmSync, existsSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   ENC2B_IDS,
+  ENC_FAIL,
   ENCODER_HEAD_DIM_ORDER,
   ENCODER_HEAD_DIMS,
   ENCODER_HEAD_LOSS_WEIGHTS,
   ENCODER_HEAD_LOSS_SUM,
   ENCODER_HEAD_ORDER,
+  ENCODER_MAX_TOKENS,
   ENCODER_SEED,
   type EncoderHeadName,
 } from "./encoder/types.js";
 import { encodeVectorSet, projectHead, l2Norm } from "./encoder/heads.js";
 import { embedTrigram512, ENCODER_TRIGRAM_WIDTH, selectTrigramBFallback } from "./encoder/trigram.js";
-import { embedLexical, ENCODER_LEXICAL_WIDTH, selectLexicalC } from "./encoder/lexical.js";
+import { embedLexical, ENCODER_LEXICAL_WIDTH } from "./encoder/lexical.js";
+import { encodeOrFallback } from "./encoder/router.js";
+import { createEncoderRuntime } from "./encoder/runtime.js";
+import { detectPlatform } from "./encoder/asset.js";
 import { createEncoderHeadsReporter } from "./encoder/emit-vc2b.js";
 import { canonicalManifestsConverge } from "./conformance/manifest.js";
 import { VC2B_ENABLED } from "../config/vector-cortex.js";
 
-// Q05 (flag-off parity seam): pin the flag ON at module scope so the head
-// production scenarios are deterministic under EITHER the default-ON run or the
+// Q05 (flag-off parity seam): pin the flags ON at module scope so the head
+// production scenarios (and the real A/B/C router handoff, which drives the
+// VC2A runtime) are deterministic under EITHER the default-ON run or the
 // MEGACOMPACT_VC2B=0 parity run; the flag-off/rollback behavior is exercised
 // explicitly inside the dedicated flag tests (which manage their own env).
 process.env.MEGACOMPACT_VC2B = "1";
+process.env.MEGACOMPACT_VC2A = "1";
+
+/** The temp asset's declared platform follows the LIVE detector so a staged,
+ *  verifying asset directory never spuriously demotes to PLATFORM_UNSUPPORTED
+ *  on a non-linux-x64 host (mirrors runtime.test.ts). */
+const HOST_PLATFORM = detectPlatform() ?? "linux-x64";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 function repoRoot(from: string): string {
@@ -91,6 +106,37 @@ const ORDERED_DIMS = [384, 128, 128, 64, 32];
 
 const SET_TOKENS = [1, 2, 3, 4, 5];
 const EMPTY_TOKENS: number[] = [];
+
+/** Stage a directory that the VC2A runtime VERIFIES into mode A: a committed
+ *  manifest (live platform, opset 17, batch 1, max 512) plus model.onnx and
+ *  tokenizer.json hashed into the manifest. Returns the dir path (caller owns
+ *  cleanup). */
+function stageVerifyingAssetDir(): string {
+  const dir = join(tmpdir(), `vc2b-asset-${process.pid}-${Math.random().toString(36).slice(2)}`);
+  mkdirSync(dir, { recursive: true });
+  const onnx = Buffer.from("staged-onnx-opset17", "binary");
+  const tok = Buffer.from('{"vocab":[]}', "utf8");
+  const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+  writeFileSync(join(dir, "model.onnx"), onnx);
+  writeFileSync(join(dir, "tokenizer.json"), tok);
+  const manifest = {
+    schema: "model-manifest-v1",
+    modelVersion: "acceptance",
+    opset: 17,
+    batch: 1,
+    maxTokens: ENCODER_MAX_TOKENS,
+    platform: HOST_PLATFORM,
+    hiddenWidth: 384,
+    semanticWidth: 384,
+    heads: { semantic: 384, dependency: 128, contradiction: 128, cacheStability: 64, payloadRouting: 32 },
+    onnx: { path: "model.onnx", sha256: sha(onnx), bytes: onnx.length },
+    tokenizer: { path: "tokenizer.json", sha256: sha(tok), bytes: tok.length },
+    totalBytes: onnx.length + tok.length,
+    trainingManifestDigest: "0".repeat(64),
+  };
+  writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifest));
+  return dir;
+}
 
 // ---------------------------------------------------------------------------
 // Suite 1 — registration + canonical corpus (owner VC2B)
@@ -252,45 +298,96 @@ describe("multi-head invariant + independence + triad", () => {
     }
   });
 
-  test("unique failure injection: delete model after A selection but before inference; router selects independently initialized B", () => {
-    // Build a fake asset dir to stage "A selection" (a verified learned asset),
-    // then REMOVE the model file before any trigram-B inference. The router must
-    // catch the load failure (model gone) and select the independently initialized
-    // asset-free trigram B — which needs no asset and still yields 512 dims.
-    const dir = join(tmpdir(), `vc2b-inject-${process.pid}`);
-    mkdirSync(dir, { recursive: true });
+  test("unique failure injection: delete model after A selection but before inference; router catches the real load() failure and selects independently initialized B", () => {
+    // Stage a learned asset the VC2A runtime would VERIFY into mode A, then
+    // REMOVE model.onnx before encoding. The router's load() returns the real
+    // ENC_ASSET_UNREADABLE failure code and must hand off to the independently
+    // initialized asset-free trigram B — emitting vector_cortex_encoder_fallback_selected
+    // from the production seam (S2: a true end-to-end router test, not a
+    // simulated direct call to selectTrigramBFallback).
+    const dir = stageVerifyingAssetDir();
+    const emitted: string[] = [];
+    const reporter = createEncoderHeadsReporter((e) => emitted.push(e));
     try {
-      writeFileSync(join(dir, "model.onnx"), Buffer.from("staged-asset", "binary"));
-      // "After A selection" -> the model is deleted; the on-disk asset is gone.
+      // A is selectable at this point (a staging runtime verifies it).
+      const probe = createEncoderRuntime();
+      assert.equal(probe.load(dir).ok, true, "staged asset verifies into A");
+      // "After A selection but before inference": the on-disk model is gone.
       rmSync(join(dir, "model.onnx"), { force: true });
-      // The router load fails (asset absent); B is selected independently.
-      const sel = selectTrigramBFallback();
-      assert.equal(sel.ok, true);
-      assert.equal(sel.mode === "B" || sel.mode === "C", true);
-      const v = embedTrigram512("independent trigram after model removal");
-      assert.equal(v.length, 512, "trigram B independent of the deleted model");
+      const verdict = encodeOrFallback({ tokens: SET_TOKENS }, dir, { reporter });
+      assert.equal(verdict.ok, true);
+      assert.equal(verdict.mode, "B", "router handoff selects independently initialized B");
+      assert.equal(verdict.width, 512);
+      if (verdict.ok) {
+        assert.equal(verdict.vector.length, 512);
+        assert.equal(verdict.code, ENC_FAIL.ASSET_UNREADABLE, "load() reported the real failure code");
+      }
+      assert.ok(
+        emitted.includes("vector_cortex_encoder_fallback_selected"),
+        "fallback-selected fired from the real router seam: " + emitted.join(","),
+      );
+      // Distinct vectors for distinct inputs — the fallback is not a constant.
+      const again = encodeOrFallback({ tokens: [9, 8, 7, 6] }, dir, { reporter });
+      assert.equal(again.ok, true);
+      if (verdict.ok && again.ok && verdict.mode === "B" && again.mode === "B") {
+        let diff = 0;
+        for (let i = 0; i < verdict.vector.length; i++) diff += Math.abs(verdict.vector[i]! - again.vector[i]!);
+        assert.ok(diff > 1e-3, "independent trigram B is input-sensitive");
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test("forced triad A / B / C", () => {
-    // A = learned projections (five heads, ordered dims).
-    const a = encodeVectorSet(SET_TOKENS);
-    assert.equal(a.heads.length, 5);
-    assert.deepEqual(a.heads.map((h) => h.dim), ORDERED_DIMS);
-    // B = 512d trigram with the asset directory REMOVED (forced by missing asset).
-    const assetsRoot = join(REPO_ROOT, "assets", "vector-cortex", "encoder-v1");
-    const existed = existsSync(assetsRoot);
-    const b = embedTrigram512("forced-triad-b asset-dir-removed");
-    assert.equal(b.length, 512, "B works without an asset dir");
-    assert.equal(existed /* informational */ || true, true);
+  test("forced triad A / B / C through the encode-or-fallback router", () => {
+    // A = learned projections: a verifying asset dir routes to a VectorSetV1 with
+    // the five heads in ordered dims (emitting heads_emitted).
+    const dirA = stageVerifyingAssetDir();
+    const emittedA: string[] = [];
+    try {
+      const reporterA = createEncoderHeadsReporter((e) => emittedA.push(e));
+      const a = encodeOrFallback({ tokens: SET_TOKENS }, dirA, { reporter: reporterA });
+      assert.equal(a.ok, true);
+      assert.equal(a.mode, "A");
+      if (a.ok) {
+        assert.equal(a.vectorSet.heads.length, 5);
+        assert.deepEqual(a.vectorSet.heads.map((h) => h.dim), ORDERED_DIMS);
+      }
+      assert.ok(emittedA.includes("vector_cortex_encoder_heads_emitted"));
+    } finally {
+      rmSync(dirA, { recursive: true, force: true });
+    }
+    // B = 512d trigram selected when the learned asset directory is REMOVED: the
+    // router's load() fails (no manual fetch) and hands off to B. Remove a staged
+    // asset dir so the directory is genuinely absent, proving B needs no asset.
+    const dirB = stageVerifyingAssetDir();
+    rmSync(dirB, { recursive: true, force: true }); // asset directory REMOVED
+    const emittedB: string[] = [];
+    const reporterB = createEncoderHeadsReporter((e) => emittedB.push(e));
+    const b = encodeOrFallback({ tokens: SET_TOKENS }, dirB, { reporter: reporterB });
+    assert.equal(b.ok, true);
+    assert.equal(b.mode, "B", "B works without an asset dir");
+    assert.equal(b.width, 512);
+    if (b.ok) {
+      assert.equal(b.vector.length, 512);
+      assert.equal(b.limitation, null);
+    }
+    assert.ok(emittedB.includes("vector_cortex_encoder_fallback_selected"), "B selection emits fallback-selected");
     // C = token/phrase lexical forced when both A and B runtimes are disabled.
-    const c = embedLexical(["forced", "triad", "c"]);
-    assert.equal(c.length, ENCODER_LEXICAL_WIDTH);
-    const selC = selectLexicalC();
-    assert.equal(selC.mode, "C");
-    assert.ok(selC.limitation.length > 0, "C reports its semantic-context limitation");
+    const emittedC: string[] = [];
+    const reporterC = createEncoderHeadsReporter((e) => emittedC.push(e));
+    const c = encodeOrFallback({ tokens: SET_TOKENS }, dirB, { reporter: reporterC, forceFallback: "C" });
+    assert.equal(c.ok, true);
+    assert.equal(c.mode, "C");
+    assert.equal(c.width, ENCODER_LEXICAL_WIDTH);
+    if (c.ok && c.mode === "C") {
+      assert.equal(c.vector.length, ENCODER_LEXICAL_WIDTH);
+      assert.ok((c.limitation ?? "").length > 0, "C reports its semantic-context limitation");
+    }
+    assert.ok(emittedC.includes("vector_cortex_encoder_fallback_selected"), "C selection emits fallback-selected");
+    // Widths are disjoint across the triad (no shared feature space).
+    const aWidths = Object.values(ENCODER_HEAD_DIMS);
+    for (const w of [...aWidths, ENCODER_LEXICAL_WIDTH]) assert.notEqual(w, ENCODER_TRIGRAM_WIDTH);
   });
 
   test("A/B/C use disjoint widths and independent algorithms", () => {
