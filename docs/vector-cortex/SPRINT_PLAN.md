@@ -18,6 +18,8 @@ Normative inputs: [readiness](IMPLEMENTATION_READINESS.md), [contracts](CONTRACT
 
 Serial dependency is `VC0A → … → VC4C → VC5A → … → VC8C`; VC5 cannot begin without VC4C conservative closure. Rust fixture-runner work may begin externally after VC1C but engine selection remains VC8C.
 
+**Deferred VC2 ML gate (real learned mode A).** VC2A/VC2B/VC2C shipped the encoder *contract* (manifest, runtime, five heads, qualification, packaging) with a 42-byte placeholder `model.onnx` and no `onnxruntime` dependency. The system runs without the learned encoder because trigram-B and lexical-C are live and independently implemented. The real learned-mode-A gate is closed by training/exporting the five heads onto a real MiniLM ONNX, not by any remaining code sprint. The empirical backend viability study + measured benchmarks + surfaced blockers (install-budget, darwin-x64 gap, opset re-export requirement) are recorded in [`docs/vector-cortex/vc2-model-prep.md`](docs/vector-cortex/vc2-model-prep.md), with reproducible dev tooling under `scripts/vc2-model-prep/`. That note is the starting brief for whoever closes the real gate.
+
 ## Named migrations and current-source evidence
 
 | ID | Owner | Defect/evidence | Required regression |
