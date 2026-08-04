@@ -28,7 +28,11 @@ import {
   minhashV2Signature,
   encodeSignatureV2,
 } from "../../dedup/l1-minhash-v2.js";
-import { lshBandsV2, BANDS_V2 } from "../../dedup/l1-lsh-v2.js";
+import {
+  lshBandsV2,
+  BANDS_V2,
+  SIGNATURE_BYTES_EXPECTED_V2,
+} from "../../dedup/l1-lsh-v2.js";
 import {
   createConformanceReporter,
   type ConformanceReporter,
@@ -148,8 +152,31 @@ function v2RowMatches(stored: V2SignatureRow, fresh: V2SignatureRow): boolean {
     stored.checkpointId === fresh.checkpointId &&
     stored.sessionId === fresh.sessionId &&
     stored.signatureBytes.length === fresh.signatureBytes.length &&
-    stored.digest === fresh.digest
+    stored.digest === fresh.digest &&
+    bucketsMatch(stored)
   );
+}
+
+/**
+ * Re-derive the 64 bucket keys from the row's signatureBytes + sessionId and
+ * compare every value to the stored buckets. This closes a defensive
+ * verification gap: a persisted row whose signatureBytes + digest are correct
+ * but whose bucket VALUES were written wrong (a writer defect, or a partial
+ * bucket write that still held 64 entries) would otherwise pass digest+count
+ * checks and be treated as healthy — yet the buckets are exactly the data the
+ * live LSH-dedup path queries. Buckets are deterministic from sigBytes +
+ * sessionId, so a mismatch is always a real storage/author defect.
+ */
+function bucketsMatch(row: V2SignatureRow): boolean {
+  // A wrong-length signature can't be banded (lshBandsV2 throws); the caller
+  // already reports it as a count/version mismatch, so fail closed here too.
+  if (row.signatureBytes.length !== SIGNATURE_BYTES_EXPECTED_V2) return false;
+  if (row.buckets.length !== BANDS_V2) return false;
+  const expected = lshBandsV2(new Uint8Array(row.signatureBytes), row.sessionId);
+  for (let i = 0; i < BANDS_V2; i++) {
+    if ((expected[i] as string) !== (row.buckets[i] as string)) return false;
+  }
+  return true;
 }
 
 /**
@@ -170,6 +197,11 @@ export function m4Verify(host: M4Host): M4ValidateResult {
     if (r.digest !== `sha256:${sha256Hex(r.signatureBytes)}`) {
       codes.push(M4_FAIL.DIGEST_MISMATCH);
     }
+    // Bucket VALUE verification: re-derive all 64 keys from signatureBytes +
+    // sessionId and compare them. Digest + count alone would let a row with
+    // correct sigBytes/digest but wrong bucket values pass; the buckets are the
+    // data the live LSH-dedup path queries, so a drifts here is a real defect.
+    if (!bucketsMatch(r)) codes.push(M4_FAIL.COUNT_MISMATCH);
   }
   // Every v1 checkpoint backfilled exactly once (count parity, no dup rows).
   for (const id of wanted) {

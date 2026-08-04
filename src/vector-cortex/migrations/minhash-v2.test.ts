@@ -100,6 +100,43 @@ describe("M4 backfill", () => {
     assert.equal(h.host.activeVersion(), 2, "verified switch activates v2");
   });
 
+  test("Q02: a persisted row with wrong bucket VALUES (even with correct digest) is self-healed by backfill", () => {
+    const ids = ["c1", "c2"];
+    const textFor = (id: string) => `source-of-${id}`;
+    const sessionFor = () => "s1";
+    // Replace-by-checkpoint-id upsert host (models the real store: a rewrite
+    // heals a corrupt row instead of duplicating it).
+    const rows: V2SignatureRow[] = [];
+    const host: M4Host = {
+      v1CheckpointIds: () => ids,
+      sessionOf: () => sessionFor(),
+      sourceOf: (id) => textFor(id),
+      storedV2: () => rows,
+      activeVersion: () => 1,
+      putV2: (newRows) => {
+        for (const r of newRows) {
+          const i = rows.findIndex((x) => x.checkpointId === r.checkpointId);
+          if (i >= 0) rows[i] = r;
+          else rows.push(r);
+        }
+      },
+      switchToV2: () => {},
+    };
+    // Persist c1 with correct sigBytes/digest but a wrong bucket value.
+    const c1 = computeV2Row(host, "c1");
+    const badBuckets = [...c1.buckets];
+    badBuckets[3] = "b3:ffffffffffffffff";
+    rows.push({ ...c1, buckets: badBuckets });
+    // Backfill must RE-write c1 (bucket values don't match authoritative
+    // recompute), not skip it by id — healing rather than freezing.
+    const delta = m4Backfill(host);
+    assert.ok(delta.some((r) => r.checkpointId === "c1"), "corrupt c1 is rewritten");
+    const v = m4Verify(host);
+    assert.equal(v.ok, true, `verify ok after self-heal, got ${v.codes.join(",")}`);
+    assert.equal(rows.length, 2, "no duplicate rows after heal (replace-by-id upsert)");
+    assert.equal(rows[0]?.buckets[3], c1.buckets[3], "bucket value restored to authoritative");
+  });
+
   test("M4-003: interruption before switch leaves v1 active (old authority retained)", () => {
     const h = memHost();
     m4Backfill(h.host);
@@ -145,6 +182,17 @@ describe("M4 verify failures", () => {
     const v = m4Verify(h.host);
     assert.equal(v.ok, false);
     assert.ok(v.codes.includes(M4_FAIL.VERSION_MISMATCH), `got ${v.codes.join(",")}`);
+  });
+  test("Q02: a row with correct sigBytes/digest but WRONG bucket VALUES fails verify", () => {
+    const h = memHost({ ids: ["c1"] });
+    const c1 = computeV2Row(h.host, "c1");
+    // Corrupt only bucket values (length stays 64, digest/signature intact).
+    const badBuckets = [...c1.buckets];
+    badBuckets[0] = "b0:0000000000000000";
+    h.host.putV2([{ ...c1, buckets: badBuckets }]);
+    const v = m4Verify(h.host);
+    assert.equal(v.ok, false);
+    assert.ok(v.codes.includes(M4_FAIL.COUNT_MISMATCH), `got ${v.codes.join(",")}`);
   });
 });
 

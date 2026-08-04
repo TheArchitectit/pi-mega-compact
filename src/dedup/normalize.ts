@@ -33,7 +33,7 @@ export function normalize(text: string): string {
   if (!text) return "";
   let out = stripAnsi(text);
   out = out.normalize("NFC");
-  out = out.toLocaleLowerCase(); // case-fold so "Foo"/"FOO" collapse to one key
+  out = out.toLowerCase(); // case-fold so "Foo"/"FOO" collapse to one key (locale-independent: byte-exact across languages)
   out = out.replace(/\r\n?/g, "\n"); // CRLF / CR → LF
   out = out.replace(/\s+/g, " ").trim();
   if (out.length > MAX_CHARS) out = out.slice(0, MAX_CHARS);

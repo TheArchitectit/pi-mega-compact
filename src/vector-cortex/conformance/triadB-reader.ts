@@ -53,7 +53,7 @@ export function independentReaderV2(
   let norm = (text || "")
     .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
     .normalize("NFC")
-    .toLocaleLowerCase()
+    .toLowerCase()
     .replace(/\r\n?/g, "\n")
     .replace(/\s+/g, " ")
     .trim();

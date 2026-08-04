@@ -51,7 +51,7 @@ function normalize(text) {
   if (!text) return "";
   let out = text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, ""); // strip ANSI
   out = out.normalize("NFC");
-  out = out.toLocaleLowerCase();
+  out = out.toLowerCase();
   out = out.replace(/\r\n?/g, "\n");
   out = out.replace(/\s+/g, " ").trim();
   if (out.length > 32768) out = out.slice(0, 32768);
