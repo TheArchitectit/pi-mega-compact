@@ -17,6 +17,7 @@ import {
 	fetchVectorCortexPlans,
 	fetchVectorCortexRender,
 	fetchVectorCortexRollout,
+	fetchVectorCortexClosureProof,
 	fetchVectorCortexShards,
 	fetchVectorCortexTopology,
 	resetVectorCortexBreaker,
@@ -28,6 +29,7 @@ import {
 	type VectorCortexPlansView,
 	type VectorCortexRenderView,
 	type VectorCortexRolloutView,
+	type VectorCortexClosureProofView,
 	type VectorCortexShardsView,
 	type VectorCortexTopologyView,
 } from "../api/vector-cortex";
@@ -36,6 +38,7 @@ import { Badge } from "../components/ui/badge";
 import { Metric } from "./VectorCortexMetric";
 import { VectorCortexRenderCard } from "./VectorCortexRenderCard";
 import { VectorCortexRolloutCard } from "./VectorCortexRolloutCard";
+import { VectorCortexClosureCard } from "./VectorCortexClosureCard";
 import { VectorCortexPlansCard } from "./VectorCortexPlansCard";
 
 function ModeChip({ mode, count }: { mode: string; count: number }): React.ReactElement {
@@ -61,6 +64,7 @@ export default function VectorCortexTab(): React.ReactElement {
 	const [plans, setPlans] = useState<VectorCortexPlansView | null>(null);
 	const [render, setRender] = useState<VectorCortexRenderView | null>(null);
 	const [rollout, setRollout] = useState<VectorCortexRolloutView | null>(null);
+	const [closureProof, setClosureProof] = useState<VectorCortexClosureProofView | null>(null);
 
 	const poll = useCallback(() => {
 		fetchVectorCortexEvaluation()
@@ -95,6 +99,9 @@ export default function VectorCortexTab(): React.ReactElement {
 		});
 		fetchVectorCortexRollout().then(setRollout).catch(() => {
 			/* rollout card is best-effort (VC5C) */
+		});
+		fetchVectorCortexClosureProof().then(setClosureProof).catch(() => {
+			/* closure-optimization card is best-effort (VC6A) */
 		});
 	}, []);
 
@@ -413,6 +420,7 @@ export default function VectorCortexTab(): React.ReactElement {
 			<VectorCortexPlansCard view={plans} />
 			<VectorCortexRenderCard view={render} />
 			<VectorCortexRolloutCard view={rollout} />
+			<VectorCortexClosureCard view={closureProof} />
 			<Card>
 				<CardHeader>
 					<div className="flex items-center justify-between">

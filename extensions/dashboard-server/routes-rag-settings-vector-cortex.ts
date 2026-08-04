@@ -138,5 +138,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"Live graduated rollout: deterministically hashes each session into a stable 10,000-bucket cohort and advances the exposure gate (1/5/25/50/100%) only after a 72h monotonic residency, a powered sample, >=10,000 events, and >=200 sessions — advancing ONE gate at a time. A hard causal/tool/anchor/exact failure freezes promotion and selects the pre-VC path. OFF = byte-identical predecessor (VC5B).",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_VC6A",
+			"VC6A Advanced Closure Optimization",
+			"Advanced closure optimization: deterministically reduces the already-mandatory VC4C closure by transitive reduction over depends edges, emitting a ClosureProofV2 receipt per closure and a verifier that replays reductions against the conservative oracle (HEAL_PROOF_SET_MISMATCH on selected-set divergence). Protected edges (tool-pair / anchor / contradiction / sole-dependency) are never removed. The optimized selected set is byte-identical to the conservative closure. OFF = byte-identical predecessor (VC5C); arithmetic runs, only the reporter + dashboard seam is suppressed.",
+			true,
+		),
 	],
 };

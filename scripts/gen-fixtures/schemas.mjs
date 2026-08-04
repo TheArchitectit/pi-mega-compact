@@ -1015,3 +1015,91 @@ schemas["schemas/rollout-fixture.schema.json"] = {
     },
   },
 };
+
+schemas["schemas/closure-optimization-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC6A closure-optimization fixture envelope",
+  description:
+    "Common structure every VC6A closure-optimization fixture validates against. `input.graph` is a FULL ClosureGraph fed verbatim into `closeSelection` then `optimizeClosure` then `verifyProof`; `input.seeds` are the closure seeds; `input.scenario` names the optimizer/verifier condition the acceptance test executes against the REAL heal module (src/vector-cortex/heal/{closure-opt,proof}.js), no mocks. `expected` pins the verifier verdict (`ok`) or the exact HEAL_* failure code plus the optimizer's edge accounting (removedEdges / retainedEdges / protectedRetained) and the invariant that the optimized selected set equals the conservative oracle (selectedMatch).",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["closure-optimization"] },
+    expected: {
+      type: "object",
+      required: ["ok", "removedEdges", "retainedEdges", "selectedMatch", "protectedRetained"],
+      properties: {
+        ok: { type: "boolean" },
+        code: {
+          type: "string",
+          enum: [
+            "HEAL_PROOF_SET_MISMATCH",
+            "HEAL_PROOF_INCOMPLETE",
+            "HEAL_PROOF_PROTECTED_REMOVED",
+            "HEAL_PROOF_WITNESS_INVALID",
+            "HEAL_CLOSURE_REJECTED",
+          ],
+        },
+        removedEdges: { type: "integer", minimum: 0 },
+        retainedEdges: { type: "integer", minimum: 0 },
+        selectedMatch: { type: "boolean" },
+        protectedRetained: { type: "integer", minimum: 0 },
+        deterministic: { type: "boolean" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["graph", "scenario", "seeds"],
+      properties: {
+        graph: {
+          type: "object",
+          required: ["sessionId", "nodes", "edges"],
+          properties: {
+            sessionId: { type: "string" },
+            nodes: {
+              type: "array",
+              items: {
+                type: "object",
+                required: ["id", "kind", "tokenEstimate"],
+                properties: {
+                  id: { type: "string" },
+                  kind: { type: "string" },
+                  tokenEstimate: { type: "integer" },
+                  anchor: { type: "boolean" },
+                },
+              },
+            },
+            edges: {
+              type: "array",
+              items: {
+                type: "object",
+                required: ["from", "to", "kind"],
+                properties: {
+                  from: { type: "string" },
+                  to: { type: "string" },
+                  kind: { type: "string", enum: ["depends", "tool-pair", "contradicts"] },
+                },
+              },
+            },
+            resolutions: {
+              type: "array",
+              items: {
+                type: "object",
+                required: ["loserId", "winnerId"],
+                properties: {
+                  loserId: { type: "string" },
+                  winnerId: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        scenario: { type: "string" },
+        seeds: { type: "array", items: { type: "string" } },
+      },
+    },
+  },
+};

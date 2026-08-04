@@ -25,3 +25,4 @@ export { handleVectorCortexReconstruct } from "./routes-vector-cortex-reconstruc
 export { handleVectorCortexPlans } from "./routes-vector-cortex-plans.js";
 export { handleVectorCortexRender } from "./routes-vector-cortex-render.js";
 export { handleVectorCortexRollout } from "./routes-vector-cortex-rollout.js";
+export { handleVectorCortexClosureProof } from "./routes-vector-cortex-heal.js";

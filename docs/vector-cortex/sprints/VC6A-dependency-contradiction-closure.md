@@ -5,7 +5,7 @@
 
 ## Goal and inputs/outputs
 
-Consume only reviewer-accepted predecessor contracts and [common contracts](../CONTRACTS.md). Own **ClosureProofV2 / RestoreHintV1**. Production ownership: `src/vector-cortex/heal/closure-opt.ts`; `src/vector-cortex/heal/proof.ts`. Algorithm: Optimize already-mandatory VC4C closure using transitive reduction; proof lists each added/removed edge; output must equal conservative closure validity.
+Consume only reviewer-accepted predecessor contracts and [common contracts](../CONTRACTS.md). Own **ClosureProofV2 / RestoreHintV1**. Production ownership: `src/vector-cortex/heal/types.ts`; `src/vector-cortex/heal/closure-opt.ts`; `src/vector-cortex/heal/closure-metrics.ts`; `src/vector-cortex/heal/proof.ts`; `src/vector-cortex/heal/emit.ts`; `src/vector-cortex/heal/closure-opt.test.ts`; `src/vector-cortex/heal/proof.test.ts`; `src/vector-cortex/heal/_acceptance-fixture.ts`; `src/vector-cortex/vc6a-acceptance.test.ts`. Algorithm: Optimize already-mandatory VC4C closure using transitive reduction; proof lists each added/removed edge; output must equal conservative closure validity.
 
 ## Numbered implementation tasks
 

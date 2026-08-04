@@ -208,3 +208,17 @@ export interface VectorCortexRolloutView {
   promotionBlocked: boolean;
   updatedAt: string;
 }
+
+/** Reader-only closure-optimization diagnostics view (VC6A). Aggregate only. */
+export interface VectorCortexClosureProofView {
+  enabled: boolean;
+  mode: "A" | "B" | "C";
+  optimizations: number;
+  proofRejections: number;
+  retainedEdgeTotal: number;
+  removedEdgeTotal: number;
+  conservativeTraversalTotal: number;
+  optimizedTraversalTotal: number;
+  lastRejection: string | null;
+  updatedAt: string;
+}

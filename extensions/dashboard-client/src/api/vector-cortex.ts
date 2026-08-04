@@ -15,6 +15,7 @@ import type {
 	VectorCortexRolloutView,
 	VectorCortexShardsView,
 	VectorCortexTopologyView,
+	VectorCortexClosureProofView,
 } from "../types/vector-cortex";
 
 export type {
@@ -29,6 +30,7 @@ export type {
 	VectorCortexRolloutView,
 	VectorCortexShardsView,
 	VectorCortexTopologyView,
+	VectorCortexClosureProofView,
 };
 
 export async function fetchVectorCortexEvaluation(): Promise<VectorCortexEvaluationSummary> {
@@ -90,6 +92,13 @@ export async function fetchVectorCortexRollout(): Promise<VectorCortexRolloutVie
 	const r = await fetch("/api/vector-cortex/rollout");
 	if (!r.ok) throw new Error(`vector-cortex rollout: ${r.status}`);
 	return r.json() as Promise<VectorCortexRolloutView>;
+}
+
+/** Reader-only closure-optimization diagnostics view (VC6A). */
+export async function fetchVectorCortexClosureProof(): Promise<VectorCortexClosureProofView> {
+	const r = await fetch("/api/vector-cortex/closure-proof");
+	if (!r.ok) throw new Error(`vector-cortex closure-proof: ${r.status}`);
+	return r.json() as Promise<VectorCortexClosureProofView>;
 }
 
 /** Reader-only occurrence-ledger identity view (VC1B). */

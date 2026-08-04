@@ -221,6 +221,14 @@ function main() {
       ),
       1)
     : 0;
+  // VC6A added the heal subtree (types/closure-opt/proof/emit). Mirror its
+  // runtime .js so the vc6a-acceptance aggregator's `./heal/...` imports resolve
+  // at the published dist/vector-cortex/ offset (tests excluded like the others).
+  const nHeal = existsSync(join(SRC_VECTOR, "heal"))
+    ? copyTree(join(SRC_VECTOR, "heal"), join(DEST_VECTOR, "heal"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
   // VC3B support file (mode-B linear reference scan + helper producers) lives at
   // src/vector-cortex/vc3b-support.ts. Mirror its runtime .js so the
   // vc3b-acceptance aggregator's `./vc3b-support.js` import resolves at the
@@ -258,7 +266,7 @@ function main() {
     }
   }
   console.log(
-    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder + ${nCortex} cortex + ${nTopology} topology + ${nShards} shards + ${nResidual} residual + ${nReconstruct} reconstruct + ${nPromptDag} prompt-dag + ${nPlanner} planner + ${nRender} render + ${nProvider} provider + ${nRollout} rollout + ${nLive} live-seam + ${nSupport} support files`,
+    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder + ${nCortex} cortex + ${nTopology} topology + ${nShards} shards + ${nResidual} residual + ${nReconstruct} reconstruct + ${nPromptDag} prompt-dag + ${nPlanner} planner + ${nRender} render + ${nProvider} provider + ${nRollout} rollout + ${nHeal} heal + ${nLive} live-seam + ${nSupport} support files`,
   );
 }
 
