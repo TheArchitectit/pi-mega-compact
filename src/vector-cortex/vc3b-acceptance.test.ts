@@ -17,7 +17,6 @@
  *    same eligible set; C reports the no-data degradation.
  *  - Flag-off parity: MEGACOMPACT_VC3B=0 gates the topology node/edge view and
  *    the build seam, byte-identical to the VC3A predecessor.
- *
  * Real logic + fixtures, no mocks (no-mock-data/no-stubs memory).
  */
 import { test, describe } from "node:test";
@@ -102,9 +101,7 @@ function withFlagsOn(fn: () => void): void {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Conformance registration (TOP-001..020 + named)
-// ---------------------------------------------------------------------------
 
 describe("VC3B conformance registration", () => {
   test("manifest registers TOP-001..020 and the three named fixtures", () => {
@@ -122,9 +119,7 @@ describe("VC3B conformance registration", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // TOP-001..020 — drive each scenario through the real builder
-// ---------------------------------------------------------------------------
 
 describe("TOP-001..020 conformance rows", () => {
   test("TOP-001 basic-build: a valid dependency set builds a bounded graph", () => {
@@ -332,6 +327,35 @@ describe("TOP-001..020 conformance rows", () => {
     assert.ok(heads.has("h1") && heads.has("h2") && heads.has("h3"), "all heads present");
   });
 
+  test("TOP-018 large-cap: large candidate sets stay capped per source/head", () => {
+    const fx = fixture("TOP-018");
+    assert.equal(fx.expected.ok, true, "manifest pins ok");
+    assert.equal(fx.input.scenario, "large-cap", "scenario matches manifest");
+    const rows: Array<[string, string, string, number, "dependency" | "contradiction"]> = [];
+    for (let i = 0; i < 40; i++) {
+      const t = `t${String(i).padStart(2, "0")}`;
+      rows.push(["s", t, "h1", 1.0 - i / 400, "dependency"]);
+      rows.push(["s", t, "h2", 1.0 - i / 400, "contradiction"]);
+      rows.push(["u", t, "h3", 1.0 - i / 400, "dependency"]);
+    }
+    const res = buildTopology({ ...BASE, candidates: candidates(rows) });
+    assert.equal(res.ok, true);
+    if (!res.ok) throw new Error("unreachable");
+    const targets = new Map<string, Set<string>>();
+    for (const e of res.topology.edges) {
+      const key = `${e.source}|${e.head}`;
+      if (!targets.has(key)) targets.set(key, new Set());
+      targets.get(key)!.add(e.target);
+    }
+    // Per (source,head) cap = distinct targets kept; contradiction reverse records
+    // add small reverse groups, so only 40-neighbor groups saturate top-k=16.
+    for (const [key, set] of targets) {
+      assert.ok(set.size <= TOP_K, `group ${key} capped at top-k (got ${set.size})`);
+      if (key === "s|h1" || key === "s|h2" || key === "u|h3") {
+        assert.equal(set.size, TOP_K, `large group ${key} saturates top-k`);
+      }
+    }
+  });
   test("TOP-019 digest-stable-1000: digest identical across 1,000 builds", () => {
     const fx = fixture("TOP-019");
     assert.equal(fx.expected.ok, true, "manifest pins ok");
@@ -359,9 +383,7 @@ describe("TOP-001..020 conformance rows", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // Named assertions
-// ---------------------------------------------------------------------------
 
 describe("TOP-K-001 / TOP-TIE-002 / TOP-KIND-003 (named)", () => {
   test("TOP-K-001: seventeenth eligible neighbor is excluded", () => {
@@ -412,9 +434,7 @@ describe("TOP-K-001 / TOP-TIE-002 / TOP-KIND-003 (named)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // Acceptance: byte-identical graph, no self-edge/NaN, recall >= .95
-// ---------------------------------------------------------------------------
 
 describe("VC3B acceptance invariants", () => {
   test("byte-identical graph across 1,000 runs for a representative set", () => {
@@ -453,9 +473,7 @@ describe("VC3B acceptance invariants", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // Forced triad A/B/C
-// ---------------------------------------------------------------------------
 
 describe("forced triad A/B/C", () => {
   const TRIAD: Array<[string, string, string, number, "dependency" | "contradiction"]> = [
@@ -484,9 +502,7 @@ describe("forced triad A/B/C", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // Flag-off parity
-// ---------------------------------------------------------------------------
 
 describe("flag-off parity (MEGACOMPACT_VC3B=0)", () => {
   test("the build seam itself is flag-independent; the flag gates the view/emit", () => {

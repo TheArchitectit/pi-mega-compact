@@ -20,7 +20,7 @@ Config:
 Tests:
 - `src/vector-cortex/topology/build.test.ts` (new, ~300) — named assertions TOP-K-001 (17th eligible neighbor excluded), TOP-TIE-002 (equal scores sort target IDs by unsigned bytes), TOP-KIND-003 (dependency one direction, contradiction two); score-precedence-at-boundary; self-edge/NaN failure injection (`TOP_SCORE_NONFINITE`); threshold boundary; digest order-independence incl. the mandated 1,000-run stability; emit seam events. 18 tests green.
 - `src/vector-cortex/topology/property.test.ts` (new, ~170) — generated-input invariants over a deterministic PRNG: out-degree per source/head never above top-k=16, no self-edge/NaN, contradiction always symmetric pairs, digest order-independence across shuffled builds, one NaN head rejects only its edges. Real logic, no mocks.
-- `src/vector-cortex/vc3b-acceptance.test.ts` (new, ~590, under the 600 test hard limit) — **acceptance aggregator** over the REAL builder (no mocks): registration of `TOP-001..020` + named `TOP-K-001`/`TOP-TIE-002`/`TOP-KIND-003`, every `TOP-001..020` row resolved through the real build returning its manifest `ok` or exact listed failure code (`TOP_SCORE_NONFINITE` for TOP-006/TOP-020), the three named assertions, acceptance invariants (byte-identical graph over 1,000 runs, no self-edge/NaN, recall >= .95 on representative sets), forced triad A/B/C (A = multi-head topology index build, B = independent linear VectorSet scan with the same thresholds/cap, C = source-seq/keyword traversal with vector data unavailable → empty stable graph; A and B agree on the graph digest), and flag-off parity (`MEGACOMPACT_VC3B=0` leaves the deterministic builder working while the flag gates the view/emit). 28 tests green in BOTH flag states.
+- `src/vector-cortex/vc3b-acceptance.test.ts` (new, ~600, at the 600 test hard limit) — **acceptance aggregator** over the REAL builder (no mocks): registration of `TOP-001..020` + named `TOP-K-001`/`TOP-TIE-002`/`TOP-KIND-003`, every `TOP-001..020` row resolved through the real build returning its manifest `ok` or exact listed failure code (`TOP_SCORE_NONFINITE` for TOP-006/TOP-020) — including `TOP-018` (large-cap: per-source/head out-degree capped at top-k=16 over a 40-neighbor x 3-head candidate set), the three named assertions, acceptance invariants (byte-identical graph over 1,000 runs, no self-edge/NaN, recall >= .95 on representative sets), forced triad A/B/C (A = multi-head topology index build, B = independent linear VectorSet scan with the same thresholds/cap, C = source-seq/keyword traversal with vector data unavailable → empty stable graph; A and B agree on the graph digest), and flag-off parity (`MEGACOMPACT_VC3B=0` leaves the deterministic builder working while the flag gates the view/emit). 29 tests green in BOTH flag states.
 
 Dashboard / API / SETTINGS:
 - `extensions/dashboard-server/api-contracts/vector-cortex.ts` — extended `VectorCortexTopologyView` with optional `nodes`/`edges`/`generationDigest` (present only when VC3B is on; flag-off omits them, byte-identical VC3A predecessor view). Exact node/edge shapes match TopologyV1.
@@ -55,8 +55,8 @@ Triad over the topology domain: **A** = the multi-head topology index — the de
 ## Commands and verbatim summaries
 
 - `npm run build` → `vector-cortex-publish-acceptance: published 11 acceptance + 6 eval + 5 replay + 3 migrations + 9 ledger + 6 resilience + 4 conformance + 13 encoder + 3 cortex + 3 topology files` (tsc clean).
-- `node --test dist/vector-cortex/vc3b-acceptance.test.js` → `ℹ tests 28 / ℹ pass 28 / ℹ fail 0`.
-- `MEGACOMPACT_VC3B=0 node --test dist/vector-cortex/vc3b-acceptance.test.js` → `ℹ tests 28 / ℹ pass 28 / ℹ fail 0` (flag-off parity green).
+- `node --test dist/vector-cortex/vc3b-acceptance.test.js` → `ℹ tests 29 / ℹ pass 29 / ℹ fail 0`.
+- `MEGACOMPACT_VC3B=0 node --test dist/vector-cortex/vc3b-acceptance.test.js` → `ℹ tests 29 / ℹ pass 29 / ℹ fail 0` (flag-off parity green).
 - `npm test` → `TOTAL: 1913 passed, 0 failed across 221 files`.
 - `npm run lint` → `GUARDRAILS: pi pattern scan clean.` / `GUARDRAILS: semantic scan clean (SEMANTIC-001).` (tsc --noEmit + guardrails-scan + semantic-scan).
 - `python3 scripts/regression_check.py --all` → passes (see below).
@@ -81,7 +81,7 @@ Topology build and the dashboard topology route are fully local: pure bytes/JSON
 
 ## File sizes and baseline exceptions
 
-All new files under hard limits: `types.ts` ~190, `build.ts` ~230, `index.ts` ~180 (src 300-soft / 500-hard); `build.test.ts` ~300, `property.test.ts` ~170, `vc3b-acceptance.test.ts` ~590 (test 600-hard). The dashboard route file grew but stays under the extension 500-hard limit. No baseline exceptions worsened.
+All new files under hard limits: `types.ts` ~190, `build.ts` ~230, `index.ts` ~180 (src 300-soft / 500-hard); `build.test.ts` ~300, `property.test.ts` ~170, `vc3b-acceptance.test.ts` ~600 (at the aggregator 600 max). The dashboard route file grew but stays under the extension 500-hard limit. No baseline exceptions worsened.
 
 ## Rollback/downgrade rehearsal
 
