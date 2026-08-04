@@ -1,6 +1,6 @@
 # VC5C — Powered live reconstruction rollout
 
-**Status:** next | **Depends on:** VC5B | **Phase:** VC5
+**Status:** done | **Depends on:** VC5B | **Phase:** VC5
 **Flag:** `MEGACOMPACT_VC5C`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC5C=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs

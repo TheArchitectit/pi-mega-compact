@@ -1,6 +1,6 @@
 # VC6A — Advanced closure optimization
 
-**Status:** planned | **Depends on:** VC5C | **Phase:** VC6
+**Status:** next | **Depends on:** VC5C | **Phase:** VC6
 **Flag:** `MEGACOMPACT_VC6A`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC6A=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs
