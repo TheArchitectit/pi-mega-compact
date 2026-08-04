@@ -1,0 +1,1 @@
+{"assertion":"a single self-only candidate yields a graph with no edges","expected":{"ok":true},"id":"TOP-012","input":{"scenario":"single-node"},"kind":"topology","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/topology-fixture.schema.json"}

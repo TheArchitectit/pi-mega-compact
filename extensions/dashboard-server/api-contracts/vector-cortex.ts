@@ -138,6 +138,24 @@ export interface VectorCortexTopologyView {
   readonly recordCount: number;
   /** Monotonic rebuild ordinal, or null. */
   readonly ordinal: string | null;
+  /**
+   * VC3B deterministic topology node/edge shapes — present ONLY when the VC3B
+   * flag is enabled (flag-off omits them, byte-identical to the VC3A
+   * predecessor view). Built reader-only from the accepted derived records and
+   * best-effort: an unavailable or un-stored graph degrades to empty arrays,
+   * never an error. The exact node (`id`/`kind`) and edge
+   * (`source`/`target`/`head`/`score`/`direction`) shapes match TopologyV1.
+   */
+  readonly nodes?: readonly { id: string; kind: string }[];
+  readonly edges?: readonly {
+    source: string;
+    target: string;
+    head: string;
+    score: number;
+    direction: string;
+  }[];
+  /** Stable graph generation digest (VC3B), when the graph was built. */
+  readonly generationDigest?: string | null;
   /** ISO timestamp of the snapshot. */
   readonly updatedAt: string;
 }

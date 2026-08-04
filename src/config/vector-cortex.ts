@@ -111,6 +111,16 @@ export const VC2C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC2C");
  */
 export const VC3A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC3A");
 
+/**
+ * VC3B — deterministic cortical topology (TopologyV1 / EdgeV1).
+ * Default ON. `MEGACOMPACT_VC3B=0` disables and is byte-identical to the
+ * predecessor (mode C: no topology graph is built or emitted, the dashboard
+ * topology view returns the VC3A-precise aggregation shape with no node/edge
+ * arrays, zero `vector_cortex_topology_*` emissions). The real consumers are
+ * the topology build seam (build.ts) and the dashboard topology node/edge view.
+ */
+export const VC3B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC3B");
+
 // ---------------------------------------------------------------------------
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker).
 // Rolled numbers for one 60s window; VC0C consumes these at its breaker seam.

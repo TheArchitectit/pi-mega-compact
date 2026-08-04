@@ -1,0 +1,1 @@
+{"assertion":"generation has no self-edge and no non-finite score","expected":{"ok":true},"id":"TOP-010","input":{"scenario":"no-self-no-nan"},"kind":"topology","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/topology-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"infinite scores are rejected as TOP_SCORE_NONFINITE","expected":{"code":"TOP_SCORE_NONFINITE","ok":false},"id":"TOP-020","input":{"scenario":"infinite-reject"},"kind":"topology","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/topology-fixture.schema.json"}

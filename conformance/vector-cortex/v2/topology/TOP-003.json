@@ -1,0 +1,1 @@
+{"assertion":"the seventeenth eligible neighbor per source/head is excluded (top-k=16)","expected":{"ok":true},"id":"TOP-003","input":{"scenario":"cap-seventeenth"},"kind":"topology","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/topology-fixture.schema.json"}

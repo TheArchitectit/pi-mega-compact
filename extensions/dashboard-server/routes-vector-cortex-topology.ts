@@ -1,6 +1,6 @@
 /**
- * dashboard-server/routes-vector-cortex-topology.ts — VC3A vector-cortex topology
- * dashboard route.
+ * dashboard-server/routes-vector-cortex-topology.ts — VC3A/VC3B vector-cortex
+ * topology dashboard route.
  *
  * Reader-only GET /api/vector-cortex/topology built ENTIRELY on the CortexReader
  * capability: opens the isolated cortex DB for this repo's state dir and returns
@@ -10,19 +10,33 @@
  * (no writer/admin leakage). Non-fatal: a missing or corrupt cortex DB degrades
  * to `enabled:false`.
  *
+ * VC3B adds the deterministic node/edge shapes (TopologyV1) when both VC3A and
+ * VC3B are enabled: the accepted derived records of kind "topology" that carry a
+ * canonical TopologyCandidate JSON payload are fed through the deterministic
+ * build (buildTopologyGraph), whose stable generation digest + sorted node/edge
+ * arrays are returned. Bad/unparseable records are skipped (PREVENT-001), and
+ * with VC3B off the node/edge fields are omitted entirely — byte-identical to
+ * the VC3A predecessor view.
+ *
  * Guardrails: PREVENT-PI-004 (local filesystem read only), PREVENT-011 (no
  * `any`), reader-only aggregate.
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
-import { VC3A_ENABLED } from "../../src/config.js";
+import { VC3A_ENABLED, VC3B_ENABLED } from "../../src/config.js";
 import { createCortexStore } from "../../src/vector-cortex/cortex/store.js";
+import { buildTopologyGraph } from "../../src/vector-cortex/topology/index.js";
+import type { TopologyCandidate } from "../../src/vector-cortex/topology/index.js";
+import type { CortexRecordV1 } from "../../src/vector-cortex/cortex/types.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
 import type { VectorCortexTopologyView } from "./api-contracts/vector-cortex.js";
 
+/** Well-known cortex record kind that carries a canonical candidate payload. */
+const TOPOLOGY_RECORD_KIND = "topology";
+
 /**
- * Reader-only GET /api/vector-cortex/topology (VC3A).
+ * Reader-only GET /api/vector-cortex/topology (VC3A + VC3B node/edge shapes).
  */
 export function handleVectorCortexTopology(
   req: IncomingMessage,
@@ -39,6 +53,7 @@ export function handleVectorCortexTopology(
   }
 
   const enabled = VC3A_ENABLED();
+  const topologyEnabled = VC3B_ENABLED();
   let active = enabled;
   let summary: {
     generationId: string | null;
@@ -47,12 +62,22 @@ export function handleVectorCortexTopology(
     recordCount: number;
     ordinal: string | null;
   } = { generationId: null, rootDigest: null, sourceHighWater: "0", recordCount: 0, ordinal: null };
+  let nodes: { id: string; kind: string }[] | undefined;
+  let edges: {
+    source: string;
+    target: string;
+    head: string;
+    score: number;
+    direction: string;
+  }[] | undefined;
+  let generationDigest: string | null | undefined;
 
   if (enabled) {
     try {
       const store = createCortexStore({ stateDir: ctx.stateDir });
       try {
-        const s = store.reader().topologySummary();
+        const reader = store.reader();
+        const s = reader.topologySummary();
         summary = {
           generationId: s.generationId,
           rootDigest: s.rootDigest,
@@ -60,6 +85,12 @@ export function handleVectorCortexTopology(
           recordCount: s.recordCount,
           ordinal: s.ordinal,
         };
+        if (topologyEnabled) {
+          const built = buildFromRecords(reader.readRecords());
+          nodes = built.nodes;
+          edges = built.edges;
+          generationDigest = built.generationDigest;
+        }
       } finally {
         store.close();
       }
@@ -76,8 +107,87 @@ export function handleVectorCortexTopology(
     sourceHighWater: summary.sourceHighWater,
     recordCount: summary.recordCount,
     ordinal: summary.ordinal,
+    ...(topologyEnabled
+      ? { nodes, edges, generationDigest }
+      : {}),
     updatedAt: new Date().toISOString(),
   };
   sendJson(res, 200, body);
   return true;
+}
+
+/**
+ * Reconstruct the deterministic topology graph from the accepted derived records
+ * (reader-only, best-effort). Only records of kind "topology" whose payload is a
+ * canonical TopologyCandidate JSON are consumed; everything else is ignored.
+ * Returns empty arrays + null digest when no valid candidates are stored.
+ */
+function buildFromRecords(records: readonly CortexRecordV1[]): {
+  nodes: { id: string; kind: string }[];
+  edges: { source: string; target: string; head: string; score: number; direction: string }[];
+  generationDigest: string | null;
+} {
+  const candidates: TopologyCandidate[] = [];
+  for (const r of records) {
+    if (r.kind !== TOPOLOGY_RECORD_KIND) continue;
+    const parsed = parseCandidatePayload(r);
+    if (parsed) candidates.push(parsed);
+  }
+  const result = buildTopologyGraph(
+    { sessionId: "dashboard", sourceHighWater: 0n, threshold: 0, candidates },
+  );
+  if (!result.ok) return { nodes: [], edges: [], generationDigest: null };
+  return {
+    nodes: result.topology.nodes.map((n) => ({ id: n.id, kind: n.kind })),
+    edges: result.topology.edges.map((e) => ({
+      source: e.source,
+      target: e.target,
+      head: e.head,
+      score: e.score,
+      direction: e.direction,
+    })),
+    generationDigest: result.topology.generationDigest,
+  };
+}
+
+/**
+ * PREVENT-001: parse + shape-check a candidate payload before use. Returns
+ * undefined on any malformed/non-object input (best-effort, non-fatal).
+ */
+function parseCandidatePayload(r: CortexRecordV1): TopologyCandidate | undefined {
+  let text: string;
+  try {
+    text = new TextDecoder().decode(r.payloadBytes);
+  } catch {
+    return undefined;
+  }
+  try {
+    const v: unknown = JSON.parse(text);
+    if (
+      v === null ||
+      typeof v !== "object" ||
+      Array.isArray(v)
+    ) {
+      return undefined;
+    }
+    const o = v as Record<string, unknown>;
+    if (
+      typeof o.source !== "string" ||
+      typeof o.target !== "string" ||
+      typeof o.head !== "string" ||
+      typeof o.score !== "number" ||
+      (o.kind !== "dependency" && o.kind !== "contradiction")
+    ) {
+      return undefined;
+    }
+    return {
+      source: o.source,
+      target: o.target,
+      head: o.head,
+      score: o.score,
+      kind: o.kind,
+    };
+  } catch {
+    return undefined;
+  }
 }

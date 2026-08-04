@@ -1,0 +1,1 @@
+{"assertion":"candidates at or below the calibrated threshold are excluded","expected":{"ok":true},"id":"TOP-002","input":{"scenario":"threshold-exclusion"},"kind":"topology","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/topology-fixture.schema.json"}

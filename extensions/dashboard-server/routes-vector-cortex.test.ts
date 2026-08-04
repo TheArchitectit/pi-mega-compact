@@ -403,6 +403,88 @@ describe("/api/vector-cortex/topology (VC3A reader-only)", () => {
 		}
 	});
 
+	test("GET topology exposes VC3B node/edge shapes when VC3B is ON", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "vc3b-topology-"));
+		const { createCortexStore } = await import(
+			"../../src/vector-cortex/cortex/store.js"
+		);
+		const store = createCortexStore({ stateDir: dir });
+		// Seed one topology candidate record (kind "topology", canonical payload).
+		store.writer().append({
+			sourceHighWater: 3n,
+			algorithmVersion: 1,
+			id: "cand-1",
+			kind: "topology",
+			payloadBytes: new TextEncoder().encode(
+				JSON.stringify({
+					source: "a",
+					target: "b",
+					head: "h1",
+					score: 0.9,
+					kind: "dependency",
+				}),
+			),
+		});
+		store.close();
+
+		process.env.MEGACOMPACT_VC3A = "1";
+		process.env.MEGACOMPACT_VC3B = "1";
+		try {
+			await withServer("9425", dir, async (port) => {
+				const res = await fetch(
+					`http://localhost:${port}/api/vector-cortex/topology`,
+				);
+				assert.equal(res.status, 200);
+				const body = (await res.json()) as {
+					enabled: boolean;
+					nodes?: Array<{ id: string; kind: string }>;
+					edges?: Array<{ source: string; target: string; head: string; score: number; direction: string }>;
+					generationDigest?: string | null;
+				};
+				assert.equal(body.enabled, true);
+				assert.ok(body.nodes, "nodes present when VC3B on");
+				assert.ok(body.edges, "edges present when VC3B on");
+				assert.ok(body.generationDigest, "generation digest present");
+				// The exact node/edge shapes are exposed (TopologyV1).
+				const dep = body.edges?.find((e) => e.source === "a" && e.target === "b");
+				assert.ok(dep, "dependency edge rendered");
+				assert.equal(dep?.head, "h1");
+				assert.equal(dep?.score, 0.9);
+				assert.equal(dep?.direction, "dependency");
+			});
+		} finally {
+			delete process.env.MEGACOMPACT_VC3A;
+			delete process.env.MEGACOMPACT_VC3B;
+		}
+	});
+
+	test("GET topology omits node/edge shapes when VC3B is OFF (predecessor shape)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "vc3b-topology-off-"));
+		process.env.MEGACOMPACT_VC3A = "1";
+		process.env.MEGACOMPACT_VC3B = "0";
+		try {
+			await withServer("9426", dir, async (port) => {
+				const res = await fetch(
+					`http://localhost:${port}/api/vector-cortex/topology`,
+				);
+				assert.equal(res.status, 200);
+				const body = (await res.json()) as {
+					enabled: boolean;
+					nodes?: unknown;
+					edges?: unknown;
+					generationDigest?: unknown;
+				};
+				assert.equal(body.enabled, true);
+				assert.equal(body.nodes, undefined, "nodes omitted when VC3B off");
+				assert.equal(body.edges, undefined, "edges omitted when VC3B off");
+				assert.equal(body.generationDigest, undefined, "digest omitted when VC3B off");
+			});
+		} finally {
+			delete process.env.MEGACOMPACT_VC3A;
+			delete process.env.MEGACOMPACT_VC3B;
+		}
+	});
+
 	test("GET topology rejects non-GET (reader-only path has no mutation)", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "vc3a-topology-ro-"));
 		await withServer("9423", dir, async (port) => {
