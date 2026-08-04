@@ -56,8 +56,8 @@ Triad over the topology domain: **A** = the multi-head topology index — the de
 ## Commands and verbatim summaries
 
 - `npm run build` → `vector-cortex-publish-acceptance: published 11 acceptance + 6 eval + 5 replay + 3 migrations + 9 ledger + 6 resilience + 4 conformance + 13 encoder + 3 cortex + 3 topology files` (tsc clean).
-- `node --test dist/vector-cortex/vc3b-acceptance.test.js` → `ℹ tests 29 / ℹ pass 29 / ℹ fail 0`.
-- `MEGACOMPACT_VC3B=0 node --test dist/vector-cortex/vc3b-acceptance.test.js` → `ℹ tests 29 / ℹ pass 29 / ℹ fail 0` (flag-off parity green).
+- `node --test dist/vector-cortex/vc3b-acceptance.test.js` → `ℹ tests 30 / ℹ pass 30 / ℹ fail 0` (was 29 at sprint close; a later round added an edge case).
+- `MEGACOMPACT_VC3B=0 node --test dist/vector-cortex/vc3b-acceptance.test.js` → `ℹ tests 30 / ℹ pass 30 / ℹ fail 0` (flag-off parity green).
 - `npm test` → `TOTAL: 1913 passed, 0 failed across 221 files`.
 - `npm run lint` → `GUARDRAILS: pi pattern scan clean.` / `GUARDRAILS: semantic scan clean (SEMANTIC-001).` (tsc --noEmit + guardrails-scan + semantic-scan).
 - `python3 scripts/regression_check.py --all` → passes (see below).

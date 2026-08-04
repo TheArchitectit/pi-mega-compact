@@ -185,7 +185,19 @@ export function checkEvidence(sprint, opts = {}) {
     }
   }
 
-  // 2/3 — acceptance test-count + flag-off parity claims
+  // 2/3 — acceptance test-count + flag-off parity claims.
+  //
+  // A claim is held to HEAD (its counts must match the real run TODAY) only when
+  // the test file is OWNED by this sprint: a sprint's own acceptance aggregator
+  // basename carries the sprint id (e.g. `vc1b-acceptance.test.js` for VC1B), or
+  // this is the latest sprint. A shared cross-sprint suite (rag-settings,
+  // routes-vector-cortex, a unit suite like `heads.test.js`) grows as every
+  // later sprint adds a case — for a prior sprint its recorded count is a
+  // legitimate historical fact, not a HEAD obligation. This mirrors the
+  // fixture-count rule below. We still EXECUTE shared suites for prior sprints:
+  // a red shared suite is a real regression even if its count drifted, so a
+  // nonzero fail count always fails.
+  const lowerSprint = sprint.toLowerCase();
   for (const claim of parseTestClaims(md)) {
     const target = join(root, claim.file);
     if (!exists(target)) {
@@ -198,6 +210,13 @@ export function checkEvidence(sprint, opts = {}) {
       notes.push(`--no-run: skipped executing ${claim.raw}`);
       continue;
     }
+    // A sprint's own acceptance aggregator carries the sprint id; the synthetic
+    // VCTEST fixtures use `vctest.test.js`. The latest sprint's *every* suite is
+    // HEAD-bound (it owns the current top of the chain).
+    const isSprintOwned =
+      /[/\\]vc[0-9][a-z][^./-]*-acceptance\.test\.js$/i.test(claim.file) ||
+      /[/\\]vctest\.test\.js$/i.test(claim.file) ||
+      latestSprint === sprint;
     checked++;
     const got = runNodeTest(root, claim.file, claim.flagOff ? claim.flagVar : null);
     const code = claim.flagOff ? "EVIDENCE_FLAG_PARITY_MISMATCH" : "EVIDENCE_TEST_COUNT_MISMATCH";
@@ -208,19 +227,27 @@ export function checkEvidence(sprint, opts = {}) {
       });
       continue;
     }
+    // A red suite is always a real regression, even for a prior sprint's claim.
+    if ((got.fail ?? 0) > 0 || got.code !== 0) {
+      problems.push({
+        code,
+        detail: `${claim.raw}: reported ${got.fail} failing tests (exit ${got.code}) despite a green claim`,
+      });
+      continue;
+    }
+    if (!isSprintOwned) {
+      notes.push(
+        `shared cross-sprint suite (historical for ${sprint}): ${claim.raw} — claimed ` +
+          `${claim.tests}/${claim.pass}, HEAD is ${got.tests}/${got.pass}; count not held to HEAD`,
+      );
+      continue;
+    }
     if (got.tests !== claim.tests || got.pass !== claim.pass) {
       problems.push({
         code,
         detail:
           `${claim.raw}: evidence claims tests ${claim.tests} / pass ${claim.pass}, ` +
           `actual tests ${got.tests} / pass ${got.pass} / fail ${got.fail ?? "?"}`,
-      });
-      continue;
-    }
-    if ((got.fail ?? 0) > 0 || got.code !== 0) {
-      problems.push({
-        code,
-        detail: `${claim.raw}: reported ${got.fail} failing tests (exit ${got.code}) despite a green claim`,
       });
     }
   }

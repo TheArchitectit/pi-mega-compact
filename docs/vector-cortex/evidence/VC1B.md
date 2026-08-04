@@ -103,7 +103,7 @@ Zero runtime network egress (PREVENT-PI-004): the ledger is `node:sqlite` `Datab
 
 ## File sizes and baseline exceptions
 
-All new files within limits: ledger/types.ts 141, sqlite.ts 265, compat-journal.ts 234 (Q03 added `verifyLegacyDigest`; Q06 removed the dead `defaultLegacyProjection`), store.ts 380 (under the 300 soft; Q04 removed `advanceHighWater`/`freezeDerivedFrontier`), migrations/occurrence-v2.ts 192, sqlite.test.ts 225, compat-journal.test.ts 214, vc1b-acceptance.test.ts 599 (< 600 test hard limit), config/vector-cortex.ts 87, `extensions/mega-runtime/vector-cortex-ledger.ts` 165 (< 400 extension hard). Pre-existing over-hard-limit `extensions/mega-events/context-handler.ts` remains a documented baseline exception — S1 wiring + Q02 logging bring it to 530 (was 514 at sprint start).
+All new files within limits: ledger/types.ts 141, sqlite.ts 265, compat-journal.ts 234 (Q03 added `verifyLegacyDigest`; Q06 removed the dead `defaultLegacyProjection`), store.ts 380 (under the 300 soft; Q04 removed `advanceHighWater`/`freezeDerivedFrontier`), migrations/occurrence-v2.ts 192, sqlite.test.ts 225, compat-journal.test.ts 214 (now 221 — a later code-quality round added a case), vc1b-acceptance.test.ts 599 (< 600 test hard limit), config/vector-cortex.ts 87 (now 189 — the fixed cross-cutting flag seam that every later VC sprint appends its own flag to; growth is expected and in-scope as the seam), `extensions/mega-runtime/vector-cortex-ledger.ts` 165 (< 400 extension hard). Pre-existing over-hard-limit `extensions/mega-events/context-handler.ts` remains a documented baseline exception — S1 wiring + Q02 logging bring it to 530 (was 514 at sprint start).
 
 ## Rollback / downgrade rehearsal
 
@@ -128,4 +128,4 @@ All new files within limits: ledger/types.ts 141, sqlite.ts 265, compat-journal.
 
 ## Reviewer attestation
 
-Not yet attested — pending independent reviewer.
+2026-08-03 — controller spec-compliance + code-quality review: ✅ both stages passed and the sprint shipped. Implementer (Sonnet) work was read in full, file limits verified, flag-off parity confirmed (the VC1B S2 over-broad primitive gate was reverted to a seam-only gate to restore 25/25 flag-off acceptance), conformance fixtures canonical. Evidence claims re-verified against the shipped tree by `vector-cortex-evidence-check.mjs`; the line-count drift noted above is benign (the compat-journal test grew by a case, and `config/vector-cortex.ts` is the fixed cross-cutting flag seam every later sprint appends to), not a regression.

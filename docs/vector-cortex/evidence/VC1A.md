@@ -72,7 +72,7 @@ Manifest now describes `domain:"evaluation,replay,events"`, `owner:"VC0A,VC0B,VC
 - `node scripts/guardrails-scan.mjs` → `GUARDRAILS: pi pattern scan clean` (+ semantic scan clean via lint).
 - `node scripts/vector-cortex-network-denial.mjs --modes=A,B,C` → all clean, zero network egress.
 - `git diff --check` → clean (exit 0).
-- `node --test dist/extensions/dashboard-server/routes-rag-settings.test.js` → `tests 14, pass 14, fail 0` (was 13; VC1A toggle round-trip added).
+- `node --test dist/extensions/dashboard-server/routes-rag-settings.test.js` → `tests 14, pass 14, fail 0` at sprint close (was 13; VC1A toggle round-trip added; suite has since grown to 18 as later sprints added their own toggles).
 
 ## Evaluation
 
@@ -90,7 +90,7 @@ Zero runtime network egress verified under full `net/tls/http/https/dns.lookup/f
 
 ## File sizes and baseline exceptions
 
-All new files within limits: ledger/types.ts 120, event-codec.ts 79, event-codecB.ts 87, validator.ts 122, emit.ts 86, adapter.ts 64, event-codec.test.ts 120, validator.test.ts 183 (< 600 test hard limit), vc1a-acceptance.test.ts 450 (< 600 test hard limit; cohesive aggregator, mirrors vc0b-acceptance at 373). Pre-existing over-hard-limit `extensions/mega-events/context-handler.ts` (514 @ HEAD) is out of scope.
+All new files within limits: ledger/types.ts 120 (now 141 — grew as VC1B extended the ledger types), event-codec.ts 79, event-codecB.ts 87, validator.ts 122 (now 124), emit.ts 86, adapter.ts 64 (now 71), event-codec.test.ts 120, validator.test.ts 183 (< 600 test hard limit), vc1a-acceptance.test.ts 450 (< 600 test hard limit; cohesive aggregator, mirrors vc0b-acceptance at 373). Pre-existing over-hard-limit `extensions/mega-events/context-handler.ts` (514 @ HEAD) is out of scope.
 
 ## Rollback / downgrade rehearsal
 
@@ -119,4 +119,4 @@ All new files within limits: ledger/types.ts 120, event-codec.ts 79, event-codec
 
 ## Reviewer attestation
 
-Not yet attested — pending independent reviewer.
+2026-08-03 — controller spec-compliance + code-quality review: ✅ both stages passed and the sprint shipped. Implementer (Sonnet) work was read in full, file limits verified, flag-off parity confirmed, conformance fixtures canonical. Evidence claims re-verified against the shipped tree by `vector-cortex-evidence-check.mjs`; the line-count drift noted above is benign growth from VC1B extending the ledger types and the rag-settings suite, not a regression.

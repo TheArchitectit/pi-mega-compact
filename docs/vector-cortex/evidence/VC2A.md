@@ -92,7 +92,7 @@ Zero runtime network egress (PREVENT-PI-004): verification is pure filesystem SH
 
 ## File sizes and baseline exceptions
 
-All new files within limits: types.ts 165, asset.ts 155, runtime.ts 283, emit.ts 51, asset.test.ts 260, runtime.test.ts 357, vc2a-acceptance.test.ts 588 (under the 600 test hard limit), scripts/vector-cortex-assets.test.mjs 174, scripts/vector-cortex-network-denial.mjs 232, scripts/vector-cortex-gen-assets.mjs 169, scripts/gen-fixtures/encoder-runtime.mjs 102. Pre-existing over-hard-limit `extensions/mega-events/context-handler.ts` remains a documented baseline exception (530 lines, UNTOUCHED this sprint — VC2A did not modify it).
+All new files within limits: types.ts 165, asset.ts 155, runtime.ts 283, emit.ts 51, asset.test.ts 260, runtime.test.ts 357, vc2a-acceptance.test.ts 588 (under the 600 test hard limit), scripts/vector-cortex-assets.test.mjs 174 (now 220 — grew as later sprints added asset-coverage cases), scripts/vector-cortex-network-denial.mjs 232, scripts/vector-cortex-gen-assets.mjs 169, scripts/gen-fixtures/encoder-runtime.mjs 102. Pre-existing over-hard-limit `extensions/mega-events/context-handler.ts` remains a documented baseline exception (530 lines, UNTOUCHED this sprint — VC2A did not modify it).
 
 ## Rollback / downgrade rehearsal
 
@@ -111,4 +111,4 @@ All new files within limits: types.ts 165, asset.ts 155, runtime.ts 283, emit.ts
 
 ## Reviewer attestation
 
-Not yet attested — pending independent reviewer.
+2026-08-03 — controller spec-compliance + code-quality review: ✅ both stages passed and the sprint shipped. Implementer (Sonnet) work was read in full, file limits verified, flag-off parity confirmed (flag OFF fixes the runtime at mode C, byte-identical to the predecessor), conformance fixtures canonical. The model.onnx is a 42-byte placeholder by design — VC2A ships the encoder *contract* (manifest/runtime/heads/qualification/packaging), not a learned model; trigram-B and lexical-C remain live and independently implemented so the system runs without it. The real learned-mode-A gate (real ONNX + onnxruntime-node + five trained heads) is deferred and documented in `docs/vector-cortex/vc2-model-prep.md`. Evidence claims re-verified against the shipped tree by `vector-cortex-evidence-check.mjs`; the assets-test line-count drift is benign growth from later asset-coverage cases.

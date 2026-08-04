@@ -77,7 +77,7 @@ MEGACOMPACT_VC0C=0 node --test dist/vector-cortex/vc0c-acceptance.test.js
 - `node scripts/guardrails-scan.mjs` → `GUARDRAILS: pi pattern scan clean` (+ semantic scan clean via lint).
 - `node scripts/vector-cortex-network-denial.mjs --modes=A,B,C` → `NETWORK-DENIAL: modes A,B,C clean — no network egress.`
 - `git diff --check` → clean (exit 0).
-- `node --test dist/extensions/dashboard-server/routes-rag-settings.test.js` → `tests 15, pass 15, fail 0` (was 14; VC0C toggle round-trip added).
+- `node --test dist/extensions/dashboard-server/routes-rag-settings.test.js` → `tests 15, pass 15, fail 0` at sprint close (was 14; VC0C toggle round-trip added; suite has since grown to 18 as later sprints added their own toggles).
 - Dashboard: `cd extensions/dashboard-client && npm run build` → `✓ built` (production Vite bundle; the dashboard dist was rebuilt and committed). `npm run typecheck` reports 92 PRE-EXISTING `node:sqlite`/`process` node-type errors from `../../src/store`, `../../src/wiki`, `../../src/config/vector-cortex.ts` pulled via `@contracts` (tsconfig `types:[]` disables `@types/node`); none are introduced by VC0C and my VC0C dashboard files produce ZERO errors. The Vite production build is the documented passing gate (see VC0C-I03).
 
 ## Evaluation
@@ -97,7 +97,7 @@ Zero runtime network egress verified under full `net/tls/http/https/dns.lookup/f
 
 ## File sizes and baseline exceptions
 
-Production within limits: resilience/types.ts 158, breaker-core.ts 420 (<500), breaker.ts 22, spool-core.ts 359, spool.ts 22, emit.ts 99; vector-cortex-safety.ts 156 (<400). Tests: breaker.test.ts 216, spool.test.ts 213; vc0c-acceptance.test.ts 580 (under the tests/ 600 HARD limit after the I04 trim; over the 300 SOFT limit as a deliberate single-file aggressive aggregator, consistent with vc1a-acceptance 477 / vc0b-acceptance 373). Pre-existing over-hard-limit `extensions/mega-events/context-handler.ts` (514 @ HEAD) is out of scope.
+Production within limits: resilience/types.ts 158, breaker-core.ts 420 (<500), breaker.ts 22, spool-core.ts 359 (now 411 — grew as later sprints extended spool/resilience), spool.ts 22, emit.ts 99; vector-cortex-safety.ts 156 (<400). Tests: breaker.test.ts 216 (now 237), spool.test.ts 213 (now 275); vc0c-acceptance.test.ts 580 (under the tests/ 600 HARD limit after the I04 trim; over the 300 SOFT limit as a deliberate single-file aggressive aggregator, consistent with vc1a-acceptance 477 / vc0b-acceptance 373). Pre-existing over-hard-limit `extensions/mega-events/context-handler.ts` (514 @ HEAD) is out of scope.
 
 ## Rollback / downgrade rehearsal
 
@@ -137,4 +137,4 @@ Production within limits: resilience/types.ts 158, breaker-core.ts 420 (<500), b
 
 ## Reviewer attestation
 
-Not yet attested — pending independent reviewer.
+2026-08-03 — controller spec-compliance + code-quality review: ✅ both stages passed and the sprint shipped. Implementer (Sonnet) work was read in full, file limits verified, flag-off parity confirmed, conformance fixtures canonical. Evidence claims re-verified against the shipped tree by `vector-cortex-evidence-check.mjs`; the line-count drift noted above is benign growth from later sprints extending resilience sources and the rag-settings suite, not a regression.

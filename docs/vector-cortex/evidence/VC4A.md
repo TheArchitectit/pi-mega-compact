@@ -71,7 +71,7 @@ Triad over the shard domain: **A** = semantic partition (derived aggregates only
 - `python3 scripts/log_failure.py --list` → no new logged failures.
 - `git diff --check` → clean (no whitespace errors).
 - `cd extensions/dashboard-client && npm run typecheck && npm run build` → typecheck clean; build OK (VectorCortexTab bundle 11.41 kB / gzip 2.90 kB).
-- `node --test dist/extensions/dashboard-server/routes-vector-cortex.test.js` → `ℹ tests 21 / ℹ pass 21 / ℹ fail 0` (including 3 new shards route tests: ON enabled+counts, OFF enabled=false, 405 on POST).
+- `node --test dist/extensions/dashboard-server/routes-vector-cortex.test.js` → `ℹ tests 21 / ℹ pass 21 / ℹ fail 0` at sprint close (including 3 new shards route tests). After VC4A the 3 shards tests were extracted to `routes-vector-cortex-shards.test.ts` to keep the parent under the 600-line hard limit; the two files together still total the 21 tests (`routes-vector-cortex.test.js` now 18 + `routes-vector-cortex-shards.test.js` 3).
 
 ## Evaluation
 
