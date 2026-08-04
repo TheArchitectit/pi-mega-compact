@@ -40,13 +40,30 @@ import { createEncoderHeadsReporter } from "./encoder/emit-vc2b.js";
 import { canonicalManifestsConverge } from "./conformance/manifest.js";
 import { VC2B_ENABLED } from "../config/vector-cortex.js";
 
-// Q05 (flag-off parity seam): pin the flags ON at module scope so the head
-// production scenarios (and the real A/B/C router handoff, which drives the
-// VC2A runtime) are deterministic under EITHER the default-ON run or the
-// MEGACOMPACT_VC2B=0 parity run; the flag-off/rollback behavior is exercised
-// explicitly inside the dedicated flag tests (which manage their own env).
-process.env.MEGACOMPACT_VC2B = "1";
-process.env.MEGACOMPACT_VC2A = "1";
+// Q03 (flag-off parity): do NOT pin the flags ON at module scope. The mandated
+// flag-off gate (`MEGACOMPACT_VC2B=0 node --test ...`) must genuinely exercise
+// the flag-independent producer paths (shape/norm/dims/trigram/lexical) under
+// the external OFF env, so that run is NOT behaviorally identical to the
+// default-ON run. The ON-dependent scenarios (router A/B/C handoff, emission
+// assertions) self-pin the flags ON via `withFlagsOn` and are therefore valid
+// under EITHER external env, while the dedicated flag suite manages its own env.
+function withFlagsOn(fn: () => void): void {
+  const keys = ["MEGACOMPACT_VC2B", "MEGACOMPACT_VC2A"] as const;
+  const saved = new Map<string, string | undefined>();
+  for (const k of keys) {
+    saved.set(k, process.env[k]);
+    process.env[k] = "1";
+  }
+  try {
+    fn();
+  } finally {
+    for (const k of keys) {
+      const v = saved.get(k);
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
 
 /** The temp asset's declared platform follows the LIVE detector so a staged,
  *  verifying asset directory never spuriously demotes to PLATFORM_UNSUPPORTED
@@ -108,10 +125,11 @@ const SET_TOKENS = [1, 2, 3, 4, 5];
 const EMPTY_TOKENS: number[] = [];
 
 /** Stage a directory that the VC2A runtime VERIFIES into mode A: a committed
- *  manifest (live platform, opset 17, batch 1, max 512) plus model.onnx and
- *  tokenizer.json hashed into the manifest. Returns the dir path (caller owns
- *  cleanup). */
-function stageVerifyingAssetDir(): string {
+ *  manifest (live platform, opset 17, batch 1, `maxTokens` defaulting to the
+ *  global 512, overridable to exercise the per-manifest token-capacity path)
+ *  plus model.onnx and tokenizer.json hashed into the manifest. Returns the dir
+ *  path (caller owns cleanup). */
+function stageVerifyingAssetDir(maxTokens: number = ENCODER_MAX_TOKENS): string {
   const dir = join(tmpdir(), `vc2b-asset-${process.pid}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
   const onnx = Buffer.from("staged-onnx-opset17", "binary");
@@ -124,7 +142,7 @@ function stageVerifyingAssetDir(): string {
     modelVersion: "acceptance",
     opset: 17,
     batch: 1,
-    maxTokens: ENCODER_MAX_TOKENS,
+    maxTokens,
     platform: HOST_PLATFORM,
     hiddenWidth: 384,
     semanticWidth: 384,
@@ -299,6 +317,11 @@ describe("multi-head invariant + independence + triad", () => {
   });
 
   test("unique failure injection: delete model after A selection but before inference; router catches the real load() failure and selects independently initialized B", () => {
+    // This scenario is ON-dependent: it asserts a fallback emission, which is
+    // VC2B-flag-gated, and drives the VC2A runtime into an A load — so it self-pins
+    // both flags ON and is thus valid under either the default-ON run or the
+    // MEGACOMPACT_VC2B=0 parity run.
+    withFlagsOn(() => {
     // Stage a learned asset the VC2A runtime would VERIFY into mode A, then
     // REMOVE model.onnx before encoding. The router's load() returns the real
     // ENC_ASSET_UNREADABLE failure code and must hand off to the independently
@@ -337,9 +360,14 @@ describe("multi-head invariant + independence + triad", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+    });
   });
 
   test("forced triad A / B / C through the encode-or-fallback router", () => {
+    // ON-dependent: asserts heads_emitted / fallback_selected emissions, so it
+    // self-pins both flags ON (valid under either the default-ON run or the
+    // MEGACOMPACT_VC2B=0 parity run).
+    withFlagsOn(() => {
     // A = learned projections: a verifying asset dir routes to a VectorSetV1 with
     // the five heads in ordered dims (emitting heads_emitted).
     const dirA = stageVerifyingAssetDir();
@@ -388,6 +416,7 @@ describe("multi-head invariant + independence + triad", () => {
     // Widths are disjoint across the triad (no shared feature space).
     const aWidths = Object.values(ENCODER_HEAD_DIMS);
     for (const w of [...aWidths, ENCODER_LEXICAL_WIDTH]) assert.notEqual(w, ENCODER_TRIGRAM_WIDTH);
+    });
   });
 
   test("A/B/C use disjoint widths and independent algorithms", () => {
@@ -400,6 +429,36 @@ describe("multi-head invariant + independence + triad", () => {
     // (C does not depend on B or A — it embeds tokens directly).
     const cTokens = embedLexical("independently computed lexical with vector runtimes disabled");
     assert.equal(cTokens.length, ENCODER_LEXICAL_WIDTH);
+  });
+
+  test("router seam enforces the verified per-manifest token capacity: over-cap input routes to B with ENC_SHAPE_INVALID, never an over-cap A VectorSet", () => {
+    // Q01: the router's mode-A path must enforce the VC2A contract
+    // "only batch1/<=maxTokens verified assets reach inference" at its own seam.
+    // A verified asset declaring maxTokens=64 with an input of 100 tokens must
+    // NOT produce an ok:true mode-A VectorSetV1 whose inputTokens breach the
+    // model's declared capacity — instead the router rejects it and falls back
+    // to the asset-free trigram B, reporting the real shape failure code.
+    withFlagsOn(() => {
+      const dir = stageVerifyingAssetDir(64); // verified low-cap manifest
+      try {
+        const over = encodeOrFallback({ tokens: Array.from({ length: 100 }, (_, i) => i) }, dir);
+        assert.equal(over.ok, true, "over-cap input still yields a usable (fallback) verdict");
+        assert.equal(over.mode, "B", "over-cap input must route to the B fallback, not an A VectorSet");
+        if (over.ok) {
+          assert.equal(over.code, ENC_FAIL.SHAPE_INVALID, "reported the real shape failure code");
+          assert.equal(over.vector.length, ENCODER_TRIGRAM_WIDTH);
+        }
+        // A within-cap input against the SAME verified manifest still reaches a
+        // qualified mode-A VectorSet — the capacity rejection is input-scoped,
+        // not a blanket demotion of the verified asset.
+        const within = encodeOrFallback({ tokens: SET_TOKENS }, dir);
+        assert.equal(within.ok, true);
+        assert.equal(within.mode, "A", "within-cap input still reaches mode A");
+        if (within.ok) assert.equal(within.vectorSet.heads.length, 5);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
   });
 });
 

@@ -262,12 +262,6 @@ export interface HeadCalibrationDraft {
   readonly splitDigest: string;
 }
 
-/** Result of selecting a fallback for a head/inference (mode B/C selection).
- *  B = asset-free trigram; C = token/phrase lexical. */
-export type FallbackSelection =
-  | { ok: true; mode: "B" | "C"; dim: number; width: number }
-  | { ok: false; code: string };
-
 /** The 16 registered VC2B conformance IDs (task 1: "register ENC-009..016"). */
 export const ENC2B_IDS: readonly string[] = [
   "ENC-009",

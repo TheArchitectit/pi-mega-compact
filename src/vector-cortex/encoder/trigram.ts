@@ -30,11 +30,6 @@ import {
 /** Fixed output width of trigram B (VC2B task 4). */
 export const ENCODER_TRIGRAM_WIDTH = 512;
 
-export interface TrigramEncodingOptions {
-  /** Number of leading 32-bit slots to reserve for the length marker. Optional. */
-  readonly markerSlots?: number;
-}
-
 /** Tokenize a phrase into byte-level trigrams (3-byte sliding windows). For a
  *  short phrase with fewer than 3 bytes we still emit the available shingles. */
 function trigrams(text: string): string[] {
