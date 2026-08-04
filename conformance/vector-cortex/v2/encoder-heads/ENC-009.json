@@ -1,0 +1,1 @@
+{"assertion":"a full VectorSetV1 emits all five heads in stable order with dims 384/128/128/64/32","expected":{"dims":[384,128,128,64,32],"heads":5,"ok":true},"id":"ENC-009","input":{"scenario":"full-set"},"kind":"encoder-heads","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-heads-fixture.schema.json"}

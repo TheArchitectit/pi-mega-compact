@@ -24,6 +24,7 @@ import { fixtures as minhashFixtures, named as minhashNamed, seedsJson } from ".
 import { fixtures as migrationFixtures, named as migrationNamed } from "./migrations.mjs";
 import { fixtures as conformanceFixtures, named as conformanceNamed } from "./conformance.mjs";
 import { fixtures as encoderFixtures, named as encoderNamed } from "./encoder-runtime.mjs";
+import { fixtures as encoderHeadsFixtures, named as encoderHeadsNamed } from "./encoder-heads.mjs";
 
 const REPLAY_DIR = join(V2, "replay");
 const EVENTS_DIR = join(V2, "events");
@@ -33,6 +34,7 @@ const MINHASH_DIR = join(V2, "minhash");
 const MIGRATIONS_DIR = join(V2, "migrations");
 const CONFORMANCE_DIR = join(V2, "conformance");
 const ENCODER_DIR = join(V2, "encoder-runtime");
+const ENCODER_HEADS_DIR = join(V2, "encoder-heads");
 
 export function writeAll() {
   rmSync(V2, { recursive: true, force: true });
@@ -46,6 +48,7 @@ export function writeAll() {
   mkdirSync(MIGRATIONS_DIR, { recursive: true });
   mkdirSync(CONFORMANCE_DIR, { recursive: true });
   mkdirSync(ENCODER_DIR, { recursive: true });
+  mkdirSync(ENCODER_HEADS_DIR, { recursive: true });
 
   const manifestRows = [];
 
@@ -243,13 +246,33 @@ export function writeAll() {
     });
   }
 
+  // Encoder-heads fixtures (VC2B): kind=encoder-heads. expected.ok pins a head
+  // emission with shape facts (heads/dims/width/zero); a false row pins the
+  // exact failure code.
+  for (const fx of [...encoderHeadsFixtures, ...encoderHeadsNamed]) {
+    const bytes = Buffer.from(canonicalJson(fx), "utf8");
+    const rel = `encoder-heads/${fx.id}.json`;
+    writeFileSync(join(ENCODER_HEADS_DIR, `${fx.id}.json`), bytes);
+    manifestRows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: fx.schema,
+      algorithm: "encoder-heads",
+      producer,
+      expected: fx.expected.ok ? "ok" : fx.expected.code,
+      license: "synthetic",
+      ...(fx.expected.mode ? { mode: fx.expected.mode } : {}),
+    });
+  }
+
   const manifest = {
     version: "2",
     viewer: "vector-cortex-conformance.mjs",
     producer: "vector-cortex-gen-fixtures.mjs",
-    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime",
-    owner: "VC0A,VC0B,VC1A,VC0C,VC1B,VC1C,VC2A",
-    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime",
+    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads",
+    owner: "VC0A,VC0B,VC1A,VC0C,VC1B,VC1C,VC2A,VC2B",
+    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads",
     license: "synthetic",
     fixtures: manifestRows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
   };
@@ -269,5 +292,7 @@ export function writeAll() {
     conformanceCount: conformanceFixtures.length,
     encoderCount: encoderFixtures.length,
     encoderNamedCount: encoderNamed.length,
+    encoderHeadsCount: encoderHeadsFixtures.length,
+    encoderHeadsNamedCount: encoderHeadsNamed.length,
   };
 }

@@ -1,0 +1,1 @@
+{"assertion":"the semantic head emits a 384-dim L2-normalized vector","expected":{"dim":384,"head":"semantic","ok":true},"id":"ENC-010","input":{"head":"semantic","scenario":"head"},"kind":"encoder-heads","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-heads-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"the asset-free trigram B emits a 512-dim vector","expected":{"mode":"B","ok":true,"width":512},"id":"ENC-016","input":{"scenario":"trigram-b"},"kind":"encoder-heads","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-heads-fixture.schema.json"}

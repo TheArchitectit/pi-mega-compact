@@ -1,0 +1,1 @@
+{"assertion":"the payloadRouting head emits a 32-dim L2-normalized vector","expected":{"dim":32,"head":"payloadRouting","ok":true},"id":"ENC-014","input":{"head":"payloadRouting","scenario":"head"},"kind":"encoder-heads","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-heads-fixture.schema.json"}

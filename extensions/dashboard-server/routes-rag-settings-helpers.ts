@@ -317,6 +317,12 @@ export const SETTINGS: ReadonlyArray<{
 				"ModelManifestV1 digest-before-load ONNX runtime (opset17/batch1/max512) + asset-free trigram demotion. Asset path assets/vector-cortex/encoder-v1 is immutable/digest-pinned. OFF = mode C, byte-identical to predecessor.",
 				true,
 			),
+			boolDirect(
+				"MEGACOMPACT_VC2B",
+				"VC2B Multi-Head Encoder",
+				"VectorSetV1 five L2-normalized heads (384/128/128/64/32) with head-calibration draft + asset-free trigram B (512d) and lexical C fallbacks, plus the per-head emit seam. OFF = mode C, no per-head vectors emitted, byte-identical predecessor.",
+				true,
+			),
 		],
 	},
 	{

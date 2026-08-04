@@ -163,3 +163,119 @@ export const ENC_IDS: readonly string[] = [
   "ENC-007",
   "ENC-008",
 ];
+
+// ---------------------------------------------------------------------------
+// VC2B — multi-head encoder (VectorSetV1 / HeadCalibrationDraft).
+// ---------------------------------------------------------------------------
+
+/** The five independent projection heads in STABLE order (MODEL_ASSET
+ *  §decision record; VC2B task 2 "stable order"). The array order is the
+ *  normative ordering consumed by consumers: semantic, dependency,
+ *  contradiction, cache-stability, payload-routing. */
+export const ENCODER_HEAD_ORDER = [
+  "semantic",
+  "dependency",
+  "contradiction",
+  "cacheStability",
+  "payloadRouting",
+] as const;
+
+/** Five head names (stable, matching ENCODER_HEAD_ORDER). */
+export type EncoderHeadName = (typeof ENCODER_HEAD_ORDER)[number];
+
+/** The ordered per-head output dimensions: semantic 384, dependency 128,
+ *  contradiction 128, cacheStability 64, payloadRouting 32 (VC2B task 2). */
+export const ENCODER_HEAD_DIMS: Readonly<Record<EncoderHeadName, number>> = {
+  semantic: 384,
+  dependency: 128,
+  contradiction: 128,
+  cacheStability: 64,
+  payloadRouting: 32,
+};
+
+/** Ordered dimension list matching ENCODER_HEAD_ORDER (384/128/128/64/32). */
+export const ENCODER_HEAD_DIM_ORDER: readonly number[] = ENCODER_HEAD_ORDER.map(
+  (h) => ENCODER_HEAD_DIMS[h],
+);
+
+/**
+ * Weighted training losses per head (MODEL_ASSET §data/losses/calibration):
+ * semantic .35, dependency .20, contradiction .20, cache .15, payload .10.
+ * These are normative (VC2B task 3: "losses exactly .35/.20/.20/.15/.10").
+ */
+export const ENCODER_HEAD_LOSS_WEIGHTS: Readonly<Record<EncoderHeadName, number>> = {
+  semantic: 0.35,
+  dependency: 0.2,
+  contradiction: 0.2,
+  cacheStability: 0.15,
+  payloadRouting: 0.1,
+};
+
+/** Sum of the five loss weights must be exactly 1.0 (asserted in tests). */
+export const ENCODER_HEAD_LOSS_SUM = 1.0;
+
+/** Deterministic seed shared by Python/NumPy training and ONNX export (VC2B
+ *  task 3: "seed ... at 1729"). */
+export const ENCODER_SEED = 1729;
+
+/**
+ * A single produced per-head vector. `head` names the head (stable order),
+ * `dim` is that head's declared dimension, `values` is the L2-normalized
+ * Float32Array (all-zero when the raw projection had zero norm — VC2B task 2).
+ */
+export interface HeadVector {
+  readonly head: EncoderHeadName;
+  readonly dim: number;
+  readonly values: Float32Array;
+}
+
+/**
+ * VectorSetV1 — the produced multi-head encoded vectors for one input slice,
+ * in STABLE order (semantic → payloadRouting). This is the VC2B-owned contract
+ * handed to VC3A ("VC3A receives qualified VectorSet or explicit B/C mode").
+ */
+export interface VectorSetV1 {
+  readonly schema: "vector-set-v1";
+  readonly inputTokens: readonly number[];
+  readonly heads: readonly HeadVector[];
+  /** True when every head was L2-normalized (or all-zero on zero norm). */
+  readonly normalized: boolean;
+}
+
+/**
+ * HeadCalibrationDraft — the VC2B-owned calibration draft produced BEFORE
+ * training/export logic (task 1). Calibration is FITTED on the calibration
+ * split only in VC2C (CalibrationV1); this draft records the frozen per-head
+ * losses, seed, dimension order, and the corpus/split digests that training
+ * must reproduce (task 3).
+ */
+export interface HeadCalibrationDraft {
+  readonly schema: "head-calibration-draft-v1";
+  readonly headOrder: readonly EncoderHeadName[];
+  readonly dims: Readonly<Record<EncoderHeadName, number>>;
+  readonly losses: Readonly<Record<EncoderHeadName, number>>;
+  readonly seed: number;
+  /** SHA-256 of the training corpus manifest (task 3, persisted). */
+  readonly corpusDigest: string;
+  /** SHA-256 of the split assignment (train/calibration/test) by
+   *  repository+session group (EVALUATION.md §corpus). */
+  readonly splitDigest: string;
+}
+
+/** Result of selecting a fallback for a head/inference (mode B/C selection).
+ *  B = asset-free trigram; C = token/phrase lexical. */
+export type FallbackSelection =
+  | { ok: true; mode: "B" | "C"; dim: number; width: number }
+  | { ok: false; code: string };
+
+/** The 16 registered VC2B conformance IDs (task 1: "register ENC-009..016"). */
+export const ENC2B_IDS: readonly string[] = [
+  "ENC-009",
+  "ENC-010",
+  "ENC-011",
+  "ENC-012",
+  "ENC-013",
+  "ENC-014",
+  "ENC-015",
+  "ENC-016",
+];

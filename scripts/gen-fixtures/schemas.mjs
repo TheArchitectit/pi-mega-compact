@@ -348,3 +348,44 @@ schemas["schemas/encoder-runtime-fixture.schema.json"] = {
     },
   },
 };
+
+schemas["schemas/encoder-heads-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC2B encoder-heads fixture envelope",
+  description:
+    "Common structure every VC2B encoder-heads fixture validates against. `input.scenario` names the head/fallback emission condition the acceptance test executes against the REAL heads/trigram/lexical producers; `expected` gives the exact verdict (ok) with shape facts (heads/dims/width/zero) or failure code.",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["encoder-heads"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: { type: "string" },
+        mode: { type: "string", enum: ["A", "B", "C"] },
+        head: { type: "string" },
+        dim: { type: "integer" },
+        width: { type: "integer" },
+        heads: { type: "integer" },
+        zero: { type: "boolean" },
+        dims: {
+          type: "array",
+          items: { type: "integer" },
+        },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario"],
+      properties: {
+        scenario: { type: "string" },
+        head: { type: "string" },
+      },
+    },
+  },
+};
