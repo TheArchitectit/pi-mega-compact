@@ -38,6 +38,15 @@ export const VC0B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC0B");
  */
 export const VC1A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC1A");
 
+/**
+ * VC0C — live safety envelope (TriadResult / Breaker / KillDecision + durable
+ * spool). Default ON. `MEGACOMPACT_VC0C=0` disables and is byte-identical to
+ * the predecessor (mode C: selected before provider invocation, unchanged host
+ * transcript, breaker/spool idle and emitting nothing). The single real
+ * consumer is the resilience emit seam + the safety adapter's triad selection.
+ */
+export const VC0C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC0C");
+
 // ---------------------------------------------------------------------------
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker).
 // Rolled numbers for one 60s window; VC0C consumes these at its breaker seam.

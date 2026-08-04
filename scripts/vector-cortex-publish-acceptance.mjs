@@ -99,6 +99,15 @@ function main() {
         name.endsWith(".js") && !name.endsWith(".test.js"),
       )
     : 0;
+  // VC0C added the resilience subtree (types/breaker/breaker-core/emit/spool/
+  // spool-core); mirror its runtime .js so the vc0c-acceptance aggregator's
+  // `./resilience/...` imports resolve at the published dist/vector-cortex/
+  // offset (tests excluded like the ledger subtree to avoid double-runs).
+  const nResilience = existsSync(join(SRC_VECTOR, "resilience"))
+    ? copyTree(join(SRC_VECTOR, "resilience"), join(DEST_VECTOR, "resilience"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
   if (existsSync(join(SRC_CONFIG, "vector-cortex.js"))) {
     mkdirSync(DEST_CONFIG, { recursive: true });
     copyFileSync(
@@ -107,7 +116,7 @@ function main() {
     );
   }
   console.log(
-    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger files`,
+    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience files`,
   );
 }
 
