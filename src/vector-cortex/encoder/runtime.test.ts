@@ -182,6 +182,47 @@ describe("VC2A EncoderRuntime (task 3)", () => {
     }
   });
 
+  test("runtime.mode is a live getter that reflects the latest load/demote outcome", () => {
+    // Construction-time mode is C (unloaded), then tracks A after a verified load
+    // and B/C after a demotion — never a stale construction-time copy.
+    const dir = makeAssetDir();
+    try {
+      const rt = createEncoderRuntime();
+      assert.equal(rt.mode, "C", "unloaded runtime starts at C");
+      const load = rt.load(dir);
+      assert.ok(load.ok);
+      assert.equal(rt.mode, "A", "runtime.mode tracks the verified load");
+      // Now demote to B by a missing-asset load on the same runtime.
+      const empty = tempDir("vc2a-mode-gate");
+      mkdirSync(empty, { recursive: true });
+      try {
+        rt.load(empty);
+        assert.equal(rt.mode, "B", "runtime.mode tracks the demotion to B");
+      } finally {
+        cleanup(empty);
+      }
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("forcedMode is rollback-only: forcedMode C returns C without verifying", () => {
+    const dir = makeAssetDir();
+    try {
+      const rt = createEncoderRuntime({ forcedMode: "C" });
+      const load = rt.load(dir);
+      assert.equal(load.ok, false);
+      if (!load.ok) assert.equal(load.mode, "C");
+      // The forced path bypasses verification entirely: no asset_verified event,
+      // and even a valid dir cannot promote past the forced C.
+      assert.equal(rt.mode, "C");
+      // @ts-expect-error A/B forcing is intentionally not offered (rollback only).
+      createEncoderRuntime({ forcedMode: "A" });
+    } finally {
+      cleanup(dir);
+    }
+  });
+
   test("emits asset_verified on a qualified load and runtime_demoted on demotion", () => {
     const events: string[] = [];
     const reporter = createEncoderReporter((e) => events.push(e));

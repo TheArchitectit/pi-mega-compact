@@ -28,6 +28,15 @@ export type AssetVerifyResult =
   | { ok: true; embeddedBytes: number; onnxDigest: string; tokenizerDigest: string }
   | { ok: false; code: string };
 
+/** True when `p` is a single basename: non-empty, no path separators, no "..",
+ *  no leading dot-segment traversal. Keeps manifest-controlled asset paths
+ *  confined to the asset directory (no path-traversal via join()). */
+function isBasename(p: string): boolean {
+  if (!p || p.length === 0 || p.includes("/") || p.includes("\\")) return false;
+  if (p === "." || p === "..") return false;
+  return true;
+}
+
 /** Digest the on-disk bytes of one asset file; "" on unreadable (truncated). */
 function digestFile(path: string): string | null {
   try {
@@ -64,6 +73,7 @@ function isManifest(m: unknown): m is ModelManifestV1 {
     typeof o.opset === "number" &&
     typeof o.batch === "number" &&
     typeof o.maxTokens === "number" &&
+    typeof o.platform === "string" &&
     !!o.onnx &&
     !!o.tokenizer &&
     typeof o.onnx.path === "string" &&
@@ -97,9 +107,18 @@ export function verifyEncoderAsset(
     return { ok: false, code: ENC_FAIL.MANIFEST_INVALID };
   }
   if (!platform) return { ok: false, code: ENC_FAIL.PLATFORM_UNSUPPORTED };
+  // The manifest's declared platform must match the runtime host (per-platform
+  // asset pinning): a bundle cross-shipped to the wrong arch is not qualified.
+  if (manifest.platform !== platform) return { ok: false, code: ENC_FAIL.PLATFORM_UNSUPPORTED };
   if (manifest.opset !== ENCODER_OPSET) return { ok: false, code: ENC_FAIL.OPSET_INVALID };
   if (manifest.batch !== ENCODER_BATCH) return { ok: false, code: ENC_FAIL.BATCH_INVALID };
   if (manifest.maxTokens > ENCODER_MAX_TOKENS) return { ok: false, code: ENC_FAIL.TOKENS_EXCEEDED };
+
+  // Constrain asset paths to basenames (no separators / no '..') so a forged
+  // manifest cannot read digests from arbitrary paths off the asset dir.
+  if (!isBasename(manifest.onnx.path) || !isBasename(manifest.tokenizer.path)) {
+    return { ok: false, code: ENC_FAIL.MANIFEST_INVALID };
+  }
 
   const onnxPath = join(assetDir, manifest.onnx.path);
   const onnxDigest = digestFile(onnxPath);

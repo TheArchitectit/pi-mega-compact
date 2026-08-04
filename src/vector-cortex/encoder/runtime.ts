@@ -52,18 +52,17 @@ const DEFAULT_HOST: RuntimeHost = {
 export interface CreateEncoderRuntimeOptions {
   readonly reporter?: EncoderReporter;
   readonly host?: Partial<RuntimeHost>;
-  /** Force a specific initial mode (triad tests / rollback to C). */
-  readonly forcedMode?: EncoderMode;
+  /** Force the rollback path: load() always returns mode C without verifying
+   *  any asset (byte-identical to the pre-triad derived pointer). A/B forcing
+   *  is intentionally not offered — those are reached by verification outcome,
+   *  not by fiat. */
+  readonly forcedMode?: "C";
   /** Override the platform detector (tests / cross-platform demotion). */
   readonly platform?: () => ReturnType<typeof detectPlatform>;
 }
 
 function mergeHost(partial?: Partial<RuntimeHost>): RuntimeHost {
   return { ...DEFAULT_HOST, ...partial };
-}
-
-function detectPlatformOr(platform: () => ReturnType<typeof detectPlatform>): ReturnType<typeof detectPlatform> {
-  return platform();
 }
 
 /** A deterministic seeded projection so the mode-A inference path is testable
@@ -112,7 +111,11 @@ export function createEncoderRuntime(
 
   const runtime: EncoderRuntime = {
     schema: "encoder-runtime-v1",
-    mode,
+    // Live getter so `mode` always reflects the latest load/demote outcome
+    // (a plain property would freeze at its construction-time value forever).
+    get mode(): EncoderMode {
+      return mode;
+    },
     load(assetDir: string): EncoderLoadResult {
       if (forced === "C") {
         // Rollback path: mode C restores the prior derived pointer; no emission.
@@ -126,7 +129,7 @@ export function createEncoderRuntime(
       if (manifest === null) {
         verify = { ok: false, code: ENC_FAIL.MANIFEST_INVALID };
       } else {
-        verify = verifyEncoderAsset(assetDir, manifest, detectPlatformOr(plat));
+        verify = verifyEncoderAsset(assetDir, manifest, plat());
       }
 
       if (!verify.ok) {

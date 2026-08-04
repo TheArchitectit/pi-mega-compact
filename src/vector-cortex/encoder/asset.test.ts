@@ -159,6 +159,39 @@ describe("VC2A asset verification (ENC-ASSET-001)", () => {
     }
   });
 
+  test("manifest platform that disagrees with the host demotes ENC_PLATFORM_UNSUPPORTED", () => {
+    const { dir, manifest } = buildAssetDir({});
+    try {
+      // Bundles declare a platform; a cross-shipped one (manifest darwin-arm64
+      // on a linux-x64 host) must NOT load as qualified mode A.
+      const res = verifyEncoderAsset(dir, { ...manifest, platform: "darwin-arm64" as const }, "linux-x64");
+      assert.equal(res.ok, false);
+      if (!res.ok) assert.equal(res.code, ENC_FAIL.PLATFORM_UNSUPPORTED);
+      // Matching platform still verifies.
+      const ok = verifyEncoderAsset(dir, { ...manifest, platform: "linux-x64" as const }, "linux-x64");
+      assert.equal(ok.ok, true);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test("traversal / non-basename asset paths are rejected (ENC_MANIFEST_INVALID)", () => {
+    const { dir, manifest } = buildAssetDir({});
+    try {
+      for (const badPath of ["../../../../etc/passwd", "subdir/model.onnx", "..", "./model.onnx"]) {
+        const badOnnx = {
+          ...manifest,
+          onnx: { ...manifest.onnx, path: badPath },
+        };
+        const res = verifyEncoderAsset(dir, badOnnx, "linux-x64");
+        assert.equal(res.ok, false, `onnx path ${badPath} rejected`);
+        if (!res.ok) assert.equal(res.code, ENC_FAIL.MANIFEST_INVALID);
+      }
+    } finally {
+      cleanup(dir);
+    }
+  });
+
   test("opset != 17 demotes ENC_OPSET_INVALID", () => {
     const { dir, manifest } = buildAssetDir({});
     try {
