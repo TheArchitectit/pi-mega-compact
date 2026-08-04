@@ -16,6 +16,9 @@
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { VC3C_ENABLED } from "./config.js";
+import { Logger } from "./log.js";
+import { routerGenerationInvalidationSeam, type RouterKeyV2 } from "./vector-cortex/topology/query.js";
 import { openStore } from "./store/sqlite/utils.js";
 import { fts5SearchScoped } from "./store/sqlite/fts5-search.js";
 import { listCheckpoints } from "./store/sqlite.js";
@@ -341,6 +344,12 @@ export class TieredRouter {
   clearCache(): void {
     this.cacheMap.clear();
     this.embeddingCache.clear();
+  }
+
+  /** VC3C narrow delegate: exact (session,generation) RouterKeyV2 invalidation.
+   * No routing rewrite; `MEGACOMPACT_VC3C=0` is a strict no-op, byte-identical. */
+  invalidateGeneration(key: RouterKeyV2): void {
+    routerGenerationInvalidationSeam(key, VC3C_ENABLED(), (e, f) => new Logger().info(e, f));
   }
 
   /** Snapshot of current metrics for dashboard / logging. */

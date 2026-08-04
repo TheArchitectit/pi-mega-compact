@@ -12,11 +12,13 @@ import {
 	fetchVectorCortexEvaluation,
 	fetchVectorCortexHealth,
 	fetchVectorCortexLedger,
+	fetchVectorCortexQuery,
 	fetchVectorCortexTopology,
 	resetVectorCortexBreaker,
 	type VectorCortexEvaluationSummary,
 	type VectorCortexHealthCard,
 	type VectorCortexLedgerView,
+	type VectorCortexQueryView,
 	type VectorCortexTopologyView,
 } from "../api/vector-cortex";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -48,6 +50,7 @@ export default function VectorCortexTab(): React.ReactElement {
 	const [resetMsg, setResetMsg] = useState<string | null>(null);
 	const [ledger, setLedger] = useState<VectorCortexLedgerView | null>(null);
 	const [topology, setTopology] = useState<VectorCortexTopologyView | null>(null);
+	const [query, setQuery] = useState<VectorCortexQueryView | null>(null);
 
 	const poll = useCallback(() => {
 		fetchVectorCortexEvaluation()
@@ -64,6 +67,9 @@ export default function VectorCortexTab(): React.ReactElement {
 		});
 		fetchVectorCortexTopology().then(setTopology).catch(() => {
 			/* topology card is best-effort (VC3A) */
+		});
+		fetchVectorCortexQuery().then(setQuery).catch(() => {
+			/* query diagnostics card is best-effort (VC3C) */
 		});
 	}, []);
 
@@ -295,6 +301,27 @@ export default function VectorCortexTab(): React.ReactElement {
 								</div>
 							)}
 						</>
+					)}
+				</CardContent>
+			</Card>
+			<Card>
+				<CardHeader>
+					<div className="flex items-center justify-between">
+						<CardTitle>Topology Query Diagnostics (VC3C)</CardTitle>
+						{query?.enabled ? (
+							<Badge variant="success">ACTIVE</Badge>
+						) : (
+							<Badge variant="danger">OFF</Badge>
+						)}
+					</div>
+				</CardHeader>
+				<CardContent>
+					{!query?.enabled ? (
+						<div className="vc-empty">Query diagnostics unavailable (VC3C off).</div>
+					) : (
+						<div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+							<Metric label="Router version" value={String(query.routerVersion)} />
+						</div>
 					)}
 				</CardContent>
 			</Card>

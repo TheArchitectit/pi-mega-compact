@@ -1,6 +1,6 @@
 # VC4A — Dual-tier shard contract
 
-**Status:** planned | **Depends on:** VC3C | **Phase:** VC4
+**Status:** next | **Depends on:** VC3C | **Phase:** VC4
 **Flag:** `MEGACOMPACT_VC4A`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC4A=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs

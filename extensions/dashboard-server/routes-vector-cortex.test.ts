@@ -514,3 +514,65 @@ describe("/api/vector-cortex/topology (VC3A reader-only)", () => {
 		}
 	});
 });
+
+describe("/api/vector-cortex/query (VC3C reader-only)", () => {
+	test("GET returns reader-only query diagnostics when VC3C is ON", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "vc3c-query-"));
+		const { ROUTER_KEY_VERSION } = await import(
+			"../../src/vector-cortex/topology/query.js"
+		);
+		process.env.MEGACOMPACT_VC3C = "1";
+		try {
+			await withServer("9427", dir, async (port) => {
+				const res = await fetch(
+					`http://localhost:${port}/api/vector-cortex/query`,
+				);
+				assert.equal(res.status, 200);
+				const body = (await res.json()) as {
+					enabled: boolean;
+					routerVersion: number;
+					updatedAt: string;
+				};
+				assert.equal(body.enabled, true);
+				assert.equal(body.routerVersion, ROUTER_KEY_VERSION);
+				assert.equal(body.routerVersion, 2);
+				// Reader-only: this is a flag-status + structural diagnostic, so
+				// the response must never carry payloads/prompts — just the
+				// small fixed shape.
+				const json = JSON.stringify(body);
+				assert.ok(!json.includes('"payload"'), "no payload field");
+				assert.ok(typeof body.updatedAt === "string", "updatedAt is a string");
+			});
+		} finally {
+			delete process.env.MEGACOMPACT_VC3C;
+		}
+	});
+
+	test("GET query reports disabled when VC3C is OFF", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "vc3c-query-off-"));
+		process.env.MEGACOMPACT_VC3C = "0";
+		try {
+			await withServer("9428", dir, async (port) => {
+				const res = await fetch(
+					`http://localhost:${port}/api/vector-cortex/query`,
+				);
+				assert.equal(res.status, 200);
+				const body = (await res.json()) as { enabled: boolean };
+				assert.equal(body.enabled, false);
+			});
+		} finally {
+			delete process.env.MEGACOMPACT_VC3C;
+		}
+	});
+
+	test("GET query rejects non-GET (reader-only path has no mutation)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "vc3c-query-ro-"));
+		await withServer("9429", dir, async (port) => {
+			const res = await fetch(`http://localhost:${port}/api/vector-cortex/query`, {
+				method: "POST",
+			});
+			assert.equal(res.status, 405);
+			assert.deepEqual(await res.json(), { error: "method_not_allowed" });
+		});
+	});
+});

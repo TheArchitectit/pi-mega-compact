@@ -46,4 +46,5 @@ export {
 	handleVectorCortexBreakersReset,
 	handleVectorCortexLedger,
 	handleVectorCortexTopology,
+	handleVectorCortexQuery,
 } from "./routes-vector-cortex.js";

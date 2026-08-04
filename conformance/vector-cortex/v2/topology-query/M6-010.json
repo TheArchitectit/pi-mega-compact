@@ -1,0 +1,1 @@
+{"assertion":"M6 a repeated full migration switches once and is idempotent","expected":{"activeVersion":2,"count":2,"noDuplicates":true,"ok":true},"id":"M6-010","input":{"activeStarting":1,"scenario":"repeat-full","sessions":["s1"]},"kind":"router-generation-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/router-generation-migration.schema.json"}

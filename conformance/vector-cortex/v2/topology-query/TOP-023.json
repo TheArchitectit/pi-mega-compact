@@ -1,0 +1,1 @@
+{"assertion":"fixed-arity length-delimited keys never make one key a prefix of another","expected":{"noCollision":true,"ok":true},"id":"TOP-023","input":{"generation":1,"scenario":"no-prefix-arity","secondSession":"aa","session":"a"},"kind":"topology-query","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/topology-query-fixture.schema.json"}

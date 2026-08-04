@@ -1,0 +1,1 @@
+{"assertion":"encoded keys order by unsigned bytes so generation 2 < 3 < 256","expected":{"ok":true},"id":"TOP-022","input":{"activeGeneration":3,"generation":2,"scenario":"unsigned-byte-order","session":"s1"},"kind":"topology-query","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/topology-query-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"M6 interruption before switch leaves the legacy pointer active","expected":{"activeVersion":1,"halted":true,"ok":true},"id":"M6-008","input":{"activeStarting":1,"scenario":"halt-before-switch","sessions":["s1"]},"kind":"router-generation-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/router-generation-migration.schema.json"}

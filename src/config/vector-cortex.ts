@@ -121,6 +121,19 @@ export const VC3A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC3A");
  */
 export const VC3B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC3B");
 
+/**
+ * VC3C — topology query + router invalidation (TopologyQueryV1 / RouterKeyV2,
+ * M6 router-generation-v2 migration).
+ * Default ON. `MEGACOMPACT_VC3C=0` disables and is byte-identical to the
+ * predecessor (mode C: no length-delimited router key, no generation
+ * invalidation, zero `vector_cortex_router_generation_invalidated` /
+ * `vector_cortex_topology_query_demoted` emissions; the predecessor tiered
+ * router keying is unchanged). The real consumers are the topology query seam
+ * (query.ts), the M6 router-generation-v2 migration seam, and the reader-only
+ * dashboard topology query diagnostic view.
+ */
+export const VC3C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC3C");
+
 // ---------------------------------------------------------------------------
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker).
 // Rolled numbers for one 60s window; VC0C consumes these at its breaker seam.

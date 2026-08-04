@@ -1,0 +1,1 @@
+{"assertion":"M6 a partial copy reports M6_COPY_PARTIAL","expected":{"code":"M6_COPY_PARTIAL","ok":false},"id":"M6-004","input":{"activeStarting":1,"scenario":"partial-copy","sessions":["s1"]},"kind":"router-generation-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/router-generation-migration.schema.json"}
