@@ -33,7 +33,7 @@
 | --- | --- | --- |
 | VC0 | measured replay and universal safety envelope | ✅ done (VC0A, VC0B, VC0C) |
 | VC1 | exact v2 ledger, compatibility journal, conformance | ✅ done (VC1A, VC1B, VC1C) |
-| VC2 | qualified learned A plus live B/C | planned |
+| VC2 | qualified learned A plus live B/C | 🟡 in progress (VC2A ✅, VC2B next) |
 | VC3 | deterministic capability-gated topology | planned |
 | VC4 | byte-faithful reconstruction and mandatory closure | planned |
 | VC5 | validated DAG live rollout | planned |

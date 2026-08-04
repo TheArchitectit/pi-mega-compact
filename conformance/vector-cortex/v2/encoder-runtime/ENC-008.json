@@ -1,0 +1,1 @@
+{"assertion":"an allocator failure after verification demotes with ENC_ASSET_UNREADABLE","expected":{"code":"ENC_ASSET_UNREADABLE","ok":false},"id":"ENC-008","input":{"scenario":"allocator-fail"},"kind":"encoder-runtime","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-runtime-fixture.schema.json"}
