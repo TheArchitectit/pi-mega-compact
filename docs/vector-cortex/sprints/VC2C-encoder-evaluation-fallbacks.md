@@ -1,6 +1,6 @@
 # VC2C — Qualify encoder and package fallbacks
 
-**Status:** planned | **Depends on:** VC2B | **Phase:** VC2
+**Status:** next | **Depends on:** VC2B | **Phase:** VC2
 **Flag:** `MEGACOMPACT_VC2C`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC2C=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs

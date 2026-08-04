@@ -1,0 +1,1 @@
+{"assertion":"the dependency head emits a 128-dim L2-normalized vector","expected":{"dim":128,"head":"dependency","ok":true},"id":"ENC-011","input":{"head":"dependency","scenario":"head"},"kind":"encoder-heads","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-heads-fixture.schema.json"}

@@ -270,6 +270,8 @@ export const SETTINGS: ReadonlyArray<{
 			str("MEGACOMPACT_RAPTOR_MODEL", "RAPTOR Summary Model", "Ollama model for cluster summarization (empty = extractive)", ""),
 			str("MEGACOMPACT_RAPTOR_URL", "RAPTOR Ollama URL", "Ollama endpoint for RAPTOR summarization", "http://127.0.0.1:11434"),
 			num("MEGACOMPACT_EMBED_CACHE", "Embed Cache Size", "Embedding cache entries (0 = disabled)", 256, 0, 10000),
+			num("MEGACOMPACT_EMBEDDING_BATCH_TOKENS", "Embedding Batch Tokens", "Oversized-prompt chunking limit (tokens) for the BYO localhost embedder; text above this is chunked + mean-pooled", 2048, 64, 8192),
+			num("MEGACOMPACT_EMBEDDING_CHARS_PER_TOKEN", "Embedding Chars per Token", "Estimated characters per token used for embedder chunking size", 4, 1, 32),
 		],
 	},
 	{
@@ -315,6 +317,12 @@ export const SETTINGS: ReadonlyArray<{
 				"MEGACOMPACT_VC2A",
 				"VC2A Offline Model Runtime",
 				"ModelManifestV1 digest-before-load ONNX runtime (opset17/batch1/max512) + asset-free trigram demotion. Asset path assets/vector-cortex/encoder-v1 is immutable/digest-pinned. OFF = mode C, byte-identical to predecessor.",
+				true,
+			),
+			boolDirect(
+				"MEGACOMPACT_VC2B",
+				"VC2B Multi-Head Encoder",
+				"VectorSetV1 five L2-normalized heads (384/128/128/64/32) with head-calibration draft + asset-free trigram B (512d) and lexical C fallbacks, plus the per-head emit seam. OFF = mode C, no per-head vectors emitted, byte-identical predecessor.",
 				true,
 			),
 		],

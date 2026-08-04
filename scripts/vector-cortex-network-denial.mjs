@@ -119,7 +119,18 @@ const MODES = {
       if (!encLoad.ok || encLoad.mode !== "A") throw new Error("mode A: encoder did not select qualified ONNX");
       const encInf = encRt.infer({ tokens: Array.from({ length: 128 }, (_, k) => k) });
       if (!encInf.ok || encInf.semantic.length !== 384) throw new Error("mode A: encoder inference failed under denial");
-      return `roundtrip=${bytes.length} breaker=${bk.snapshot("net").state} vc1c=${sigDigest} vc2a=A`;
+
+      // ── VC2B multi-head encoder (mode A): produce the five heads + 512d
+      //     trigram under full network denial — all in-process hashing, zero
+      //     egress. The heads/trigram never touch the asset or calibration. ──
+      const { encodeVectorSet } = await loadDist("src/vector-cortex/encoder/heads.js");
+      const { embedTrigram512 } = await loadDist("src/vector-cortex/encoder/trigram.js");
+      const vset = encodeVectorSet([1, 2, 3, 4, 5]);
+      if (vset.heads.length !== 5 || vset.heads[0].dim !== 384) throw new Error("mode A: vc2b heads failed under denial");
+      const tb = embedTrigram512("network-denial mode A vc2b");
+      if (tb.length !== 512) throw new Error("mode A: vc2b trigram failed under denial");
+      const headsNote = `${vset.heads.length}heads`;
+      return `roundtrip=${bytes.length} breaker=${bk.snapshot("net").state} vc1c=${sigDigest} vc2a=A vc2b=${headsNote}`;
     }
     // Host is NOT the bundle's pinned platform (cross-platform Q02): the bundle
     // correctly demotes to trigram B via PLATFORM_UNSUPPORTED — still zero
@@ -186,7 +197,15 @@ const MODES = {
     if (encLoadB.ok || encLoadB.code !== "ENC_PLATFORM_UNSUPPORTED" || encLoadB.mode !== "B") {
       throw new Error(`mode B: encoder did not demote to trigram B (${encLoadB.code}/${encLoadB.mode})`);
     }
-    return `digest=${b.bytesDigest.slice(0, 8)} spool=committed vc1c=${indDigest} vc2a=B`;
+
+    // ── VC2B mode B: 512d trigram + token/phrase lexical C under denial, with
+    //     the learned asset absent — both independent, zero egress. ──
+    const { embedTrigram512 } = await loadDist("src/vector-cortex/encoder/trigram.js");
+    const { embedLexical } = await loadDist("src/vector-cortex/encoder/lexical.js");
+    const tb = embedTrigram512("network-denial mode B vc2b trigram");
+    const lx = embedLexical(["network", "denial", "mode", "b", "vc2b"]);
+    if (tb.length !== 512 || lx.length !== 256) throw new Error("mode B: vc2b trigram/lexical failed under denial");
+    return `digest=${b.bytesDigest.slice(0, 8)} spool=committed vc1c=${indDigest} vc2a=B vc2b=B`;
   },
 
   /** C: predecessor paths unchanged (VC1C flag-OFF byte-identical). */

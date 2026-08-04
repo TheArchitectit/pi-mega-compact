@@ -1,0 +1,1 @@
+{"assertion":"all five output shapes match ordered dims 384/128/128/64/32","expected":{"dims":[384,128,128,64,32],"heads":5,"ok":true},"id":"ENC-HEAD-001","input":{"scenario":"full-set"},"kind":"encoder-heads","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-heads-fixture.schema.json"}

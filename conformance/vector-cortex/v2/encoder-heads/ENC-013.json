@@ -1,0 +1,1 @@
+{"assertion":"the cacheStability head emits a 64-dim L2-normalized vector","expected":{"dim":64,"head":"cacheStability","ok":true},"id":"ENC-013","input":{"head":"cacheStability","scenario":"head"},"kind":"encoder-heads","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-heads-fixture.schema.json"}

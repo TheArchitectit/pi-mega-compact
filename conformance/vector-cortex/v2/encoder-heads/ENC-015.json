@@ -1,0 +1,1 @@
+{"assertion":"empty input produces finite all-zero vectors for every head","expected":{"heads":5,"ok":true,"zero":true},"id":"ENC-015","input":{"scenario":"zero-input"},"kind":"encoder-heads","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-heads-fixture.schema.json"}

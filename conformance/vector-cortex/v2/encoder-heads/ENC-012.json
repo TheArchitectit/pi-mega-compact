@@ -1,0 +1,1 @@
+{"assertion":"the contradiction head emits a 128-dim L2-normalized vector","expected":{"dim":128,"head":"contradiction","ok":true},"id":"ENC-012","input":{"head":"contradiction","scenario":"head"},"kind":"encoder-heads","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/encoder-heads-fixture.schema.json"}

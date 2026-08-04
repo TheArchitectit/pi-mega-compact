@@ -80,6 +80,16 @@ export const VC1C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC1C");
  */
 export const VC2A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC2A");
 
+/**
+ * VC2B — multi-head encoder (VectorSetV1 / HeadCalibrationDraft).
+ * Default ON. `MEGACOMPACT_VC2B=0` disables and is byte-identical to the
+ * predecessor (the encoder emits no per-head vectors and no fallback-selected
+ * event; the trigram/lexical paths themselves are unchanged and are the
+ * predecessor's mode-B/C producers). The real consumers are the encoder-heads
+ * emit seam and the multi-head encoder producers (heads/trigram/lexical).
+ */
+export const VC2B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC2B");
+
 // ---------------------------------------------------------------------------
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker).
 // Rolled numbers for one 60s window; VC0C consumes these at its breaker seam.

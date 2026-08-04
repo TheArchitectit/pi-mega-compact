@@ -1,0 +1,15 @@
+{
+  "schema": "train-config-v1",
+  "seed": 1729,
+  "epochs": 1,
+  "headOrder": ["semantic", "dependency", "contradiction", "cacheStability", "payloadRouting"],
+  "losses": {
+    "semantic": 0.35,
+    "dependency": 0.2,
+    "contradiction": 0.2,
+    "cacheStability": 0.15,
+    "payloadRouting": 0.1
+  },
+  "groups": {},
+  "note": "corpus records are collected under VC2B; groups remain empty until the corpus manifest is populated"
+}
