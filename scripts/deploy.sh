@@ -288,10 +288,10 @@ fi
 RELEASE_NOTES="${RELEASE_NOTES:-(no commit notes extracted)}"
 if command -v gh >/dev/null 2>&1; then
 	echo "[deploy] creating GitHub release $TAG with notes"
-	gh release create "$TAG" --target "$(git rev-list -n 1 "$TAG")" \
+	gh release create "$TAG" \
 		--title "v$NEW_VERSION" \
 		--notes "$(printf '## What changed\n\n%s\n\n**Install:** \`pi update --extensions\`' "$RELEASE_NOTES")" \
-		2>/dev/null || echo "[deploy] WARN: gh release create failed (gh not authenticated or release exists) — skipping"
+		|| echo "[deploy] WARN: gh release create failed (gh not authenticated or release exists) — skipping"
 else
 	echo "[deploy] WARN: gh CLI not installed — skipping GitHub release creation. Tag $TAG is pushed."
 fi
