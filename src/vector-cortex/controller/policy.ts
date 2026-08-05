@@ -176,7 +176,7 @@ export function evaluatePolicy(input: PolicyInput): PolicyDecisionV1 {
     action: PRESSURE_ACTION[pressure],
     budget,
     pressure,
-    reason: reasonFor(pressure, input.requestedBudget, budget, bounds),
+    reason: reasonFor(pressure, adjusted, budget, bounds),
     ts: input.ts,
   };
 }

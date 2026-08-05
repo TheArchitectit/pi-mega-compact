@@ -1,7 +1,7 @@
 /**
  * dashboard-server/routes-rag-settings-vector-cortex.ts — Vector Cortex SETTINGS.
  *
- * The VC0A..VC5C chain flag inventory, split out of routes-rag-settings-helpers.ts
+ * The VC0A..VC8C chain flag inventory, split out of routes-rag-settings-helpers.ts
  * to keep that file under the 400-line extensions/ soft limit. Every VC flag is a
  * user-visible dashboard toggle (never in EXCLUDED_SETTINGS) per the chain spec,
  * and each carries the long description the Setup panel renders as help text.
