@@ -77,10 +77,12 @@ export default function VectorCortexTab(): React.ReactElement {
 		<div className="flex flex-col gap-4">
 			<div className="flex items-center gap-2">
 				<h2 className="text-lg font-semibold">Vector Cortex Evaluation</h2>
-				{data.enabled ? (
-					<Badge variant="warning">OBSERVER PENDING (A)</Badge>
-				) : (
+				{!data.enabled ? (
 					<Badge variant="danger">MODE C (OFF)</Badge>
+				) : data.samples === 0 ? (
+					<Badge variant="warning">OBSERVER (A) — NO SAMPLES YET</Badge>
+				) : (
+					<Badge variant="success">OBSERVER (A) — {data.samples} SAMPLES</Badge>
 				)}
 			</div>
 

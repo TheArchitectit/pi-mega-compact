@@ -97,7 +97,7 @@ export default function EmbedderSetup(): React.ReactElement {
 			);
 	}, []);
 
-	const applyEmbedder = useCallback((embedder: "ollama" | "llama" | "trigram" | "custom", url?: string) => {
+	const applyEmbedder = useCallback((embedder: "ollama" | "llama" | "trigram" | "custom" | "onnx", url?: string) => {
 		setConfiguring(embedder);
 		setConfigError(null);
 		setConfigResult(null);
@@ -369,6 +369,13 @@ export default function EmbedderSetup(): React.ReactElement {
 								{configuring === "llama" ? "Writing..." : "Use llama.cpp"}
 							</button>
 							<button
+								style={{ ...styles.button, opacity: detect.onnx?.installed ? 1 : 0.4 }}
+								onClick={() => applyEmbedder("onnx")}
+								disabled={!detect.onnx?.installed || configuring !== null}
+							>
+								{configuring === "onnx" ? "Writing..." : "Use ONNX"}
+							</button>
+							<button
 								style={{ ...styles.button, background: "#444" }}
 								onClick={() => applyEmbedder("trigram")}
 								disabled={configuring !== null}
@@ -458,9 +465,9 @@ export default function EmbedderSetup(): React.ReactElement {
 						the URL accordingly.
 					</li>
 					<li>
-						<strong>ONNX Runtime:</strong> Install{" "}
-						<code>onnxruntime-node</code> in the project root. Not yet
-						integrated — see docs for manual setup.
+						<strong>ONNX Runtime:</strong> Run a local text-embeddings
+						server (e.g. TEI) and click <strong>Use ONNX</strong> above.
+						Default URL: <code>http://localhost:8081/v1/embeddings</code>.
 					</li>
 				</ul>
 			</div>

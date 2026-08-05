@@ -67,9 +67,10 @@ export interface SetupDetectResponse {
 export interface SetupConfigureRequest {
   /** Which embedder to configure. "trigram" clears the URL (uses built-in).
    *  "custom" writes a user-supplied URL and opts in to non-loopback endpoints
-   *  (sets MEGACOMPACT_ALLOW_REMOTE_EMBEDDER=1) for third-party / hosted APIs. */
-  readonly embedder: "ollama" | "llama" | "trigram" | "custom";
-  /** Override URL (required for "custom"; optional default for ollama/llama). */
+   *  (sets MEGACOMPACT_ALLOW_REMOTE_EMBEDDER=1) for third-party / hosted APIs.
+   *  "onnx" points at a local ONNX text-embeddings-inference server. */
+  readonly embedder: "ollama" | "llama" | "trigram" | "custom" | "onnx";
+  /** Override URL (required for "custom"; optional defaults for ollama/llama/onnx). */
   readonly url?: string;
 }
 
