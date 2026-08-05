@@ -165,11 +165,13 @@ export interface DashboardSnapshot {
 }
 
 export class Dashboard {
+  private stateDir: string;
   private snapshotPath: string;
   private eventsPath: string;
 
   constructor(stateDir: string) {
-    if (!existsSync(stateDir)) mkdirSync(stateDir, { recursive: true });
+    this.stateDir = stateDir;
+    this.ensureDir();
     this.snapshotPath = join(stateDir, "dashboard.json");
     this.eventsPath = join(stateDir, "events.log");
   }
@@ -182,16 +184,33 @@ export class Dashboard {
     return this._lastWriteMs;
   }
 
-  /** Write a full state snapshot (atomically replaces previous). */
-  snapshot(data: DashboardSnapshot): void {
-    const t = performance.now();
-    writeFileSync(this.snapshotPath, JSON.stringify(data, null, 2) + "\n");
-    this._lastWriteMs = performance.now() - t;
+  /** Re-create the state dir if it was removed since construction. */
+  private ensureDir(): void {
+    if (!existsSync(this.stateDir)) mkdirSync(this.stateDir, { recursive: true });
   }
 
-  /** Append a timestamped JSONL event line. */
+  /** Write a full state snapshot (atomically replaces previous). Non-fatal: a
+   *  deleted/unwritable dir must never break the agent loop. */
+  snapshot(data: DashboardSnapshot): void {
+    try {
+      this.ensureDir();
+      const t = performance.now();
+      writeFileSync(this.snapshotPath, JSON.stringify(data, null, 2) + "\n");
+      this._lastWriteMs = performance.now() - t;
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  /** Append a timestamped JSONL event line. Non-fatal: a deleted/unwritable
+   *  dir must never break the agent loop. */
   event(type: string, data: Record<string, unknown>): void {
-    const line = JSON.stringify({ ts: new Date().toISOString(), type, ...data });
-    appendFileSync(this.eventsPath, line + "\n");
+    try {
+      this.ensureDir();
+      const line = JSON.stringify({ ts: new Date().toISOString(), type, ...data });
+      appendFileSync(this.eventsPath, line + "\n");
+    } catch {
+      /* non-fatal */
+    }
   }
 }
