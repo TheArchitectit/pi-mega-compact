@@ -215,3 +215,70 @@ describe("VC6C authority-outage frontier", () => {
     assert.equal(plans[0]!.range.seqEnd, 10n);
   });
 });
+
+/**
+ * The two sprint-level invariants, asserted directly rather than inferred from
+ * the per-seam tests above: authority is never written by a rebuild, and a
+ * repeated heal cycle converges instead of flapping.
+ */
+describe("VC6C sprint invariants", () => {
+  test("a full rebuild+switch cycle never mutates authority", () => {
+    // Frozen so a mutation would be observable as a changed field, and deep-equal
+    // against a pristine copy so ANY write (not just the high-water) is caught.
+    const state: RepairState = Object.freeze({
+      subsystem: "topology",
+      derivedHighWater: 8n,
+      authorityHighWater: 10n,
+      lastRebuildAt: null,
+      generation: 1,
+      mode: "A",
+      authorityFrozen: false,
+    });
+    const before = { ...state };
+
+    const plans = detectGaps([state], 1_000_000n);
+    assert.equal(plans.length, 1);
+    const { result, pointer } = rebuildAndSwitch(
+      input("healed", { generation: plans[0]!.generation }),
+      state.generation,
+    );
+
+    assert.equal(result.ok, true, "the rebuild itself succeeded");
+    assert.equal(pointer.switched, true, "and the pointer advanced");
+    // The authority frontier is READ-ONLY input: healing derived state must never
+    // write back into the durable ledger's high-water.
+    assert.deepEqual({ ...state }, before, "authority/state untouched by the cycle");
+    assert.equal(state.authorityHighWater, 10n);
+  });
+
+  test("successful pointer generations strictly increase and do not oscillate", () => {
+    // Drive three consecutive heal cycles. The pointer must climb 1 -> 2 -> 3 -> 4
+    // and never revisit a generation it has already served.
+    const seen: number[] = [];
+    let live = 1;
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      const next = live + 1;
+      const { result, pointer } = rebuildAndSwitch(
+        input(`generation-${next}`, { generation: next }),
+        live,
+      );
+      assert.equal(result.ok, true, `cycle ${cycle} rebuilt`);
+      assert.equal(pointer.switched, true, `cycle ${cycle} switched`);
+      assert.ok(pointer.generation > live, `cycle ${cycle} strictly increased`);
+      live = pointer.generation;
+      seen.push(live);
+    }
+    assert.deepEqual(seen, [2, 3, 4]);
+    assert.equal(new Set(seen).size, seen.length, "no generation is ever revisited");
+
+    // A failed cycle must not un-heal: the pointer stays where it was (no flap
+    // back to an earlier generation), which is what "no oscillation" means here.
+    const corrupt = rebuildAndSwitch(
+      input("good", { generation: live + 1, expectedDigest: hexOf("different") }),
+      live,
+    );
+    assert.equal(corrupt.result.ok, false);
+    assert.equal(corrupt.pointer.switched, false);
+    assert.equal(corrupt.pointer.generation, live, "failure holds the line, never rolls back");
+  });
+});
