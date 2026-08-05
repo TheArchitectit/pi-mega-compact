@@ -122,6 +122,18 @@ export const SETTINGS: ReadonlyArray<SettingGroup> = [
 				"Tailwind + shadcn visual design (sidebar, glass panels)",
 				true,
 			),
+			boolDirect(
+				"MEGACOMPACT_MESSAGE_SEPARATION",
+				"Message Separation (P2)",
+				"PLAN_V2: split conversation thread from tool results to grow stable cache prefix",
+				false,
+			),
+			boolDirect(
+				"MEGACOMPACT_CACHE_STRIPING",
+				"Cache Striping (P3)",
+				"PLAN_V2: order stable context by stability score so durable chunks lead the prompt",
+				false,
+			),
 		],
 	},
 	{

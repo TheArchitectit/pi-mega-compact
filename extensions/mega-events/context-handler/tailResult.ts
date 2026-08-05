@@ -12,6 +12,16 @@ import type { MegaConfig } from "../../mega-config.js";
 import { stagedForTail, withRecallTail } from "../recall-tail.js";
 import { buildSeparatedPrompt, buildCacheOptimizedPrompt } from "../separated-prompt.js";
 import { messageContentText } from "./messageText.js";
+import { computeContentDigest } from "../../../src/dedup/digest.js";
+
+// P2.5: per-runtime cross-turn prompt-prefix footprints for stable-prefix
+// measurement. WeakMap keyed by MegaRuntime so the entry dies with the runtime
+// (same lifecycle as a session boundary in practice — a new session re-creates
+// the pipeline over the same runtime, but the prior turn's fingerprints must
+// still be visible for cross-turn compare; a fresh runtime has an empty map and
+// the sessionId guard below blocks cross-session compare).
+type TurnPrefix = { sessionId: string; turn: number; fingerprints: string[] };
+const lastTurnPrefix = new WeakMap<MegaRuntime, TurnPrefix>();
 
 /**
  * Build the tail injection closure. Returns undefined when nothing is staged
@@ -39,23 +49,54 @@ export function buildTailResult(
 		} else if (config.messageSeparation) {
 			result = buildSeparatedPrompt(result);
 		}
-		// P2.5: log prefix stability (fire-and-forget, non-fatal).
-		// tailResult is sync, so use .then().catch() on the dynamic import.
+		// P2.5: log cross-turn stable-prefix length (cache-hit proxy). After the
+		// prompt is built (separated or cache-optimized), fingerprint each leading
+		// message and count how many are byte-identical to the previous turn's
+		// prompt, in order. A high stablePrefix = the provider KV-cache prefix is
+		// re-used (cache hit). Fire-and-forget + non-fatal.
+		//
+		// tailResult may run several times per turn (gate return / replay /
+		// debounce / live-trim), so the sessionId+turn guard measures once per
+		// turn — compare against the PREVIOUS turn's stored footprint, then store
+		// this turn's for the next comparison. Cross-session compares are skipped
+		// via the stored sessionId check (belt-and-suspenders; the WeakMap entry
+		// is scoped to this runtime, which owns the session).
 		if (result.length > 1) {
-			import("../../../src/cache-stripe-impl.js").then(({ computeStabilityScore }) => {
-				const stableScore = computeStabilityScore(
-					{ content: messageContentText(result[0] ?? result[0]), chunkId: "prefix", accessCount: 0, lastAccessedAt: 0 },
-					result.slice(0, 2).map((m) => ({ content: messageContentText(m), chunkId: "prefix", accessCount: 0, lastAccessedAt: 0 })),
-				);
-				runtime.logger.info("prefix_stability", {
-					stableScore: Number.isFinite(stableScore) ? stableScore : 0,
-					prefixMessages: result.length,
-					separation: config.messageSeparation ? "v2" : "off",
-					striping: config.cacheStriping ? "v3" : "off",
-				});
-			}).catch(() => {
+			try {
+				const sessionId = runtime.rt.sessionId;
+				const turn = runtime.currentTurn;
+				const prev = lastTurnPrefix.get(runtime);
+				const isNewTurn =
+					!prev || prev.sessionId !== sessionId || prev.turn !== turn;
+				if (isNewTurn) {
+					const fingerprints = result.map((m) =>
+						// Role prefix disambiguates identical text across variants
+						// (roles are a fixed enum — no realistic fingerprint collision).
+						computeContentDigest(`${m.role}|${messageContentText(m)}`).contentHash,
+					);
+					let stablePrefix = 0;
+					if (prev && prev.sessionId === sessionId) {
+						for (let i = 0; i < fingerprints.length; i++) {
+							if (
+								i >= prev.fingerprints.length ||
+								prev.fingerprints[i] !== fingerprints[i]
+							) {
+								break;
+							}
+							stablePrefix++;
+						}
+					}
+					lastTurnPrefix.set(runtime, { sessionId, turn, fingerprints });
+					runtime.logger.info("prefix_stability", {
+						stablePrefix,
+						totalMessages: result.length,
+						separation: config.messageSeparation ? "v2" : "off",
+						striping: config.cacheStriping ? "v3" : "off",
+					});
+				}
+			} catch {
 				// Non-fatal: stability logging is best-effort.
-			});
+			}
 		}
 		return { messages: result };
 	};

@@ -50,9 +50,12 @@ export async function persistEpochAndMaintain(
 	config: MegaConfig,
 	ran: { result: CompactResult },
 ): Promise<void> {
-	// S27 DB-mirror: write checkpoint_epoch with deterministic nonce.
-	// This makes the cache key stable across identical compactions.
-	if (config.dbMirror) {
+	// PLAN_V2 cache-striping epoch row. buildCacheOptimizedPrompt's stripe
+	// lookup reads the most-recent checkpoint_epochs row, so emit it whenever
+	// PLAN_V2 flags are live. Separate from the legacy dbMirror block below so
+	// PLAN_V2 can run with dbMirror OFF (flag-on is a genuine additive; flag-OFF
+	// = byte-identical to the predecessor, since this block no-ops then).
+	if (config.dbMirror || config.messageSeparation || config.cacheStriping) {
 		try {
 			const db = openStore(runtime.currentStateDir);
 			const cpId = ran.result.checkpointId ?? `epoch-${Date.now()}`;
@@ -67,6 +70,22 @@ export async function persistEpochAndMaintain(
 				createdAt: Date.now(),
 			};
 			writeCheckpointEpoch(db, epoch);
+		} catch (e) {
+			runtime.logger.warn("planv2-epoch-fail", { error: String(e) });
+		}
+	}
+
+	// S27 DB-mirror downstream: stamp turns, rebuild wiki, seed topics, dedup.
+	// Remains on `config.dbMirror` only — these are DB-mirror maintenance and
+	// must NOT run for PLAN_V2-only configurations.
+	if (config.dbMirror) {
+		try {
+			const db = openStore(runtime.currentStateDir);
+			const cpId = ran.result.checkpointId ?? `epoch-${Date.now()}`;
+			// epoch + writeCheckpointEpoch moved to the PLAN_V2 block above (it
+			// gates the wider set of flags); reuse epochIdFor(cpId) here so the
+			// stamps below land in the same epoch row.
+			const epochId = epochIdFor(cpId);
 			// S50B: link this session's turns to the epoch that just compacted
 			// them (compression-by-conversation-epoch metrics). Isolated-store
 			// only; best-effort + non-fatal.
@@ -74,7 +93,7 @@ export async function persistEpochAndMaintain(
 				stampTurnsEpochFor(
 					config,
 					runtime.rt.sessionId,
-					epoch.epochId,
+					epochId,
 					runtime.currentStateDir,
 				);
 			} catch {

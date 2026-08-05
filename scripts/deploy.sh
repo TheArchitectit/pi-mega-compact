@@ -265,6 +265,31 @@ npm publish
 
 echo "[deploy] published v$NEW_VERSION to npm."
 
+# --- 8a. merge release branch into master -------------------------------------
+# After a successful publish, merge the release branch into master so that
+# master always tracks the latest published code. Non-fatal: if master is
+# behind or has conflicts, warn and skip — the npm publish is already done.
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [[ "$CURRENT_BRANCH" != "master" ]]; then
+	echo "[deploy] merging $CURRENT_BRANCH → master"
+	git fetch origin master 2>/dev/null || true
+	git checkout master
+	if git merge --no-edit "$CURRENT_BRANCH" 2>/dev/null; then
+		git push origin master
+		echo "[deploy] merged + pushed master."
+	else
+		echo "[deploy] WARN: merge conflicts on master — resolving with release branch versions."
+		git checkout --theirs package.json package-lock.json 2>/dev/null || true
+		git add package.json package-lock.json
+		git commit --no-edit 2>/dev/null || true
+		git push origin master
+		echo "[deploy] merged (conflict-resolved) + pushed master."
+	fi
+	git checkout "$CURRENT_BRANCH"
+else
+	echo "[deploy] already on master — skipping merge."
+fi
+
 # --- 8b. create GitHub release with notes ------------------------------------
 # Now runs AFTER npm publish (the release announces the published version).
 # The tag is already pushed in step 7 — this just creates the GitHub release

@@ -17,6 +17,21 @@ import type { MegaConfig } from "../../mega-config.js";
 import { messageContentText } from "./messageText.js";
 
 /**
+ * Best-effort tool_call_id for the tool_results insert. The toolResult variant
+ * carries a top-level toolCallId (read via an `unknown`-narrowed cast — never
+ * reach into `.content`, which is variant-specific and requires narrowing).
+ * bashExecution has no toolCallId, so fall back to a stable synthetic id keyed
+ * on (turn, index) to satisfy the NOT NULL column. No `any` (PREVENT-011).
+ */
+function toolCallIdOf(m: AgentMessage, fallback: string): string {
+	if (m.role === "toolResult") {
+		const id = (m as unknown as { toolCallId?: unknown }).toolCallId;
+		if (typeof id === "string" && id.length > 0) return id;
+	}
+	return fallback;
+}
+
+/**
  * Append incoming messages to the DB mirror (raw_transcript + thread/tool
  * tables) and the v2 ledger. Gated on config.dbMirror for the mirror; the VC1B
  * ledger append is flag-gated inside appendMessagesToLedger (flag-OFF opens no
@@ -49,25 +64,42 @@ export function appendMirrorAndLedger(
 			// separation (buildSeparatedPrompt / buildCacheOptimizedPrompt in
 			// tailResult) is sufficient for the prompt-construction path;
 			// these DB writes persist the split for post-hoc analysis, dashboard
-			// queries, and future readers. Non-fatal — failure here never breaks
-			// the agent loop (PREVENT-PI-004: zero network, local SQLite only).
-			{
+			// queries, and future readers. Gated on (messageSeparation ||
+			// cacheStriping) so flag-OFF remains byte-identical to the
+			// predecessor — when both flags are OFF the live prompt is never
+			// separated, and growing these tables would be dead state.
+			// Non-fatal — failure here never breaks the agent loop
+			// (PREVENT-PI-004: zero network, local SQLite only).
+			if (config.messageSeparation || config.cacheStriping) {
 				const sid = runtime.rt.sessionId;
 				const turn = runtime.currentTurn;
 				const now = Date.now();
 				const threadStmt = db.prepare(
 					"INSERT OR IGNORE INTO conversation_thread (conversation_id, role, content, turn_index, timestamp) VALUES (?, ?, ?, ?, ?)",
 				);
+				// Schema (plan-v2.ts) is (conversation_id, tool_call_id,
+				// tool_result, turn_index, timestamp) — NOT role/content.
 				const toolStmt = db.prepare(
-					"INSERT OR IGNORE INTO tool_results (conversation_id, role, content, turn_index, timestamp) VALUES (?, ?, ?, ?, ?)",
+					"INSERT OR IGNORE INTO tool_results (conversation_id, tool_call_id, tool_result, turn_index, timestamp) VALUES (?, ?, ?, ?, ?)",
 				);
-				for (const m of messages) {
+				const toolHas = db.prepare(
+					"SELECT 1 FROM tool_results WHERE conversation_id = ? AND turn_index = ? AND tool_call_id = ? AND tool_result = ? LIMIT 1",
+				);
+				const threadHas = db.prepare(
+					"SELECT 1 FROM conversation_thread WHERE conversation_id = ? AND turn_index = ? AND role = ? AND content = ? LIMIT 1",
+				);
+				for (const [idx, m] of messages.entries()) {
 					const role = m.role;
 					const content = messageContentText(m);
 					if (role === "user" || role === "assistant") {
-						threadStmt.run(sid, role, content, turn, now);
+						if (threadHas.get(sid, turn, role, content) == null) {
+							threadStmt.run(sid, role, content, turn, now);
+						}
 					} else if (role === "toolResult" || role === "bashExecution") {
-						toolStmt.run(sid, role, content, turn, now);
+						const toolCallId = toolCallIdOf(m, `bash:${turn}:${idx}`);
+						if (toolHas.get(sid, turn, toolCallId, content) == null) {
+							toolStmt.run(sid, toolCallId, content, turn, now);
+						}
 					}
 				}
 			}

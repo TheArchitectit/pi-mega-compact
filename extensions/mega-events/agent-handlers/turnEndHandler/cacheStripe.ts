@@ -28,12 +28,21 @@ export function cacheStripe(
 			const embedder = defaultEmbedder();
 
 			// (a) Extract text from the assistant's response for topic embedding.
+			// pi's assistant content may be a plain string OR an array of parts.
+			// Discriminate by type and only reach into `.text` after confirming the
+			// part is an object carrying a string `.text` — never assume shape.
 			let textToEmbed = "";
 			const msg = event.message;
-			if (msg.role === "assistant" && Array.isArray(msg.content)) {
-				for (const part of msg.content) {
-					if ("text" in part && typeof part.text === "string") {
-						textToEmbed += part.text + " ";
+			if (msg.role === "assistant") {
+				const c = msg.content;
+				if (typeof c === "string") {
+					textToEmbed = c;
+				} else if (Array.isArray(c)) {
+					for (const part of c) {
+						if (part && typeof part === "object" && "text" in part) {
+							const t = (part as { text?: unknown }).text;
+							if (typeof t === "string") textToEmbed += t + " ";
+						}
 					}
 				}
 			}
