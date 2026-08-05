@@ -4,46 +4,19 @@
  * GET /api/vector-cortex/evaluation. VC0C (task 5): live safety envelope health
  * card (breaker state, window/probe/backoff, durable spool frontier/lag) from
  * GET /api/vector-cortex/health plus an admin "reset cooldown" action. Polls
- * every 5s.
+ * every 5s via useVectorCortexPoll.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import {
-	fetchVectorCortexEvaluation,
-	fetchVectorCortexHealth,
-	fetchVectorCortexLedger,
-	fetchVectorCortexQuery,
-	fetchVectorCortexReconstruct,
-	fetchVectorCortexPlans,
-	fetchVectorCortexRender,
-	fetchVectorCortexRollout,
-	fetchVectorCortexClosureProof,
-	fetchVectorCortexRestore,
-	fetchVectorCortexRepair,
-	fetchVectorCortexCrystals,
-	fetchVectorCortexEconomics,
-	fetchVectorCortexShards,
-	fetchVectorCortexTopology,
 	resetVectorCortexBreaker,
-	type VectorCortexEvaluationSummary,
+	fetchVectorCortexHealth,
 	type VectorCortexHealthCard,
-	type VectorCortexLedgerView,
-	type VectorCortexQueryView,
-	type VectorCortexReconstructView,
-	type VectorCortexPlansView,
-	type VectorCortexRenderView,
-	type VectorCortexRolloutView,
-	type VectorCortexClosureProofView,
-	type VectorCortexRestoreView,
-	type VectorCortexRepairView,
-	type VectorCortexCrystalsView,
-	type VectorCortexEconomicsView,
-	type VectorCortexShardsView,
-	type VectorCortexTopologyView,
 } from "../api/vector-cortex";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Metric } from "./VectorCortexMetric";
+import { useVectorCortexPoll } from "./useVectorCortexPoll";
 import { VectorCortexRenderCard } from "./VectorCortexRenderCard";
 import { VectorCortexRolloutCard } from "./VectorCortexRolloutCard";
 import { VectorCortexClosureCard } from "./VectorCortexClosureCard";
@@ -69,81 +42,10 @@ function ModeChip({ mode, count }: { mode: string; count: number }): React.React
 }
 
 export default function VectorCortexTab(): React.ReactElement {
-	const [data, setData] = useState<VectorCortexEvaluationSummary | null>(null);
-	const [err, setError] = useState<string | null>(null);
-	const [loading, setLoading] = useState(true);
-	const [health, setHealth] = useState<VectorCortexHealthCard | null>(null);
+	const [poll, refetch] = useVectorCortexPoll();
 	const [resetMsg, setResetMsg] = useState<string | null>(null);
-	const [ledger, setLedger] = useState<VectorCortexLedgerView | null>(null);
-	const [topology, setTopology] = useState<VectorCortexTopologyView | null>(null);
-	const [query, setQuery] = useState<VectorCortexQueryView | null>(null);
-	const [shards, setShards] = useState<VectorCortexShardsView | null>(null);
-	const [reconstruct, setReconstruct] = useState<VectorCortexReconstructView | null>(null);
-	const [plans, setPlans] = useState<VectorCortexPlansView | null>(null);
-	const [render, setRender] = useState<VectorCortexRenderView | null>(null);
-	const [rollout, setRollout] = useState<VectorCortexRolloutView | null>(null);
-	const [closureProof, setClosureProof] = useState<VectorCortexClosureProofView | null>(null);
-	const [restore, setRestore] = useState<VectorCortexRestoreView | null>(null);
-	const [repair, setRepair] = useState<VectorCortexRepairView | null>(null);
-	const [crystals, setCrystals] = useState<VectorCortexCrystalsView | null>(null);
-	const [economics, setEconomics] = useState<VectorCortexEconomicsView | null>(null);
 
-	const poll = useCallback(() => {
-		fetchVectorCortexEvaluation()
-			.then(setData)
-			.catch((e: unknown) =>
-				setError(e instanceof Error ? e.message : String(e)),
-			)
-			.finally(() => setLoading(false));
-		fetchVectorCortexHealth().then(setHealth).catch(() => {
-			/* health card is best-effort (VC0C) */
-		});
-		fetchVectorCortexLedger().then(setLedger).catch(() => {
-			/* ledger card is best-effort (VC1B) */
-		});
-		fetchVectorCortexTopology().then(setTopology).catch(() => {
-			/* topology card is best-effort (VC3A) */
-		});
-		fetchVectorCortexQuery().then(setQuery).catch(() => {
-			/* query diagnostics card is best-effort (VC3C) */
-		});
-		fetchVectorCortexShards().then(setShards).catch(() => {
-			/* dual-tier shards card is best-effort (VC4A) */
-		});
-		fetchVectorCortexReconstruct().then(setReconstruct).catch(() => {
-			/* reconstruction-fidelity card is best-effort (VC4C) */
-		});
-		fetchVectorCortexPlans().then(setPlans).catch(() => {
-			/* plan manifest card is best-effort (VC5A) */
-		});
-		fetchVectorCortexRender().then(setRender).catch(() => {
-			/* render conformance card is best-effort (VC5B) */
-		});
-		fetchVectorCortexRollout().then(setRollout).catch(() => {
-			/* rollout card is best-effort (VC5C) */
-		});
-		fetchVectorCortexClosureProof().then(setClosureProof).catch(() => {
-			/* closure-optimization card is best-effort (VC6A) */
-		});
-		fetchVectorCortexRestore().then(setRestore).catch(() => {
-			/* exact-source-restoration card is best-effort (VC6B) */
-		});
-		fetchVectorCortexRepair().then(setRepair).catch(() => {
-			/* self-healing derived-state card is best-effort (VC6C) */
-		});
-		fetchVectorCortexCrystals().then(setCrystals).catch(() => {
-			/* frozen-range-crystal card is best-effort (VC7A) */
-		});
-		fetchVectorCortexEconomics().then(setEconomics).catch(() => {
-			/* provider-cache-economics card is best-effort (VC7B) */
-		});
-	}, []);
-
-	useEffect(() => {
-		poll();
-		const id = setInterval(poll, 5000);
-		return () => clearInterval(id);
-	}, [poll]);
+	const { loading, error, data, health } = poll;
 
 	const onReset = () => {
 		resetVectorCortexBreaker("provider")
@@ -153,7 +55,7 @@ export default function VectorCortexTab(): React.ReactElement {
 				);
 				return fetchVectorCortexHealth();
 			})
-			.then(setHealth)
+			.then((h: VectorCortexHealthCard | null) => { void h; refetch(); })
 			.catch((e: unknown) =>
 				setResetMsg(e instanceof Error ? e.message : String(e)),
 			);
@@ -161,8 +63,8 @@ export default function VectorCortexTab(): React.ReactElement {
 
 	if (loading && !data)
 		return <div className="vc-loading">Loading vector-cortex evaluation…</div>;
-	if (err && !data)
-		return <div className="vc-error">Error: {err}</div>;
+	if (error && !data)
+		return <div className="vc-error">Error: {error}</div>;
 	if (!data)
 		return <div className="vc-empty">No evaluation data available.</div>;
 
@@ -281,24 +183,24 @@ export default function VectorCortexTab(): React.ReactElement {
 								}
 							/>
 							<Metric label="Spool lag" value={String(health.spoolLag)} />
-								<Metric label="Encoder mode" value={health.encoderMode} />
-								<Metric label="Encoder asset" value={health.encoderAssetDigest ? health.encoderAssetDigest.slice(0, 12) : "none"} />
+							<Metric label="Encoder mode" value={health.encoderMode} />
+							<Metric label="Encoder asset" value={health.encoderAssetDigest ? health.encoderAssetDigest.slice(0, 12) : "none"} />
 						</div>
 					)}
 				</CardContent>
 			</Card>
-			<VectorCortexTopologyCard topology={topology} query={query} />
-			<VectorCortexShardsCard view={shards} />
-			<VectorCortexReconstructCard view={reconstruct} />
-			<VectorCortexPlansCard view={plans} />
-			<VectorCortexRenderCard view={render} />
-			<VectorCortexRolloutCard view={rollout} />
-			<VectorCortexClosureCard view={closureProof} />
-			<VectorCortexRestoreCard view={restore} />
-			<VectorCortexRepairCard view={repair} />
-			<VectorCortexCrystalsCard view={crystals} />
-			<VectorCortexEconomicsCard view={economics} />
-			<VectorCortexLedgerCard ledger={ledger} />
+			<VectorCortexTopologyCard topology={poll.topology} query={poll.query} />
+			<VectorCortexShardsCard view={poll.shards} />
+			<VectorCortexReconstructCard view={poll.reconstruct} />
+			<VectorCortexPlansCard view={poll.plans} />
+			<VectorCortexRenderCard view={poll.render} />
+			<VectorCortexRolloutCard view={poll.rollout} />
+			<VectorCortexClosureCard view={poll.closureProof} />
+			<VectorCortexRestoreCard view={poll.restore} />
+			<VectorCortexRepairCard view={poll.repair} />
+			<VectorCortexCrystalsCard view={poll.crystals} />
+			<VectorCortexEconomicsCard view={poll.economics} />
+			<VectorCortexLedgerCard ledger={poll.ledger} />
 		</div>
 	);
 }

@@ -218,6 +218,27 @@ export const VC7A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC7A");
  */
 export const VC7B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC7B");
 
+/**
+ * VC7C — cache miss diagnostics, cache-level breakers and the completed M5
+ * request-hash-v2 switch. Default ON. `MEGACOMPACT_VC7C=0` disables and is
+ * byte-identical to the predecessor (VC7B): the miss `classify`, the breaker
+ * demotion decision and the M5 request-hash-v2 ARITHMETIC STILL RUN (they are
+ * PURE — an exclusive ordered comparison over already-computed digests plus a
+ * canonical length-prefixed SHA-256, with no clock, storage, or network), so a
+ * miss is classified into the SAME single class, a collision / stale generation
+ * / digest failure / profile mismatch still demotes BEFORE any cache serve, and
+ * the v2 hash of a given request is unchanged with the flag off. A cache is
+ * never allowed to serve a stale or colliding entry merely because reporting is
+ * off — that would be a correctness change, not a reporting change.
+ *
+ * The flag gates ONLY the `vector_cortex_cache_miss_classified` /
+ * `vector_cortex_cache_serve_blocked` events and the cache-diagnostics dashboard
+ * seam, which reports `enabled:false` + mode C when off. This flag MUST also be
+ * a dashboard SETTINGS toggle (visible in config UI, never in
+ * EXCLUDED_SETTINGS), mirroring VC4A..VC7B.
+ */
+export const VC7C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC7C");
+
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker) extracted to
 // vector-cortex-breakers.ts to keep this file under the 300-line soft limit.
 export {

@@ -68,6 +68,7 @@ import { handleVectorCortexCrystals } from "./routes-vector-cortex-crystals.js";
 // independent of the crystals handler and every file stays well under the
 // 400-line extension soft limit.
 import { handleVectorCortexEconomics } from "./routes-vector-cortex-economics.js";
+// VC7C cache miss diagnostics + breakers handler will be imported here when VC7C ships.
 
 /**
  * Dispatch a request through every registered route handler.

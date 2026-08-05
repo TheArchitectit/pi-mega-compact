@@ -256,36 +256,8 @@ export interface VectorCortexClosureProofView {
   updatedAt: string;
 }
 
-/**
- * Reader-only frozen-crystal cache view (VC7A). Counts + byte volumes + CRY_*
- * codes only — a crystal is a rendered prompt, so no frozen bytes, covered
- * ranges, digests, or session ids ever reach the client.
- */
-export interface VectorCortexCrystalsView {
-  enabled: boolean;
-  mode: "A" | "B" | "C";
-  crystalCount: number;
-  totalBytes: number;
-  hits: number;
-  misses: number;
-  hitBytes: number;
-  writes: number;
-  duplicateWrites: number;
-  collisions: number;
-  lastFailure: string | null;
-  updatedAt: string;
-}
-
-/**
- * Reader-only cache-economics diagnostics view (VC7B). Counts + ECON_* codes only
- * — never prices, digests, ranges, or session ids.
- */
-export interface VectorCortexEconomicsView {
-  enabled: boolean;
-  mode: "A" | "B" | "C";
-  profileCount: number;
-  provenExclusions: number;
-  unprovenExclusions: number;
-  lastFailure: string | null;
-  updatedAt: string;
-}
+export type {
+  VectorCortexCrystalsView,
+  VectorCortexEconomicsView,
+  VectorCortexDiagnosticsView,
+} from "./vector-cortex-vc7.js";
