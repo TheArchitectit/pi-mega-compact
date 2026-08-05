@@ -186,5 +186,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"Bounded shadow adaptive policy + M7 pressure-v2 migration. Policy actions are from a finite set (admit/dampen/defer/escalate/reject) chosen deterministically by the canonical pressure level; token budgets are clamped into a configured window after the pressure factor. Unknown pressure labels are rejected as POL_PRESSURE_UNKNOWN, never coerced to a neighbour. The shadow engine is structurally incapable of affecting the live path: inputs are deep-copied, the canonical prompt digest is pinned before and after to prove non-mutation, and liveMutations is always zero. M7 migrates legacy pressure labels to the v2 canonical five by copy/validate/switch; an unknown label blocks the switch and keeps the legacy pointer (M7_PRESSURE_UNKNOWN). A shadow decision is mode A, static calibrated policy is mode B (forced by invalid A), and fixed legacy thresholds is mode C (forced by M7 or B failure). OFF = byte-identical predecessor (VC8A); the policy/shadow/migration arithmetic still runs, only the reporter + dashboard seam is suppressed.",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_VC8C",
+			"VC8C Canary Platform + Rust Parity",
+			"Canary selection and external Rust parity. The selector admits a qualified external Rust artifact only when ABI version, URL metadata, commit, Cargo.lock digest, and platform all match evidence; a Cargo.lock digest mismatch rejects the artifact (RUST_CARGO_DIGEST_MISMATCH). The cross-conformance runner exchanges length-framed neutral records over a local stdin/stdout channel — a subprocess, never a URL (PREVENT-PI-004). A parity mismatch selects TS mode B. A qualified external artifact is mode A, TS reference is mode B, legacy path is mode C. OFF = byte-identical predecessor (VC8B); the selector and cross-conformance arithmetic still run, only the reporter + dashboard seam is suppressed.",
+			true,
+		),
 	],
 };

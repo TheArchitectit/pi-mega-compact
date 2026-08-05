@@ -1,0 +1,1 @@
+{"expected":{"ok":true},"expectedFailureCode":null,"expectedOutputHex":"cafebabe","fixtureId":"RUST-ABI-001","id":"RUST-ABI-001","inputHex":"cafebabe","kind":"cross-language-abi-exchange","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/cross-language-fixture.schema.json"}

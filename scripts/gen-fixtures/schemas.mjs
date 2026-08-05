@@ -1969,3 +1969,53 @@ schemas["schemas/pressure-v2-fixture.schema.json"] = {
     },
   },
 };
+
+schemas["schemas/cross-language-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC8C cross-language fixture envelope",
+  description:
+    "Common structure every VC8C cross-language fixture validates against. input has a fixtureId and inputHex; expected pins the allowed outputHex and failureCode (or the exact rejection code).",
+  type: "object",
+  required: [
+    "id",
+    "producer",
+    "fixtureId",
+    "kind",
+    "inputHex",
+    "expectedOutputHex",
+    "expectedFailureCode",
+    "expected",
+  ],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    fixtureId: { type: "string" },
+    kind: {
+      type: "string",
+      enum: [
+        "cross-language-golden",
+        "cross-language-error",
+        "cross-language-truncated",
+        "cross-language-abi-mismatch",
+        "cross-language-platform",
+        "cross-language-missing",
+        "cross-language-abi-exchange",
+        "cross-language-error-code-exchange",
+        "cross-language-cargo-digest-mismatch",
+      ],
+    },
+    schema: { type: "string" },
+    inputHex: { type: "string" },
+    expectedOutputHex: { type: "string" },
+    expectedFailureCode: { type: ["string", "null"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: { type: "string" },
+      },
+    },
+  },
+};

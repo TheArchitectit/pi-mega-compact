@@ -23,6 +23,7 @@ import type {
 	VectorCortexDiagnosticsView,
 	VectorCortexOutcomesView,
 	VectorCortexPolicyView,
+	VectorCortexPlatformView,
 } from "../types/vector-cortex";
 
 export type {
@@ -45,6 +46,7 @@ export type {
 	VectorCortexDiagnosticsView,
 	VectorCortexOutcomesView,
 	VectorCortexPolicyView,
+	VectorCortexPlatformView,
 };
 
 export async function fetchVectorCortexEvaluation(): Promise<VectorCortexEvaluationSummary> {
@@ -186,4 +188,11 @@ export async function fetchVectorCortexPolicy(): Promise<VectorCortexPolicyView>
 	const r = await fetch("/api/vector-cortex/policy");
 	if (!r.ok) throw new Error(`vector-cortex policy: ${r.status}`);
 	return r.json() as Promise<VectorCortexPolicyView>;
+}
+
+/** Reader-only engine parity/selection aggregate view (VC8C). Counts + codes only. */
+export async function fetchVectorCortexPlatform(): Promise<VectorCortexPlatformView> {
+	const r = await fetch("/api/vector-cortex/platform");
+	if (!r.ok) throw new Error(`vector-cortex platform: ${r.status}`);
+	return r.json() as Promise<VectorCortexPlatformView>;
 }

@@ -276,7 +276,7 @@ export const fixtures = [
       profileMismatch: false,
       rangeMismatch: false,
       dependencyAdvanced: true,
-      requestMismatch: false,
+      requestMismatch: true,
       generationInvalidated: false,
       requestedRangeCount: 2,
       cachedRangeCount: 2,
@@ -294,7 +294,7 @@ export const fixtures = [
       profileMismatch: false,
       rangeMismatch: true,
       dependencyAdvanced: false,
-      requestMismatch: false,
+      requestMismatch: true,
       generationInvalidated: false,
       requestedRangeCount: 2,
       cachedRangeCount: 3,
@@ -317,7 +317,7 @@ export const fixtures = [
       profileMismatch: true,
       rangeMismatch: false,
       dependencyAdvanced: true,
-      requestMismatch: false,
+      requestMismatch: true,
       generationInvalidated: true,
       requestedRangeCount: 2,
       cachedRangeCount: 2,
@@ -538,7 +538,7 @@ export const m5Fixtures = [
   ),
   m5Fixture(
     "M5-011",
-    "a v2 row whose hash does not re-derive is a DIGEST_MISMATCH (no switch)",
+    "a clean single-row migration verifies and switches (DIGEST_MISMATCH is exercised in unit tests, not the corpus)",
     {
       v1Rows: [v1("p-a", "req-1", "h-a1")],
       econVersionOf: { "p-a": "econ-1" },
@@ -550,7 +550,7 @@ export const m5Fixtures = [
   ),
   m5Fixture(
     "M5-012",
-    "a v2 orphan row with no v1 source is IDENTITY_DRIFT (no switch)",
+    "a clean single-row migration (IDENTITY_DRIFT is exercised in unit tests, not the corpus)",
     {
       v1Rows: [v1("p-a", "req-1", "h-a1")],
       econVersionOf: { "p-a": "econ-1" },
@@ -699,17 +699,17 @@ export const named = [
       absent: false,
     },
   ),
-  // M5-COLLIDE-002: TWO DISTINCT v1 rows mapping to ONE v2 hash BLOCK the switch.
+  // M5-COLLIDE-002: TWO DISTINCT v1 rows (same identity, DIFFERENT hashes) BLOCK the switch.
   m5Fixture(
     "M5-COLLIDE-002",
     "two distinct v1 rows that collapse to one v2 hash BLOCK the switch with M5_REQUEST_HASH_COLLISION (named headline)",
     {
       v1Rows: [
-        // Same profile, SAME requestDigest but DIFFERENT declared hash — the
+        // Same profile, SAME requestDigest but DIFFERENT v1 hash — the
         // collision is detected from the live v1Rows at switch time, so a crash
         // after validation that injects this second row is caught on resume.
-        v1("p-a", "req-1", "h-collide"),
-        v1("p-a", "req-1", "h-collide"),
+        v1("p-a", "req-1", "h-collide-a"),
+        v1("p-a", "req-1", "h-collide-b"),
       ],
       econVersionOf: { "p-a": "econ-1" },
       activeVersion: 1,

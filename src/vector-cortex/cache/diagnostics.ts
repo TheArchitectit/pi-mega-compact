@@ -45,17 +45,32 @@ function advanceDelta(
 
 /** Collect the payload-free evidence from one observation. */
 export function collectEvidence(o: MissObservation): MissEvidence {
+  // Absence is computed first: "absence is not a mismatch" means a cold key
+  // (null cached fields) classifies `unknown`, never `profile`/`range`/etc.
+  // The cachedRangeCount on a cold key is 0 by convention (not a real count),
+  // so it must not trigger a range mismatch even though isPresent(0) is true.
+  const absent =
+    !isPresent(o.cachedProfileId) &&
+    !isPresent(o.cachedCoveredDigest) &&
+    !isPresent(o.cachedRequestDigest) &&
+    !isPresent(o.cachedDependencyHighWater);
+
   const profileMismatch =
     isPresent(o.cachedProfileId) &&
     isPresent(o.cachedProfileVersion) &&
     (o.cachedProfileId !== o.requestProfileId ||
       o.cachedProfileVersion !== o.requestProfileVersion);
 
+  // Guard with !absent: a cold key's cachedRangeCount is 0 by convention (not
+  // a real count), so it must not fire a range mismatch even though
+  // isPresent(0) is true. The covered-digest arm is already null-safe but
+  // the rangeCount arm is not — !absent covers both uniformly.
   const rangeMismatch =
-    (isPresent(o.cachedCoveredDigest) &&
+    !absent &&
+    ((isPresent(o.cachedCoveredDigest) &&
       o.cachedCoveredDigest !== o.requestCoveredDigest) ||
-    (isPresent(o.cachedRangeCount) &&
-      o.cachedRangeCount !== o.requestedRangeCount);
+      (isPresent(o.cachedRangeCount) &&
+        o.cachedRangeCount !== o.requestedRangeCount));
 
   const dep = advanceDelta(
     o.requestDependencyHighWater,
@@ -65,12 +80,6 @@ export function collectEvidence(o: MissObservation): MissEvidence {
   const requestMismatch =
     isPresent(o.cachedRequestDigest) &&
     o.cachedRequestDigest !== o.requestDigest;
-
-  const absent =
-    !isPresent(o.cachedProfileId) &&
-    !isPresent(o.cachedCoveredDigest) &&
-    !isPresent(o.cachedRequestDigest) &&
-    !isPresent(o.cachedDependencyHighWater);
 
   return {
     profileMismatch,

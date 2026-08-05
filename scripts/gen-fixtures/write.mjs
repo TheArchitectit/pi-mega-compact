@@ -45,6 +45,7 @@ import { fixtures as economicsFixtures, named as economicsNamed } from "./cache-
 import { fixtures as diagnosticsFixtures, m5Fixtures as diagnosticsM5Fixtures, named as diagnosticsNamed } from "./cache-diagnostics.mjs";
 import { fixtures as outcomesFixtures, named as outcomesNamed } from "./outcomes.mjs";
 import { fixtures as adaptiveFixtures, m7Fixtures as adaptiveM7Fixtures, named as adaptiveNamed } from "./adaptive-policy.mjs";
+import { fixtures as crossLangFixtures, named as crossLangNamed } from "./cross-language.mjs";
 
 const REPLAY_DIR = join(V2, "replay");
 const EVENTS_DIR = join(V2, "events");
@@ -75,6 +76,7 @@ const ECONOMICS_DIR = join(V2, "cache-economics");
 const DIAGNOSTICS_DIR = join(V2, "cache-diagnostics");
 const OUTCOMES_DIR = join(V2, "outcomes");
 const ADAPTIVE_DIR = join(V2, "adaptive-policy");
+const CROSS_LANG_DIR = join(V2, "cross-language");
 
 export function writeAll() {
   rmSync(V2, { recursive: true, force: true });
@@ -110,6 +112,7 @@ export function writeAll() {
   mkdirSync(OUTCOMES_DIR, { recursive: true });
   mkdirSync(ADAPTIVE_DIR, { recursive: true });
   mkdirSync(ADAPTIVE_DIR, { recursive: true });
+  mkdirSync(CROSS_LANG_DIR, { recursive: true });
 
   const manifestRows = [];
 
@@ -714,13 +717,31 @@ export function writeAll() {
     });
   }
 
+  // VC8C cross-language fixtures: RUST-001..030 golden exchanges + 3 named
+  // (ABI/ERR/META). Pin the engine parity/selection admission gates.
+  for (const fx of [...crossLangFixtures, ...crossLangNamed]) {
+    const bytes = Buffer.from(canonicalJson(fx), "utf8");
+    const rel = `cross-language/${fx.id}.json`;
+    writeFileSync(join(CROSS_LANG_DIR, `${fx.id}.json`), bytes);
+    manifestRows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: fx.schema,
+      algorithm: fx.kind,
+      producer,
+      expected: fx.expected.ok ? "ok" : fx.expected.code,
+      license: "synthetic",
+    });
+  }
+
   const manifest = {
     version: "2",
     viewer: "vector-cortex-conformance.mjs",
     producer: "vector-cortex-gen-fixtures.mjs",
-    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification,cortex-store,topology,topology-query,router-generation-v2,shard,residual,reconstruction,prompt-dag,planner,render,provider,rollout,closure-optimization,restoration,healing-controller,cache-crystals,cache-economics,cache-diagnostics,outcomes,adaptive-policy",
-    owner: "VC0A,VC0B,VC0C,VC1A,VC1B,VC1C,VC2A,VC2B,VC2C,VC3A,VC3B,VC3C,VC4A,VC4B,VC4C,VC5A,VC5B,VC5C,VC6A,VC6B,VC6C,VC7A,VC7B,VC7C,VC8A,VC8B",
-    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification;cortex-store;topology-fixture;topology-query-fixture;router-generation-migration;shard-fixture;residual-fixture;reconstruction-fixture;prompt-dag-fixture;planner-fixture;render-fixture;provider-fixture;rollout-fixture;closure-optimization-fixture;restoration-fixture;healing-controller-fixture;cache-crystal-fixture;cache-economics-fixture;cache-diagnostic-fixture;request-hash-v2-fixture;policy-decision-fixture;policy-shadow-fixture;pressure-v2-fixture",
+    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification,cortex-store,topology,topology-query,router-generation-v2,shard,residual,reconstruction,prompt-dag,planner,render,provider,rollout,closure-optimization,restoration,healing-controller,cache-crystals,cache-economics,cache-diagnostics,outcomes,adaptive-policy,cross-language",
+    owner: "VC0A,VC0B,VC0C,VC1A,VC1B,VC1C,VC2A,VC2B,VC2C,VC3A,VC3B,VC3C,VC4A,VC4B,VC4C,VC5A,VC5B,VC5C,VC6A,VC6B,VC6C,VC7A,VC7B,VC7C,VC8A,VC8B,VC8C",
+    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification;cortex-store;topology-fixture;topology-query-fixture;router-generation-migration;shard-fixture;residual-fixture;reconstruction-fixture;prompt-dag-fixture;planner-fixture;render-fixture;provider-fixture;rollout-fixture;closure-optimization-fixture;restoration-fixture;healing-controller-fixture;cache-crystal-fixture;cache-economics-fixture;cache-diagnostic-fixture;request-hash-v2-fixture;policy-decision-fixture;policy-shadow-fixture;pressure-v2-fixture;cross-language-fixture",
     license: "synthetic",
     fixtures: manifestRows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
   };
@@ -781,5 +802,7 @@ export function writeAll() {
     adaptivePolicyCount: adaptiveFixtures.length,
     adaptiveMigrationCount: adaptiveM7Fixtures.length,
     adaptiveNamedCount: adaptiveNamed.length,
+    crossLangCount: crossLangFixtures.length,
+    crossLangNamedCount: crossLangNamed.length,
   };
 }

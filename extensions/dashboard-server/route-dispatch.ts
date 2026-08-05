@@ -82,6 +82,11 @@ import { handleVectorCortexOutcomes } from "./routes-vector-cortex-outcomes.js";
 // 400-line extension soft limit.
 import { handleVectorCortexPolicy } from "./routes-vector-cortex-policy.js";
 
+// VC8C canary selection + external Rust parity gets its own module so the
+// platform/selection seam stays independent and every file stays well under
+// the 400-line extension soft limit.
+import { handleVectorCortexPlatform } from "./routes-vector-cortex-platform.js";
+
 /**
  * Dispatch a request through every registered route handler.
  * Returns true if a handler claimed the request (ended the response).
@@ -140,5 +145,6 @@ export function dispatchRoutes(
 	if (handleVectorCortexDiagnostics(req, res, ctx)) return true;
 	if (handleVectorCortexOutcomes(req, res, ctx)) return true;
 	if (handleVectorCortexPolicy(req, res, ctx)) return true;
+	if (handleVectorCortexPlatform(req, res, ctx)) return true;
 	return false;
 }

@@ -109,6 +109,22 @@ test("M5: collision between two distinct v1 rows blocks the switch", () => {
   assert.equal(h.switchedTo, null, "switch must NOT have flipped the pointer");
 });
 
+test("M5: identical duplicate v1 rows are benign (not a collision)", () => {
+  // An idempotent resume re-reads the same row; two byte-identical v1 rows
+  // (same identity, same hash) must NOT be treated as a collision.
+  const h = host({
+    v1: [
+      { profileId: "p-a", requestDigest: "abc", hash: "h1" },
+      { profileId: "p-a", requestDigest: "abc", hash: "h1" },
+    ],
+    econ: { "p-a": "econ-1" },
+  });
+  const res = migrateRequestHashV2(h);
+  assert.equal(res.ok, true, "identical duplicates migrate idempotently");
+  assert.deepEqual(res.codes, []);
+  assert.equal(h.switchedTo, REQUEST_HASH_V2_VERSION);
+});
+
 test("M5: resume after crash — collision injected post-validation is caught at switch time", () => {
   const base = { profileId: "p-a", requestDigest: "abc", hash: "h1" };
   const h = host({

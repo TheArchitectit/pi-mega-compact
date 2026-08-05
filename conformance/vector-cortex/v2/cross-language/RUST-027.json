@@ -1,0 +1,1 @@
+{"expected":{"code":"RUST_FRAME_TRUNCATED","ok":false},"expectedFailureCode":"RUST_FRAME_TRUNCATED","expectedOutputHex":"","fixtureId":"RUST-027","id":"RUST-027","inputHex":"00000010","kind":"cross-language-truncated","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/cross-language-fixture.schema.json"}

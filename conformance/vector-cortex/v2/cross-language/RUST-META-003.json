@@ -1,0 +1,1 @@
+{"expected":{"code":"RUST_CARGO_DIGEST_MISMATCH","ok":false},"expectedFailureCode":"RUST_CARGO_DIGEST_MISMATCH","expectedOutputHex":"","fixtureId":"RUST-META-003","id":"RUST-META-003","inputHex":"00","kind":"cross-language-cargo-digest-mismatch","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/cross-language-fixture.schema.json"}

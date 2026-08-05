@@ -75,14 +75,22 @@ function generationFromEconomics(economicsVersion: string): bigint {
 
 export function detectCollision(host: M5Host): boolean {
   const byHash = new Map<string, string>();
-  const seenIdentities = new Set<string>();
+  // Track the v1 hash seen for each identity so a genuine collision (same
+  // identity, DIFFERENT v1 hash) is distinguished from a benign duplicate
+  // (same identity, SAME v1 hash — an idempotent resume re-reads the same row).
+  const identityHash = new Map<string, string>();
   for (const v1 of host.v1Rows()) {
     const row = deriveRequestHashRow(host, v1);
     const id = identity(v1.profileId, v1.requestDigest);
-    // Two distinct v1 rows (different v1 hash) with the same v2 hash collide,
-    // even if they share an identity — the v2 table cannot distinguish them.
-    if (seenIdentities.has(id)) return true;
-    seenIdentities.add(id);
+    const priorHash = identityHash.get(id);
+    if (priorHash !== undefined) {
+      // Same identity seen before. Only a collision if the v1 hashes differ —
+      // two genuinely distinct v1 rows collapsing to one v2 hash. Identical
+      // duplicates (same hash) are benign and skipped.
+      if (priorHash !== v1.hash) return true;
+      continue;
+    }
+    identityHash.set(id, v1.hash);
     const prior = byHash.get(row.hash);
     if (prior !== undefined && prior !== id) return true;
     byHash.set(row.hash, id);
@@ -111,11 +119,17 @@ export function m5Copy(host: M5Host): {
   const existing = new Map(
     host.existingV2().map((r) => [identity(r.profileId, r.requestDigest), r]),
   );
+  // Track identities already in the `wanted` batch so a benign duplicate v1
+  // row (same identity, same hash) does not produce a duplicate v2 write that
+  // would later trip COUNT_MISMATCH in verify.
+  const batchSeen = new Set<string>();
   const wanted: RequestHashV2Row[] = [];
   for (const v1 of host.v1Rows()) {
     const fresh = deriveRequestHashRow(host, v1);
     if (isGenerationInvalidated(host, fresh)) continue;
-    const stored = existing.get(identity(v1.profileId, v1.requestDigest));
+    const id = identity(v1.profileId, v1.requestDigest);
+    if (batchSeen.has(id)) continue;
+    const stored = existing.get(id);
     if (
       stored !== undefined &&
       stored.hash === fresh.hash &&
@@ -123,6 +137,7 @@ export function m5Copy(host: M5Host): {
     ) {
       continue;
     }
+    batchSeen.add(id);
     wanted.push(fresh);
   }
   if (wanted.length > 0) host.putV2(wanted);

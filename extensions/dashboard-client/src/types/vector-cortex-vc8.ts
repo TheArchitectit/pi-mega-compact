@@ -8,7 +8,7 @@
  */
 
 /**
- * Reader-only outcomes aggregate view (VC8A). Counts + OUT_* codes only —
+ * Reader-only outcomes aggregate view (VC8A). Counts + OUT_ codes only —
  * the outcome ledger carries metrics without payload, so no prompt bytes,
  * response text, free-text, or session content ever reaches the client.
  */
@@ -25,8 +25,8 @@ export interface VectorCortexOutcomesView {
 }
 
 /**
- * Reader-only shadow adaptive policy aggregate view (VC8B). Counts + POL_ and M7_
- * codes only — the policy engine carries no payload, so no prompt bytes,
+ * Reader-only shadow adaptive policy aggregate view (VC8B). Counts + POL_ and
+ * M7_ codes only — the policy engine carries no payload, so no prompt bytes,
  * session content, or free-text ever reaches the client.
  */
 export interface VectorCortexPolicyView {
@@ -37,6 +37,22 @@ export interface VectorCortexPolicyView {
   rejectedInputs: number;
   liveMutations: number;
   pressureVersion: number;
+  lastFailure: string | null;
+  updatedAt: string;
+}
+
+/**
+ * Reader-only engine parity/selection aggregate view (VC8C). Counts + RUST_
+ * codes only — the selector carries no payload, so no artifact bytes, output
+ * bytes, or free-text ever reaches the client.
+ */
+export interface VectorCortexPlatformView {
+  enabled: boolean;
+  mode: "A" | "B" | "C";
+  fixtureCount: number;
+  passed: number;
+  failed: number;
+  externalRunnerConfigured: boolean;
   lastFailure: string | null;
   updatedAt: string;
 }

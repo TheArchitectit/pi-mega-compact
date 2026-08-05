@@ -113,3 +113,39 @@ test("VC7C diagnostics: classification is deterministic and never throws", () =>
   const first = classifyMiss(o);
   for (let i = 0; i < 25; i++) assert.deepEqual(classifyMiss(o), first);
 });
+
+// ── Absent-guard regression (conformance alignment) ────────────────────────
+
+test("VC7C regression: a cold key with cachedRangeCount=0 (conformance convention) classifies unknown, not range", () => {
+  // The conformance corpus uses absent() which sets cachedRangeCount: 0 (not
+  // null) on a cold key. Without the !absent guard on rangeMismatch, the
+  // rangeCount arm fires (0 !== 2) and classifies "range" instead of "unknown"
+  // — contradicting the documented "absence is not a mismatch" contract.
+  const d = classifyMiss(obs({
+    cachedProfileId: null,
+    cachedProfileVersion: null,
+    cachedCoveredDigest: null,
+    cachedRangeCount: 0,
+    cachedRequestDigest: null,
+    cachedDependencyHighWater: null,
+    requestedRangeCount: 2,
+  }));
+  assert.equal(d.missClass, "unknown", "absence is not a mismatch");
+  assert.equal(d.evidence.absent, true);
+  assert.equal(d.evidence.rangeMismatch, false);
+});
+
+test("VC7C regression: a cold key with generation invalidation still classifies generation", () => {
+  const d = classifyMiss(obs({
+    cachedProfileId: null,
+    cachedProfileVersion: null,
+    cachedCoveredDigest: null,
+    cachedRangeCount: 0,
+    cachedRequestDigest: null,
+    cachedDependencyHighWater: null,
+    requestedRangeCount: 2,
+    generationInvalidated: true,
+  }));
+  assert.equal(d.missClass, "generation");
+  assert.equal(d.evidence.absent, true);
+});

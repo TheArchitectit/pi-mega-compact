@@ -21,6 +21,7 @@ import {
 	fetchVectorCortexDiagnostics,
 	fetchVectorCortexOutcomes,
 	fetchVectorCortexPolicy,
+	fetchVectorCortexPlatform,
 	fetchVectorCortexShards,
 	fetchVectorCortexTopology,
 	type VectorCortexEvaluationSummary,
@@ -39,6 +40,7 @@ import {
 	type VectorCortexDiagnosticsView,
 	type VectorCortexOutcomesView,
 	type VectorCortexPolicyView,
+	type VectorCortexPlatformView,
 	type VectorCortexShardsView,
 	type VectorCortexTopologyView,
 } from "../api/vector-cortex";
@@ -64,6 +66,7 @@ export interface VectorCortexPollState {
 	diagnostics: VectorCortexDiagnosticsView | null;
 	outcomes: VectorCortexOutcomesView | null;
 	policy: VectorCortexPolicyView | null;
+	platform: VectorCortexPlatformView | null;
 }
 
 export function useVectorCortexPoll(): [
@@ -91,6 +94,7 @@ export function useVectorCortexPoll(): [
 		diagnostics: null,
 		outcomes: null,
 		policy: null,
+		platform: null,
 	});
 
 	const poll = useCallback(() => {
@@ -121,6 +125,7 @@ export function useVectorCortexPoll(): [
 		fetchVectorCortexDiagnostics().then((diagnostics) => setState((p) => ({ ...p, diagnostics }))).catch(() => {});
 		fetchVectorCortexOutcomes().then((outcomes) => setState((p) => ({ ...p, outcomes }))).catch(() => {});
 		fetchVectorCortexPolicy().then((policy) => setState((p) => ({ ...p, policy }))).catch(() => {});
+		fetchVectorCortexPlatform().then((platform) => setState((p) => ({ ...p, platform }))).catch(() => {});
 	}, []);
 
 	useEffect(() => {
