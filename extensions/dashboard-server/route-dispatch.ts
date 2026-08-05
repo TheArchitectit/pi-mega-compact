@@ -68,7 +68,10 @@ import { handleVectorCortexCrystals } from "./routes-vector-cortex-crystals.js";
 // independent of the crystals handler and every file stays well under the
 // 400-line extension soft limit.
 import { handleVectorCortexEconomics } from "./routes-vector-cortex-economics.js";
-// VC7C cache miss diagnostics + breakers handler will be imported here when VC7C ships.
+// VC7C cache miss diagnostics + breakers gets its own module so the
+// diagnostics seam stays independent of economics and every file stays well
+// under the 400-line extension soft limit.
+import { handleVectorCortexDiagnostics } from "./routes-vector-cortex-diagnostics.js";
 
 /**
  * Dispatch a request through every registered route handler.
@@ -125,5 +128,6 @@ export function dispatchRoutes(
 	if (handleVectorCortexRepair(req, res, ctx)) return true;
 	if (handleVectorCortexCrystals(req, res, ctx)) return true;
 	if (handleVectorCortexEconomics(req, res, ctx)) return true;
+	if (handleVectorCortexDiagnostics(req, res, ctx)) return true;
 	return false;
 }

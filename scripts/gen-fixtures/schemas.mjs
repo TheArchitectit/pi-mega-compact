@@ -1578,3 +1578,113 @@ schemas["schemas/cache-economics-fixture.schema.json"] = {
     },
   },
 };
+
+schemas["schemas/cache-diagnostic-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC7C cache-diagnostic fixture envelope",
+  description:
+    "Common structure every VC7C cache miss-classification fixture validates against. input.observe is a real MissObservation fed verbatim into the PURE classifier classifyMiss(observe) (no flag read, no network). expected.missClass is the EXACT exclusive class the production must return; expected.transient is whether isTransientMiss reports true. The classifier ranks profile -> range -> dependency -> request -> generation -> unknown and returns the FIRST true cause, so each fixture pins one rank boundary. Observation digests follow the VC digest convention: coveredDigest is sha256:<hex> WITH prefix; requestDigest is BARE lowercase hex. High-water marks are plain integers in the fixture (the production reads bigint; the acceptance test coerces).",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["cache-diagnostic"] },
+    expected: {
+      type: "object",
+      required: ["ok", "missClass"],
+      properties: {
+        ok: { type: "boolean" },
+        missClass: {
+          type: "string",
+          enum: ["profile", "range", "dependency", "request", "generation", "unknown"],
+        },
+        transient: { type: "boolean" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["observe"],
+      properties: {
+        observe: {
+          type: "object",
+          required: [
+            "requestProfileId",
+            "requestProfileVersion",
+            "requestCoveredDigest",
+            "requestedRangeCount",
+            "requestDigest",
+            "requestDependencyHighWater",
+            "generationInvalidated",
+          ],
+          properties: {
+            requestProfileId: { type: "string" },
+            requestProfileVersion: { type: ["string", "number"] },
+            cachedProfileId: { type: ["string", "null"] },
+            cachedProfileVersion: { type: ["string", "number", "null"] },
+            requestCoveredDigest: { type: "string" },
+            cachedCoveredDigest: { type: ["string", "null"] },
+            requestedRangeCount: { type: "integer" },
+            cachedRangeCount: { type: ["integer", "null"] },
+            requestDigest: { type: "string" },
+            cachedRequestDigest: { type: ["string", "null"] },
+            requestDependencyHighWater: { type: "integer" },
+            cachedDependencyHighWater: { type: ["integer", "null"] },
+            generationInvalidated: { type: "boolean" },
+          },
+        },
+      },
+    },
+  },
+};
+
+schemas["schemas/request-hash-v2-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC7C M5 request-hash-v2 migration fixture",
+  description:
+    "VC7C M5 request-hash-v2 migration fixture envelope. input describes v1 rows + economics versions + session/generation state; expected is the migration outcome (ok, codes, activeVersionAfter). The acceptance test constructs an in-memory M5Host from the input, runs migrateRequestHashV2(host), and compares the result. All digests are computed by node:crypto in the generator, never hand-written.",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["request-hash-v2"] },
+    expected: {
+      type: "object",
+      required: ["ok", "codes"],
+      properties: {
+        ok: { type: "boolean" },
+        codes: { type: "array", items: { type: "string" } },
+        activeVersionAfter: { type: "integer" },
+        copied: { type: "integer" },
+        identityPreserved: { type: "boolean" },
+        v2Hash: { type: "string" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario", "v1Rows"],
+      properties: {
+        scenario: { type: "string" },
+        activeVersion: { type: "integer" },
+        econVersionOf: { type: "object" },
+        sessionOf: { type: "object" },
+        liveGenerationOf: { type: "object" },
+        v1Rows: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["profileId", "requestDigest", "hash"],
+            properties: {
+              profileId: { type: "string" },
+              requestDigest: { type: "string" },
+              hash: { type: "string" },
+            },
+          },
+        },
+      },
+    },
+  },
+};

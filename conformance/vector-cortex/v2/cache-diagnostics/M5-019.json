@@ -1,0 +1,1 @@
+{"assertion":"an empty v1 set migrates as a clean no-op switch","expected":{"activeVersionAfter":2,"codes":[],"ok":true},"id":"M5-019","input":{"activeVersion":1,"econVersionOf":{},"liveGenerationOf":{},"scenario":"migrate","sessionOf":{},"v1Rows":[]},"kind":"request-hash-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/request-hash-v2-fixture.schema.json"}
