@@ -26,6 +26,7 @@ import type { RouteContext } from "./routes-core.js";
 import { VC6C_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
 import { countVcEvents, vcCount } from "./vc-event-counts.js";
+import { deriveVcStatus } from "./vc-status.js";
 import type { VectorCortexRepairView } from "./api-contracts/vector-cortex.js";
 
 // Actual event names emitted by src/vector-cortex/heal/repair-emit.ts.
@@ -75,6 +76,10 @@ export function handleVectorCortexRepair(
     lastBackoffMs: null,
     lastFailure: null,
     updatedAt: new Date().toISOString(),
+    status: deriveVcStatus({
+      enabled,
+      hasData: vcCount(counts, "vector_cortex_repair_planned") > 0,
+    }),
   };
   sendJson(res, 200, body);
   return true;

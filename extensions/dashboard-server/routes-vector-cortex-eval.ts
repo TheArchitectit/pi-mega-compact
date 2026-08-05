@@ -17,6 +17,7 @@ import { readEvalRows } from "../../src/vector-cortex/eval/persist.js";
 import { summarizeEvalRows } from "../../src/vector-cortex/eval/reader.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
 import type { VectorCortexEvaluationSummary } from "./api-contracts/vector-cortex.js";
+import { deriveVcStatus } from "./vc-status.js";
 
 /** Reader-only aggregate GET /api/vector-cortex/evaluation. */
 export function handleVectorCortexEvaluation(
@@ -53,6 +54,7 @@ export function handleVectorCortexEvaluation(
     },
     rejects: [], // VC0C wires live breaker/reject telemetry here
     updatedAt: new Date().toISOString(),
+    status: deriveVcStatus({ enabled, hasData: summary.samples > 0 }),
   };
   sendJson(res, 200, body);
   return true;

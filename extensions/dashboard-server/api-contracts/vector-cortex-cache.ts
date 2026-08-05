@@ -55,4 +55,6 @@ export interface VectorCortexCrystalsView {
    * why emit-only counters are reported instead of live cache-serve integration.
    */
   readonly deferredReason?: string;
+  /** Live-state derivation for the dashboard (off/awaiting_data/deferred/structural). */
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
 }

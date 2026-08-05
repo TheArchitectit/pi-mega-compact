@@ -1,8 +1,8 @@
 import type React from "react";
 import type { VectorCortexEconomicsView } from "../api/vector-cortex";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
 import { Metric } from "./VectorCortexMetric";
+import { VcStatusBadge } from "./VcStatusBadge";
 
 export function VectorCortexEconomicsCard({ view }: { view: VectorCortexEconomicsView | null }): React.ReactElement {
 	return (
@@ -10,11 +10,7 @@ export function VectorCortexEconomicsCard({ view }: { view: VectorCortexEconomic
 			<CardHeader>
 				<div className="flex items-center justify-between">
 					<CardTitle>Cache Economics (VC7B)</CardTitle>
-					{view?.enabled ? (
-						<Badge variant="success">ACTIVE</Badge>
-					) : (
-						<Badge variant="danger">OFF</Badge>
-					)}
+					<VcStatusBadge status={view?.status} />
 				</div>
 			</CardHeader>
 			<CardContent>
@@ -33,6 +29,16 @@ export function VectorCortexEconomicsCard({ view }: { view: VectorCortexEconomic
 						<div className="mt-3 text-xs text-muted-foreground">
 							Reader-only cache-economics diagnostics — counts and ECON_* codes only. Cache economics price a frozen rendered prompt's reuse, so provider prices, covered ranges, span/covered digests, request digests, and session ids are never exposed (SECURITY_PRIVACY). An unproven exclusion (declared without a proving fixture id) is rejected by the exclusion-proof rule and is reported here only as a count.
 						</div>
+						{view?.status === "awaiting_data" && (
+							<div className="mt-2 text-xs text-muted-foreground">
+								Awaiting first event. Data will appear after the next pipeline run.
+							</div>
+						)}
+						{view?.status === "deferred" && view?.deferredReason && (
+							<div className="mt-2 text-xs text-muted-foreground">
+								Deferred: {view.deferredReason.replace(/_/g, " ")}
+							</div>
+						)}
 					</>
 				)}
 			</CardContent>

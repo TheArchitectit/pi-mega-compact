@@ -6,6 +6,8 @@
 
 export interface VectorCortexEvaluationSummary {
   enabled: boolean;
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
+  readonly deferredReason?: string;
   mode: "A" | "B" | "C";
   samples: number;
   byMode: { A: number; B: number; C: number };
@@ -25,6 +27,8 @@ export interface VectorCortexEvaluationSummary {
  */
 export interface VectorCortexHealthCard {
   enabled: boolean;
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
+  readonly deferredReason?: string;
   mode: "A" | "B" | "C";
   state:
     | "CLOSED_A"
@@ -82,6 +86,8 @@ export interface VectorCortexResetResult {
  */
 export interface VectorCortexTopologyView {
   enabled: boolean;
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
+  readonly deferredReason?: string;
   generationId: string | null;
   rootDigest: string | null;
   sourceHighWater: string;
@@ -111,6 +117,8 @@ export interface VectorCortexTopologyView {
  */
 export interface VectorCortexQueryView {
   enabled: boolean;
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
+  readonly deferredReason?: string;
   routerVersion: number;
   updatedAt: string;
 }
@@ -121,6 +129,8 @@ export interface VectorCortexQueryView {
  */
 export interface VectorCortexShardsView {
   enabled: boolean;
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
+  readonly deferredReason?: string;
   semanticCount: number;
   exactCount: number;
   byteTotal: number;
@@ -135,6 +145,8 @@ export interface VectorCortexShardsView {
  */
 export interface VectorCortexReconstructView {
   enabled: boolean;
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
+  readonly deferredReason?: string;
   closureAttempts: number;
   closureRejections: number;
   validatedCount: number;
@@ -150,6 +162,8 @@ export interface VectorCortexReconstructView {
  */
 export interface VectorCortexLedgerView {
   enabled: boolean;
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
+  readonly deferredReason?: string;
   session: string;
   highWater: string;
   count: number;
@@ -177,6 +191,8 @@ export interface VectorCortexPlanManifest {
 
 export interface VectorCortexPlansView {
   enabled: boolean;
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
+  readonly deferredReason?: string;
   dagCount: number;
   plannerCount: number;
   plans: VectorCortexPlanManifest[];
@@ -186,6 +202,8 @@ export interface VectorCortexPlansView {
 /** Reader-only render + provider-profile view (VC5B). */
 export interface VectorCortexRenderView {
   enabled: boolean;
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
+  readonly deferredReason?: string;
   renderCount: number;
   providerCount: number;
   knownProfiles: string[];
@@ -199,6 +217,8 @@ export interface VectorCortexRenderView {
  */
 export interface VectorCortexRolloutView {
   enabled: boolean;
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
+  readonly deferredReason?: string;
   gateIndex: number;
   gatePct: number;
   buckets: number;
@@ -216,6 +236,8 @@ export interface VectorCortexRolloutView {
  */
 export interface VectorCortexRestoreView {
   enabled: boolean;
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
+  readonly deferredReason?: string;
   mode: "A" | "B" | "C";
   restoreAttempts: number;
   restoredCount: number;
@@ -232,6 +254,8 @@ export interface VectorCortexRestoreView {
  */
 export interface VectorCortexRepairView {
   enabled: boolean;
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
+  readonly deferredReason?: string;
   mode: "A" | "B" | "C";
   repairAttempts: number;
   repairsPlanned: number;
@@ -245,6 +269,8 @@ export interface VectorCortexRepairView {
 /** Reader-only closure-optimization diagnostics view (VC6A). Aggregate only. */
 export interface VectorCortexClosureProofView {
   enabled: boolean;
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
+  readonly deferredReason?: string;
   mode: "A" | "B" | "C";
   optimizations: number;
   proofRejections: number;

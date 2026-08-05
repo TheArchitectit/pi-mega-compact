@@ -21,6 +21,7 @@ import { PRO_IDS } from "../../src/vector-cortex/provider/types.js";
 import { KNOWN_PROVIDER_KEYS } from "../../src/vector-cortex/provider/registry.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
 import type { VectorCortexRenderView } from "./api-contracts/vector-cortex.js";
+import { deriveVcStatus } from "./vc-status.js";
 
 /** Reader-only GET /api/vector-cortex/render (VC5B). */
 export function handleVectorCortexRender(
@@ -43,6 +44,7 @@ export function handleVectorCortexRender(
     providerCount: enabled ? PRO_IDS.length : 0,
     knownProfiles: enabled ? KNOWN_PROVIDER_KEYS : [],
     updatedAt: new Date().toISOString(),
+    status: deriveVcStatus({ enabled, hasData: true, structuralOnly: true }),
   };
   sendJson(res, 200, body);
   return true;

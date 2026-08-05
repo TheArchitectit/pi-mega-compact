@@ -1,8 +1,8 @@
 import type React from "react";
 import type { VectorCortexPolicyView } from "../api/vector-cortex";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
 import { Metric } from "./VectorCortexMetric";
+import { VcStatusBadge } from "./VcStatusBadge";
 
 export function VectorCortexPolicyCard({ view }: { view: VectorCortexPolicyView | null }): React.ReactElement {
 	return (
@@ -10,11 +10,7 @@ export function VectorCortexPolicyCard({ view }: { view: VectorCortexPolicyView 
 			<CardHeader>
 				<div className="flex items-center justify-between">
 					<CardTitle>Shadow Adaptive Policy (VC8B)</CardTitle>
-					{view?.enabled ? (
-						<Badge variant="success">ACTIVE</Badge>
-					) : (
-						<Badge variant="danger">OFF</Badge>
-					)}
+					<VcStatusBadge status={view?.status} />
 				</div>
 			</CardHeader>
 			<CardContent>
@@ -35,6 +31,16 @@ export function VectorCortexPolicyCard({ view }: { view: VectorCortexPolicyView 
 						<div className="mt-3 text-xs text-muted-foreground">
 							Reader-only shadow adaptive policy — aggregate counts and POL_/M7_ codes only. Policy actions are from a finite set chosen deterministically by the canonical pressure level; budgets are clamped into a configured window after the pressure factor. Unknown pressure labels are rejected as POL_PRESSURE_UNKNOWN, never coerced. The shadow engine is structurally incapable of affecting the live path — inputs are deep-copied and the prompt digest is pinned before and after — so liveMutations is always zero. M7 migrates legacy pressure labels to the v2 canonical five by copy/validate/switch; an unknown label blocks the switch (M7_PRESSURE_UNKNOWN). No prompt bytes, session content, or free-text ever reaches the client.
 						</div>
+						{view?.status === "awaiting_data" && (
+							<div className="mt-2 text-xs text-muted-foreground">
+								Awaiting first event. Data will appear after the next pipeline run.
+							</div>
+						)}
+						{view?.status === "deferred" && view?.deferredReason && (
+							<div className="mt-2 text-xs text-muted-foreground">
+								Deferred: {view.deferredReason.replace(/_/g, " ")}
+							</div>
+						)}
 					</>
 				)}
 			</CardContent>

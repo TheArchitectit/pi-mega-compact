@@ -23,6 +23,7 @@ import type {
   VectorCortexHealthCard,
   VectorCortexResetResult,
 } from "./api-contracts/vector-cortex.js";
+import { deriveVcStatus } from "./vc-status.js";
 
 /** Resolve the committed encoder-v1 asset dir by walking up to the repo root. */
 function encoderAssetDir(): string | null {
@@ -169,6 +170,7 @@ export function handleVectorCortexHealth(
     stateSource: "ephemeral",
     encoderAssetDigest: enc.assetDigest,
     encoderMode: enc.mode,
+    status: deriveVcStatus({ enabled: false, hasData: false }),
   };
   if (!card) {
     sendJson(res, 200, fallback);
@@ -210,6 +212,7 @@ export function handleVectorCortexHealth(
     stateSource: card.stateSource,
     encoderAssetDigest: enc.assetDigest,
     encoderMode: enc.mode,
+    status: deriveVcStatus({ enabled, hasData: true, structuralOnly: true }),
   };
   sendJson(res, 200, body);
   return true;
@@ -263,6 +266,7 @@ export function handleVectorCortexBreakersReset(
         probeCount: rec.probeCount,
         manualReason: rec.manualReason,
         updatedAt: rec.updatedAt,
+        status: deriveVcStatus({ enabled: true, hasData: true }),
       };
       sendJson(res, 200, body);
     } catch {

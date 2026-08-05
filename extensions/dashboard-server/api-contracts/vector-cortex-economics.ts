@@ -46,4 +46,6 @@ export interface VectorCortexEconomicsView {
   readonly updatedAt: string;
   /** Present when the economic aggregate is not yet computed, with a reason. */
   readonly deferredReason?: string;
+  /** Live-state derivation for the dashboard (off/awaiting_data/deferred/structural). */
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
 }

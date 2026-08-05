@@ -21,6 +21,7 @@ import type { MegaConfig } from "../../mega-config.js";
 import type { TailResultFn } from "./gateCheck.js";
 import { recordCompactLatency } from "../../mega-runtime/vc-observer.js";
 import { decideLivePath } from "../../mega-runtime/vector-cortex-live.js";
+import { defaultClock, type RolloutEvidence } from "../../../src/vector-cortex/rollout/gate.js";
 import { VC5C_ENABLED } from "../../../src/config/vector-cortex.js";
 
 /** The non-skipped variant of the runCompact result. */
@@ -53,13 +54,27 @@ export function invokePipeline(
 	// rollout shapes. Best-effort + non-fatal; decision does NOT gate behavior yet.
 	if (VC5C_ENABLED()) {
 		try {
-			const decision = decideLivePath(runtime.rt.sessionId, {
-				emit: runtime.appendEvent.bind(runtime),
-				currentGate:
-					(runtime.rt as { vcGate?: 0 | 1 | 2 | 3 | 4 }).vcGate ?? 0,
+			const clock = defaultClock();
+			// Conservative evidence: fresh in-memory window (elapsed=0), not
+			// powered, so the gate can't advance — but events/sessions carry real
+			// values so the decision events reflect actual runtime activity rather
+			// than degrading every epoch to an empty mode-C read.
+			const evidence: RolloutEvidence = {
+				windowStartMs: clock.now(),
+				powered: false,
+				events: runtime.rt.compactCount,
+				sessions: 1,
 				hardFaults:
 					(runtime.rt as { vcHardFaults?: import("../../../src/vector-cortex/rollout/types.js").RolloutHardFault[] })
 						.vcHardFaults ?? [],
+			};
+			const decision = decideLivePath(runtime.rt.sessionId, {
+				emit: runtime.appendEvent.bind(runtime),
+				clock,
+				currentGate:
+					(runtime.rt as { vcGate?: 0 | 1 | 2 | 3 | 4 }).vcGate ?? 0,
+				evidence,
+				hardFaults: evidence.hardFaults,
 			});
 			runtime.appendEvent("vector_cortex_rollout_decision", {
 				sessionId: runtime.rt.sessionId,

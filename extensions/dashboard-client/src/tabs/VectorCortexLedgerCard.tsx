@@ -7,8 +7,8 @@
 
 import type { VectorCortexLedgerView } from "../api/vector-cortex";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
 import { Metric } from "./VectorCortexMetric";
+import { VcStatusBadge } from "./VcStatusBadge";
 
 export function VectorCortexLedgerCard({
   ledger,
@@ -20,11 +20,7 @@ export function VectorCortexLedgerCard({
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle>Occurrence Ledger (VC1B)</CardTitle>
-          {ledger?.enabled ? (
-            <Badge variant="success">ACTIVE</Badge>
-          ) : (
-            <Badge variant="danger">OFF</Badge>
-          )}
+          <VcStatusBadge status={ledger?.status} />
         </div>
       </CardHeader>
       <CardContent>
@@ -70,6 +66,16 @@ export function VectorCortexLedgerCard({
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {ledger?.status === "awaiting_data" && (
+              <div className="mt-2 text-xs text-muted-foreground">
+                Awaiting first event. Data will appear after the next pipeline run.
+              </div>
+            )}
+            {ledger?.status === "deferred" && ledger?.deferredReason && (
+              <div className="mt-2 text-xs text-muted-foreground">
+                Deferred: {ledger.deferredReason.replace(/_/g, " ")}
               </div>
             )}
           </>

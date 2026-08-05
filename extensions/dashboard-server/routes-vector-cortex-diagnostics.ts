@@ -31,6 +31,7 @@ import type { RouteContext } from "./routes-core.js";
 import { VC7C_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
 import { countVcEvents, vcCount } from "./vc-event-counts.js";
+import { deriveVcStatus } from "./vc-status.js";
 import type { VectorCortexDiagnosticsView } from "./api-contracts/vector-cortex-diagnostics.js";
 
 // Actual events emitted by src/vector-cortex/cache/diagnostics-emit.ts.
@@ -77,6 +78,11 @@ export function handleVectorCortexDiagnostics(
     lastFailure: null,
     updatedAt: new Date().toISOString(),
     deferredReason: "cache_classifier_not_wired_v0_20_23",
+    status: deriveVcStatus({
+      enabled,
+      deferredReason: "cache_classifier_not_wired_v0_20_23",
+      hasData: vcCount(counts, "vector_cortex_cache_serve_blocked") > 0,
+    }),
   };
   sendJson(res, 200, body);
   return true;

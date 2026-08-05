@@ -19,6 +19,7 @@ import { VC3C_ENABLED } from "../../src/config.js";
 import { ROUTER_KEY_VERSION } from "../../src/vector-cortex/topology/query.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
 import type { VectorCortexQueryView } from "./api-contracts/vector-cortex.js";
+import { deriveVcStatus } from "./vc-status.js";
 
 /**
  * Reader-only GET /api/vector-cortex/query (VC3C query-layer diagnostics).
@@ -48,6 +49,7 @@ export function handleVectorCortexQuery(
     enabled,
     routerVersion: ROUTER_KEY_VERSION,
     updatedAt: new Date().toISOString(),
+    status: deriveVcStatus({ enabled, hasData: true, structuralOnly: true }),
   };
   sendJson(res, 200, body);
   return true;

@@ -1,8 +1,8 @@
 import type React from "react";
 import type { VectorCortexRestoreView } from "../api/vector-cortex";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
 import { Metric } from "./VectorCortexMetric";
+import { VcStatusBadge } from "./VcStatusBadge";
 
 export function VectorCortexRestoreCard({ view }: { view: VectorCortexRestoreView | null }): React.ReactElement {
 	return (
@@ -10,11 +10,7 @@ export function VectorCortexRestoreCard({ view }: { view: VectorCortexRestoreVie
 			<CardHeader>
 				<div className="flex items-center justify-between">
 					<CardTitle>Exact Source Restoration (VC6B)</CardTitle>
-					{view?.enabled ? (
-						<Badge variant="success">ACTIVE</Badge>
-					) : (
-						<Badge variant="danger">OFF</Badge>
-					)}
+					<VcStatusBadge status={view?.status} />
 				</div>
 			</CardHeader>
 			<CardContent>
@@ -34,6 +30,16 @@ export function VectorCortexRestoreCard({ view }: { view: VectorCortexRestoreVie
 						<div className="mt-3 text-xs text-muted-foreground">
 							Reader-only restore diagnostics — counts and HEAL_RESTORE_* codes only. There is no payload endpoint: restored bytes, span ids, node ids, and ledger text are never exposed (SECURITY_PRIVACY).
 						</div>
+						{view?.status === "awaiting_data" && (
+							<div className="mt-2 text-xs text-muted-foreground">
+								Awaiting first event. Data will appear after the next pipeline run.
+							</div>
+						)}
+						{view?.status === "deferred" && view?.deferredReason && (
+							<div className="mt-2 text-xs text-muted-foreground">
+								Deferred: {view.deferredReason.replace(/_/g, " ")}
+							</div>
+						)}
 					</>
 				)}
 			</CardContent>

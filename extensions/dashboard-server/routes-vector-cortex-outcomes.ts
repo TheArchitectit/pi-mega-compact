@@ -21,11 +21,17 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
 import { VC8A_ENABLED } from "../../src/config.js";
 import { sendJson, readJsonBody } from "./routes-vector-cortex-shared.js";
+import { countVcEvents, vcCount } from "./vc-event-counts.js";
+import { deriveVcStatus } from "./vc-status.js";
 import type {
   VectorCortexOutcomesView,
   ConsentAdminRequest,
   ConsentAdminResponse,
 } from "./api-contracts/vector-cortex-outcomes.js";
+
+// Actual events emitted by src/vector-cortex/outcomes/* — the outcome append is
+// the sole aggregate signal (consent grants/revokes are not emitted as events).
+const OUTCOME_EVENTS = ["vector_cortex_outcome_appended"] as const;
 
 /**
  * GET /api/vector-cortex/outcomes — reader-only outcomes aggregate (VC8A).
@@ -34,7 +40,7 @@ import type {
 export function handleVectorCortexOutcomes(
   req: IncomingMessage,
   res: ServerResponse,
-  _ctx: RouteContext,
+  ctx: RouteContext,
 ): boolean {
   const url = req.url ?? "";
   const path = url.split("?")[0] ?? url;
@@ -77,17 +83,20 @@ export function handleVectorCortexOutcomes(
   }
 
   const enabled = VC8A_ENABLED();
+  const counts = countVcEvents(ctx.stateDir, OUTCOME_EVENTS);
+  const outcomeCount = vcCount(counts, "vector_cortex_outcome_appended");
   const mode: "A" | "B" | "C" = enabled ? "A" : "C";
   const body: VectorCortexOutcomesView = {
     enabled,
     mode,
-    outcomeCount: 0,
+    outcomeCount,
     consentedSessions: 0,
     revokedSessions: 0,
     manifestCount: 0,
     excludedCount: 0,
     lastFailure: null,
     updatedAt: new Date().toISOString(),
+    status: deriveVcStatus({ enabled, hasData: outcomeCount > 0 }),
   };
   sendJson(res, 200, body);
   return true;

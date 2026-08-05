@@ -98,6 +98,7 @@ describe("/api/vector-cortex/platform (VC8C reader-only)", () => {
 						"lastFailure",
 						"mode",
 						"passed",
+						"status",
 						"updatedAt",
 					],
 					"platform view exposes exactly the aggregate keys",

@@ -100,6 +100,7 @@ describe("/api/vector-cortex/cache-economics (VC7B reader-only)", () => {
 						"mode",
 						"profileCount",
 						"provenExclusions",
+						"status",
 						"unprovenExclusions",
 						"updatedAt",
 					],

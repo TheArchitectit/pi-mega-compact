@@ -309,9 +309,9 @@ export async function persistEpochAndMaintain(
 					runtime.appendEvent(name, payload as Record<string, unknown>),
 				{
 					subsystem: "post_compact",
-					generation: 1,
+					generation: runtime.rt.compactCount,
 					backoffMs: 0,
-					gapSize: 0,
+					gapSize: ran.result.compactedFrom,
 				},
 			);
 		} catch {

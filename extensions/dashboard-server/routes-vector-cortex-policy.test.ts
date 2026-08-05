@@ -103,6 +103,7 @@ describe("/api/vector-cortex/policy (VC8B reader-only)", () => {
 						"pressureVersion",
 						"rejectedInputs",
 						"shadowDecisions",
+						"status",
 						"updatedAt",
 					],
 					"policy view exposes exactly the aggregate keys",

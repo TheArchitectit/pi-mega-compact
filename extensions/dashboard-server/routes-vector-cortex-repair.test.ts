@@ -99,6 +99,7 @@ describe("/api/vector-cortex/repair (VC6C reader-only)", () => {
 						"pointersSwitched",
 						"repairAttempts",
 						"repairsPlanned",
+						"status",
 						"updatedAt",
 					],
 					"repair view exposes exactly the aggregate keys",

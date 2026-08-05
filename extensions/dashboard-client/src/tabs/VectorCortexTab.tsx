@@ -35,6 +35,7 @@ import {
 import { VectorCortexPlansCard } from "./VectorCortexPlansCard";
 import { VectorCortexTopologyCard } from "./VectorCortexTopologyCard";
 import { VectorCortexLedgerCard } from "./VectorCortexLedgerCard";
+import { VcStatusBadge } from "./VcStatusBadge";
 
 function ModeChip({ mode, count }: { mode: string; count: number }): React.ReactElement {
 	return (
@@ -77,13 +78,10 @@ export default function VectorCortexTab(): React.ReactElement {
 		<div className="flex flex-col gap-4">
 			<div className="flex items-center gap-2">
 				<h2 className="text-lg font-semibold">Vector Cortex Evaluation</h2>
-				{!data.enabled ? (
-					<Badge variant="danger">MODE C (OFF)</Badge>
-				) : data.samples === 0 ? (
-					<Badge variant="warning">OBSERVER (A) — NO SAMPLES YET</Badge>
-				) : (
-					<Badge variant="success">OBSERVER (A) — {data.samples} SAMPLES</Badge>
-				)}
+				<VcStatusBadge status={data.status} />
+				<span className="text-xs text-muted-foreground">
+					{data.samples} samples · mode {data.mode}
+				</span>
 			</div>
 
 			<div className="grid grid-cols-1 gap-4 md:grid-cols-3">

@@ -20,6 +20,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
 import { VC8B_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
+import { deriveVcStatus } from "./vc-status.js";
 import type { VectorCortexPolicyView } from "./api-contracts/vector-cortex-policy.js";
 
 /** GET /api/vector-cortex/policy — reader-only policy + shadow aggregate (VC8B). */
@@ -50,6 +51,11 @@ export function handleVectorCortexPolicy(
     lastFailure: null,
     updatedAt: new Date().toISOString(),
     deferredReason: "shadow_controller_not_instantiated_v0_20_23",
+    status: deriveVcStatus({
+      enabled,
+      deferredReason: "shadow_controller_not_instantiated_v0_20_23",
+      hasData: false,
+    }),
   };
   sendJson(res, 200, body);
   return true;

@@ -75,4 +75,6 @@ export interface VectorCortexDiagnosticsView {
   readonly lastFailure: string | null;
   /** ISO timestamp of the snapshot. */
   readonly updatedAt: string;
+  /** Live-state derivation for the dashboard (off/awaiting_data/deferred/structural). */
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
 }

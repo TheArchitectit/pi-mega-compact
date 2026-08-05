@@ -14,6 +14,8 @@
  */
 export interface VectorCortexOutcomesView {
   enabled: boolean;
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
+  readonly deferredReason?: string;
   mode: "A" | "B" | "C";
   outcomeCount: number;
   consentedSessions: number;
@@ -31,6 +33,8 @@ export interface VectorCortexOutcomesView {
  */
 export interface VectorCortexPolicyView {
   enabled: boolean;
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
+  readonly deferredReason?: string;
   mode: "A" | "B" | "C";
   shadowDecisions: number;
   clampedDecisions: number;
@@ -48,6 +52,8 @@ export interface VectorCortexPolicyView {
  */
 export interface VectorCortexPlatformView {
   enabled: boolean;
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
+  readonly deferredReason?: string;
   mode: "A" | "B" | "C";
   fixtureCount: number;
   passed: number;

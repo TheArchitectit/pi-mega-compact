@@ -24,6 +24,7 @@ import type { RouteContext } from "./routes-core.js";
 import { VC4B_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
 import type { VectorCortexResidualView } from "./api-contracts/vector-cortex.js";
+import { deriveVcStatus } from "./vc-status.js";
 
 /**
  * Reader-only GET /api/vector-cortex/residual (VC4B).
@@ -54,6 +55,7 @@ export function handleVectorCortexResidual(
     encodedByteTotal: 0,
     exactByteTotal: 0,
     updatedAt: new Date().toISOString(),
+    status: deriveVcStatus({ enabled, hasData: false, structuralOnly: true }),
   };
   sendJson(res, 200, body);
   return true;

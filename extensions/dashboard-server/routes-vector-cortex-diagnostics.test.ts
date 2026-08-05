@@ -120,6 +120,7 @@ describe("/api/vector-cortex/cache-diagnostics (VC7C reader-only)", () => {
 						"rangeMisses",
 						"requestMisses",
 						"serveBlocked",
+						"status",
 						"unknownMisses",
 						"updatedAt",
 					],

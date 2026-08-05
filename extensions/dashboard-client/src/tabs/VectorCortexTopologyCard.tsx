@@ -10,8 +10,8 @@ import type {
   VectorCortexQueryView,
 } from "../api/vector-cortex";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
 import { Metric } from "./VectorCortexMetric";
+import { VcStatusBadge } from "./VcStatusBadge";
 
 export function VectorCortexTopologyCard({
   topology,
@@ -26,11 +26,7 @@ export function VectorCortexTopologyCard({
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Derived Cortex Store (VC3A)</CardTitle>
-            {topology?.enabled ? (
-              <Badge variant="success">ACTIVE</Badge>
-            ) : (
-              <Badge variant="danger">OFF</Badge>
-            )}
+            <VcStatusBadge status={topology?.status} />
           </div>
         </CardHeader>
         <CardContent>
@@ -68,6 +64,16 @@ export function VectorCortexTopologyCard({
                   </>
                 )}
               </div>
+              {topology?.status === "awaiting_data" && (
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Awaiting first event. Data will appear after the next pipeline run.
+                </div>
+              )}
+              {topology?.status === "deferred" && topology?.deferredReason && (
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Deferred: {topology.deferredReason.replace(/_/g, " ")}
+                </div>
+              )}
               {topology.nodes !== undefined &&
                 (topology.edges?.length ?? 0) > 0 && (
                   <div className="mt-4 max-h-56 overflow-y-auto">
@@ -109,20 +115,28 @@ export function VectorCortexTopologyCard({
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Topology Query Diagnostics (VC3C)</CardTitle>
-            {query?.enabled ? (
-              <Badge variant="success">ACTIVE</Badge>
-            ) : (
-              <Badge variant="danger">OFF</Badge>
-            )}
+            <VcStatusBadge status={query?.status} />
           </div>
         </CardHeader>
         <CardContent>
           {!query?.enabled ? (
             <div className="vc-empty">Query diagnostics unavailable (VC3C off).</div>
           ) : (
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-              <Metric label="Router version" value={String(query.routerVersion)} />
-            </div>
+            <>
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+                <Metric label="Router version" value={String(query.routerVersion)} />
+              </div>
+              {query?.status === "awaiting_data" && (
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Awaiting first event. Data will appear after the next pipeline run.
+                </div>
+              )}
+              {query?.status === "deferred" && query?.deferredReason && (
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Deferred: {query.deferredReason.replace(/_/g, " ")}
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

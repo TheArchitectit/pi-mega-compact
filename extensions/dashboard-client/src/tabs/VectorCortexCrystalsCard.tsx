@@ -1,8 +1,8 @@
 import type React from "react";
 import type { VectorCortexCrystalsView } from "../api/vector-cortex";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
 import { Metric } from "./VectorCortexMetric";
+import { VcStatusBadge } from "./VcStatusBadge";
 
 export function VectorCortexCrystalsCard({ view }: { view: VectorCortexCrystalsView | null }): React.ReactElement {
 	return (
@@ -10,11 +10,7 @@ export function VectorCortexCrystalsCard({ view }: { view: VectorCortexCrystalsV
 			<CardHeader>
 				<div className="flex items-center justify-between">
 					<CardTitle>Frozen Range Crystals (VC7A)</CardTitle>
-					{view?.enabled ? (
-						<Badge variant="success">ACTIVE</Badge>
-					) : (
-						<Badge variant="danger">OFF</Badge>
-					)}
+					<VcStatusBadge status={view?.status} />
 				</div>
 			</CardHeader>
 			<CardContent>
@@ -38,6 +34,16 @@ export function VectorCortexCrystalsCard({ view }: { view: VectorCortexCrystalsV
 						<div className="mt-3 text-xs text-muted-foreground">
 							Reader-only crystal diagnostics — counts, byte volumes, and CRY_* codes only. A crystal is a frozen rendered prompt, so frozen bytes, covered ranges, span/covered digests, request digests, and session ids are never exposed (SECURITY_PRIVACY). Keys exclude the global ledger frontier, so an unrelated append does not invalidate a crystal; a covered-byte, dependency, renderer, or profile change does. Collisions mean two renders of one identity disagreed — the stored crystal is never overwritten.
 						</div>
+						{view?.status === "awaiting_data" && (
+							<div className="mt-2 text-xs text-muted-foreground">
+								Awaiting first event. Data will appear after the next pipeline run.
+							</div>
+						)}
+						{view?.status === "deferred" && view?.deferredReason && (
+							<div className="mt-2 text-xs text-muted-foreground">
+								Deferred: {view.deferredReason.replace(/_/g, " ")}
+							</div>
+						)}
 					</>
 				)}
 			</CardContent>

@@ -18,13 +18,22 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
 import { VC8C_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
+import { countVcEvents, vcCount } from "./vc-event-counts.js";
+import { deriveVcStatus } from "./vc-status.js";
 import type { VectorCortexPlatformView } from "./api-contracts/vector-cortex-platform.js";
+
+// Actual events emitted by src/vector-cortex/platform/* — a parity run checks
+// fixtures and a demotion records an engine-selection downgrade.
+const PLATFORM_EVENTS = [
+  "vector_cortex_engine_parity_checked",
+  "vector_cortex_engine_selection_demoted",
+] as const;
 
 /** GET /api/vector-cortex/platform — reader-only engine parity/selection aggregate (VC8C). */
 export function handleVectorCortexPlatform(
   req: IncomingMessage,
   res: ServerResponse,
-  _ctx: RouteContext,
+  ctx: RouteContext,
 ): boolean {
   const url = req.url ?? "";
   const path = url.split("?")[0] ?? url;
@@ -36,16 +45,19 @@ export function handleVectorCortexPlatform(
   }
 
   const enabled = VC8C_ENABLED();
+  const counts = countVcEvents(ctx.stateDir, PLATFORM_EVENTS);
   const mode: VectorCortexPlatformView["mode"] = enabled ? "A" : "C";
+  const fixtureCount = vcCount(counts, "vector_cortex_engine_parity_checked");
   const body: VectorCortexPlatformView = {
     enabled,
     mode,
-    fixtureCount: 0,
+    fixtureCount,
     passed: 0,
     failed: 0,
     externalRunnerConfigured: process.env.MEGACOMPACT_RUST_RUNNER !== undefined,
     lastFailure: null,
     updatedAt: new Date().toISOString(),
+    status: deriveVcStatus({ enabled, hasData: fixtureCount > 0 }),
   };
   sendJson(res, 200, body);
   return true;

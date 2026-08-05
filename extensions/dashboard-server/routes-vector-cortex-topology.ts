@@ -32,6 +32,7 @@ import type { TopologyCandidate, TopologyEmit } from "../../src/vector-cortex/to
 import type { CortexRecordV1 } from "../../src/vector-cortex/cortex/types.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
 import type { VectorCortexTopologyView } from "./api-contracts/vector-cortex.js";
+import { deriveVcStatus } from "./vc-status.js";
 
 /** Well-known cortex record kind that carries a canonical candidate payload. */
 const TOPOLOGY_RECORD_KIND = "topology";
@@ -112,6 +113,7 @@ export function handleVectorCortexTopology(
       ? { nodes, edges, generationDigest }
       : {}),
     updatedAt: new Date().toISOString(),
+    status: deriveVcStatus({ enabled: active, hasData: summary.recordCount > 0 }),
   };
   sendJson(res, 200, body);
   return true;

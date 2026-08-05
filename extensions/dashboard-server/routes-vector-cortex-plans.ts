@@ -27,6 +27,7 @@ import { DAG_IDS } from "../../src/vector-cortex/prompt-dag/types.js";
 import { PLN_IDS } from "../../src/vector-cortex/planner/types.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
 import type { VectorCortexPlansView } from "./api-contracts/vector-cortex.js";
+import { deriveVcStatus } from "./vc-status.js";
 
 /**
  * Reader-only GET /api/vector-cortex/plans (VC5A).
@@ -52,6 +53,7 @@ export function handleVectorCortexPlans(
     plannerCount: enabled ? PLN_IDS.length : 0,
     plans: [],
     updatedAt: new Date().toISOString(),
+    status: deriveVcStatus({ enabled, hasData: true, structuralOnly: true }),
   };
   sendJson(res, 200, body);
   return true;

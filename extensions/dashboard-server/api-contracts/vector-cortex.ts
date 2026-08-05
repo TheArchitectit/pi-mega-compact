@@ -11,6 +11,13 @@
  */
 
 /**
+ * Live-state derivation shared across the VC views: "off" (flag disabled),
+ * "awaiting_data" (enabled but no data yet), "deferred" (echoed with a
+ * deferredReason), "structural" (enabled, structure-only metrics), "live".
+ */
+type VcStatus = "live" | "awaiting_data" | "deferred" | "structural" | "off";
+
+/**
  * Aggregate evaluation summary for GET /api/vector-cortex/evaluation.
  * Reader-only: exposes aggregates (histogram cells, counts), never payloads or
  * exact ledger text.
@@ -39,6 +46,7 @@ export interface VectorCortexEvaluationSummary {
   readonly rejects: readonly string[];
   /** ISO timestamp of the summary. */
   readonly updatedAt: string;
+  readonly status?: VcStatus;
 }
 
 /**
@@ -101,6 +109,7 @@ export interface VectorCortexHealthCard {
    * (lexical). Reader-only aggregate — the measured digest prefix, never bytes.
    */
   readonly encoderMode: "A" | "B" | "C";
+  readonly status?: VcStatus;
 }
 
 /**
@@ -117,6 +126,7 @@ export interface VectorCortexResetResult {
   readonly probeCount: number;
   readonly manualReason?: string;
   readonly updatedAt: string;
+  readonly status?: VcStatus;
 }
 
 /**
@@ -158,6 +168,7 @@ export interface VectorCortexTopologyView {
   readonly generationDigest?: string | null;
   /** ISO timestamp of the snapshot. */
   readonly updatedAt: string;
+  readonly status?: VcStatus;
 }
 
 /**
@@ -175,6 +186,7 @@ export interface VectorCortexQueryView {
   readonly routerVersion: number;
   /** ISO timestamp of the snapshot. */
   readonly updatedAt: string;
+  readonly status?: VcStatus;
 }
 
 /**
@@ -199,6 +211,7 @@ export interface VectorCortexShardsView {
   readonly protectedByteTotal: number;
   /** ISO timestamp of the snapshot. */
   readonly updatedAt: string;
+  readonly status?: VcStatus;
 }
 
 /**
@@ -228,6 +241,7 @@ export interface VectorCortexResidualView {
   readonly exactByteTotal: number;
   /** ISO timestamp of the snapshot. */
   readonly updatedAt: string;
+  readonly status?: VcStatus;
 }
 
 /**
@@ -256,6 +270,7 @@ export interface VectorCortexReconstructView {
   readonly byteTotal: number;
   /** ISO timestamp of the snapshot. */
   readonly updatedAt: string;
+  readonly status?: VcStatus;
 }
 
 /**
@@ -294,6 +309,7 @@ export interface VectorCortexPlansView {
   readonly plans: readonly VectorCortexPlanManifest[];
   /** ISO timestamp of the snapshot. */
   readonly updatedAt: string;
+  readonly status?: VcStatus;
 }
 
 /**
@@ -314,6 +330,7 @@ export interface VectorCortexRenderView {
   readonly knownProfiles: readonly string[];
   /** ISO timestamp of the snapshot. */
   readonly updatedAt: string;
+  readonly status?: VcStatus;
 }
 
 /**
@@ -345,6 +362,7 @@ export interface VectorCortexRolloutView {
   readonly promotionBlocked: boolean;
   /** ISO timestamp of the snapshot. */
   readonly updatedAt: string;
+  readonly status?: VcStatus;
 }
 
 /**
@@ -372,6 +390,7 @@ export interface VectorCortexLedgerView {
   }[];
   /** ISO timestamp of the snapshot. */
   readonly updatedAt: string;
+  readonly status?: VcStatus;
 }
 
 export type {

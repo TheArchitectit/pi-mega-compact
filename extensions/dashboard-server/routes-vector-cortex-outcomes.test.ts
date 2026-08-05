@@ -101,6 +101,7 @@ describe("/api/vector-cortex/outcomes (VC8A reader-only)", () => {
 						"mode",
 						"outcomeCount",
 						"revokedSessions",
+						"status",
 						"updatedAt",
 					],
 					"outcomes view exposes exactly the aggregate keys",

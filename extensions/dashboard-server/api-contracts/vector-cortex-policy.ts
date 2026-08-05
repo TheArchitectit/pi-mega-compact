@@ -35,4 +35,6 @@ export interface VectorCortexPolicyView {
   readonly updatedAt: string;
   /** Present when the shadow controller is not yet instantiated, with a reason. */
   readonly deferredReason?: string;
+  /** Live-state derivation for the dashboard (off/awaiting_data/deferred/structural). */
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
 }

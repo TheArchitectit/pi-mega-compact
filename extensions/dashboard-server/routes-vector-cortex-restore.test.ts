@@ -91,6 +91,7 @@ describe("/api/vector-cortex/restore (VC6B reader-only)", () => {
 						"mode",
 						"restoreAttempts",
 						"restoredCount",
+						"status",
 						"updatedAt",
 					],
 					"restore view exposes exactly the aggregate keys",

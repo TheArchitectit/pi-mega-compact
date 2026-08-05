@@ -24,6 +24,7 @@ import { VC4A_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
 import { countVcEvents, vcCount } from "./vc-event-counts.js";
 import type { VectorCortexShardsView } from "./api-contracts/vector-cortex.js";
+import { deriveVcStatus } from "./vc-status.js";
 
 // Actual events emitted by src/vector-cortex/shards/manifest.ts. VC4A has no
 // per-tier (semantic/exact) write event — the manifest build is the single
@@ -60,6 +61,10 @@ export function handleVectorCortexShards(
     byteTotal: 0,
     protectedByteTotal: 0,
     updatedAt: new Date().toISOString(),
+    status: deriveVcStatus({
+      enabled,
+      hasData: vcCount(counts, "vector_cortex_shard_manifest_built") > 0,
+    }),
   };
   sendJson(res, 200, body);
   return true;

@@ -18,6 +18,7 @@ import { VC1B_ENABLED } from "../../src/config.js";
 import { createLedgerStore } from "../../src/vector-cortex/ledger/store.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
 import type { VectorCortexLedgerView } from "./api-contracts/vector-cortex.js";
+import { deriveVcStatus } from "./vc-status.js";
 
 /**
  * Reader-only GET /api/vector-cortex/ledger (VC1B).
@@ -86,6 +87,7 @@ export function handleVectorCortexLedger(
     count,
     occurrences,
     updatedAt: new Date().toISOString(),
+    status: deriveVcStatus({ enabled: active, hasData: count > 0 }),
   };
   sendJson(res, 200, body);
   return true;

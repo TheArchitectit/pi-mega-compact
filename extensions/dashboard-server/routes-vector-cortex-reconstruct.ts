@@ -13,6 +13,7 @@ import { VC4C_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
 import { countVcEvents, vcCount } from "./vc-event-counts.js";
 import type { VectorCortexReconstructView } from "./api-contracts/vector-cortex.js";
+import { deriveVcStatus } from "./vc-status.js";
 
 // Closure attempt/rejection events emitted by src/vector-cortex/heal/emit.ts.
 const RECONSTRUCT_EVENTS = [
@@ -43,6 +44,10 @@ export function handleVectorCortexReconstruct(
     spanTotal: 0,
     byteTotal: 0,
     updatedAt: new Date().toISOString(),
+    status: deriveVcStatus({
+      enabled,
+      hasData: vcCount(counts, "vector_cortex_closure_optimized") > 0,
+    }),
   };
   sendJson(res, 200, body);
   return true;

@@ -26,6 +26,7 @@ import {
 	recordRecallWrite,
 } from "../mega-turn-store.js";
 import { type MegaRuntime, C } from "../mega-runtime.js";
+import { recordRecallLatency } from "../mega-runtime/vc-observer.js";
 import type { MegaConfig } from "../mega-config.js";
 
 /**
@@ -46,6 +47,7 @@ export function doRecall(
 	// are already resident in the session, so recall never re-injects context the
 	// model can already see. Best-effort — an empty window just skips dedupe.
 	const liveWindow = config.windowDedupe ? extractLiveWindow(ctx) : undefined;
+	const recallStartMs = Date.now();
 	const result = recallAndInline(
 		{
 			sessionId: sid,
@@ -164,6 +166,14 @@ export function doRecall(
 		} catch {
 			/* non-fatal: recall provenance never breaks the recall path */
 		}
+	}
+	// VC0A: record recall latency on the eval observer (mode A) so the dashboard
+	// histogram reflects real data. No-op when the observer is absent (flag off /
+	// construction failure).
+	try {
+		recordRecallLatency(runtime, Date.now() - recallStartMs, sid, 0);
+	} catch {
+		/* non-fatal: latency recording never breaks recall */
 	}
 	return result;
 }

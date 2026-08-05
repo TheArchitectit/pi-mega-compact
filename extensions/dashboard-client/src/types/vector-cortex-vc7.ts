@@ -14,6 +14,8 @@
  */
 export interface VectorCortexCrystalsView {
   enabled: boolean;
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
+  readonly deferredReason?: string;
   mode: "A" | "B" | "C";
   crystalCount: number;
   totalBytes: number;
@@ -33,6 +35,8 @@ export interface VectorCortexCrystalsView {
  */
 export interface VectorCortexEconomicsView {
   enabled: boolean;
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
+  readonly deferredReason?: string;
   mode: "A" | "B" | "C";
   profileCount: number;
   provenExclusions: number;
@@ -49,6 +53,8 @@ export interface VectorCortexEconomicsView {
  */
 export interface VectorCortexDiagnosticsView {
   enabled: boolean;
+  readonly status?: "live" | "awaiting_data" | "deferred" | "structural" | "off";
+  readonly deferredReason?: string;
   mode: "A" | "B" | "C";
   profileMisses: number;
   rangeMisses: number;

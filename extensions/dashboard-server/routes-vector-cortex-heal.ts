@@ -25,6 +25,7 @@ import type { RouteContext } from "./routes-core.js";
 import { VC6A_ENABLED, VC6B_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
 import { countVcEvents, vcCount } from "./vc-event-counts.js";
+import { deriveVcStatus } from "./vc-status.js";
 import type {
   VectorCortexClosureProofView,
   VectorCortexRestoreView,
@@ -69,6 +70,10 @@ export function handleVectorCortexClosureProof(
     optimizedTraversalTotal: 0,
     lastRejection: null,
     updatedAt: new Date().toISOString(),
+    status: deriveVcStatus({
+      enabled,
+      hasData: vcCount(counts, "vector_cortex_closure_optimized") > 0,
+    }),
   };
   sendJson(res, 200, body);
   return true;
@@ -110,6 +115,10 @@ export function handleVectorCortexRestore(
     digestRejections: vcCount(counts, "vector_cortex_restore_digest_rejected"),
     lastRejection: null,
     updatedAt: new Date().toISOString(),
+    status: deriveVcStatus({
+      enabled,
+      hasData: vcCount(counts, "vector_cortex_source_restored") > 0,
+    }),
   };
   sendJson(res, 200, body);
   return true;

@@ -29,6 +29,7 @@ import type { RouteContext } from "./routes-core.js";
 import { VC7A_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
 import { countVcEvents, vcCount } from "./vc-event-counts.js";
+import { deriveVcStatus } from "./vc-status.js";
 import type { VectorCortexCrystalsView } from "./api-contracts/vector-cortex-cache.js";
 
 // Actual events emitted by src/vector-cortex/cache/crystal-emit.ts.
@@ -77,6 +78,11 @@ export function handleVectorCortexCrystals(
     lastFailure: null,
     updatedAt: new Date().toISOString(),
     deferredReason: "crystal_store_not_instantiated_v0_20_23",
+    status: deriveVcStatus({
+      enabled,
+      deferredReason: "crystal_store_not_instantiated_v0_20_23",
+      hasData: vcCount(counts, "vector_cortex_crystal_written") > 0,
+    }),
   };
   sendJson(res, 200, body);
   return true;

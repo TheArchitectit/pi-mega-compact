@@ -1,8 +1,8 @@
 import type React from "react";
 import type { VectorCortexPlansView } from "../api/vector-cortex";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
 import { Metric } from "./VectorCortexMetric";
+import { VcStatusBadge } from "./VcStatusBadge";
 
 export function VectorCortexPlansCard({ view }: { view: VectorCortexPlansView | null }): React.ReactElement {
 	return (
@@ -10,11 +10,7 @@ export function VectorCortexPlansCard({ view }: { view: VectorCortexPlansView | 
 			<CardHeader>
 				<div className="flex items-center justify-between">
 					<CardTitle>Plan Manifests (VC5A)</CardTitle>
-					{view?.enabled ? (
-						<Badge variant="success">ACTIVE</Badge>
-					) : (
-						<Badge variant="danger">OFF</Badge>
-					)}
+					<VcStatusBadge status={view?.status} />
 				</div>
 			</CardHeader>
 			<CardContent>
@@ -31,6 +27,16 @@ export function VectorCortexPlansCard({ view }: { view: VectorCortexPlansView | 
 						Reader-only plan manifests only — no session payloads or prompt text.
 						Per-run plan outputs are staged in-memory this sprint.
 					</div>
+					{view?.status === "awaiting_data" && (
+						<div className="mt-2 text-xs text-muted-foreground">
+							Awaiting first event. Data will appear after the next pipeline run.
+						</div>
+					)}
+					{view?.status === "deferred" && view?.deferredReason && (
+						<div className="mt-2 text-xs text-muted-foreground">
+							Deferred: {view.deferredReason.replace(/_/g, " ")}
+						</div>
+					)}
 				</>
 				)}
 			</CardContent>

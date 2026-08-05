@@ -116,6 +116,7 @@ describe("/api/vector-cortex/cache-crystals (VC7A reader-only)", () => {
 						"lastFailure",
 						"misses",
 						"mode",
+						"status",
 						"totalBytes",
 						"updatedAt",
 						"writes",

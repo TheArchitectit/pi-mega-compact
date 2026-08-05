@@ -27,6 +27,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
 import { VC7B_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
+import { deriveVcStatus } from "./vc-status.js";
 import type { VectorCortexEconomicsView } from "./api-contracts/vector-cortex-economics.js";
 
 /**
@@ -63,6 +64,11 @@ export function handleVectorCortexEconomics(
     lastFailure: null,
     updatedAt: new Date().toISOString(),
     deferredReason: "economics_not_computed_v0_20_23",
+    status: deriveVcStatus({
+      enabled,
+      deferredReason: "economics_not_computed_v0_20_23",
+      hasData: false,
+    }),
   };
   sendJson(res, 200, body);
   return true;
