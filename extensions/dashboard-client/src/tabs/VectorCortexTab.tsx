@@ -21,6 +21,7 @@ import {
 	fetchVectorCortexRestore,
 	fetchVectorCortexRepair,
 	fetchVectorCortexCrystals,
+	fetchVectorCortexEconomics,
 	fetchVectorCortexShards,
 	fetchVectorCortexTopology,
 	resetVectorCortexBreaker,
@@ -36,6 +37,7 @@ import {
 	type VectorCortexRestoreView,
 	type VectorCortexRepairView,
 	type VectorCortexCrystalsView,
+	type VectorCortexEconomicsView,
 	type VectorCortexShardsView,
 	type VectorCortexTopologyView,
 } from "../api/vector-cortex";
@@ -48,6 +50,7 @@ import { VectorCortexClosureCard } from "./VectorCortexClosureCard";
 import { VectorCortexRestoreCard } from "./VectorCortexRestoreCard";
 import { VectorCortexRepairCard } from "./VectorCortexRepairCard";
 import { VectorCortexCrystalsCard } from "./VectorCortexCrystalsCard";
+import { VectorCortexEconomicsCard } from "./VectorCortexEconomicsCard";
 import {
 	VectorCortexShardsCard,
 	VectorCortexReconstructCard,
@@ -83,6 +86,7 @@ export default function VectorCortexTab(): React.ReactElement {
 	const [restore, setRestore] = useState<VectorCortexRestoreView | null>(null);
 	const [repair, setRepair] = useState<VectorCortexRepairView | null>(null);
 	const [crystals, setCrystals] = useState<VectorCortexCrystalsView | null>(null);
+	const [economics, setEconomics] = useState<VectorCortexEconomicsView | null>(null);
 
 	const poll = useCallback(() => {
 		fetchVectorCortexEvaluation()
@@ -129,6 +133,9 @@ export default function VectorCortexTab(): React.ReactElement {
 		});
 		fetchVectorCortexCrystals().then(setCrystals).catch(() => {
 			/* frozen-range-crystal card is best-effort (VC7A) */
+		});
+		fetchVectorCortexEconomics().then(setEconomics).catch(() => {
+			/* provider-cache-economics card is best-effort (VC7B) */
 		});
 	}, []);
 
@@ -290,6 +297,7 @@ export default function VectorCortexTab(): React.ReactElement {
 			<VectorCortexRestoreCard view={restore} />
 			<VectorCortexRepairCard view={repair} />
 			<VectorCortexCrystalsCard view={crystals} />
+			<VectorCortexEconomicsCard view={economics} />
 			<VectorCortexLedgerCard ledger={ledger} />
 		</div>
 	);

@@ -254,15 +254,19 @@ function main() {
   }
   if (existsSync(join(SRC_CONFIG, "vector-cortex.js"))) {
     mkdirSync(DEST_CONFIG, { recursive: true });
-    copyFileSync(
-      join(SRC_CONFIG, "vector-cortex.js"),
-      join(DEST_CONFIG, "vector-cortex.js"),
-    );
-    // VC7A split: breaker constants extracted to vector-cortex-breakers.ts.
-    // The published vector-cortex.js re-exports from it, so mirror it too.
-    const breakersSrc = join(SRC_CONFIG, "vector-cortex-breakers.js");
-    if (existsSync(breakersSrc)) {
-      copyFileSync(breakersSrc, join(DEST_CONFIG, "vector-cortex-breakers.js"));
+    // Mirror every vector-cortex*.js sibling so re-exports resolve at the
+    // published dist/config/ offset. The config file has been split across
+    // vector-cortex.ts / vector-cortex-breakers.ts / vector-cortex-flag.ts /
+    // vector-cortex-early.ts; mirroring by glob is robust against further
+    // splits without needing a per-file block each time.
+    for (const name of readdirSync(SRC_CONFIG)) {
+      if (
+        name.startsWith("vector-cortex") &&
+        name.endsWith(".js") &&
+        !name.endsWith(".test.js")
+      ) {
+        copyFileSync(join(SRC_CONFIG, name), join(DEST_CONFIG, name));
+      }
     }
   }
   // VC2B's encoder observers default-emit through src/log.ts (emit-vc2b.ts imports

@@ -1421,3 +1421,160 @@ schemas["schemas/cache-crystal-fixture.schema.json"] = {
     },
   },
 };
+
+// VC7B: the covered-range and economics shapes appear at several sites in the
+// cache-economics envelope. Emitted from helpers (not $ref) so every site carries
+// the full inline schema the conformance validator actually enforces.
+function econSpanSchema() {
+  return {
+    type: "object",
+    required: ["sessionId", "startSeq", "endSeq", "startByte", "endByte", "digest"],
+    properties: {
+      sessionId: { type: "string" },
+      startSeq: { type: "integer", minimum: 0 },
+      endSeq: { type: "integer", minimum: 0 },
+      startByte: { type: "integer" },
+      endByte: { type: "integer" },
+      digest: { type: "string" },
+    },
+  };
+}
+
+function econProfileSchema() {
+  return {
+    type: "object",
+    required: [
+      "schema",
+      "profileId",
+      "profileVersion",
+      "basePrice",
+      "readPrice",
+      "writePrice",
+      "ttlMs",
+      "minPrefix",
+    ],
+    properties: {
+      schema: { type: "string", enum: ["provider-economics-v1"] },
+      profileId: { type: "string" },
+      profileVersion: { type: "string" },
+      basePrice: { type: "number" },
+      readPrice: { type: "number" },
+      writePrice: { type: "number" },
+      ttlMs: { type: "integer" },
+      minPrefix: { type: "integer" },
+      exclusionFixtureId: { type: ["string", "null"] },
+    },
+  };
+}
+
+schemas["schemas/cache-economics-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC7B cache-economics fixture envelope",
+  description:
+    "Common structure every VC7B provider-cache-economics fixture validates against. `input.economics` is a ProviderEconomicsV1: integer MICRO-UNIT prices per token (basePrice uncached, readPrice cached-read, writePrice cached-write), the cache TTL in ms, the minimum cacheable prefix in tokens, and the conformance fixture ID proving the profile's exclusion set is safe (null only when the profile declares NO exclusions). MONEY IS INTEGER: prices are exact micro-units rather than floats, so the golden savings figures are exact and a corpus cannot drift from the provider's bill by float error. `input.scenario` dispatches the acceptance test to the real entry point: `economics` drives computeEconomics(economics, usage, evidence) asserting the exact baselineCost/actualCost/netSavings/tokenSavings (netSavings may be NEGATIVE and is never clamped - a prefix written once and never re-read really does lose money), `exclusion` drives validateEconomics asserting that a profile declaring exclusions without a proving fixture ID is REJECTED with ECON_EXCLUSION_UNPROVEN, `compile` drives compileCrystalBoundaries(ranges, limits) asserting the boundary/cacheable counts and - on every row - that request identity is preserved (the compiler chooses where boundaries FALL and never reorders, merges across a session, drops, or rewrites a range), `experiment` drives assignExperiment asserting the stable session-bucket arm and whether it is causally admissible (ONLY a randomized assignment is; forced and shadow rows are estimates excluded from causal intervals), and `eligibility` drives isCacheEligible against minPrefix/TTL. All rows are fed verbatim into the REAL production modules (src/vector-cortex/provider/{economics,experiments}.js, src/vector-cortex/cache/compiler.js), no mocks. Every span digest is a real SHA-256 over that range's own content and every golden savings figure is recomputed by the generator, never hand-written. The span and economics shapes are inlined rather than $ref'd because the conformance validator implements the schema subset our corpus uses; a $ref node would type-check as nothing and validate silently.",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["cache-economics"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: {
+          type: "string",
+          enum: [
+            "ECON_EXCLUSION_UNPROVEN",
+            "ECON_PRICE_INVALID",
+            "ECON_USAGE_INVALID",
+            "ECON_OVERFLOW",
+            "COMP_RANGE_INVALID",
+            "COMP_SEGMENT_LIMIT",
+            "COMP_LIMIT_INVALID",
+            "COMP_IDENTITY_DRIFT",
+            "EXP_ID_INVALID",
+            "EXP_SPLIT_INVALID",
+            "EXP_ARM_UNKNOWN",
+          ],
+        },
+        baselineCost: { type: "integer" },
+        actualCost: { type: "integer" },
+        netSavings: { type: "integer" },
+        tokenSavings: { type: "integer" },
+        savingsRatio: { type: "number" },
+        breakEvenHits: { type: ["integer", "null"] },
+        evidence: { type: "string", enum: ["measured", "estimate"] },
+        boundaryCount: { type: "integer", minimum: 0 },
+        cacheableCount: { type: "integer", minimum: 0 },
+        identityPreserved: { type: "boolean" },
+        arm: { type: "string", enum: ["A", "B", "C"] },
+        source: { type: "string", enum: ["randomized", "forced", "shadow"] },
+        causal: { type: "boolean" },
+        stable: { type: "boolean" },
+        eligible: { type: "boolean" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario", "mode"],
+      properties: {
+        scenario: {
+          type: "string",
+          enum: ["economics", "exclusion", "compile", "experiment", "eligibility"],
+        },
+        mode: { type: "string" },
+        economics: econProfileSchema(),
+        usage: {
+          type: "object",
+          required: ["cachedTokens", "writeCount", "hitCount"],
+          properties: {
+            cachedTokens: { type: "number" },
+            writeCount: { type: "number" },
+            hitCount: { type: "number" },
+          },
+        },
+        evidence: { type: "string", enum: ["measured", "estimate"] },
+        exclusions: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["pointer", "fixtureId", "proofDigest"],
+            properties: {
+              pointer: { type: "string" },
+              fixtureId: { type: "string" },
+              proofDigest: { type: "string" },
+            },
+          },
+        },
+        ranges: { type: "array", items: econSpanSchema() },
+        limits: {
+          type: "object",
+          required: ["minPrefix", "maxSegments", "bytesPerToken"],
+          properties: {
+            minPrefix: { type: "integer", minimum: 0 },
+            maxSegments: { type: "integer", minimum: 1 },
+            bytesPerToken: { type: "integer", minimum: 1 },
+          },
+        },
+        experiment: {
+          type: "object",
+          required: ["experimentId", "sessionId", "assignedAt"],
+          properties: {
+            experimentId: { type: "string" },
+            sessionId: { type: "string" },
+            assignedAt: { type: "integer" },
+            forced: { type: "string", enum: ["A", "B", "C"] },
+            shadow: { type: "boolean" },
+          },
+        },
+        repeatAssignments: { type: "integer", minimum: 1 },
+        loseJournalAfterFirst: { type: "boolean" },
+        prefixTokens: { type: "integer", minimum: 0 },
+        ageMs: { type: "integer", minimum: 0 },
+      },
+    },
+  },
+};

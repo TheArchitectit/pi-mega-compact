@@ -19,6 +19,7 @@ import type {
 	VectorCortexRestoreView,
 	VectorCortexRepairView,
 	VectorCortexCrystalsView,
+	VectorCortexEconomicsView,
 } from "../types/vector-cortex";
 
 export type {
@@ -37,6 +38,7 @@ export type {
 	VectorCortexRestoreView,
 	VectorCortexRepairView,
 	VectorCortexCrystalsView,
+	VectorCortexEconomicsView,
 };
 
 export async function fetchVectorCortexEvaluation(): Promise<VectorCortexEvaluationSummary> {
@@ -150,4 +152,11 @@ export async function fetchVectorCortexCrystals(): Promise<VectorCortexCrystalsV
 	const r = await fetch("/api/vector-cortex/cache-crystals");
 	if (!r.ok) throw new Error(`vector-cortex cache-crystals: ${r.status}`);
 	return r.json() as Promise<VectorCortexCrystalsView>;
+}
+
+/** Reader-only cache-economics diagnostics view (VC7B). Counts + codes only. */
+export async function fetchVectorCortexEconomics(): Promise<VectorCortexEconomicsView> {
+	const r = await fetch("/api/vector-cortex/cache-economics");
+	if (!r.ok) throw new Error(`vector-cortex cache-economics: ${r.status}`);
+	return r.json() as Promise<VectorCortexEconomicsView>;
 }

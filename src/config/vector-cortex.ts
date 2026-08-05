@@ -9,96 +9,22 @@
  * them without re-declaring the ownership boundary. Pi-agnostic, dependency-free.
  */
 
-/** Positive sprint flag: `=0` or `_DISABLED=true` disables (default ON). */
-function sprintFlag(name: string): boolean {
-  const v = process.env[name];
-  if (v === "0" || v === "false") return false;
-  const disabled = process.env[name + "_DISABLED"];
-  if (disabled === "true" || disabled === "1") return false;
-  return true;
-}
+import { sprintFlag } from "./vector-cortex-flag.js";
 
-/** VC0A — baseline observability (MetricEventV1 / AnnotationV1). Default ON. */
-export const VC0A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC0A");
-
-/**
- * VC0B — replay correctness (ReplayCutV2 / ReplayReportV2, M3 effective-cut-v2).
- * Default ON. `MEGACOMPACT_VC0B=0` disables and is byte-identical to the
- * predecessor (legacy capped-replay behavior preserved; the v2 cut/replay is
- * only consulted on the vector-cortex path).
- */
-export const VC0B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC0B");
-
-/**
- * VC1A — canonical byte events (EventV2 / EventCodec).
- * Default ON. `MEGACOMPACT_VC1A=0` disables and is byte-identical to the
- * predecessor (mode C: ledger absent, current transcript codec unchanged).
- * The single real consumer is the ledger emit seam (`ledger/emit.ts`): flag OFF
- * gates zero observability writes.
- */
-export const VC1A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC1A");
-
-/**
- * VC1B — occurrence ledger + tool identity + compat journal (LedgerReader/
- * Writer/Admin, CompatJournalV1, M2 occurrence-v2 migration).
- * Default ON. `MEGACOMPACT_VC1B=0` disables and is byte-identical to the
- * predecessor (mode C: the neutral occurrence ledger is not written, no
- * journal rows, zero `vector_cortex_occurrence_appended` emissions). The real
- * consumers are the ledger write integration seam and the compat-journal
- * switch seam.
- */
-export const VC1B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC1B");
-
-/**
- * VC0C — live safety envelope (TriadResult / Breaker / KillDecision + durable
- * spool). Default ON. `MEGACOMPACT_VC0C=0` disables and is byte-identical to
- * the predecessor (mode C: selected before provider invocation, unchanged host
- * transcript, breaker/spool idle and emitting nothing). The single real
- * consumer is the resilience emit seam + the safety adapter's triad selection.
- */
-export const VC0C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC0C");
-
-/**
- * VC1C — cross-language conformance v2 (FixtureManifestV2 / DowngradeReport /
- * MinHashV2 + M4 minhash-v2 migration).
- * Default ON. `MEGACOMPACT_VC1C=0` disables and is byte-identical to the
- * predecessor (mode C: a v2 conformance runner that accepts authority fixtures
- * and the manifest validator idle; the sync dedup scan stays on the v1 path;
- * zero `vector_cortex_*` VC1C emissions). The real consumers are the conformance
- * emit seam, the minhash-v2 backfill seam and the downgrade-export seam.
- */
-export const VC1C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC1C");
-
-/**
- * VC2A — offline model runtime and asset decision (ModelManifestV1 /
- * EncoderRuntime).
- * Default ON. `MEGACOMPACT_VC2A=0` disables and is byte-identical to the
- * predecessor (mode C: no asset manifest is read/verified, the encoder runtime
- * idles in mode C, zero `vector_cortex_encoder_*` emissions; the trigram/lexical
- * paths are unchanged). The real consumers are the encoder emit seam and the
- * encoder runtime's A/B/C selection.
- */
-export const VC2A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC2A");
-
-/**
- * VC2B — multi-head encoder (VectorSetV1 / HeadCalibrationDraft).
- * Default ON. `MEGACOMPACT_VC2B=0` disables and is byte-identical to the
- * predecessor (the encoder emits no per-head vectors and no fallback-selected
- * event; the trigram/lexical paths themselves are unchanged and are the
- * predecessor's mode-B/C producers). The real consumers are the encoder-heads
- * emit seam and the multi-head encoder producers (heads/trigram/lexical).
- */
-export const VC2B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC2B");
-
-/**
- * VC2C — encoder qualification + calibration (QualifiedEncoderV1 / CalibrationV1).
- * Default ON. `MEGACOMPACT_VC2C=0` disables and is byte-identical to the
- * predecessor (mode C: no qualification manifest is read or selected, the
- * calibrate/select/fallback seams are idle, zero `vector_cortex_encoder_qualification_*`
- * emissions; the trigram/lexical paths are unchanged). The real consumers are
- * the encoder-qualification emit seam and the calibrate/select seams.
- */
-export const VC2C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC2C");
+// VC0/VC1/VC2 foundation-phase flags extracted to vector-cortex-early.ts to keep
+// this file under the 300-line soft limit. Re-exported here so every existing
+// `from "./config/vector-cortex.js"` import keeps resolving unchanged.
+export {
+  VC0A_ENABLED,
+  VC0B_ENABLED,
+  VC0C_ENABLED,
+  VC1A_ENABLED,
+  VC1B_ENABLED,
+  VC1C_ENABLED,
+  VC2A_ENABLED,
+  VC2B_ENABLED,
+  VC2C_ENABLED,
+} from "./vector-cortex-early.js";
 
 /**
  * VC3A — capability-gated cortex store (CortexReader/Writer/Admin, CortexRecordV1).
@@ -272,6 +198,25 @@ export const VC6C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC6C");
  * UI, never in EXCLUDED_SETTINGS), mirroring VC4A..VC6C.
  */
 export const VC7A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC7A");
+
+/**
+ * VC7B — provider cache economics + crystal compiler. Default ON.
+ * `MEGACOMPACT_VC7B=0` disables and is byte-identical to the predecessor
+ * (VC7A): `computeEconomics`, `compileCrystalBoundaries` and `assignExperiment`
+ * STILL RUN (they are PURE — exact integer/rational arithmetic and a SHA-256
+ * session bucket, with no clock, storage, or network), so a session keeps its
+ * SAME experiment arm and the compiler keeps producing the SAME boundaries with
+ * the flag off. Crucially the compiler never changes request identity in either
+ * state, so the outbound canonical request — and therefore the VC7A crystal key
+ * and the predecessor golden bytes — are unaffected by this flag.
+ *
+ * The flag gates ONLY the `vector_cortex_cache_experiment_assigned` /
+ * `vector_cortex_cache_economics_estimated` events and the cache-economics
+ * dashboard seam, which reports `enabled:false` + mode C when off. This flag
+ * MUST also be a dashboard SETTINGS toggle (visible in config UI, never in
+ * EXCLUDED_SETTINGS), mirroring VC4A..VC7A.
+ */
+export const VC7B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC7B");
 
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker) extracted to
 // vector-cortex-breakers.ts to keep this file under the 300-line soft limit.

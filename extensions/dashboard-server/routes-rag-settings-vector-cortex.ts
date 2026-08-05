@@ -162,5 +162,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"Frozen range crystals: caches a rendered prompt under an IMMUTABLE key built from the source ranges it covers, the digest of those covered bytes, the validated durable dependency high-water, and the renderer + provider profile — and deliberately NOT the global ledger frontier, so an unrelated append leaves the key unchanged instead of invalidating every crystal on every turn. Any covered-byte, dependency, renderer, or profile change invalidates 100%. Ranges are sorted by source start and overlapping ranges are rejected (CRY_RANGE_OVERLAP) rather than merged. The store is content-addressed and write-once: identical bytes re-written are idempotent, but a same-key/different-bytes write returns CRY_KEY_COLLISION and never overwrites, surfacing renderer non-determinism instead of hiding it. A store hit is mode A, a miss/collision forces a fresh deterministic render (mode B), and an unavailable store bypasses the cache entirely (mode C). OFF = byte-identical predecessor (VC6C); the crystal/store arithmetic still runs, only the reporter + dashboard seam is suppressed.",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_VC7B",
+			"VC7B Provider Cache Economics",
+			"Provider cache economics: extends the VC5B provider registry with cache economics (read/write price, TTL, minimum prefix, and a mandatory exclusion fixture id). Answers whether reusing a frozen crystal is actually worth it — a cache WRITE typically costs more than an uncached token, so a cache only pays off once a written prefix is re-read enough times before TTL expiry. Net savings are reported (never clamped at zero, so a losing cache stays visible) and every exclusion MUST name a proving conformance fixture or it is rejected (ECON_EXCLUSION_UNPROVEN). A compiled crystal boundary still reuses the VC7A key unchanged, and a randomized session-level experiment assigns arms by a stable hash so a lost assignment journal re-derives the same arm. OFF = byte-identical predecessor (VC7A); the economics/compiler/experiment arithmetic still runs, only the reporter + dashboard seam is suppressed.",
+			true,
+		),
 	],
 };

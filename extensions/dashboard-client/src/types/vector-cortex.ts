@@ -275,3 +275,17 @@ export interface VectorCortexCrystalsView {
   lastFailure: string | null;
   updatedAt: string;
 }
+
+/**
+ * Reader-only cache-economics diagnostics view (VC7B). Counts + ECON_* codes only
+ * — never prices, digests, ranges, or session ids.
+ */
+export interface VectorCortexEconomicsView {
+  enabled: boolean;
+  mode: "A" | "B" | "C";
+  profileCount: number;
+  provenExclusions: number;
+  unprovenExclusions: number;
+  lastFailure: string | null;
+  updatedAt: string;
+}

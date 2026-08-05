@@ -64,6 +64,10 @@ import { handleVectorCortexRepair } from "./routes-vector-cortex-repair.js";
 // stays independent of the heal/repair handlers and every file stays well under
 // the 400-line extension limit.
 import { handleVectorCortexCrystals } from "./routes-vector-cortex-crystals.js";
+// VC7B cache economics likewise get their own module so the economics seam stays
+// independent of the crystals handler and every file stays well under the
+// 400-line extension soft limit.
+import { handleVectorCortexEconomics } from "./routes-vector-cortex-economics.js";
 
 /**
  * Dispatch a request through every registered route handler.
@@ -119,5 +123,6 @@ export function dispatchRoutes(
 	if (handleVectorCortexRestore(req, res, ctx)) return true;
 	if (handleVectorCortexRepair(req, res, ctx)) return true;
 	if (handleVectorCortexCrystals(req, res, ctx)) return true;
+	if (handleVectorCortexEconomics(req, res, ctx)) return true;
 	return false;
 }
