@@ -18,6 +18,7 @@ import type {
 	VectorCortexClosureProofView,
 	VectorCortexRestoreView,
 	VectorCortexRepairView,
+	VectorCortexCrystalsView,
 } from "../types/vector-cortex";
 
 export type {
@@ -35,6 +36,7 @@ export type {
 	VectorCortexClosureProofView,
 	VectorCortexRestoreView,
 	VectorCortexRepairView,
+	VectorCortexCrystalsView,
 };
 
 export async function fetchVectorCortexEvaluation(): Promise<VectorCortexEvaluationSummary> {
@@ -141,4 +143,11 @@ export async function resetVectorCortexBreaker(
 	});
 	if (!r.ok) throw new Error(`vector-cortex reset: ${r.status}`);
 	return r.json() as Promise<VectorCortexResetResult>;
+}
+
+/** Reader-only frozen-crystal cache diagnostics view (VC7A). */
+export async function fetchVectorCortexCrystals(): Promise<VectorCortexCrystalsView> {
+	const r = await fetch("/api/vector-cortex/cache-crystals");
+	if (!r.ok) throw new Error(`vector-cortex cache-crystals: ${r.status}`);
+	return r.json() as Promise<VectorCortexCrystalsView>;
 }

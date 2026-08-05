@@ -156,5 +156,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"Self-healing derived-state controller: detects gaps between each derived subsystem's high-water mark and the durable authority high-water, then rebuilds derived state by copy -> root-digest verification -> atomic pointer switch, so a partially rebuilt subsystem is never made visible. A targeted single-subsystem rebuild is mode A; an ambiguous gap escalates to a full deterministic rebuild (mode B); if both rebuild paths fail the derived state is disabled rather than served stale (mode C). Rebuilds are rate-limited to one per subsystem per 5 minutes with deterministic exponential backoff, so a persistently failing subsystem cannot spin. OFF = byte-identical predecessor (VC6B); no controller runs, so the dashboard reports mode C.",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_VC7A",
+			"VC7A Frozen Range Crystals",
+			"Frozen range crystals: caches a rendered prompt under an IMMUTABLE key built from the source ranges it covers, the digest of those covered bytes, the validated durable dependency high-water, and the renderer + provider profile — and deliberately NOT the global ledger frontier, so an unrelated append leaves the key unchanged instead of invalidating every crystal on every turn. Any covered-byte, dependency, renderer, or profile change invalidates 100%. Ranges are sorted by source start and overlapping ranges are rejected (CRY_RANGE_OVERLAP) rather than merged. The store is content-addressed and write-once: identical bytes re-written are idempotent, but a same-key/different-bytes write returns CRY_KEY_COLLISION and never overwrites, surfacing renderer non-determinism instead of hiding it. A store hit is mode A, a miss/collision forces a fresh deterministic render (mode B), and an unavailable store bypasses the cache entirely (mode C). OFF = byte-identical predecessor (VC6C); the crystal/store arithmetic still runs, only the reporter + dashboard seam is suppressed.",
+			true,
+		),
 	],
 };

@@ -60,6 +60,10 @@ import {
 // VC6C repair lives in its own module (routes-vector-cortex-repair.ts) so the
 // heal route file stays well under the 400-line extension soft limit.
 import { handleVectorCortexRepair } from "./routes-vector-cortex-repair.js";
+// VC7A frozen-range crystals likewise get their own module so the cache seam
+// stays independent of the heal/repair handlers and every file stays well under
+// the 400-line extension limit.
+import { handleVectorCortexCrystals } from "./routes-vector-cortex-crystals.js";
 
 /**
  * Dispatch a request through every registered route handler.
@@ -114,5 +118,6 @@ export function dispatchRoutes(
 	if (handleVectorCortexClosureProof(req, res, ctx)) return true;
 	if (handleVectorCortexRestore(req, res, ctx)) return true;
 	if (handleVectorCortexRepair(req, res, ctx)) return true;
+	if (handleVectorCortexCrystals(req, res, ctx)) return true;
 	return false;
 }

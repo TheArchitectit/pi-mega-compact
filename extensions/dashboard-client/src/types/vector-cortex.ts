@@ -255,3 +255,23 @@ export interface VectorCortexClosureProofView {
   lastRejection: string | null;
   updatedAt: string;
 }
+
+/**
+ * Reader-only frozen-crystal cache view (VC7A). Counts + byte volumes + CRY_*
+ * codes only — a crystal is a rendered prompt, so no frozen bytes, covered
+ * ranges, digests, or session ids ever reach the client.
+ */
+export interface VectorCortexCrystalsView {
+  enabled: boolean;
+  mode: "A" | "B" | "C";
+  crystalCount: number;
+  totalBytes: number;
+  hits: number;
+  misses: number;
+  hitBytes: number;
+  writes: number;
+  duplicateWrites: number;
+  collisions: number;
+  lastFailure: string | null;
+  updatedAt: string;
+}

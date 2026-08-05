@@ -40,6 +40,7 @@ import { fixtures as rolloutFixtures, named as rolloutNamed } from "./rollout.mj
 import { fixtures as healFixtures, named as healNamed } from "./closure-optimization.mjs";
 import { fixtures as restorationFixtures, named as restorationNamed } from "./restoration.mjs";
 import { fixtures as healingFixtures, named as healingNamed } from "./healing-controller.mjs";
+import { fixtures as crystalFixtures, named as crystalNamed } from "./cache-crystals.mjs";
 
 const REPLAY_DIR = join(V2, "replay");
 const EVENTS_DIR = join(V2, "events");
@@ -65,6 +66,7 @@ const ROLLOUT_DIR = join(V2, "rollout");
 const HEAL_DIR = join(V2, "closure-optimization");
 const RESTORATION_DIR = join(V2, "restoration");
 const HEALING_DIR = join(V2, "healing-controller");
+const CRYSTALS_DIR = join(V2, "cache-crystals");
 
 export function writeAll() {
   rmSync(V2, { recursive: true, force: true });
@@ -94,6 +96,7 @@ export function writeAll() {
   mkdirSync(HEAL_DIR, { recursive: true });
   mkdirSync(RESTORATION_DIR, { recursive: true });
   mkdirSync(HEALING_DIR, { recursive: true });
+  mkdirSync(CRYSTALS_DIR, { recursive: true });
 
   const manifestRows = [];
 
@@ -600,13 +603,34 @@ export function writeAll() {
     });
   }
 
+  // Cache-crystal fixtures (VC7A): kind=cache-crystal rows (CRY-001..015 +
+  // PRO-016..023 + named) pin canonical key encoding from covered ranges only,
+  // source-start range sorting, overlap rejection, the exclusion of the global
+  // frontier from identity, and content-addressed write-once store semantics,
+  // with algorithm "cache-crystal".
+  for (const fx of [...crystalFixtures, ...crystalNamed]) {
+    const bytes = Buffer.from(canonicalJson(fx), "utf8");
+    const rel = `cache-crystals/${fx.id}.json`;
+    writeFileSync(join(CRYSTALS_DIR, `${fx.id}.json`), bytes);
+    manifestRows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: fx.schema,
+      algorithm: "cache-crystal",
+      producer,
+      expected: fx.expected.ok ? "ok" : fx.expected.code,
+      license: "synthetic",
+    });
+  }
+
   const manifest = {
     version: "2",
     viewer: "vector-cortex-conformance.mjs",
     producer: "vector-cortex-gen-fixtures.mjs",
-    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification,cortex-store,topology,topology-query,router-generation-v2,shard,residual,reconstruction,prompt-dag,planner,render,provider,rollout,closure-optimization,restoration,healing-controller",
-    owner: "VC0A,VC0B,VC0C,VC1A,VC1B,VC1C,VC2A,VC2B,VC2C,VC3A,VC3B,VC3C,VC4A,VC4B,VC4C,VC5A,VC5B,VC5C,VC6A,VC6B,VC6C",
-    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification;cortex-store;topology-fixture;topology-query-fixture;router-generation-migration;shard-fixture;residual-fixture;reconstruction-fixture;prompt-dag-fixture;planner-fixture;render-fixture;provider-fixture;rollout-fixture;closure-optimization-fixture;restoration-fixture;healing-controller-fixture",
+    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification,cortex-store,topology,topology-query,router-generation-v2,shard,residual,reconstruction,prompt-dag,planner,render,provider,rollout,closure-optimization,restoration,healing-controller,cache-crystals",
+    owner: "VC0A,VC0B,VC0C,VC1A,VC1B,VC1C,VC2A,VC2B,VC2C,VC3A,VC3B,VC3C,VC4A,VC4B,VC4C,VC5A,VC5B,VC5C,VC6A,VC6B,VC6C,VC7A",
+    schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification;cortex-store;topology-fixture;topology-query-fixture;router-generation-migration;shard-fixture;residual-fixture;reconstruction-fixture;prompt-dag-fixture;planner-fixture;render-fixture;provider-fixture;rollout-fixture;closure-optimization-fixture;restoration-fixture;healing-controller-fixture;cache-crystal-fixture",
     license: "synthetic",
     fixtures: manifestRows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
   };
@@ -656,5 +680,7 @@ export function writeAll() {
     restorationNamedCount: restorationNamed.length,
     healingCount: healingFixtures.length,
     healingNamedCount: healingNamed.length,
+    crystalCount: crystalFixtures.length,
+    crystalNamedCount: crystalNamed.length,
   };
 }

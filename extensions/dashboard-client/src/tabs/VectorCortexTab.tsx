@@ -20,6 +20,7 @@ import {
 	fetchVectorCortexClosureProof,
 	fetchVectorCortexRestore,
 	fetchVectorCortexRepair,
+	fetchVectorCortexCrystals,
 	fetchVectorCortexShards,
 	fetchVectorCortexTopology,
 	resetVectorCortexBreaker,
@@ -34,6 +35,7 @@ import {
 	type VectorCortexClosureProofView,
 	type VectorCortexRestoreView,
 	type VectorCortexRepairView,
+	type VectorCortexCrystalsView,
 	type VectorCortexShardsView,
 	type VectorCortexTopologyView,
 } from "../api/vector-cortex";
@@ -45,6 +47,7 @@ import { VectorCortexRolloutCard } from "./VectorCortexRolloutCard";
 import { VectorCortexClosureCard } from "./VectorCortexClosureCard";
 import { VectorCortexRestoreCard } from "./VectorCortexRestoreCard";
 import { VectorCortexRepairCard } from "./VectorCortexRepairCard";
+import { VectorCortexCrystalsCard } from "./VectorCortexCrystalsCard";
 import {
 	VectorCortexShardsCard,
 	VectorCortexReconstructCard,
@@ -79,6 +82,7 @@ export default function VectorCortexTab(): React.ReactElement {
 	const [closureProof, setClosureProof] = useState<VectorCortexClosureProofView | null>(null);
 	const [restore, setRestore] = useState<VectorCortexRestoreView | null>(null);
 	const [repair, setRepair] = useState<VectorCortexRepairView | null>(null);
+	const [crystals, setCrystals] = useState<VectorCortexCrystalsView | null>(null);
 
 	const poll = useCallback(() => {
 		fetchVectorCortexEvaluation()
@@ -122,6 +126,9 @@ export default function VectorCortexTab(): React.ReactElement {
 		});
 		fetchVectorCortexRepair().then(setRepair).catch(() => {
 			/* self-healing derived-state card is best-effort (VC6C) */
+		});
+		fetchVectorCortexCrystals().then(setCrystals).catch(() => {
+			/* frozen-range-crystal card is best-effort (VC7A) */
 		});
 	}, []);
 
@@ -282,6 +289,7 @@ export default function VectorCortexTab(): React.ReactElement {
 			<VectorCortexClosureCard view={closureProof} />
 			<VectorCortexRestoreCard view={restore} />
 			<VectorCortexRepairCard view={repair} />
+			<VectorCortexCrystalsCard view={crystals} />
 			<VectorCortexLedgerCard ledger={ledger} />
 		</div>
 	);

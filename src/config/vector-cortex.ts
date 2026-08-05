@@ -258,6 +258,21 @@ export const VC6B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC6B");
  */
 export const VC6C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC6C");
 
+/**
+ * VC7A — frozen range crystals. Default ON. `MEGACOMPACT_VC7A=0` disables and is
+ * byte-identical to the predecessor (VC6C): the `encodeCrystalKey` /
+ * `CrystalStore` arithmetic STILL RUNS (it is PURE — a canonical length-prefixed
+ * encoding plus SHA-256, with no clock, storage, or network), so a crystal is
+ * keyed identically and a same-key/different-bytes write is still refused with
+ * the flag off. The flag gates ONLY the `vector_cortex_crystal_written` /
+ * `vector_cortex_crystal_collision` events and the cache-crystals dashboard seam,
+ * which reports `enabled:false` + mode C when off. Flag OFF never gates the
+ * crystal/store arithmetic, so flag-off outbound/predecessor golden bytes match
+ * exactly. This flag MUST also be a dashboard SETTINGS toggle (visible in config
+ * UI, never in EXCLUDED_SETTINGS), mirroring VC4A..VC6C.
+ */
+export const VC7A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC7A");
+
 // ---------------------------------------------------------------------------
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker).
 // Rolled numbers for one 60s window; VC0C consumes these at its breaker seam.

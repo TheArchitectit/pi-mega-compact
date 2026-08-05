@@ -1328,3 +1328,96 @@ schemas["schemas/healing-controller-fixture.schema.json"] = {
     },
   },
 };
+
+// VC7A: the covered-range and crystal-key shapes appear at three sites in the
+// cache-crystal envelope. Emitted from helpers (not $ref) so every site carries
+// the full inline schema the conformance validator actually enforces.
+function crystalSpanSchema() {
+  return {
+    type: "object",
+    required: ["sessionId", "startSeq", "endSeq", "startByte", "endByte", "digest"],
+    properties: {
+      sessionId: { type: "string" },
+      startSeq: { type: "integer", minimum: 0 },
+      endSeq: { type: "integer", minimum: 0 },
+      startByte: { type: "integer" },
+      endByte: { type: "integer" },
+      digest: { type: "string" },
+    },
+  };
+}
+
+function crystalKeySchema() {
+  return {
+    type: "object",
+    required: [
+      "profileId",
+      "profileVersion",
+      "requestDigest",
+      "rendererVersion",
+      "dependencyHighWater",
+      "sourceRanges",
+    ],
+    properties: {
+      profileId: { type: "string" },
+      profileVersion: { type: "string" },
+      requestDigest: { type: "string" },
+      rendererVersion: { type: "string" },
+      dependencyHighWater: { type: "integer", minimum: 0 },
+      sourceRanges: { type: "array", items: crystalSpanSchema() },
+    },
+  };
+}
+
+schemas["schemas/cache-crystal-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC7A cache-crystal fixture envelope",
+  description:
+    "Common structure every VC7A frozen-range-crystal fixture validates against. `input.key` (and, for comparison rows, `input.other`) is a CrystalKeyV1 identity: the provider profile + version, the BARE lowercase hex canonical request digest, the renderer version, the VALIDATED durable dependency high-water (a JSON number the loader converts to BigInt), and the covered `sourceRanges`, each a DagSpan whose `digest` is `sha256:` prefixed over that range's covered content. THE GLOBAL LEDGER FRONTIER IS DELIBERATELY ABSENT from this schema: it is not part of crystal identity, so it is not representable here - CRY-FRONTIER-001 expresses an unrelated append via the informational `input.unrelatedAppend` range, which the key does not cover and which must therefore leave the key byte-identical. `input.scenario` dispatches the acceptance test to the real entry point: `key` drives encodeCrystalKey(key) asserting ok/code (plus canonical sort order for ordering rows), `compare` drives encodeCrystalKey on BOTH identities asserting `expected.sameKey` (true = the mutation was not an identity field; false = it was and invalidated the key), and `store` drives CrystalStore freeze/write over `input.bytes` (and `input.secondBytes` for idempotence/collision rows). All rows are fed verbatim into the REAL cache modules (src/vector-cortex/cache/{crystal,store}.js), no mocks. Every digest in the corpus is a real SHA-256 over the row's own content, never hand-written. The span and key shapes are inlined rather than $ref'd because the conformance validator implements the schema subset our corpus uses; a $ref node would type-check as nothing and validate silently.",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["cache-crystal"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: {
+          type: "string",
+          enum: [
+            "CRY_RANGE_OVERLAP",
+            "CRY_KEY_COLLISION",
+            "CRY_RANGE_INVALID",
+            "CRY_RANGE_EMPTY",
+            "CRY_KEY_LIMIT",
+            "CRY_STORE_UNAVAILABLE",
+          ],
+        },
+        sameKey: { type: "boolean" },
+        written: { type: "boolean" },
+        crystalCount: { type: "integer", minimum: 0 },
+        rangeCount: { type: "integer", minimum: 0 },
+        sortedSessions: { type: "array", items: { type: "string" } },
+        sortedStartBytes: { type: "array", items: { type: "integer", minimum: 0 } },
+        mode: { type: "string", enum: ["A", "B", "C"] },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario", "mode", "key"],
+      properties: {
+        scenario: { type: "string", enum: ["key", "compare", "store"] },
+        mode: { type: "string" },
+        bytes: { type: "string" },
+        secondBytes: { type: "string" },
+        key: crystalKeySchema(),
+        other: crystalKeySchema(),
+        unrelatedAppend: crystalSpanSchema(),
+      },
+    },
+  },
+};

@@ -120,6 +120,19 @@ The flag gates the **reporter + dashboard seam only, never the arithmetic**:
 - With the flag off, the three `vector_cortex_repair_*` events are never emitted and the dashboard repair view reports `enabled:false` + mode C.
 - **The safety property survives the flag being off**: `switchPointer(1, 2, false).switched === false` is asserted under flag-off, so an unverified pointer switch stays refused regardless of configuration.
 
+## Mutation testing (tests proven non-vacuous)
+
+Four targeted mutations were applied to production source, rebuilt, run, and reverted. The source files were byte-compared against their pre-mutation backups and confirmed **identical** afterwards, so the recorded counts are from real rebuilds, not a thought experiment. Baseline before any mutation: 76/76 across `controller.test.ts` (30) + `rebuild-chaos.test.js` (23) + `vc6c-fixture-acceptance.test.ts` (23).
+
+| # | Mutation | File | Result | Tests killed |
+| --- | --- | --- | --- | --- |
+| 1 | Remove the root-digest verification in `rebuildGeneration` (accept any digest) | `rebuild.ts` | chaos 17/23, fixture 22/23 → **7 killed** | corrupted-root + flipped-byte + empty-rebuild-retains-evidence + 3 restart/corrupt-pointer rows + `HEAL-041` (pinned mismatch) |
+| 2 | Remove the monotonic guard in `switchPointer` (allow rollback) | `rebuild.ts` | chaos 20/23, fixture 21/23 → **5 killed** | stale-plan-after-restart + same-generation-refused + idempotent-apply rows + 2 switch-once/pointer rows |
+| 3 | Disable the 5-min rate-limit (`isRateLimited` always `false`) | `controller.ts` | controller 28/30, fixture 20/23 → **5 killed** | never-rebuilt-never-limited + boundary-exclusive rows + `HEAL-040` + `HEAL-RATE-002` + 1 multi-subsystem rate row |
+| 4 | Remove the 15-min backoff cap (unbounded growth) | `controller.ts` | controller 28/30, fixture 22/23 → **3 killed** | saturation-at-cap row + `HEAL-044` (growth) + `HEAL-045` (cap) |
+
+Every killed test maps to a named sprint guarantee — verification, pointer monotonicity, the rate-limit window, and backoff determinism/cap. The mutations were reverted and the tree verified byte-identical (`diff` clean on both `rebuild.ts` and `controller.ts`).
+
 ## Known findings / deferred
 
 1. **Route + client wiring landed via the concurrent dashboard track.** `routes-vector-cortex-repair.ts`, the api-contract, and the client card/type/fetch were authored by the parallel dashboard agent on the shared tree rather than by this track. Reviewed here for contract consistency with VC6A/VC6B (reader-only, 405 on non-GET, counts+codes only, flag-off → mode C) and confirmed typechecking + building. `RepairView` in `repair-types.ts` was realigned field-for-field to the shipped `VectorCortexRepairView` to eliminate a divergent mirror.
@@ -127,3 +140,4 @@ The flag gates the **reporter + dashboard seam only, never the arithmetic**:
 3. **`RepairEventV1` is defined but not yet persisted.** The contract is owned and registered this sprint (and the three event names are emitted through `repair-emit.ts`), but an append-only repair-event ledger for restart reconstruction is deferred — the controller currently reconstructs its rate-limit decision from `RepairState.lastRebuildAt` supplied by the caller.
 4. **Byte bounds in a planned range are `0..0` by design.** VC6C plans in seq space; the executing shard/ledger layer resolves byte offsets. Should a future sprint need byte-accurate plans, the range is already carried on `RepairPlanV1` and only the producer changes.
 5. **Backoff monotonicity holds only below the cap.** Past attempt 5 (`30s * 2^5 = 960s > 900s`) every delay saturates at the 15-minute ceiling and only jitter separates consecutive attempts. This surfaced as a genuine test-authoring bug during the sprint (an initial monotonicity assertion spanned the saturation point and failed); the assertion was corrected to check growth strictly below the cap and to separately pin saturation AT the cap, which is the behaviour the spec actually requires.
+6. **Scope-check residual is benign.** `node scripts/vector-cortex-scope-check.mjs VC6C HEAD` reports `package.json` / `package-lock.json` (commit HEAD) as "outside Production ownership" — the same pre-existing residual VC6A and VC6B recorded, because HEAD is the v0.20.9 release commit and not the (uncommitted) VC6C worktree. Every VC6C source file I created is enumerated in the spec's `Production ownership:` line (line 8), so the gate will pass cleanly once the work is committed. The scope-check operates on committed `git show --name-only` output and cannot see uncommitted working-tree changes by design.
