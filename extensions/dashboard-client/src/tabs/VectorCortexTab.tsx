@@ -25,6 +25,7 @@ import { VectorCortexRepairCard } from "./VectorCortexRepairCard";
 import { VectorCortexCrystalsCard } from "./VectorCortexCrystalsCard";
 import { VectorCortexEconomicsCard } from "./VectorCortexEconomicsCard";
 import { VectorCortexDiagnosticsCard } from "./VectorCortexDiagnosticsCard";
+import { VectorCortexOutcomesCard } from "./VectorCortexOutcomesCard";
 import {
 	VectorCortexShardsCard,
 	VectorCortexReconstructCard,
@@ -202,6 +203,7 @@ export default function VectorCortexTab(): React.ReactElement {
 			<VectorCortexCrystalsCard view={poll.crystals} />
 			<VectorCortexEconomicsCard view={poll.economics} />
 			<VectorCortexDiagnosticsCard view={poll.diagnostics} />
+			<VectorCortexOutcomesCard view={poll.outcomes} />
 			<VectorCortexLedgerCard ledger={poll.ledger} />
 		</div>
 	);

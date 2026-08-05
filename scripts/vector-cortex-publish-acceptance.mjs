@@ -237,6 +237,15 @@ function main() {
         name.endsWith(".js") && !name.endsWith(".test.js"),
       )
     : 0;
+  // VC8A added the outcomes subtree (types/ledger/consent/dataset/emit). Mirror
+  // its runtime .js so the vc8a-acceptance aggregator's `./outcomes/...` imports
+  // resolve at the published dist/vector-cortex/ offset (tests excluded like
+  // the other subtrees).
+  const nOutcomes = existsSync(join(SRC_VECTOR, "outcomes"))
+    ? copyTree(join(SRC_VECTOR, "outcomes"), join(DEST_VECTOR, "outcomes"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
   // VC3B support file (mode-B linear reference scan + helper producers) lives at
   // src/vector-cortex/vc3b-support.ts. Mirror its runtime .js so the
   // vc3b-acceptance aggregator's `./vc3b-support.js` import resolves at the
@@ -284,7 +293,7 @@ function main() {
     }
   }
   console.log(
-    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder + ${nCortex} cortex + ${nTopology} topology + ${nShards} shards + ${nResidual} residual + ${nReconstruct} reconstruct + ${nPromptDag} prompt-dag + ${nPlanner} planner + ${nRender} render + ${nProvider} provider + ${nRollout} rollout + ${nHeal} heal + ${nCache} cache + ${nLive} live-seam + ${nSupport} support files`,
+    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder + ${nCortex} cortex + ${nTopology} topology + ${nShards} shards + ${nResidual} residual + ${nReconstruct} reconstruct + ${nPromptDag} prompt-dag + ${nPlanner} planner + ${nRender} render + ${nProvider} provider + ${nRollout} rollout + ${nHeal} heal + ${nCache} cache + ${nOutcomes} outcomes + ${nLive} live-seam + ${nSupport} support files`,
   );
 }
 

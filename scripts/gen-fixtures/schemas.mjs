@@ -1688,3 +1688,145 @@ schemas["schemas/request-hash-v2-fixture.schema.json"] = {
     },
   },
 };
+
+schemas["schemas/outcome-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC8A outcome fixture envelope",
+  description:
+    "Common structure every VC8A outcome fixture validates against. input is a payload-free OutcomeV1 (session/repo/assignment/metrics only, never prompt/response/exactBytes/freeText). expected pins the appendOutcome verdict (ok) or the OUT_PAYLOAD_FORBIDDEN code.",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["outcome"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: { type: "string" },
+        outcomeId: { type: "string" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["outcomeId", "sessionId", "repoId", "assignment", "metrics"],
+      properties: {
+        outcomeId: { type: "string" },
+        sessionId: { type: "string" },
+        repoId: { type: "string" },
+        assignment: { type: "string" },
+        metrics: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["code", "value", "unit"],
+            properties: {
+              code: { type: "string" },
+              value: { type: "number" },
+              unit: { type: "string" },
+            },
+          },
+        },
+        ts: { type: "string" },
+      },
+    },
+  },
+};
+
+schemas["schemas/consent-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC8A consent fixture envelope",
+  description:
+    "Common structure every VC8A consent fixture validates against. input has consent records, a sessionId, and an effective high-water; expected pins whether the session has active consent at that high-water.",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["consent"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        hasActiveConsent: { type: "boolean" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["records", "sessionId", "effectiveHighWater"],
+      properties: {
+        records: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["consentId", "sessionId", "action", "effectiveSeq", "ts"],
+            properties: {
+              consentId: { type: "string" },
+              sessionId: { type: "string" },
+              action: { type: "string", enum: ["grant", "revoke"] },
+              effectiveSeq: { type: "integer" },
+              ts: { type: "string" },
+            },
+          },
+        },
+        sessionId: { type: "string" },
+        effectiveHighWater: { type: "integer" },
+      },
+    },
+  },
+};
+
+schemas["schemas/dataset-manifest-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC8A dataset manifest fixture envelope",
+  description:
+    "Common structure every VC8A dataset manifest fixture validates against. input has outcomes, consentRecords, and a consent high-water; expected pins the buildManifest row count, split integrity (all rows for one session in one split), and digest reproducibility.",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["dataset"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        rowCount: { type: "integer" },
+        splitsForSession: { type: "integer" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["outcomes", "consentRecords", "consentHighWater"],
+      properties: {
+        outcomes: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["outcomeId", "sessionId", "repoId", "assignment", "metrics"],
+            properties: {
+              outcomeId: { type: "string" },
+              sessionId: { type: "string" },
+              repoId: { type: "string" },
+              assignment: { type: "string" },
+              metrics: { type: "array", items: { type: "object" } },
+              ts: { type: "string" },
+            },
+          },
+        },
+        consentRecords: {
+          type: "array",
+          items: { type: "object" },
+        },
+        consentHighWater: { type: "integer" },
+      },
+    },
+  },
+};

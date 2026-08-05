@@ -19,6 +19,7 @@ import {
 	fetchVectorCortexCrystals,
 	fetchVectorCortexEconomics,
 	fetchVectorCortexDiagnostics,
+	fetchVectorCortexOutcomes,
 	fetchVectorCortexShards,
 	fetchVectorCortexTopology,
 	type VectorCortexEvaluationSummary,
@@ -35,6 +36,7 @@ import {
 	type VectorCortexCrystalsView,
 	type VectorCortexEconomicsView,
 	type VectorCortexDiagnosticsView,
+	type VectorCortexOutcomesView,
 	type VectorCortexShardsView,
 	type VectorCortexTopologyView,
 } from "../api/vector-cortex";
@@ -58,6 +60,7 @@ export interface VectorCortexPollState {
 	crystals: VectorCortexCrystalsView | null;
 	economics: VectorCortexEconomicsView | null;
 	diagnostics: VectorCortexDiagnosticsView | null;
+	outcomes: VectorCortexOutcomesView | null;
 }
 
 export function useVectorCortexPoll(): [
@@ -83,6 +86,7 @@ export function useVectorCortexPoll(): [
 		crystals: null,
 		economics: null,
 		diagnostics: null,
+		outcomes: null,
 	});
 
 	const poll = useCallback(() => {
@@ -111,6 +115,7 @@ export function useVectorCortexPoll(): [
 		fetchVectorCortexCrystals().then((crystals) => setState((p) => ({ ...p, crystals }))).catch(() => {});
 		fetchVectorCortexEconomics().then((economics) => setState((p) => ({ ...p, economics }))).catch(() => {});
 		fetchVectorCortexDiagnostics().then((diagnostics) => setState((p) => ({ ...p, diagnostics }))).catch(() => {});
+		fetchVectorCortexOutcomes().then((outcomes) => setState((p) => ({ ...p, outcomes }))).catch(() => {});
 	}, []);
 
 	useEffect(() => {

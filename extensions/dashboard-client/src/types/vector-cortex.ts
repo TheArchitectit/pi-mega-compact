@@ -261,3 +261,5 @@ export type {
   VectorCortexEconomicsView,
   VectorCortexDiagnosticsView,
 } from "./vector-cortex-vc7.js";
+
+export type { VectorCortexOutcomesView } from "./vector-cortex-vc8.js";

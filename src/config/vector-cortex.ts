@@ -239,6 +239,21 @@ export const VC7B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC7B");
  */
 export const VC7C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC7C");
 
+/**
+ * VC8A — consent-bound outcome ledger + offline learning dataset. Default ON.
+ * `MEGACOMPACT_VC8A=0` disables and is byte-identical to the predecessor
+ * (VC7C): the outcome ledger, consent records, and dataset manifest builder
+ * STILL RUN (they are PURE — append-only validation, consent evaluation, and
+ * SHA-256 digests, with no clock, storage, or network), so an outcome is still
+ * validated identically and a consent revocation still excludes a row. The
+ * flag gates ONLY the `vector_cortex_outcome_appended` /
+ * `vector_cortex_dataset_record_excluded` events and the outcomes dashboard
+ * seam, which reports `enabled:false` + mode C when off. This flag MUST also be
+ * a dashboard SETTINGS toggle (visible in config UI, never in
+ * EXCLUDED_SETTINGS), mirroring VC4A..VC7C.
+ */
+export const VC8A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC8A");
+
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker) extracted to
 // vector-cortex-breakers.ts to keep this file under the 300-line soft limit.
 export {

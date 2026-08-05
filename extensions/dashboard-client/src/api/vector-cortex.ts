@@ -21,6 +21,7 @@ import type {
 	VectorCortexCrystalsView,
 	VectorCortexEconomicsView,
 	VectorCortexDiagnosticsView,
+	VectorCortexOutcomesView,
 } from "../types/vector-cortex";
 
 export type {
@@ -41,6 +42,7 @@ export type {
 	VectorCortexCrystalsView,
 	VectorCortexEconomicsView,
 	VectorCortexDiagnosticsView,
+	VectorCortexOutcomesView,
 };
 
 export async function fetchVectorCortexEvaluation(): Promise<VectorCortexEvaluationSummary> {
@@ -168,4 +170,11 @@ export async function fetchVectorCortexDiagnostics(): Promise<VectorCortexDiagno
 	const r = await fetch("/api/vector-cortex/cache-diagnostics");
 	if (!r.ok) throw new Error(`vector-cortex cache-diagnostics: ${r.status}`);
 	return r.json() as Promise<VectorCortexDiagnosticsView>;
+}
+
+/** Reader-only consent-bound outcomes aggregate view (VC8A). Counts + codes only. */
+export async function fetchVectorCortexOutcomes(): Promise<VectorCortexOutcomesView> {
+	const r = await fetch("/api/vector-cortex/outcomes");
+	if (!r.ok) throw new Error(`vector-cortex outcomes: ${r.status}`);
+	return r.json() as Promise<VectorCortexOutcomesView>;
 }

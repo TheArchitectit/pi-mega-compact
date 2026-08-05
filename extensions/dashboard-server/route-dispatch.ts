@@ -72,6 +72,10 @@ import { handleVectorCortexEconomics } from "./routes-vector-cortex-economics.js
 // diagnostics seam stays independent of economics and every file stays well
 // under the 400-line extension soft limit.
 import { handleVectorCortexDiagnostics } from "./routes-vector-cortex-diagnostics.js";
+// VC8A consent-bound outcome ledger + offline learning dataset gets its own
+// module so the outcomes/consent seam stays independent of diagnostics and
+// every file stays well under the 400-line extension soft limit.
+import { handleVectorCortexOutcomes } from "./routes-vector-cortex-outcomes.js";
 
 /**
  * Dispatch a request through every registered route handler.
@@ -129,5 +133,6 @@ export function dispatchRoutes(
 	if (handleVectorCortexCrystals(req, res, ctx)) return true;
 	if (handleVectorCortexEconomics(req, res, ctx)) return true;
 	if (handleVectorCortexDiagnostics(req, res, ctx)) return true;
+	if (handleVectorCortexOutcomes(req, res, ctx)) return true;
 	return false;
 }

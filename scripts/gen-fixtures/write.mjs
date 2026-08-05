@@ -43,6 +43,7 @@ import { fixtures as healingFixtures, named as healingNamed } from "./healing-co
 import { fixtures as crystalFixtures, named as crystalNamed } from "./cache-crystals.mjs";
 import { fixtures as economicsFixtures, named as economicsNamed } from "./cache-economics.mjs";
 import { fixtures as diagnosticsFixtures, m5Fixtures as diagnosticsM5Fixtures, named as diagnosticsNamed } from "./cache-diagnostics.mjs";
+import { fixtures as outcomesFixtures, named as outcomesNamed } from "./outcomes.mjs";
 
 const REPLAY_DIR = join(V2, "replay");
 const EVENTS_DIR = join(V2, "events");
@@ -71,6 +72,7 @@ const HEALING_DIR = join(V2, "healing-controller");
 const CRYSTALS_DIR = join(V2, "cache-crystals");
 const ECONOMICS_DIR = join(V2, "cache-economics");
 const DIAGNOSTICS_DIR = join(V2, "cache-diagnostics");
+const OUTCOMES_DIR = join(V2, "outcomes");
 
 export function writeAll() {
   rmSync(V2, { recursive: true, force: true });
@@ -103,6 +105,7 @@ export function writeAll() {
   mkdirSync(CRYSTALS_DIR, { recursive: true });
   mkdirSync(ECONOMICS_DIR, { recursive: true });
   mkdirSync(DIAGNOSTICS_DIR, { recursive: true });
+  mkdirSync(OUTCOMES_DIR, { recursive: true });
 
   const manifestRows = [];
 
@@ -668,12 +671,31 @@ export function writeAll() {
     });
   }
 
+  // Outcomes fixtures (VC8A): kind=outcome rows (OUT-001..025) pin payload-free
+  // outcome append validation; kind=consent named rows pin grant/revoke effective
+  // sequence; kind=dataset named rows pin split integrity + digest reproducibility.
+  for (const fx of [...outcomesFixtures, ...outcomesNamed]) {
+    const bytes = Buffer.from(canonicalJson(fx), "utf8");
+    const rel = `outcomes/${fx.id}.json`;
+    writeFileSync(join(OUTCOMES_DIR, `${fx.id}.json`), bytes);
+    manifestRows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: fx.schema,
+      algorithm: fx.kind,
+      producer,
+      expected: fx.expected.ok ? "ok" : fx.expected.code,
+      license: "synthetic",
+    });
+  }
+
   const manifest = {
     version: "2",
     viewer: "vector-cortex-conformance.mjs",
     producer: "vector-cortex-gen-fixtures.mjs",
-    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification,cortex-store,topology,topology-query,router-generation-v2,shard,residual,reconstruction,prompt-dag,planner,render,provider,rollout,closure-optimization,restoration,healing-controller,cache-crystals,cache-economics,cache-diagnostics",
-    owner: "VC0A,VC0B,VC0C,VC1A,VC1B,VC1C,VC2A,VC2B,VC2C,VC3A,VC3B,VC3C,VC4A,VC4B,VC4C,VC5A,VC5B,VC5C,VC6A,VC6B,VC6C,VC7A,VC7B,VC7C",
+    domain: "evaluation,replay,events,resilience,ledger,minhash,migrations,conformance,encoder-runtime,encoder-heads,encoder-qualification,cortex-store,topology,topology-query,router-generation-v2,shard,residual,reconstruction,prompt-dag,planner,render,provider,rollout,closure-optimization,restoration,healing-controller,cache-crystals,cache-economics,cache-diagnostics,outcomes",
+    owner: "VC0A,VC0B,VC0C,VC1A,VC1B,VC1C,VC2A,VC2B,VC2C,VC3A,VC3B,VC3C,VC4A,VC4B,VC4C,VC5A,VC5B,VC5C,VC6A,VC6B,VC6C,VC7A,VC7B,VC7C,VC8A",
     schemaVersion: "metric-event-v1;replay-cut-v2;event-v2;tri-fixture;ledger-fixture;minhash-v2;minhash-v2-migration;conformance-v2;minhash-seeds;encoder-runtime;encoder-heads;encoder-qualification;cortex-store;topology-fixture;topology-query-fixture;router-generation-migration;shard-fixture;residual-fixture;reconstruction-fixture;prompt-dag-fixture;planner-fixture;render-fixture;provider-fixture;rollout-fixture;closure-optimization-fixture;restoration-fixture;healing-controller-fixture;cache-crystal-fixture;cache-economics-fixture;cache-diagnostic-fixture;request-hash-v2-fixture",
     license: "synthetic",
     fixtures: manifestRows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
@@ -730,5 +752,7 @@ export function writeAll() {
     economicsNamedCount: economicsNamed.length,
     diagnosticsCount: diagnosticsFixtures.length + diagnosticsM5Fixtures.length,
     diagnosticsNamedCount: diagnosticsNamed.length,
+    outcomesCount: outcomesFixtures.length,
+    outcomesNamedCount: outcomesNamed.length,
   };
 }
