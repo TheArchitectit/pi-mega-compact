@@ -66,6 +66,12 @@ export function collectEvidence(o: MissObservation): MissEvidence {
     isPresent(o.cachedRequestDigest) &&
     o.cachedRequestDigest !== o.requestDigest;
 
+  const absent =
+    !isPresent(o.cachedProfileId) &&
+    !isPresent(o.cachedCoveredDigest) &&
+    !isPresent(o.cachedRequestDigest) &&
+    !isPresent(o.cachedDependencyHighWater);
+
   return {
     profileMismatch,
     rangeMismatch,
@@ -73,13 +79,12 @@ export function collectEvidence(o: MissObservation): MissEvidence {
     requestMismatch,
     generationInvalidated: o.generationInvalidated,
     requestedRangeCount: o.requestedRangeCount,
-    cachedRangeCount: o.cachedRangeCount === null ? 0 : o.cachedRangeCount,
+    // Nothing was cached when the observation is absent, so a stale
+    // cachedRangeCount on the observation is not real — report 0.
+    cachedRangeCount:
+      o.cachedRangeCount === null || absent ? 0 : o.cachedRangeCount,
     dependencyDelta: dep.delta,
-    absent:
-      !isPresent(o.cachedProfileId) &&
-      !isPresent(o.cachedCoveredDigest) &&
-      !isPresent(o.cachedRequestDigest) &&
-      !isPresent(o.cachedDependencyHighWater),
+    absent,
   };
 }
 

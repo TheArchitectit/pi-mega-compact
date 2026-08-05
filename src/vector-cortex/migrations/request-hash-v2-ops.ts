@@ -75,16 +75,17 @@ function generationFromEconomics(economicsVersion: string): bigint {
 
 export function detectCollision(host: M5Host): boolean {
   const byHash = new Map<string, string>();
+  const seenIdentities = new Set<string>();
   for (const v1 of host.v1Rows()) {
     const row = deriveRequestHashRow(host, v1);
+    const id = identity(v1.profileId, v1.requestDigest);
+    // Two distinct v1 rows (different v1 hash) with the same v2 hash collide,
+    // even if they share an identity — the v2 table cannot distinguish them.
+    if (seenIdentities.has(id)) return true;
+    seenIdentities.add(id);
     const prior = byHash.get(row.hash);
-    if (
-      prior !== undefined &&
-      prior !== identity(v1.profileId, v1.requestDigest)
-    ) {
-      return true;
-    }
-    byHash.set(row.hash, identity(v1.profileId, v1.requestDigest));
+    if (prior !== undefined && prior !== id) return true;
+    byHash.set(row.hash, id);
   }
   return false;
 }
@@ -148,6 +149,9 @@ export function m5Verify(host: M5Host): M5ValidateResult {
   const expected = new Set<string>();
   for (const v1 of v1Rows) {
     const id = identity(v1.profileId, v1.requestDigest);
+    // Dead-generation rows are intentionally skipped by copy; do not flag.
+    const fresh = deriveRequestHashRow(host, v1);
+    if (isGenerationInvalidated(host, fresh)) continue;
     expected.add(id);
     const n = counts.get(id) ?? 0;
     if (n === 0) codes.push(M5_FAIL.COPY_PARTIAL);
@@ -181,10 +185,12 @@ export function m5Switch(host: M5Host): M5ValidateResult {
   if (host.activeVersion() !== REQUEST_HASH_LEGACY_VERSION) {
     return { ok: false, codes: [M5_FAIL.NOT_ON_LEGACY] };
   }
-  const verify = m5Verify(host);
-  if (!verify.ok) return verify;
+  // Collision check runs before copy-completeness verify: a structural
+  // collision is a switch-blocker regardless of copy state.
   if (detectCollision(host))
     return { ok: false, codes: [M5_FAIL.REQUEST_HASH_COLLISION] };
+  const verify = m5Verify(host);
+  if (!verify.ok) return verify;
   host.switchToV2();
   return { ok: true, codes: [] };
 }

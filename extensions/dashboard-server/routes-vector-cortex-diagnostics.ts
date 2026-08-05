@@ -6,7 +6,7 @@
  * classification aggregate: whether the VC7C flag is enabled, the runtime triad
  * mode, one count per exclusive miss class (profile, range, dependency, request,
  * generation, unknown), how many cache serves the breaker blocked, the breaker
- * state, and the last CACHE_*/M5_* failure code.
+ * state, and the last CACHE/M5 failure code.
  *
  * COUNTS + CODES ONLY. A cache miss diagnostic answers "why did THIS request
  * miss?", so the natural (and forbidden) payload is the request itself: the
@@ -35,7 +35,7 @@ import type { VectorCortexDiagnosticsView } from "./api-contracts/vector-cortex-
 /**
  * Reader-only GET /api/vector-cortex/cache-diagnostics (VC7C).
  *
- * Per-miss-class counts, breaker state, and CACHE_*/M5_* codes only — a static
+ * Per-miss-class counts, breaker state, and CACHE and M5 codes only — a static
  * reader-only aggregate seam with the same shape as the VC7B economics handler.
  */
 export function handleVectorCortexDiagnostics(

@@ -20,6 +20,7 @@ import {
   createCacheBreaker,
   decideCacheServe,
   shouldBlockServe,
+  tripKindForMiss,
 } from "./breaker.js";
 import type { MissClass } from "./diagnostics-types.js";
 
@@ -58,6 +59,8 @@ test("VC7C breaker: an unknown miss does not block and lets the triad run mode A
 
 test("VC7C breaker: a deeper open state is honored — already at C wins over B", () => {
   const b = createCacheBreaker();
+  // Register the subsystem first so manualHalt can find it in the targets.
+  b.snapshot(CACHE_SUBSYSTEM);
   // Force the breaker into MANUAL_HALT (simulate an authority outage).
   b.manualHalt("chaos-test");
   const d = decideCacheServe("profile", b);
@@ -83,4 +86,21 @@ test("VC7C breaker: compose check — the breaker is the VC0C breaker, same subs
   // Reset must be idempotent and non-fatal.
   assert.doesNotThrow(() => b.reset(CACHE_SUBSYSTEM));
   assert.equal(b.modeFor(CACHE_SUBSYSTEM), "A" as Mode);
+});
+
+test("VC7C breaker: trip kind mapping — profile/range/request are correctness, dependency/generation are performance", () => {
+  assert.equal(tripKindForMiss("profile"), "correctness");
+  assert.equal(tripKindForMiss("range"), "correctness");
+  assert.equal(tripKindForMiss("request"), "correctness");
+  assert.equal(tripKindForMiss("dependency"), "performance");
+  assert.equal(tripKindForMiss("generation"), "performance");
+  assert.equal(tripKindForMiss("unknown"), "performance");
+});
+
+test("VC7C breaker: decideCacheServe returns the trip kind alongside the decision", () => {
+  const b = createCacheBreaker();
+  const d = decideCacheServe("profile", b);
+  assert.equal(d.tripKind, "correctness");
+  const d2 = decideCacheServe("dependency", b);
+  assert.equal(d2.tripKind, "performance");
 });

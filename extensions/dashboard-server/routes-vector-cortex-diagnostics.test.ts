@@ -3,7 +3,7 @@
  * /api/vector-cortex/cache-diagnostics (VC7C).
  *
  * Reader-only cache miss-classification aggregate: COUNTS, breaker state, and
- * CACHE_*/M5_* CODES ONLY. Its own file (mirroring
+ * CACHE and M5 CODES ONLY. Its own file (mirroring
  * routes-vector-cortex-economics.test.ts) so the per-sprint route tests stay
  * under the 600-line test hard limit; shares the spawn-and-fetch harness.
  *

@@ -116,6 +116,7 @@ test("M5: resume after crash — collision injected post-validation is caught at
     econ: { "p-a": "econ-1" },
   });
   const hResumed = host({ v1: [base], econ: { "p-a": "econ-1" } });
+  m5Copy(hResumed);
   assert.equal(m5Verify(hResumed).ok, true, "pre-crash validation passes");
   const res = m5Switch(h);
   assert.equal(res.ok, false);

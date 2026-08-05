@@ -20,13 +20,13 @@ Production (`src/vector-cortex/`):
 - `cache/diagnostics-types.ts` (87) — `MissClass`, `MissEvidence`, `CacheDiagnosticV1`, `MissObservation`, `CACHE_DIAGNOSTIC_IDS` (CACHE-016..030), `CACHE_DIAGNOSTIC_NAMED_IDS` = ["CACHE-MISS-001","CACHE-STALE-003"]. Digest conventions: `coveredDigest` = `sha256:`-prefixed; `requestDigest` = BARE hex.
 - `cache/diagnostics.ts` (114) — `collectEvidence`, `classFor` (exclusive cascade), `classifyMiss`, `isTransientMiss`. Pure, no flag read.
 - `cache/diagnostics-emit.ts` (90) — `reportCacheMissClassified` + `reportCacheServeBlocked`, gated on `VC7C_ENABLED()`. Payload-free. `safe()` wrapper: broken telemetry never escapes.
-- `cache/breaker.ts` (71) — composes VC0C's `createBreaker`. `shouldBlockServe(missClass)` = `missClass !== "unknown"`. `decideCacheServe(missClass, breaker)` = `{block, fallbackMode}`.
+- `cache/breaker.ts` (124) — composes VC0C's `createBreaker` (no parallel state machine). `tripKindForMiss(missClass)` maps profile/range/request to CORRECTNESS (trip on first failure), dependency/generation to PERFORMANCE. `shouldBlockServe(missClass)` = `missClass !== "unknown"`. `decideCacheServe(missClass, breaker)` = `{block, fallbackMode, tripKind}`. PROBE_* states never served (TRIAD_RESILIENCE line 13). `breakerRetryDelay` reused from VC0C.
 - `cache/_diagnostics-fixture.ts` (32) — `diagnosticsFixture(id)` + `withVc7cFlag(value, fn)`.
 - `migrations/request-hash-v2.ts` (80, delegate-shell) — re-exports from `./request-hash-v2-types.js` (87) and `./request-hash-v2-ops.js` (195). `deriveRequestHashV2` returns BARE hex. `m5Switch` completes the switch with collision check. `invalidationKey` consumed from `../topology/query.js`.
 
 Tests:
 - `cache/diagnostics.test.ts` (325) — exclusive ranking pins (CACHE-016..030 + named), classFor co-occurrence, absence-is-not-a-mismatch, isTransientMiss.
-- `cache/breaker-chaos.test.ts` (86) — shouldBlockServe, mode B/C/A, MANUAL_HALT, four conditions, VC0C composition.
+- `cache/breaker-chaos.test.ts` (106) — shouldBlockServe, mode B/C/A, MANUAL_HALT, four conditions, VC0C composition, trip-kind mapping (correctness vs performance), probe-state enforcement.
 - `cache/flag-parity-vc7c.test.ts` (144) — deriveRequestHashV2 byte-identical ON vs OFF (BARE hex), event suppression, payload-free.
 - `migrations/request-hash-v2.test.ts` (158) — copy/validate/switch, collision detection, identity preservation, resume-after-crash, NOT_ON_LEGACY.
 - `vc7c-acceptance.test.ts` (26) — delegate-shell listing siblings + run commands.
@@ -57,6 +57,6 @@ Coverage by scenario band:
 
 ## Known findings
 
-1. **Concurrent-agent scope conflict**: The vc7c-dash agent (assigned `extensions/**` + config only) deleted my VC7C core files multiple times during this session. All files were recreated. The current `breaker.ts` was authored by the vc7c-dash agent and composes VC0C's `createBreaker` — architecturally superior to a standalone state machine. The test files were also (re)created by the vc7c-dash agent; I fixed the `flag-parity-vc7c.test.ts` bare-hex assertion (line 131: `^v2:` -> `^[0-9a-f]+$`).
-2. **`deriveRequestHashV2` returns BARE hex** (no `v2:` prefix), per the VC5B convention. The original `flag-parity-vc7c.test.ts` asserted `^v2:` which would have failed.
-3. **`breaker.ts` does NOT directly import `src/config/vector-cortex-breakers.ts`** — it composes VC0C's `createBreaker` which uses those constants internally. This satisfies the brief's intent via composition.
+1. **`breaker.ts` composes VC0C's `createBreaker`** (per team-lead correction). The initial 465-line standalone state machine was abandoned — it reimplemented the VC0C cooldown/probe/hysteresis logic in parallel, which would drift from TRIAD_RESILIENCE. The current version composes `createBreaker` from `../resilience/breaker-core.js`, maps the four cache demotion conditions to `BreakerTripKind` (profile/range/request = correctness, dependency/generation = performance), enforces "probe output is never served" (PROBE_* -> block), and reuses `breakerRetryDelay` from VC0C for deterministic jitter. The breaker constants in `src/config/vector-cortex-breakers.ts` are inherited via breaker-core.ts.
+2. **`deriveRequestHashV2` returns BARE hex** (no `v2:` prefix), per the VC5B convention. The original `flag-parity-vc7c.test.ts` asserted `^v2:` which would have failed. Fixed to `^[0-9a-f]+$` with minimum length 64.
+3. **Concurrent-agent scope conflict**: The vc7c-dash agent (assigned `extensions/**` + config only) deleted my VC7C core files multiple times during this session. All files were recreated after each deletion burst. The test files were also (re)created by the vc7c-dash agent; I fixed the `flag-parity-vc7c.test.ts` bare-hex assertion bug.

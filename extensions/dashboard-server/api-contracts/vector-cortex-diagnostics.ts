@@ -27,7 +27,7 @@
  *     increments exactly one of these six counters and they sum to the total;
  *   - how many cache serves the breaker blocked (a count, never the blocked key
  *     or the entry it would have served);
- *   - the breaker's observable state and the last CACHE_*/M5_* rejection code.
+ *   - the breaker's observable state and the last CACHE/M5 rejection code.
  * Request payloads, request digests, covered ranges, span digests, profile
  * digests, and session ids live in the structured event log / conformance
  * corpus, never here.
@@ -69,7 +69,7 @@ export interface VectorCortexDiagnosticsView {
   readonly serveBlocked: number;
   /** Observable cache-breaker state (a state name, not a payload). */
   readonly breakerState: string;
-  /** Last diagnostics rejection reason (a CACHE_*/M5_* code), or null. */
+  /** Last diagnostics rejection reason (a CACHE or M5 code), or null. */
   readonly lastFailure: string | null;
   /** ISO timestamp of the snapshot. */
   readonly updatedAt: string;
