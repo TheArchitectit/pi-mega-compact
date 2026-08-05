@@ -21,7 +21,6 @@ import {
   classFor,
   classifyMiss,
   collectEvidence,
-  isTransientMiss,
 } from "./diagnostics.js";
 import type { MissObservation } from "./diagnostics-types.js";
 
@@ -253,73 +252,5 @@ test("VC7C evidence: the payload-free record carries only booleans and bounded c
   }
 });
 
-// ── advanceDelta clamping ────────────────────────────────────────────────────
-
-test("VC7C delta: a request BEHIND the crystal is not an advance and clamps to zero", () => {
-  const e = collectEvidence(
-    obs({ requestDependencyHighWater: 50n, cachedDependencyHighWater: 100n }),
-  );
-  assert.equal(e.dependencyAdvanced, false, "reading an older validated frontier is legal");
-  assert.equal(e.dependencyDelta, 0, "a negative advance would be nonsense");
-});
-
-test("VC7C delta: an equal high-water is not an advance", () => {
-  const e = collectEvidence(obs({ requestDependencyHighWater: 100n }));
-  assert.equal(e.dependencyAdvanced, false);
-  assert.equal(e.dependencyDelta, 0);
-});
-
-test("VC7C delta: a huge advance saturates at MAX_SAFE_INTEGER rather than losing precision", () => {
-  const huge = BigInt(Number.MAX_SAFE_INTEGER) * 4n;
-  const e = collectEvidence(
-    obs({ requestDependencyHighWater: huge, cachedDependencyHighWater: 0n }),
-  );
-  assert.equal(e.dependencyAdvanced, true);
-  assert.equal(e.dependencyDelta, Number.MAX_SAFE_INTEGER, "saturate, never silently truncate");
-  assert.ok(Number.isSafeInteger(e.dependencyDelta));
-});
-
-test("VC7C delta: a delta exactly at MAX_SAFE_INTEGER is reported exactly", () => {
-  const e = collectEvidence(
-    obs({
-      requestDependencyHighWater: BigInt(Number.MAX_SAFE_INTEGER),
-      cachedDependencyHighWater: 0n,
-    }),
-  );
-  assert.equal(e.dependencyDelta, Number.MAX_SAFE_INTEGER);
-});
-
-// ── Transience ───────────────────────────────────────────────────────────────
-
-test("VC7C transience: profile and generation are transient; the rest are not", () => {
-  const cases: ReadonlyArray<readonly [MissObservation, boolean]> = [
-    [obs({ cachedProfileId: "other" }), true],
-    [obs({ generationInvalidated: true }), true],
-    [obs({ cachedCoveredDigest: COVERED_B }), false],
-    [obs({ requestDependencyHighWater: 200n }), false],
-    [obs({ cachedRequestDigest: REQ_B }), false],
-    [obs(), false],
-  ];
-  for (const [o, expected] of cases) {
-    const d = classifyMiss(o);
-    assert.equal(isTransientMiss(d), expected, `${d.missClass} transience`);
-  }
-});
-
-test("VC7C transience: an unknown miss is NEVER called transient", () => {
-  const d = classifyMiss(obs());
-  assert.equal(d.missClass, "unknown");
-  assert.equal(
-    isTransientMiss(d),
-    false,
-    "telling an operator an unexplained miss self-heals is how an eviction bug runs for months",
-  );
-});
-
-// ── Determinism / totality ───────────────────────────────────────────────────
-
-test("VC7C diagnostics: classification is deterministic and never throws", () => {
-  const o = obs({ cachedProfileId: "other", cachedCoveredDigest: COVERED_B });
-  const first = classifyMiss(o);
-  for (let i = 0; i < 25; i++) assert.deepEqual(classifyMiss(o), first);
-});
+// Delta clamping, transience, and determinism live in
+// diagnostics-delta.test.ts (extracted to stay under the 300-line soft limit).
