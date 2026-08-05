@@ -265,6 +265,56 @@ npm publish
 
 echo "[deploy] published v$NEW_VERSION to npm."
 
+# --- 9. bounce stale local dashboard runners (best-effort) -------------------
+# WHY: `pi update --extensions` replaces the on-disk package, but long-running
+# _dashboard-runner.mjs processes keep serving the OLD in-memory bundle
+# (observed after v0.20.25: :9320 still reporting v0.20.24). Two sources of
+# truth are combined, mirroring extensions/mega-dashboard-cmds.ts:
+#   - port.pid markers (written by the server into each repo's state dir), and
+#   - an ORPHAN sweep of the full bind range (a live server with no marker).
+# The npm publish is already done and must not be affected — every failure
+# path below is swallowed by design.
+bounce_stale_dashboards() {
+	local NEW_V="$NEW_VERSION"
+	local killed=0 marker info port pid ver
+	# (a) marker-driven kills across all repo state dirs
+	while IFS= read -r marker; do
+		[[ -z "$marker" ]] && continue
+		info="$(sed -n 's/.*"port":\([0-9]*\).*"pid":\([0-9]*\).*/\1 \2/p' "$marker" 2>/dev/null | head -1)"
+		port="${info%% *}"
+		pid="${info##* }"
+		[[ "$port" =~ ^[0-9]+$ ]] || continue
+		ver="$(curl -s --max-time 1 "http://localhost:${port}/api/version" 2>/dev/null | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' || true)"
+		if [[ -n "$ver" && "$ver" != "$NEW_V" && "$pid" =~ ^[0-9]+$ ]]; then
+			if kill -TERM "$pid" 2>/dev/null; then
+				rm -f "$marker"
+				echo "[deploy] bounced stale dashboard :$port (pid $pid, was v$ver)"
+				killed=$((killed + 1))
+			fi
+		elif [[ -n "$ver" ]]; then
+			echo "[deploy] dashboard :$port already current (v$ver) — leaving it"
+		fi
+	done < <(find "$HOME" -path '*/.pi/mega-compact/port.pid' -not -path '*/node_modules/*' 2>/dev/null || true)
+	# (b) orphan sweep: a live dashboard on the bind range with NO marker keeps
+	# serving its old in-memory bundle until killed (serverVersion stale rule).
+	local BASE="${MEGACOMPACT_DASHBOARD_PORT:-9320}"
+	local opid
+	for ((port = BASE; port <= BASE + 9; port++)); do
+		ver="$(curl -s --max-time 1 "http://localhost:${port}/api/version" 2>/dev/null | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' || true)"
+		[[ -z "$ver" || "$ver" == "$NEW_V" ]] && continue
+		opid="$(ss -ltnp 2>/dev/null | grep ":${port} " | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1 || true)"
+		if [[ "$opid" =~ ^[0-9]+$ ]] && kill -TERM "$opid" 2>/dev/null; then
+			echo "[deploy] bounced orphan dashboard :$port (pid $opid, was v$ver)"
+			killed=$((killed + 1))
+		fi
+	done
+	[[ "$killed" -gt 0 ]] && echo "[deploy] $killed stale dashboard runner(s) stopped — next /dashboard launch serves v$NEW_VERSION"
+	return 0
+}
+if ! bounce_stale_dashboards; then
+	echo "[deploy] WARN: dashboard bounce step hit an error — continuing (publish unaffected)"
+fi
+
 # --- 8a. merge release branch into master -------------------------------------
 # After a successful publish, merge the release branch into master so that
 # master always tracks the latest published code. Non-fatal: if master is
@@ -330,6 +380,11 @@ echo "On EACH device running pi-mega-compact:"
 echo
 echo "  1. Update the extension from the registry (npm-only, no .tgz):"
 echo "       pi update --extensions"
+echo
+echo "     NOTE: stale local dashboard runners (serving an older in-memory"
+echo "     bundle) were already SIGTERMed by this deploy. On a *device* (not"
+echo "     this host), after updating, run: curl -sS localhost:9320/api/version"
+echo "     — if it shows an older version, /mega-dashboard-stop then /dashboard."
 echo
 echo "  2. Confirm the installed version is v$NEW_VERSION:"
 echo "       find ~/.pi/agent/extensions -path '*mega-compact/package.json' \
