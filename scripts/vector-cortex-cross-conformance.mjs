@@ -41,7 +41,7 @@
  * This file may console.log (it is a script, not src/).
  */
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -59,19 +59,24 @@ const MANIFEST_PATH = join(FIXTURE_DIR, "manifest.json");
 const RUST_PARITY_MISMATCH = "RUST_PARITY_MISMATCH";
 const RUST_FRAME_TRUNCATED = "RUST_FRAME_TRUNCATED";
 
-/** Read the fixture manifest; aborts with a clear message when absent. */
+/**
+ * Read the fixture manifest. A present manifest.json takes precedence; when it
+ * is absent (the fixture tree is written without a manifest) fall back to
+ * a deterministic sorted listing of every RUST-*.json in the directory.
+ */
 function readManifest() {
-  if (!existsSync(MANIFEST_PATH)) {
-    throw new Error(
-      `vector-cortex-cross-conformance: no manifest at ${MANIFEST_PATH}`,
-    );
+  if (existsSync(MANIFEST_PATH)) {
+    const raw = readFileSync(MANIFEST_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      throw new Error("vector-cortex-cross-conformance: manifest must be an array");
+    }
+    return parsed;
   }
-  const raw = readFileSync(MANIFEST_PATH, "utf8");
-  const parsed = JSON.parse(raw);
-  if (!Array.isArray(parsed)) {
-    throw new Error("vector-cortex-cross-conformance: manifest must be an array");
-  }
-  return parsed;
+  const files = readdirSync(FIXTURE_DIR)
+    .filter((f) => f.startsWith("RUST-") && f.endsWith(".json"))
+    .sort();
+  return files.map((file) => ({ file }));
 }
 
 /** Read a fixture file from the cross-language fixture root. */

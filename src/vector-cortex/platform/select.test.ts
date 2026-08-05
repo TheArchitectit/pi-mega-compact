@@ -168,4 +168,18 @@ describe("selectEngine", () => {
     const sel2 = selectEngine(okAbi(), okReport(), "linux-x64");
     assert.deepEqual(sel1, sel2);
   });
+
+  test("RUST-029: a platform outside SUPPORTED_PLATFORMS rejects with RUST_PLATFORM_UNSUPPORTED", () => {
+    const sel = selectEngine(okAbi(), okReport(), "haiku-ppc");
+    assert.equal(sel.mode, "B");
+    assert.equal(sel.reason, "RUST_PLATFORM_UNSUPPORTED");
+  });
+
+  test("RUST-030: an empty artifactUrl rejects with RUST_ARTIFACT_MISSING", () => {
+    const report = okReport();
+    const bad = { ...report, artifactUrl: "" };
+    const sel = selectEngine(okAbi(), bad, "linux-x64");
+    assert.equal(sel.mode, "B");
+    assert.equal(sel.reason, "RUST_ARTIFACT_MISSING");
+  });
 });

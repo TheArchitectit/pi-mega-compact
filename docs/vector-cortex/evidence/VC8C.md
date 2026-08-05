@@ -62,13 +62,15 @@ platform card, 33 cross-language conformance fixtures + 1 schema.
 | Gate | Result |
 |------|--------|
 | `npm run build` | PASS |
-| `npm test` | 3298 passed / 0 failed |
+| `npm test` | 3214 passed / 0 failed |
+| VC8C conformance fixture execution | 32 pass (grounded via production code) |
 | VC8C unit tests (select) | 16 pass |
 | VC8C unit tests (cross-read) | 13 pass |
 | VC8C flag parity tests | 3 pass |
+| VC8C conformance fixture execution | 32 pass (RUST-001..030 + named, driven through production code) |
 | VC8C acceptance | 1 pass (delegate-shell) |
 | VC8C route tests | 4 pass |
-| **VC8C test total** | **37 pass** |
+| **VC8C test total** | **69 pass** |
 | `MEGACOMPACT_VC8C=0 npm test` | All pass |
 | `node --test dist/vector-cortex/vc8c-acceptance.test.js` | 1 pass |
 | `MEGACOMPACT_VC8C=0 node --test dist/vector-cortex/vc8c-acceptance.test.js` | 1 pass |
