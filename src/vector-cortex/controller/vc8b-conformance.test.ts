@@ -134,7 +134,7 @@ describe("VC8B named headline rows", () => {
     // Alternate: alternateRequestedBudget=99999 clamps to maxBudget=1000
     const altDecision = evaluatePolicy({
       ...input,
-      requestedBudget: (fx.input as { alternateRequestedBudget?: number }).alternateRequestedBudget ?? 99999,
+      requestedBudget: fx.input.alternateRequestedBudget ?? 99999,
     });
     if (fx.expected.alternateBudget !== undefined)
       assert.equal(

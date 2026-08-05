@@ -64,6 +64,7 @@ interface PolFxInput {
   requestedBudget: number;
   bounds: { minBudget: number; maxBudget: number };
   ts: string;
+  alternateRequestedBudget?: number;
 }
 
 interface PolFxExpected {
