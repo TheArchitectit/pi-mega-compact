@@ -1,0 +1,1 @@
+{"assertion":"an empty legacy store migrates cleanly and switches the pointer","expected":{"activeVersionAfter":2,"ok":true,"rowCount":0},"id":"M7-012","input":{"scenario":"migrate","v1Rows":[]},"kind":"pressure-v2","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/pressure-v2-fixture.schema.json"}

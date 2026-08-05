@@ -23,3 +23,20 @@ export interface VectorCortexOutcomesView {
   lastFailure: string | null;
   updatedAt: string;
 }
+
+/**
+ * Reader-only shadow adaptive policy aggregate view (VC8B). Counts + POL_ and M7_
+ * codes only — the policy engine carries no payload, so no prompt bytes,
+ * session content, or free-text ever reaches the client.
+ */
+export interface VectorCortexPolicyView {
+  enabled: boolean;
+  mode: "A" | "B" | "C";
+  shadowDecisions: number;
+  clampedDecisions: number;
+  rejectedInputs: number;
+  liveMutations: number;
+  pressureVersion: number;
+  lastFailure: string | null;
+  updatedAt: string;
+}

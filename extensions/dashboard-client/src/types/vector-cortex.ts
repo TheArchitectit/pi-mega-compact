@@ -262,4 +262,4 @@ export type {
   VectorCortexDiagnosticsView,
 } from "./vector-cortex-vc7.js";
 
-export type { VectorCortexOutcomesView } from "./vector-cortex-vc8.js";
+export type { VectorCortexOutcomesView, VectorCortexPolicyView } from "./vector-cortex-vc8.js";

@@ -180,5 +180,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"Consent-bound outcome ledger and offline learning dataset. Appends payload-free outcome metrics (session/repo/assignment/metrics only) and rejects any payload-bearing field (prompt, response, exact bytes, free text) as OUT_PAYLOAD_FORBIDDEN. Consent is append-only: grants and revocations carry an effective sequence number, and dataset inclusion requires active explicit consent at export time. Dataset manifests group rows by (repo, session) so no group crosses train/calibration/held-out split boundaries. Revocations disappear from future manifests. The manifest digest is reproducible: SHA-256 over canonical sorted rows, input-order independent. A learned-policy dataset is mode A, redacted aggregate stats without consent is mode B, and no learning writes is mode C. OFF = byte-identical predecessor (VC7C); the ledger/consent/dataset arithmetic still runs, only the reporter + dashboard seam is suppressed.",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_VC8B",
+			"VC8B Shadow Adaptive Policy",
+			"Bounded shadow adaptive policy + M7 pressure-v2 migration. Policy actions are from a finite set (admit/dampen/defer/escalate/reject) chosen deterministically by the canonical pressure level; token budgets are clamped into a configured window after the pressure factor. Unknown pressure labels are rejected as POL_PRESSURE_UNKNOWN, never coerced to a neighbour. The shadow engine is structurally incapable of affecting the live path: inputs are deep-copied, the canonical prompt digest is pinned before and after to prove non-mutation, and liveMutations is always zero. M7 migrates legacy pressure labels to the v2 canonical five by copy/validate/switch; an unknown label blocks the switch and keeps the legacy pointer (M7_PRESSURE_UNKNOWN). A shadow decision is mode A, static calibrated policy is mode B (forced by invalid A), and fixed legacy thresholds is mode C (forced by M7 or B failure). OFF = byte-identical predecessor (VC8A); the policy/shadow/migration arithmetic still runs, only the reporter + dashboard seam is suppressed.",
+			true,
+		),
 	],
 };

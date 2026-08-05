@@ -1830,3 +1830,142 @@ schemas["schemas/dataset-manifest-fixture.schema.json"] = {
     },
   },
 };
+
+schemas["schemas/policy-decision-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC8B policy decision fixture envelope",
+  description:
+    "Common structure every VC8B policy-decision fixture validates against. input has a decisionId, sessionId, a (possibly non-canonical) pressure label, a requested budget, and a window; expected pins the allowed action + post-clamp budget (or the exact rejection code).",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["policy-decision"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: { type: "string" },
+        action: { type: "string" },
+        budget: { type: "number" },
+        pressure: { type: "string" },
+        reason: { type: "string" },
+        empty: { type: "string" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["decisionId", "sessionId", "pressure", "requestedBudget", "bounds", "ts"],
+      properties: {
+        decisionId: { type: "string" },
+        sessionId: { type: "string" },
+        pressure: { type: "string" },
+        requestedBudget: { type: "number" },
+        bounds: {
+          type: "object",
+          required: ["minBudget", "maxBudget"],
+          properties: {
+            minBudget: { type: "number" },
+            maxBudget: { type: "number" },
+          },
+        },
+        alternateRequestedBudget: { type: "number" },
+        ts: { type: "string" },
+      },
+    },
+  },
+};
+
+schemas["schemas/policy-shadow-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC8B shadow fixture envelope",
+  description:
+    "Common structure every VC8B shadow fixture validates against. input has the canonical prompt bytes and the inputs to evaluate in shadow; expected pins promptUnchanged, liveMutations (always 0), and the evaluated row count.",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["policy-shadow"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        promptUnchanged: { type: "boolean" },
+        liveMutations: { type: "integer" },
+        evaluated: { type: "integer" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["promptBytes", "inputs"],
+      properties: {
+        promptBytes: { type: "string" },
+        inputs: {
+          type: "array",
+          items: { type: "object" },
+        },
+      },
+    },
+  },
+};
+
+schemas["schemas/pressure-v2-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC8B pressure-v2 migration fixture envelope",
+  description:
+    "Common structure every VC8B pressure-v2 fixture validates against. input has a scenario and legacy v1 rows (optionally an injected post-copy row); expected pins the migration outcome (ok / code) and the active version after.",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["pressure-v2"] },
+    expected: {
+      type: "object",
+      required: ["ok"],
+      properties: {
+        ok: { type: "boolean" },
+        code: { type: "string" },
+        activeVersionAfter: { type: "integer" },
+        rowCount: { type: "integer" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario", "v1Rows"],
+      properties: {
+        scenario: { type: "string", enum: ["migrate", "resume", "inject-after-copy"] },
+        v1Rows: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["sessionId", "label", "effectiveSeq", "ts"],
+            properties: {
+              sessionId: { type: "string" },
+              label: { type: "string" },
+              effectiveSeq: { type: "integer" },
+              ts: { type: "string" },
+            },
+          },
+        },
+        injectedRow: {
+          type: "object",
+          required: ["sessionId", "label", "effectiveSeq", "ts"],
+          properties: {
+            sessionId: { type: "string" },
+            label: { type: "string" },
+            effectiveSeq: { type: "integer" },
+            ts: { type: "string" },
+          },
+        },
+      },
+    },
+  },
+};

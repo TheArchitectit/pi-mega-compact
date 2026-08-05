@@ -22,6 +22,7 @@ import type {
 	VectorCortexEconomicsView,
 	VectorCortexDiagnosticsView,
 	VectorCortexOutcomesView,
+	VectorCortexPolicyView,
 } from "../types/vector-cortex";
 
 export type {
@@ -43,6 +44,7 @@ export type {
 	VectorCortexEconomicsView,
 	VectorCortexDiagnosticsView,
 	VectorCortexOutcomesView,
+	VectorCortexPolicyView,
 };
 
 export async function fetchVectorCortexEvaluation(): Promise<VectorCortexEvaluationSummary> {
@@ -177,4 +179,11 @@ export async function fetchVectorCortexOutcomes(): Promise<VectorCortexOutcomesV
 	const r = await fetch("/api/vector-cortex/outcomes");
 	if (!r.ok) throw new Error(`vector-cortex outcomes: ${r.status}`);
 	return r.json() as Promise<VectorCortexOutcomesView>;
+}
+
+/** Reader-only shadow adaptive policy aggregate view (VC8B). Counts + codes only. */
+export async function fetchVectorCortexPolicy(): Promise<VectorCortexPolicyView> {
+	const r = await fetch("/api/vector-cortex/policy");
+	if (!r.ok) throw new Error(`vector-cortex policy: ${r.status}`);
+	return r.json() as Promise<VectorCortexPolicyView>;
 }
