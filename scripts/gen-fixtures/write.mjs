@@ -42,11 +42,6 @@ import { fixtures as restorationFixtures, named as restorationNamed } from "./re
 import { fixtures as healingFixtures, named as healingNamed } from "./healing-controller.mjs";
 import { fixtures as crystalFixtures, named as crystalNamed } from "./cache-crystals.mjs";
 import { fixtures as economicsFixtures, named as economicsNamed } from "./cache-economics.mjs";
-import {
-  fixtures as diagnosticsFixtures,
-  m5Fixtures as diagnosticsM5Fixtures,
-  named as diagnosticsNamed,
-} from "./cache-diagnostics.mjs";
 
 const REPLAY_DIR = join(V2, "replay");
 const EVENTS_DIR = join(V2, "events");
@@ -74,7 +69,6 @@ const RESTORATION_DIR = join(V2, "restoration");
 const HEALING_DIR = join(V2, "healing-controller");
 const CRYSTALS_DIR = join(V2, "cache-crystals");
 const ECONOMICS_DIR = join(V2, "cache-economics");
-const DIAGNOSTICS_DIR = join(V2, "cache-diagnostics");
 
 export function writeAll() {
   rmSync(V2, { recursive: true, force: true });

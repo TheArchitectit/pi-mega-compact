@@ -16,6 +16,7 @@ export const producer = "vector-cortex-gen-fixtures.mjs";
 
 export function canonicalValue(value) {
   if (value === null || typeof value !== "object") {
+    if (typeof value === "bigint") return String(value);
     if (typeof value === "number") return String(value); // shortest int/number
     return JSON.stringify(value);
   }
