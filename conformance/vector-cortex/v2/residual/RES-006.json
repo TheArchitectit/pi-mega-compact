@@ -1,0 +1,1 @@
+{"assertion":"an exactly-one-block payload produces exactly one block","expected":{"admitted":true,"blockCount":1,"exactRoundTrip":true,"ok":true},"id":"RES-006","input":{"admissionMode":"generous","payload":{"kind":"sequence","length":4096},"scenario":"dct-exact-block"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"triad A: a closed renderer serves assigned buckets under the active gate","expected":{"ok":true},"id":"ROL-016","input":{"scenario":"assign-stable","sessionId":"session-triad-a-0016"},"kind":"rollout","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/rollout-fixture.schema.json"}

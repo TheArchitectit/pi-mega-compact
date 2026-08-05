@@ -1,0 +1,1 @@
+{"assertion":"invalid UTF-8 tool bytes survive request encoding contract","expected":{"invalidUtf8Survives":true,"ok":true,"toolBytesExact":true},"id":"REN-008","input":{"graph":"single","profile":"anthropic-claude-opus","scenario":"render-tool-invalid-utf8"},"kind":"render","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/render-fixture.schema.json"}

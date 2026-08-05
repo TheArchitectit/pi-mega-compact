@@ -1,0 +1,1 @@
+{"assertion":"a causal hard fault freezes promotion and selects the pre-VC path","expected":{"ok":true,"promotionBlocked":true,"selectsPreVc":true},"id":"ROL-019","input":{"evidence":{"hardFaults":[{"detail":"causal-drift","kind":"causal"}]},"scenario":"gate-safety"},"kind":"rollout","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/rollout-fixture.schema.json"}

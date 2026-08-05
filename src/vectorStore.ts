@@ -8,6 +8,7 @@
  * "./vectorStore.js" are unchanged.
  */
 export { VectorStore } from "./vectorStore/class.js";
+export { addCheckpoint } from "./vectorStore/add.js";
 export { computeRegionHash } from "./vectorStore/hash.js";
 export {
 	L2_ENABLED,

@@ -1,0 +1,1 @@
+{"assertion":"the validated summary exposes only counts and digest (no content)","expected":{"ok":true,"summaryOpaque":true},"id":"REC-021","input":{"graph":"ordered","scenario":"validate-summary-opaque","shards":"ordered"},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

@@ -39,6 +39,9 @@ export interface SnapshotBuildContext {
 	readonly pressureBand: string;
 	readonly pressure: number;
 	readonly effectiveThreshold: number;
+	/** VC0A: count of latency samples the eval observer histogram should show
+	 *  (0 when the observer is absent / flag off). */
+	readonly vcObserverSamples?: number;
 	readonly statusKey: string | undefined;
 	readonly lastCtxTokens: number | null;
 	readonly lastCtxPercent: number | null;
@@ -76,6 +79,7 @@ export function buildDashboardSnapshot(ctx: SnapshotBuildContext): DashboardSnap
 		tier: ctx.pressureBand,
 		presetTier: ctx.config.tier,
 		pressure: ctx.pressure,
+		vcObserverSamples: ctx.vcObserverSamples ?? 0,
 		config: {
 			fastGatePct: ctx.config.fastGatePct,
 			thresholdTokens: ctx.effectiveThreshold,
@@ -132,17 +136,17 @@ export function buildDashboardSnapshot(ctx: SnapshotBuildContext): DashboardSnap
 		repo: ctx.repo,
 		compression: {
 			session: {
-				tokensIn: ctx.rt.tokensSaved + (ctx.st.totalTokenEstimate - ctx.st.originalTokens),
+				tokensIn: ctx.st.originalTokens,
 				tokensOut: ctx.st.totalTokenEstimate,
 				tokensFreed: ctx.rt.tokensSaved,
-				compressionPct: ctx.rt.tokensSaved / Math.max(1, ctx.rt.tokensSaved + (ctx.st.totalTokenEstimate - ctx.st.originalTokens)),
+				compressionPct: ctx.rt.tokensSaved / Math.max(1, ctx.st.originalTokens),
 				dedupPct: ctx.rt.dedupAttempts > 0 ? ctx.rt.dedupSkips / ctx.rt.dedupAttempts : 0,
 			},
 			repo: {
-				tokensIn: ctx.repo.tokensSaved + (ctx.repo.totalTokenEstimate - ctx.repo.originalTokens),
+				tokensIn: ctx.repo.originalTokens,
 				tokensOut: ctx.repo.totalTokenEstimate,
 				tokensFreed: ctx.repo.tokensSaved,
-				compressionPct: ctx.repo.tokensSaved / Math.max(1, ctx.repo.tokensSaved + (ctx.repo.totalTokenEstimate - ctx.repo.originalTokens)),
+				compressionPct: ctx.repo.tokensSaved / Math.max(1, ctx.repo.originalTokens),
 				dedupPct: ctx.repo.dedupAttempts > 0 ? ctx.repo.dedupCollapsed / ctx.repo.dedupAttempts : 0,
 			},
 		},
@@ -155,7 +159,9 @@ export function buildDashboardSnapshot(ctx: SnapshotBuildContext): DashboardSnap
 			// per-session in rt and there's no cumulative counter yet.
 			total: ctx.repo.dedupCollapsed,
 			sessionTokensSaved: ctx.rt.cacheHitTokens,
-			totalTokensSaved: ctx.repo.dedupCollapsed > 0 ? ctx.repo.dedupCollapsed * 100 : 0,
+			// Cumulative tokens saved across all sessions in this repo —
+			// was a placeholder (dedupCollapsed * 100).
+			totalTokensSaved: ctx.repo.tokensSaved,
 		},
 		compacts: {
 			session: ctx.rt.compactCount,
@@ -168,7 +174,7 @@ export function buildDashboardSnapshot(ctx: SnapshotBuildContext): DashboardSnap
 			},
 			cacheHit: {
 				sessionSec: ctx.rt.cacheHitTokens / 1000,
-				totalSec: (ctx.repo.dedupCollapsed * 100) / 1000,
+				totalSec: ctx.repo.tokensSaved / 1000,
 			},
 		},
 		model: ctx.currentModel

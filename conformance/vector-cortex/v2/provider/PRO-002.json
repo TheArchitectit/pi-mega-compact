@@ -1,0 +1,1 @@
+{"assertion":"a known anthropic sonnet provider/model resolves","expected":{"ok":true,"profileId":"anthropic-claude-sonnet"},"id":"PRO-002","input":{"model":"v1","provider":"anthropic-claude-sonnet","scenario":"resolve-known"},"kind":"provider","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/provider-fixture.schema.json"}

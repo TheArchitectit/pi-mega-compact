@@ -1,0 +1,1 @@
+{"assertion":"selecting a closes b and c transitively when b depends on c","expected":{"closureReachedFixedPoint":true,"ok":true,"selected":["a","b","c"]},"id":"CLO-001","input":{"graph":"chain","scenario":"closure-transitive","seeds":["a"]},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

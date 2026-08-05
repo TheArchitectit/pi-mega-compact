@@ -1,0 +1,1 @@
+{"assertion":"the systematic generator's top 6x6 square is the identity","expected":{"ok":true},"id":"RES-021","input":{"admissionMode":"generous","payload":{"kind":"sequence","length":5000},"scenario":"parity-systematic"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

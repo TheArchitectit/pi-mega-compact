@@ -1,0 +1,1 @@
+{"assertion":"an empty payload's shard set still recovers under three erasures","expected":{"exactRoundTrip":true,"ok":true},"id":"RES-038","input":{"admissionMode":"generous","erasedIndices":[0,4,8],"payload":{"kind":"empty"},"scenario":"parity-empty-payload"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

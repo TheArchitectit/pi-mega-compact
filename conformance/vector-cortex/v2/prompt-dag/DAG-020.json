@@ -1,0 +1,1 @@
+{"assertion":"a precedes edge pointing backward rejects with DAG_REVERSED_PRECEDES","expected":{"code":"DAG_REVERSED_PRECEDES","ok":false},"id":"DAG-020","input":{"graph":"reversed-precedes","scenario":"validate-reversed-precedes"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

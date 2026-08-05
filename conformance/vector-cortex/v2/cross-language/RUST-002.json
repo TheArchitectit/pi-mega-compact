@@ -1,0 +1,1 @@
+{"expected":{"ok":true},"expectedFailureCode":null,"expectedOutputHex":"deadbeef","fixtureId":"RUST-002","id":"RUST-002","inputHex":"deadbeef","kind":"cross-language-golden","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/cross-language-fixture.schema.json"}

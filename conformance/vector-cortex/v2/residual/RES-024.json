@@ -1,0 +1,1 @@
+{"assertion":"one erased data shard reconstructs every byte","expected":{"exactRoundTrip":true,"ok":true},"id":"RES-024","input":{"admissionMode":"generous","erasedIndices":[0],"payload":{"kind":"sequence","length":5000},"scenario":"parity-one-data-erasure"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

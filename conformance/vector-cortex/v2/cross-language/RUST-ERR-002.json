@@ -1,0 +1,1 @@
+{"expected":{"code":"RUST_PARITY_MISMATCH","ok":false},"expectedFailureCode":"RUST_PARITY_MISMATCH","expectedOutputHex":"","fixtureId":"RUST-ERR-002","id":"RUST-ERR-002","inputHex":"fffe80","kind":"cross-language-error-code-exchange","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/cross-language-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"expected":{"code":"RUST_ARTIFACT_MISSING","ok":false},"expectedFailureCode":"RUST_ARTIFACT_MISSING","expectedOutputHex":"","fixtureId":"RUST-030","id":"RUST-030","inputHex":"00","kind":"cross-language-missing","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/cross-language-fixture.schema.json"}

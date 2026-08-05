@@ -1,0 +1,1 @@
+{"assertion":"selection is 0/1 — a candidate is never partially taken","expected":{"noPartialSelection":true,"ok":true,"tokenTotal":10},"id":"PLN-013","input":{"candidates":"indivisible","scenario":"plan-zero-one","tokenBudget":15,"zeroFraming":true},"kind":"planner","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/planner-fixture.schema.json"}

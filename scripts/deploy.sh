@@ -106,7 +106,20 @@ echo "[deploy] running gate: build + test + lint + regression (incl. npm audit) 
 npm run build
 npm test
 npm run lint
-python3 scripts/regression_check.py --all
+# --all runs the full-tree scan (hard-limit + npm audit + settings + failure
+# registry). --soft-as-hard --pre-commit promotes soft-limit violations on
+# files CHANGED since the prior release tag to blocking: an agent (or this
+# release's commits) cannot squeeze a src/ file past 300 (ext past 400) toward
+# the 500 hard limit — it must split (delegate-shell + impl). The --soft-as-hard-base
+# is the previous release tag, so only THIS release's grown files are gated;
+# pre-existing violators stay non-blocking (tech debt, tracked separately).
+PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
+if [ -n "$PREV_TAG" ]; then
+	python3 scripts/regression_check.py --all --soft-as-hard --soft-as-hard-base "$PREV_TAG" --pre-commit
+else
+	# First release (no prior tag): headroom gate over the working-tree diff.
+	python3 scripts/regression_check.py --all --soft-as-hard --pre-commit
+fi
 node scripts/guardrails-scan.mjs
 echo "[deploy] gate green."
 
@@ -275,10 +288,10 @@ fi
 RELEASE_NOTES="${RELEASE_NOTES:-(no commit notes extracted)}"
 if command -v gh >/dev/null 2>&1; then
 	echo "[deploy] creating GitHub release $TAG with notes"
-	gh release create "$TAG" --target "$(git rev-list -n 1 "$TAG")" \
+	gh release create "$TAG" \
 		--title "v$NEW_VERSION" \
 		--notes "$(printf '## What changed\n\n%s\n\n**Install:** \`pi update --extensions\`' "$RELEASE_NOTES")" \
-		2>/dev/null || echo "[deploy] WARN: gh release create failed (gh not authenticated or release exists) — skipping"
+		|| echo "[deploy] WARN: gh release create failed (gh not authenticated or release exists) — skipping"
 else
 	echo "[deploy] WARN: gh CLI not installed — skipping GitHub release creation. Tag $TAG is pushed."
 fi

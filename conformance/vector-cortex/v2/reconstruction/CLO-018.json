@@ -1,0 +1,1 @@
+{"assertion":"a deep chain (8 hops) closes fully and terminates","expected":{"closureReachedFixedPoint":true,"ok":true,"selectedCount":9},"id":"CLO-018","input":{"graph":"chain8","scenario":"closure-deep-chain","seeds":["n0"]},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

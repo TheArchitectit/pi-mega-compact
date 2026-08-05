@@ -1,11 +1,11 @@
 # VC6A — Advanced closure optimization
 
-**Status:** planned | **Depends on:** VC5C | **Phase:** VC6
+**Status:** next | **Depends on:** VC5C | **Phase:** VC6
 **Flag:** `MEGACOMPACT_VC6A`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC6A=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs
 
-Consume only reviewer-accepted predecessor contracts and [common contracts](../CONTRACTS.md). Own **ClosureProofV2 / RestoreHintV1**. Production ownership: `src/vector-cortex/heal/closure-opt.ts`; `src/vector-cortex/heal/proof.ts`. Algorithm: Optimize already-mandatory VC4C closure using transitive reduction; proof lists each added/removed edge; output must equal conservative closure validity.
+Consume only reviewer-accepted predecessor contracts and [common contracts](../CONTRACTS.md). Own **ClosureProofV2 / RestoreHintV1**. Production ownership: `src/vector-cortex/heal/types.ts`; `src/vector-cortex/heal/closure-opt.ts`; `src/vector-cortex/heal/closure-metrics.ts`; `src/vector-cortex/heal/proof.ts`; `src/vector-cortex/heal/emit.ts`; `src/vector-cortex/heal/closure-opt.test.ts`; `src/vector-cortex/heal/proof.test.ts`; `src/vector-cortex/heal/_acceptance-fixture.ts`; `src/vector-cortex/vc6a-acceptance.test.ts`. Algorithm: Optimize already-mandatory VC4C closure using transitive reduction; proof lists each added/removed edge; output must equal conservative closure validity.
 
 ## Numbered implementation tasks
 

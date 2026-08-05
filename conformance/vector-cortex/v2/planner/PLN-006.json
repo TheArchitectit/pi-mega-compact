@@ -1,0 +1,1 @@
+{"assertion":"mandatory cost one token over the budget is rejected","expected":{"code":"MANDATORY_CLOSURE_OVER_BUDGET","ok":false},"id":"PLN-006","input":{"candidates":"mandatory-only","scenario":"plan-mandatory-one-over","tokenBudget":29,"zeroFraming":true},"kind":"planner","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/planner-fixture.schema.json"}

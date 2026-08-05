@@ -1,0 +1,1 @@
+{"assertion":"an edge referencing a missing node returns CLO_MISSING_NODE","expected":{"code":"CLO_MISSING_NODE","ok":false},"id":"CLO-010","input":{"graph":"dangling-edge","scenario":"closure-missing-node","seeds":["a"]},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

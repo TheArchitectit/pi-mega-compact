@@ -1,0 +1,1 @@
+{"assertion":"a selected set diverging from the validator order fails REN_ORDER_MISMATCH","expected":{"code":"REN_ORDER_MISMATCH","ok":false},"id":"REN-019","input":{"graph":"linear","profile":"anthropic-claude-opus","scenario":"render-order-divergent"},"kind":"render","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/render-fixture.schema.json"}

@@ -204,3 +204,13 @@ export function logRecallQuality(path: string, ev: RecallQualityEvent): void {
     /* best-effort — never break the extension */
   }
 }
+
+// ---------------------------------------------------------------------------
+// Dedup audit trail (external-audit item #2)
+// ---------------------------------------------------------------------------
+// The event shape and its append helper are DEFINED in vectorStore/dedup-audit.ts,
+// co-located with the only recorder that emits them (this file already carries
+// decision events + the metrics snapshot + FP alerting and must stay under its
+// 300-line soft limit). Re-exported here so callers that treat monitoring.ts as
+// the events.log barrel — including the dashboard SSE tail — keep one import.
+export { logDedupAudit, type DedupAuditEvent } from "./vectorStore/dedup-audit.js";

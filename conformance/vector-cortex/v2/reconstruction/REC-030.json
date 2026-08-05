@@ -1,0 +1,1 @@
+{"assertion":"every protected span survives a transitive closure","expected":{"ok":true,"protectedSpanCount":1},"id":"REC-030","input":{"graph":"anchor-deps","scenario":"validate-protected-transitive","shards":"anchor-deps"},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

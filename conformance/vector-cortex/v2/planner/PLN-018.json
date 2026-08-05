@@ -1,0 +1,1 @@
+{"assertion":"planning is deterministic across candidate permutation","expected":{"ok":true,"permutationInvariant":true},"id":"PLN-018","input":{"candidates":"ratio","permute":true,"scenario":"plan-deterministic","tokenBudget":30,"zeroFraming":true},"kind":"planner","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/planner-fixture.schema.json"}

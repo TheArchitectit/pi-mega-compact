@@ -1,0 +1,1 @@
+{"assertion":"the output digest is over the concatenated bytes","expected":{"digestIsConcatenation":true,"ok":true},"id":"REC-004","input":{"graph":"ordered","scenario":"assemble-digest","shards":"ordered"},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

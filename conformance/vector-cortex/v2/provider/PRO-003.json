@@ -1,0 +1,1 @@
+{"assertion":"a known openai provider/model resolves","expected":{"ok":true,"profileId":"openai-gpt"},"id":"PRO-003","input":{"model":"v1","provider":"openai-gpt","scenario":"resolve-known"},"kind":"provider","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/provider-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"the 95% boundary admits and one byte above rejects (named)","expected":{"admitted":true,"ok":true},"id":"RES-ADMIT-003","input":{"admissionMode":"at-ceiling","payload":{"kind":"text","length":64},"scenario":"admit-boundary"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

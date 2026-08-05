@@ -75,7 +75,7 @@ pure sprint — no migration (per VC0A spec).
 - `node scripts/guardrails-scan.mjs` → `GUARDRAILS: pi pattern scan clean.`
 - `git diff --check` → clean (exit 0).
 - dashboard-client `npm run build` → built, `VectorCortexTab` bundled; `npm run typecheck` → no errors in any VC0A client file.
-- `node --test dist/extensions/dashboard-server/routes-rag-settings.test.js` → `tests 12, pass 12, fail 0` (VC0A toggle round-trip gate).
+- `node --test dist/extensions/dashboard-server/routes-rag-settings.test.js` → `tests 18, pass 18, fail 0` (VC0A toggle round-trip gate; count grew to 18 as later sprints VC0B–VC4B each added their own toggle round-trip test — at VC0A the count was 12).
 
 ## Evaluation
 
@@ -86,7 +86,7 @@ Samples generated end-to-end; 100% metric schema validity; observer overhead p95
 - `GET /api/vector-cortex/evaluation` reader-only aggregate: latency histogram edges `[1,5,10,25,50,100,250]`, per-mode counts, `enabled`/`mode`, `rejects`, `updatedAt`. Non-GET → `405 method_not_allowed` (no mutation endpoint exists).
 - `ENDPOINTS` registry count 47 → 48; `api-contracts/index.ts` barrel exposes `VectorCortexEvaluationSummary`.
 - `MEGACOMPACT_VC0A` surfaced in `SETTINGS` (new "Vector Cortex" group) as an adjustable on/off toggle — NOT in `EXCLUDED_SETTINGS`. Breaker/triad timing constants from `src/config/vector-cortex.ts` are constants, not flags, and are deliberately NOT registered in SETTINGS.
-- **Flag toggle round-trip (gate evidence):** `routes-rag-settings.test.ts` "VC0A flag round-trips through settings" verifies POST `/api/rag-settings` with `{"key":"MEGACOMPACT_VC0A","value":"false"}` writes `export MEGACOMPACT_VC0A="false"` to `.mega-compact.env`, which drives `VC0A_ENABLED()` off; `value:"true"` writes the `"true"` line and drives it on. Mirrors the existing `boolDirect` pipeline (`MEGACOMPACT_AUTO_WIKI`) exactly. Result: `tests 12, pass 12, fail 0` (was 11).
+- **Flag toggle round-trip (gate evidence):** `routes-rag-settings.test.ts` "VC0A flag round-trips through settings" verifies POST `/api/rag-settings` with `{"key":"MEGACOMPACT_VC0A","value":"false"}` writes `export MEGACOMPACT_VC0A="false"` to `.mega-compact.env`, which drives `VC0A_ENABLED()` off; `value:"true"` writes the `"true"` line and drives it on. Mirrors the existing `boolDirect` pipeline (`MEGACOMPACT_AUTO_WIKI`) exactly. Result: `tests 12, pass 12, fail 0` at sprint close (was 11); the suite has since grown to 18 as later sprints added their own toggle round-trips.
 - Route test spawns the real dashboard server and verifies empty + seeded aggregates + reader-only 405. Client tab polled every 5s in `VectorCortexTab`.
 
 ## Offline / network / asset / platform evidence

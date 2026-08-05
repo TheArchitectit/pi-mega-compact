@@ -1,0 +1,1 @@
+{"assertion":"two contradicting nodes never manufacture a phantom cycle","expected":{"ok":true},"id":"DAG-019","input":{"graph":"contradicts-cycle","scenario":"validate-contradicts-no-cycle"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

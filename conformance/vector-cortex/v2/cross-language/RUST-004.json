@@ -1,0 +1,1 @@
+{"expected":{"ok":true},"expectedFailureCode":null,"expectedOutputHex":"c0ffee42","fixtureId":"RUST-004","id":"RUST-004","inputHex":"c0ffee42","kind":"cross-language-golden","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/cross-language-fixture.schema.json"}

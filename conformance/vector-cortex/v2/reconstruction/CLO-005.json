@@ -1,0 +1,1 @@
+{"assertion":"two independent seeds close to the union of their dependencies","expected":{"closureReachedFixedPoint":true,"ok":true,"selected":["a","b","x","y"]},"id":"CLO-005","input":{"graph":"parallel","scenario":"closure-two-seeds","seeds":["a","x"]},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

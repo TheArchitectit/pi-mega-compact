@@ -1,0 +1,1 @@
+{"assertion":"overlapping spans pinning different digests reject with DAG_SPAN_DIGEST_CONFLICT","expected":{"code":"DAG_SPAN_DIGEST_CONFLICT","ok":false},"id":"DAG-007","input":{"graph":"digest-conflict","scenario":"build-digest-conflict"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

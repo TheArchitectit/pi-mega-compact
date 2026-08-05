@@ -1,0 +1,1 @@
+{"assertion":"zero-indegree ties break by node-ID bytes","expected":{"ok":true,"order":["aa","bb","cc"]},"id":"DAG-013","input":{"graph":"id-tie","scenario":"validate-id-tie"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

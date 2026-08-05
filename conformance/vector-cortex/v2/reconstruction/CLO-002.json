@@ -1,0 +1,1 @@
+{"assertion":"a diamond dependency merges without duplication","expected":{"closureReachedFixedPoint":true,"ok":true,"selected":["bottom","l","r","top"]},"id":"CLO-002","input":{"graph":"diamond","scenario":"closure-diamond","seeds":["top"]},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

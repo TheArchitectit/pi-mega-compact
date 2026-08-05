@@ -1,0 +1,1 @@
+{"assertion":"the emitted order is invariant to input edge permutation","expected":{"ok":true,"permutationInvariant":true},"id":"DAG-022","input":{"graph":"linear","permute":true,"scenario":"validate-permutation-invariant"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

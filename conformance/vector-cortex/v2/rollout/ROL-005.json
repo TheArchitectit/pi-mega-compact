@@ -1,0 +1,1 @@
+{"assertion":"a bucket under gate bound qualifies for the current gate","expected":{"ok":true},"id":"ROL-005","input":{"scenario":"assign-stable","sessionId":"session-low-bucket-0005"},"kind":"rollout","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/rollout-fixture.schema.json"}

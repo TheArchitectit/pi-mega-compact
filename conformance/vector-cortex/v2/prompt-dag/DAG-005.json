@@ -1,0 +1,1 @@
+{"assertion":"a reversed span range rejects with DAG_INVALID_SPAN","expected":{"code":"DAG_INVALID_SPAN","ok":false},"id":"DAG-005","input":{"graph":"invalid-span","scenario":"build-invalid-span"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

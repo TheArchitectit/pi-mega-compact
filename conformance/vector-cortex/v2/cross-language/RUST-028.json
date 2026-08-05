@@ -1,0 +1,1 @@
+{"expected":{"code":"RUST_ABI_MISMATCH","ok":false},"expectedFailureCode":"RUST_ABI_MISMATCH","expectedOutputHex":"","fixtureId":"RUST-028","id":"RUST-028","inputHex":"00","kind":"cross-language-abi-mismatch","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/cross-language-fixture.schema.json"}

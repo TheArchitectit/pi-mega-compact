@@ -1,0 +1,1 @@
+{"assertion":"erasing a dependency shard returns REC_SOURCE_UNAVAILABLE","expected":{"code":"REC_SOURCE_UNAVAILABLE","ok":false},"id":"REC-011","input":{"eraseShard":"b","graph":"ordered","scenario":"validate-source-unavailable","shards":"ordered-missing"},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

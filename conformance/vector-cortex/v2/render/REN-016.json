@@ -1,0 +1,1 @@
+{"assertion":"a known provider/model resolves and validates cleanly","expected":{"ok":true,"profileResolved":true},"id":"REN-016","input":{"graph":"single","profile":"anthropic-claude-opus","scenario":"render-profile-known"},"kind":"render","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/render-fixture.schema.json"}

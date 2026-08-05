@@ -1,0 +1,1 @@
+{"assertion":"an unknown model for a known provider cleanly bypasses","expected":{"bypassClean":true,"code":"PRO_PROFILE_UNKNOWN","ok":false},"id":"PRO-007","input":{"model":"v9","provider":"anthropic-claude-opus","scenario":"resolve-unknown"},"kind":"provider","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/provider-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"a decoded shard whose bytes disagree with its digest fails validation","expected":{"code":"REC_DIGEST_MISMATCH","ok":false},"id":"REC-016","input":{"graph":"single","scenario":"validate-digest-mismatch","shards":"digest-mismatch"},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

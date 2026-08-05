@@ -1,0 +1,1 @@
+{"assertion":"encoded size exactly at the 95% ceiling is admitted","expected":{"admitted":true,"ok":true},"id":"RES-041","input":{"admissionMode":"at-ceiling","payload":{"kind":"text","length":64},"scenario":"admit-at-ceiling"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

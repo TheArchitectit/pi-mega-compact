@@ -1,0 +1,1 @@
+{"assertion":"a valid closed set emits vector_cortex_reconstruction_validated","expected":{"emits":"vector_cortex_reconstruction_validated","ok":true},"id":"REC-019","input":{"graph":"ordered","scenario":"validate-emits-validated","shards":"ordered"},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

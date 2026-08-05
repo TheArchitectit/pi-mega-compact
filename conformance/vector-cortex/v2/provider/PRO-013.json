@@ -1,0 +1,1 @@
+{"assertion":"the hash mode is entire-canonical-request for every known profile","expected":{"hashMode":"entire-canonical-request","ok":true},"id":"PRO-013","input":{"model":"v1","provider":"openai-gpt","scenario":"resolve-hash-mode"},"kind":"provider","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/provider-fixture.schema.json"}

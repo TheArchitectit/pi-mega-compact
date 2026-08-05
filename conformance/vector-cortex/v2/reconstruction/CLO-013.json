@@ -1,0 +1,1 @@
+{"assertion":"the anchor floor pulls its own dependencies","expected":{"closureReachedFixedPoint":true,"ok":true,"selected":["a","anchor","anchordep"]},"id":"CLO-013","input":{"graph":"anchor-deps","scenario":"closure-anchor-deps","seeds":["a"]},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

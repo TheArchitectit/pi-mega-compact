@@ -1,0 +1,1 @@
+{"assertion":"aggregate metrics accumulate counts and byte totals only (never payload)","expected":{"admitted":true,"ok":true},"id":"RES-050","input":{"admissionMode":"generous","payload":{"kind":"text","length":64},"scenario":"admit-metrics-aggregate"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

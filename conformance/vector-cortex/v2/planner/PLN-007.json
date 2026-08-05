@@ -1,0 +1,1 @@
+{"assertion":"a negative budget rejects with PLN_INVALID_BUDGET","expected":{"code":"PLN_INVALID_BUDGET","ok":false},"id":"PLN-007","input":{"candidates":"mandatory-only","scenario":"plan-negative-budget","tokenBudget":-1},"kind":"planner","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/planner-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"a diamond dependency emits a single stable order","expected":{"ok":true,"order":["top","l","r","bottom"]},"id":"DAG-017","input":{"graph":"diamond","scenario":"validate-diamond"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

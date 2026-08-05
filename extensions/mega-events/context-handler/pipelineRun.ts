@@ -19,6 +19,9 @@ import { pressureFromPct, pressureRatio } from "../../mega-config.js";
 import type { MegaRuntime } from "../../mega-runtime.js";
 import type { MegaConfig } from "../../mega-config.js";
 import type { TailResultFn } from "./gateCheck.js";
+import { recordCompactLatency } from "../../mega-runtime/vc-observer.js";
+import { decideLivePath } from "../../mega-runtime/vector-cortex-live.js";
+import { VC5C_ENABLED } from "../../../src/config/vector-cortex.js";
 
 /** The non-skipped variant of the runCompact result. */
 export type RanResult = Extract<RunCompactResult, { skipped: false }>;
@@ -45,6 +48,32 @@ export function invokePipeline(
 		tailResult: TailResultFn;
 	},
 ): PipelineOutcome {
+	// VC5C: emit the rollout decision per compact event (observability seam).
+	// vcGate/vcHardFaults are not yet declared on MegaRuntime.rt — cast to the
+	// rollout shapes. Best-effort + non-fatal; decision does NOT gate behavior yet.
+	if (VC5C_ENABLED()) {
+		try {
+			const decision = decideLivePath(runtime.rt.sessionId, {
+				emit: runtime.appendEvent.bind(runtime),
+				currentGate:
+					(runtime.rt as { vcGate?: 0 | 1 | 2 | 3 | 4 }).vcGate ?? 0,
+				hardFaults:
+					(runtime.rt as { vcHardFaults?: import("../../../src/vector-cortex/rollout/types.js").RolloutHardFault[] })
+						.vcHardFaults ?? [],
+			});
+			runtime.appendEvent("vector_cortex_rollout_decision", {
+				sessionId: runtime.rt.sessionId,
+				vcActive: decision.vcActive,
+				forcedPreVc: decision.forcedPreVc,
+				mode: decision.mode,
+				bucket: decision.bucket,
+				gateIndex: decision.gateIndex,
+				promotionBlocked: decision.promotionBlocked,
+			});
+		} catch {
+			/* non-fatal: rollout decision emission never breaks compaction */
+		}
+	}
 	// Adaptive compression (Fix E): scale compression strength + keepFrom depth
 	// with how close we are to the model context limit. Null-safe: when the
 	// token-fallback path ran (pct unavailable) use the token-basis pressure
@@ -53,9 +82,19 @@ export function invokePipeline(
 		opts.pct != null
 			? pressureFromPct(opts.pct)
 			: pressureRatio(opts.currentTokens, runtime.effectiveThreshold);
+	const t0 = Date.now();
 	const ran = runCompact(pi, runtime, config, ctx, opts.messages, {
 		compressionPressure: pressure,
 	});
+	// VC0A: record compact latency on the eval observer (mode A) on every
+	// outcome so the dashboard histogram reflects real data. No-op when the
+	// observer is absent (flag off / construction failure).
+	recordCompactLatency(
+		runtime,
+		Date.now() - t0,
+		runtime.rt.sessionId,
+		runtime.rt.compactCount,
+	);
 	// D.3: skip paths fall back to replay instead of returning empty.
 	// If runCompact skipped and we have a valid trimCache, replay it
 	// (free stability win) — otherwise defer to the next event.

@@ -44,7 +44,7 @@ These are pi-extension invariants; `scripts/guardrails-scan.mjs` scans for viola
 | PREVENT-PI-001 | error | Never drop messages without the anchor-floor guard (preserve recent N). |
 | PREVENT-PI-002 | error | Never split a toolCall/toolResult pair at a compaction boundary. |
 | PREVENT-PI-003 | error | Never inject compacted context as `role:"system"` — use the `before_agent_start` systemPrompt prepend. |
-| PREVENT-PI-004 | critical | **Zero network calls at runtime.** Extension is fully local (better-sqlite3 = in-process native SQLite, FS persistence). No `fetch`/HTTP to remote. EXCEPTIONS: (1) the optional, user-triggered `/dashboard` server (tailnet-local via Tailscale by default, or loopback); (2) BYO localhost embedder (Ollama/ONNX/TEI, loopback-only); (3) HyDE + RAPTOR local LLM generation (localhost Ollama); (4) optional cost-API pricing lookup (`MEGACOMPACT_COST_API_ENABLED`, default OFF, user-opted-in) — fetches model pricing from a user-configured endpoint to enrich dashboard cost data. All exceptions are audited via `// guardrails-allow PREVENT-PI-004: <reason>` inline annotations (scanner enforces a reason). |
+| PREVENT-PI-004 | critical | **Zero network calls at runtime.** Extension is fully local (better-sqlite3 = in-process native SQLite, FS persistence). No `fetch`/HTTP to remote. EXCEPTIONS: (1) the optional, user-triggered `/dashboard` server — binds **all interfaces (`0.0.0.0`) by default** so it is reachable on loopback (localhost), the tailnet (Tailscale), and LAN; the user opted into open access (the network-denial gate was removed); `MEGACOMPACT_DASHBOARD_HOST` restricts to a single interface; (2) BYO localhost embedder (Ollama/ONNX/TEI, loopback-only); (3) HyDE + RAPTOR local LLM generation (localhost Ollama); (4) optional cost-API pricing lookup (`MEGACOMPACT_COST_API_ENABLED`, default OFF, user-opted-in) — fetches model pricing from a user-configured endpoint to enrich dashboard cost data. All exceptions are audited via `// guardrails-allow PREVENT-PI-004: <reason>` inline annotations (scanner enforces a reason). |
 
 Additional guardrails (from template): PREVENT-001 (JSON.parse without null check), PREVENT-002 (SQL string concat — use parameterized queries), PREVENT-011 (`any` type), PREVENT-024 (hallucinated package import), PREVENT-003 (hardcoded credentials).
 
@@ -74,8 +74,8 @@ Additional guardrails (from template): PREVENT-001 (JSON.parse without null chec
 
 Quick reference:
 
-* **File limits**: `src/` 300 soft / 500 hard; `extensions/` 400 soft / 500 hard; `tests/` 600 hard.
-* **Splitting pattern**: delegate-shell + impl file + context interface. Shell is 1–3 lines per method.
+* **File limits**: `src/` 300 soft / 500 hard; `extensions/` 400 soft / 500 hard; `tests/` 600 hard. **The soft limit is the split trigger, not a warning to ignore.** `scripts/regression_check.py --soft-as-hard --pre-commit` (wired into `scripts/deploy.sh` against the prior release tag) **BLOCKS** any changed file that crosses its soft limit — do NOT squeeze comments/code to fit; extract a delegate-shell sibling file instead. Growing a file toward the hard limit is a gate failure.
+* **Splitting pattern**: delegate-shell + impl file + context interface. Shell is 1–3 lines per method. When a file approaches its **soft** limit (300 `src/` / 400 `extensions/`), split BEFORE adding more — extract a sibling (`Foo.ts` → `FooBar.ts` + shell re-export), mirroring `VectorCortexTab.tsx` → `VectorCortex*Card.tsx` and `vectorStore.ts` → `vector-read.ts`/`vector-search.ts`.
 * **Contract-first**: `types.ts` (the interface) ships before any implementation. Hosts import only types + factory.
 * **Capability gating**: `store.asReader()` / `asWriter()` / `asAdmin()`. Each consumer gets only what it needs.
 * **Append-only provenance**: turns/recall/forks are appended, never mutated. `UPDATE` is forbidden in `src/store/turns/`.

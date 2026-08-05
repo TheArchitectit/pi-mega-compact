@@ -26,46 +26,8 @@ import { createRequire } from "node:module";
 import { NEW_UI } from "../../src/config.js";
 import { log, setLogPath, setDashboardServerVersion } from "./state.js";
 import { detectTailscaleIP } from "./tailscale.js";
-import {
-	buildRouteContext,
-	handleIndex,
-	handleRepoIndex,
-	handleEvents,
-	handleGameState,
-	handleGameScores,
-	handlePerf,
-	handlePerfSamples,
-	handleAchievements,
-	handleSessions,
-	handleTopics,
-	handleTurns,
-	handleMaintenance,
-	handleProviderCache,
-	handleCacheStripes,
-	handleMemoryStatus,
-	handleSetupStatus,
-	handleSetupDetect,
-	handleSetupConfigure,
-	handleMemoryMap,
-	handleRaptorTree,
-	handleRaptorBuildHistory,
-	handleContextHealth,
-	handleCachePoison,
-	handleHealthSettings,
-	handleEmbedderHealth,
-	handleRagSettings,
-	handleRagMetrics,
-	handleModelThresholds,
-	handleWiki,
-	handleVectorCortexEvaluation,
-	handleVectorCortexHealth,
-	handleVectorCortexBreakersReset,
-	handleVectorCortexLedger,
-	handleVectorCortexTopology,
-	handleVectorCortexQuery,
-	handleVectorCortexShards,
-	handleStatic,
-} from "./routes.js";
+import { buildRouteContext, handleStatic } from "./routes.js";
+import { dispatchRoutes } from "./route-dispatch.js";
 
 export async function launchDashboardServer(
 	stateDir: string,
@@ -233,15 +195,16 @@ export async function launchDashboardServer(
 		detectCrossRepoDrift,
 	});
 
-	// Bind host resolution: explicit MEGACOMPACT_DASHBOARD_HOST override wins;
-	// otherwise auto-bind to the Tailscale interface (tailnet access); fall back
-	// to loopback when Tailscale is absent. 0.0.0.0 means "all interfaces" and
-	// opts into permissive CORS below.
-	const host =
-		process.env.MEGACOMPACT_DASHBOARD_HOST ??
-		detectTailscaleIP() ??
-		"127.0.0.1";
+	// Bind host resolution. Default: ALL interfaces (0.0.0.0) so the dashboard
+	// is reachable on loopback (localhost — the launcher's health check + the
+	// local browser), the tailnet (Tailscale), and any LAN interface. The
+	// network-denial gate was removed (the user opted into open access);
+	// MEGACOMPACT_DASHBOARD_HOST overrides for anyone who wants to restrict to
+	// a single interface. The tailnet IP is still detected so we can surface it
+	// as the remote access address. 0.0.0.0 opts into permissive CORS below.
+	const host = process.env.MEGACOMPACT_DASHBOARD_HOST ?? "0.0.0.0";
 	const allInterfaces = host === "0.0.0.0";
+	const tailscaleIP = allInterfaces ? detectTailscaleIP() : null;
 
 	// guardrails-allow PREVENT-PI-004: optional, user-triggered /dashboard server (tailnet-local via Tailscale mesh or loopback); no remote outbound calls.
 	const server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -270,42 +233,7 @@ export async function launchDashboardServer(
 		}
 
 		// Dispatch — each handler returns true if it ended the response.
-		if (handleIndex(req, res, ctx)) return;
-		if (handleRepoIndex(req, res, ctx)) return;
-		if (handleEvents(req, res, ctx)) return;
-		if (handleGameState(req, res, ctx)) return;
-		if (handleGameScores(req, res, ctx)) return;
-		if (handlePerfSamples(req, res, ctx)) return;
-		if (handlePerf(req, res, ctx)) return;
-		if (handleAchievements(req, res, ctx)) return;
-		if (handleSessions(req, res, ctx)) return;
-		if (handleTopics(req, res, ctx)) return;
-		if (handleTurns(req, res, ctx)) return;
-		if (handleMaintenance(req, res, ctx)) return;
-		if (handleProviderCache(req, res, ctx)) return;
-		if (handleMemoryStatus(req, res, ctx)) return;
-		if (handleCacheStripes(req, res, ctx)) return;
-		if (handleSetupStatus(req, res, ctx)) return;
-		if (handleSetupDetect(req, res, ctx)) return;
-		if (handleSetupConfigure(req, res, ctx)) return;
-		if (handleMemoryMap(req, res, ctx)) return;
-		if (handleRaptorTree(req, res, ctx)) return;
-		if (handleRaptorBuildHistory(req, res, ctx)) return;
-		if (handleContextHealth(req, res, ctx)) return;
-		if (handleCachePoison(req, res, ctx)) return;
-		if (handleHealthSettings(req, res, ctx)) return;
-		if (handleEmbedderHealth(req, res, ctx)) return;
-		if (handleRagSettings(req, res, ctx)) return;
-		if (handleRagMetrics(req, res, ctx)) return;
-		if (handleModelThresholds(req, res, ctx)) return;
-		if (handleWiki(req, res, ctx)) return;
-		if (handleVectorCortexEvaluation(req, res, ctx)) return;
-		if (handleVectorCortexHealth(req, res, ctx)) return;
-		if (handleVectorCortexBreakersReset(req, res, ctx)) return;
-		if (handleVectorCortexLedger(req, res, ctx)) return;
-		if (handleVectorCortexTopology(req, res, ctx)) return;
-		if (handleVectorCortexQuery(req, res, ctx)) return;
-		if (handleVectorCortexShards(req, res, ctx)) return;
+		if (dispatchRoutes(req, res, ctx)) return;
 		handleStatic(req, res, ctx);
 	});
 
@@ -330,27 +258,33 @@ export async function launchDashboardServer(
 			});
 
 			server.listen(port, host, () => {
-				// When bound to the loopback, keep the legacy localhost URL so the
-				// user's browser (which resolves localhost → ::1 or 127.0.0.1) works.
-				// When bound to a tailnet/tailscale IP, surface that address instead.
+				// Surface localhost for local reach (the launcher health-checks
+				// localhost + the local browser uses it), and — when bound to all
+				// interfaces with a tailnet present — also surface the tailnet
+				// address for remote devices on the mesh.
+				const localUrl = `http://localhost:${port}`; // guardrails-allow PREVENT-PI-004: dashboard URL (loopback/all-interfaces, user-opted open access)
+				const tailnetUrl =
+					allInterfaces && tailscaleIP ? `http://${tailscaleIP}:${port}` : null; // guardrails-allow PREVENT-PI-004: dashboard URL (tailnet, user-opted open access)
 				const url =
 					host === "127.0.0.1"
-						? `http://localhost:${port}`
-						: `http://${host}:${port}`; // guardrails-allow PREVENT-PI-004: dashboard URL (tailnet-local via Tailscale mesh or loopback)
-				log("server running", { url, host });
+						? localUrl
+						: tailnetUrl ?? `http://${host}:${port}`;
+				log("server running", { url, host, tailnetUrl });
 				// eslint-disable-next-line no-console
-				console.log(`[mega-compact] dashboard server running: ${url}`);
+				console.log(
+					`[mega-compact] dashboard server running: ${url}` +
+						(tailnetUrl ? ` (also ${localUrl})` : ""),
+				);
 
-				// v0.8.2: also bind the IPv6 loopback (::1) when bound to the IPv4
-				// loopback. On many systems `localhost` resolves to ::1 first (see
-				// /etc/hosts), so an IPv4-only bind makes the browser hit ::1:port and
-				// get connection refused. PREVENT-PI-004 (loopback-only) means BOTH
-				// 127.0.0.1 and ::1. When bound to a tailscale/0.0.0.0 host, we do NOT
-				// bind ::1 — the tailnet address is what the user reaches. Non-fatal:
+				// v0.8.2: also bind the IPv6 loopback (::1) when localhost must work.
+				// On many systems `localhost` resolves to ::1 first (see /etc/hosts),
+				// so an IPv4-only bind makes the browser hit ::1:port and get refused.
+				// Bind ::1 for the explicit loopback bind AND the all-interfaces bind
+				// (a browser resolving localhost → ::1 must still connect). Non-fatal:
 				// IPv4-only hosts or a ::1 already in use just skip the mirror.
 				let v6: ReturnType<typeof createServer> | undefined;
 				const v4Handler = server.listeners("request")[0];
-				if (host === "127.0.0.1" && v4Handler) {
+				if ((host === "127.0.0.1" || allInterfaces) && v4Handler) {
 					v6 = createServer((r, s) =>
 						(v4Handler as (a: IncomingMessage, b: ServerResponse) => void).call(
 							server,

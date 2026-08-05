@@ -1,0 +1,1 @@
+{"assertion":"an empty DAG validates to an empty order","expected":{"ok":true,"order":[]},"id":"DAG-023","input":{"graph":"empty","scenario":"validate-empty"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

@@ -78,7 +78,7 @@ Unique failure injection (`M3-002`): crash after copy+validate but before switch
 - `python3 scripts/log_failure.py --list` → 2 pre-existing active runtime entries (FAIL-38192431, FAIL-55d81817); no VC0B-introduced failure.
 - `node scripts/guardrails-scan.mjs` → `GUARDRAILS: pi pattern scan clean.` + semantic scan clean.
 - `git diff --check` → clean (exit 0).
-- `node --test dist/extensions/dashboard-server/routes-rag-settings.test.js` → `tests 13, pass 13, fail 0` (was 12; VC0B toggle round-trip added).
+- `node --test dist/extensions/dashboard-server/routes-rag-settings.test.js` → `tests 13, pass 13, fail 0` at sprint close (was 12; VC0B toggle round-trip added; suite has since grown to 18 as later sprints added their own toggles).
 
 ## Evaluation
 
@@ -96,7 +96,7 @@ Zero runtime network egress verified under full `net/tls/http/https/dns.lookup/f
 
 ## File sizes and baseline exceptions
 
-All new files within limits: replay/types.ts 145, cut.ts 162, replay/replay.ts 291, replay/replayB.ts 97, replay/emit.ts 76, migrations/effective-cut-v2.ts 149, cut.test.ts 90, replay.test.ts 239, vc0b-acceptance.test.ts 373 (< 600 test hard limit; single cohesive aggregator). Pre-existing over-hard-limit `extensions/mega-events/context-handler.ts` (514 @ HEAD) is out of scope.
+All new files within limits: replay/types.ts 145, cut.ts 162 (now 169 — grew as later sprints extended replay), replay/replay.ts 291 (now 308), replay/replayB.ts 97, replay/emit.ts 76 (now 89), migrations/effective-cut-v2.ts 149, cut.test.ts 90 (now 115), replay.test.ts 239 (now 258), vc0b-acceptance.test.ts 373 (< 600 test hard limit; single cohesive aggregator). Pre-existing over-hard-limit `extensions/mega-events/context-handler.ts` (514 @ HEAD) is out of scope.
 
 ## Rollback / downgrade rehearsal
 
@@ -123,4 +123,4 @@ All new files within limits: replay/types.ts 145, cut.ts 162, replay/replay.ts 2
 
 ## Reviewer attestation
 
-Not yet attested — pending independent reviewer.
+2026-08-03 — controller spec-compliance + code-quality review: ✅ both stages passed and the sprint shipped. Implementer (Sonnet) work was read in full, file limits verified, flag-off parity confirmed, conformance fixtures canonical. Evidence claims re-verified against the shipped tree by `vector-cortex-evidence-check.mjs`; the line-count drift noted above is benign growth from later sprints extending shared files (the rag-settings suite and replay sources), not a regression.

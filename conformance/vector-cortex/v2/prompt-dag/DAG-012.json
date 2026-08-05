@@ -1,0 +1,1 @@
+{"assertion":"a self-loop is a cycle and rejects with DAG_CYCLE","expected":{"code":"DAG_CYCLE","ok":false},"id":"DAG-012","input":{"graph":"selfloop","scenario":"validate-self-loop"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

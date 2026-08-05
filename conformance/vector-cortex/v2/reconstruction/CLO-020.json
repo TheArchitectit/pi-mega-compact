@@ -1,0 +1,1 @@
+{"assertion":"multiple seeds with overlapping dependencies dedupe correctly","expected":{"closureReachedFixedPoint":true,"ok":true},"id":"CLO-020","input":{"graph":"overlap","scenario":"closure-overlap","seeds":["a","b"]},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"the fixture-backed base profiles are registered and resolvable","expected":{"ok":true,"profileId":"anthropic-claude-opus"},"id":"PRO-010","input":{"model":"v1","provider":"anthropic-claude-opus","scenario":"resolve-base-profiles"},"kind":"provider","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/provider-fixture.schema.json"}

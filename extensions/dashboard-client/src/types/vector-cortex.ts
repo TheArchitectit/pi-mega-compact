@@ -129,6 +129,22 @@ export interface VectorCortexShardsView {
 }
 
 /**
+ * Reconstruction-fidelity aggregate (VC4C, GET /api/vector-cortex/reconstruct).
+ * Reader-only: closure/validation counts + byte totals, never reconstructed
+ * spans, exact bytes, or prompt text.
+ */
+export interface VectorCortexReconstructView {
+  enabled: boolean;
+  closureAttempts: number;
+  closureRejections: number;
+  validatedCount: number;
+  invalidatedCount: number;
+  spanTotal: number;
+  byteTotal: number;
+  updatedAt: string;
+}
+
+/**
  * Occurrence-ledger identity view (VC1B, GET /api/vector-cortex/ledger).
  * Reader-only: seq/eventId/kind/digest + high-water, never source payloads.
  */
@@ -146,3 +162,104 @@ export interface VectorCortexLedgerView {
   }>;
   updatedAt: string;
 }
+
+/**
+ * Plan manifest (VC5A, GET /api/vector-cortex/plans). Reader-only: registered
+ * DAG/PLN counts + plan manifests, never session payloads or prompt text.
+ */
+export interface VectorCortexPlanManifest {
+  id: string;
+  mandatoryInBudget: boolean;
+  selectedNodeIds: string[];
+  tokenTotal: number;
+  demotedToC: boolean;
+}
+
+export interface VectorCortexPlansView {
+  enabled: boolean;
+  dagCount: number;
+  plannerCount: number;
+  plans: VectorCortexPlanManifest[];
+  updatedAt: string;
+}
+
+/** Reader-only render + provider-profile view (VC5B). */
+export interface VectorCortexRenderView {
+  enabled: boolean;
+  renderCount: number;
+  providerCount: number;
+  knownProfiles: string[];
+  updatedAt: string;
+}
+
+/**
+ * Reader-only live graduated-rollout view (VC5C, GET /api/vector-cortex/rollout).
+ * Aggregate only — current gate, bucket count, sessions/events counts, promotion
+ * state. Never session payloads or bucket→session mappings.
+ */
+export interface VectorCortexRolloutView {
+  enabled: boolean;
+  gateIndex: number;
+  gatePct: number;
+  buckets: number;
+  bucketCount: number;
+  events: number;
+  sessions: number;
+  promotionBlocked: boolean;
+  updatedAt: string;
+}
+
+/**
+ * Reader-only exact-source-restoration view (VC6B). Counts + HEAL_RESTORE_*
+ * codes only — there is no payload endpoint, so no restored bytes, span ids,
+ * node ids, or ledger text ever reach the client.
+ */
+export interface VectorCortexRestoreView {
+  enabled: boolean;
+  mode: "A" | "B" | "C";
+  restoreAttempts: number;
+  restoredCount: number;
+  missingCount: number;
+  digestRejections: number;
+  lastRejection: string | null;
+  updatedAt: string;
+}
+
+/**
+ * Reader-only self-healing derived-state view (VC6C). Counts + HEAL_REPAIR_*
+ * codes only — there is no payload endpoint, so no subsystem source bytes, gap
+ * ranges, high-water marks, root digests, or ledger text ever reach the client.
+ */
+export interface VectorCortexRepairView {
+  enabled: boolean;
+  mode: "A" | "B" | "C";
+  repairAttempts: number;
+  repairsPlanned: number;
+  pointersSwitched: number;
+  backoffs: number;
+  lastBackoffMs: number | null;
+  lastFailure: string | null;
+  updatedAt: string;
+}
+
+/** Reader-only closure-optimization diagnostics view (VC6A). Aggregate only. */
+export interface VectorCortexClosureProofView {
+  enabled: boolean;
+  mode: "A" | "B" | "C";
+  optimizations: number;
+  proofRejections: number;
+  retainedEdgeTotal: number;
+  removedEdgeTotal: number;
+  conservativeTraversalTotal: number;
+  optimizedTraversalTotal: number;
+  lastRejection: string | null;
+  updatedAt: string;
+}
+
+export type {
+  VectorCortexCrystalsView,
+  VectorCortexEconomicsView,
+  VectorCortexDiagnosticsView,
+} from "./vector-cortex-vc7.js";
+
+export type { VectorCortexOutcomesView, VectorCortexPolicyView, VectorCortexPlatformView } from "./vector-cortex-vc8.js";

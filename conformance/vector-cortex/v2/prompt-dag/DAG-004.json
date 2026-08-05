@@ -1,0 +1,1 @@
+{"assertion":"an edge naming an absent node rejects with DAG_MISSING_ENDPOINT","expected":{"code":"DAG_MISSING_ENDPOINT","ok":false},"id":"DAG-004","input":{"graph":"missing-endpoint","scenario":"build-missing-endpoint"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

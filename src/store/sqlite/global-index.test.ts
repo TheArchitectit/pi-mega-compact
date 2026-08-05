@@ -30,6 +30,15 @@ import {
 describe("global-index session time-series (S39)", () => {
 	let indexDir: string;
 	let eventsLogPath: string;
+	// Pinned, well-in-the-past base timestamp shared across the heartbeat +
+	// token-sample tests so every Date.now()-vs-stored-ts comparison is
+	// deterministic (no same-millisecond race). ~1e6 ms is unambiguously older
+	// than any Date.now() cutoff the prune calls compute, so pruneStaleSessions
+	// / pruneTokenSamples with maxAgeMs=0 (cutoff = Date.now()) always delete
+	// the pinned rows; readActiveSessions has no freshness filter so it still
+	// surfaces them; the readSessionTimeseries / prune `since` windows are
+	// derived from tsBase so they always include the pinned samples.
+	const tsBase = 1_000_000;
 
 	before(() => {
 		indexDir = mkdtempSync(join(tmpdir(), "mc-global-idx-"));
@@ -49,6 +58,7 @@ describe("global-index session time-series (S39)", () => {
 			"/home/u/.pi/state-a",
 			200_000,
 			indexDir,
+			tsBase, // pinned last_seen (deterministic; > 0)
 		);
 		const sessions = readActiveSessions(indexDir);
 		assert.equal(sessions.length, 1);
@@ -127,7 +137,12 @@ describe("global-index session time-series (S39)", () => {
 			"/home/u/.pi/state-b",
 			200_000,
 			indexDir,
+			tsBase + 1_000, // pinned last_seen (distinct from sess-abc-1's)
 		);
+		// Deterministic, 1ms-spaced sample timestamps off the shared pinned
+		// tsBase so the per-ts totals map has exactly 3 distinct keys (not
+		// collapsed by same-millisecond coincidence, which made totals.length
+		// == 1 and tripped the >= 2 assertion — the pre-existing S39 flake).
 		appendTokenSample(
 			"sess-abc-1",
 			"/home/u/repos/proj-a",
@@ -136,6 +151,7 @@ describe("global-index session time-series (S39)", () => {
 			200_000,
 			null, // no events.log line for this assertion
 			indexDir,
+			tsBase, // 1st distinct timestamp
 		);
 		appendTokenSample(
 			"sess-xyz-9",
@@ -145,6 +161,7 @@ describe("global-index session time-series (S39)", () => {
 			200_000,
 			null,
 			indexDir,
+			tsBase + 1, // 2nd distinct timestamp (1ms later)
 		);
 		appendTokenSample(
 			"sess-xyz-9",
@@ -154,8 +171,9 @@ describe("global-index session time-series (S39)", () => {
 			200_000,
 			null,
 			indexDir,
+			tsBase + 2, // 3rd distinct timestamp (2ms later)
 		);
-		const since = Date.now() - 60_000;
+		const since = tsBase - 60_000;
 		const result = readSessionTimeseries(since, indexDir);
 
 		const seriesIds = result.series.map((s) => s.sessionId).sort();
@@ -185,7 +203,9 @@ describe("global-index session time-series (S39)", () => {
 	});
 
 	it("pruneStaleSessions clears heartbeats older than the cutoff (and only those)", () => {
-		// At this point we have 2 sessions; both are fresh (lastSeen ≈ now).
+		// At this point we have 2 sessions; both heartbeats are pinned to the
+		// shared tsBase (well in the past), so a 0 ms cutoff (cutoff = Date.now())
+		// unambiguously exceeds both last_seen values → both pruned.
 		const beforeCount = readActiveSessions(indexDir).length;
 		assert.equal(beforeCount, 2);
 
@@ -196,15 +216,22 @@ describe("global-index session time-series (S39)", () => {
 	});
 
 	it("pruneTokenSamples clears token_samples older than the cutoff", () => {
-		// Re-seed two samples; the previously-written ones were for two
-		// sessions (sess-abc-1 + sess-xyz-9). The prunedStaleSessions call
-		// above left token_samples untouched (separate table).
-		const sinceBefore = Date.now() - 60_000;
+		// The previously-written samples (sess-abc-1 + sess-xyz-9) are pinned to
+		// the shared tsBase, so query from tsBase - 60s to find them. The
+		// prunedStaleSessions call above left token_samples untouched (separate
+		// table). A real-now sample from the earlier "appendTokenSample writes"
+		// test also lives in the shared DB; it falls outside the tsBase-60s
+		// `sinceBefore` window so it does not affect beforeCount, but it IS
+		// pruned below. Prune with a NEGATIVE maxAge (cutoff = Date.now() + 60s,
+		// safely in the future) so every row — including the real-now sample
+		// whose ts may equal a 0-ms cutoff on a fast run — is deterministically
+		// below the cutoff and deleted (no same-millisecond ts == cutoff race).
+		const sinceBefore = tsBase - 60_000;
 		const before = readSessionTimeseries(sinceBefore, indexDir);
 		const beforeCount = before.series.reduce((n, s) => n + s.data.length, 0);
 		assert.ok(beforeCount >= 3, "expected to find the seeded samples");
 
-		const npurged = pruneTokenSamples(0, indexDir);
+		const npurged = pruneTokenSamples(-60_000, indexDir);
 		assert.ok(npurged >= 3, "should have pruned the seeded samples");
 
 		const after = readSessionTimeseries(sinceBefore, indexDir);

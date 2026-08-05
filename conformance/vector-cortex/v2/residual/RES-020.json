@@ -1,0 +1,1 @@
+{"assertion":"the correction stream serializes and parses back identically (ascending blocks, sorted offsets)","expected":{"ok":true},"id":"RES-020","input":{"payload":{"kind":"empty"},"scenario":"corrections-roundtrip"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

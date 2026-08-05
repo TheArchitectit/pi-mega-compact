@@ -1,11 +1,11 @@
 # VC6C — Self-healing derived controller
 
-**Status:** planned | **Depends on:** VC6B | **Phase:** VC6
+**Status:** next | **Depends on:** VC6B | **Phase:** VC6
 **Flag:** `MEGACOMPACT_VC6C`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC6C=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs
 
-Consume only reviewer-accepted predecessor contracts and [common contracts](../CONTRACTS.md). Own **RepairPlanV1 / RepairEventV1**. Production ownership: `src/vector-cortex/heal/controller.ts`; `src/vector-cortex/heal/rebuild.ts`. Algorithm: Detect derived gaps vs durable high-water; rebuild copy, verify root digest, atomic pointer switch; max one rebuild/subsystem/5min and exponential backoff.
+Consume only reviewer-accepted predecessor contracts and [common contracts](../CONTRACTS.md). Own **RepairPlanV1 / RepairEventV1**. Production ownership: `src/vector-cortex/heal/controller.ts`; `src/vector-cortex/heal/rebuild.ts`; `src/vector-cortex/heal/repair-types.ts`; `src/vector-cortex/heal/repair-emit.ts`; `src/vector-cortex/heal/types.ts`; `src/vector-cortex/heal/_repair-fixture.ts`; `src/vector-cortex/heal/controller.test.ts`; `src/vector-cortex/heal/rebuild-chaos.test.ts`; `src/vector-cortex/heal/vc6c-fixture-acceptance.test.ts`; `src/vector-cortex/vc6c-acceptance.test.ts`; `extensions/dashboard-server/api-contracts/vector-cortex-heal.ts`; `extensions/dashboard-server/route-dispatch.ts`. Algorithm: Detect derived gaps vs durable high-water; rebuild copy, verify root digest, atomic pointer switch; max one rebuild/subsystem/5min and exponential backoff.
 
 ## Numbered implementation tasks
 

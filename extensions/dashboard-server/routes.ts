@@ -48,4 +48,11 @@ export {
 	handleVectorCortexTopology,
 	handleVectorCortexQuery,
 	handleVectorCortexShards,
+	handleVectorCortexResidual,
+	handleVectorCortexReconstruct,
+	handleVectorCortexPlans,
+	handleVectorCortexRender,
+	handleVectorCortexRollout,
+	handleVectorCortexClosureProof,
+	handleVectorCortexRestore,
 } from "./routes-vector-cortex.js";

@@ -1,0 +1,1 @@
+{"assertion":"render order is stable across a permutation of the node map","expected":{"ok":true,"orderReplay":true,"permutationInvariant":true},"id":"REN-004","input":{"graph":"linear","profile":"anthropic-claude-opus","scenario":"render-order-permuted"},"kind":"render","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/render-fixture.schema.json"}

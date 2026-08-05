@@ -1,0 +1,1 @@
+{"assertion":"a known google gemini provider/model resolves with an exclusion","expected":{"excludedPointers":["/requestId"],"ok":true,"profileId":"google-gemini"},"id":"PRO-004","input":{"model":"v1","provider":"google-gemini","scenario":"resolve-known"},"kind":"provider","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/provider-fixture.schema.json"}

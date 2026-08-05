@@ -1,0 +1,1 @@
+{"assertion":"a tool-pair edge missing an endpoint rejects with DAG_TOOL_PAIR_SPLIT","expected":{"code":"DAG_TOOL_PAIR_SPLIT","ok":false},"id":"DAG-010","input":{"graph":"tool-pair-split","scenario":"build-tool-pair-split"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

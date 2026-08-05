@@ -18,6 +18,8 @@ Normative inputs: [readiness](IMPLEMENTATION_READINESS.md), [contracts](CONTRACT
 
 Serial dependency is `VC0A → … → VC4C → VC5A → … → VC8C`; VC5 cannot begin without VC4C conservative closure. Rust fixture-runner work may begin externally after VC1C but engine selection remains VC8C.
 
+**Deferred VC2 ML gate (real learned mode A).** VC2A/VC2B/VC2C shipped the encoder *contract* (manifest, runtime, five heads, qualification, packaging) with a 42-byte placeholder `model.onnx` and no `onnxruntime` dependency. The system runs without the learned encoder because trigram-B and lexical-C are live and independently implemented. The real learned-mode-A gate is closed by training/exporting the five heads onto a real MiniLM ONNX, not by any remaining code sprint. The empirical backend viability study + measured benchmarks + surfaced blockers (install-budget, darwin-x64 gap, opset re-export requirement) are recorded in [`docs/vector-cortex/vc2-model-prep.md`](docs/vector-cortex/vc2-model-prep.md), with reproducible dev tooling under `scripts/vc2-model-prep/`. That note is the starting brief for whoever closes the real gate.
+
 ## Named migrations and current-source evidence
 
 | ID | Owner | Defect/evidence | Required regression |
@@ -52,8 +54,14 @@ node scripts/guardrails-scan.mjs
 python3 scripts/log_failure.py --list
 node scripts/vector-cortex-conformance.mjs --check
 node scripts/vector-cortex-docs-check.mjs
+node scripts/vector-cortex-scope-check.mjs <SPRINT> <COMMIT...>   # assert every committed file inside the spec's Production ownership + fixed cross-cutting seams
+node scripts/vector-cortex-evidence-check.mjs <SPRINT>           # assert the evidence record's concrete claims (line counts, test counts, flag parity, fixture counts) match the shipped tree
 git diff --check
 ```
+
+### Scope discipline
+
+A sprint ships **only** what the spec's `Production ownership:` block names (plus the fixed cross-cutting seams every sprint wires: the flag in `src/config/`, the dashboard wiring files, the conformance gen fixtures, the evidence record). No side repos, no "prep for a later sprint", no speculative tooling. If an implementer starts anything outside that set, the scope-check fails and the controller kills it. All work lands in this repo. External-provided work (e.g. the VC8C Rust parity artifact) is *supplied by the user* — never scaffolded here.
 
 Dashboard touch also runs `cd extensions/dashboard-client && npm run typecheck && npm run build`. Storage changes run schema integrity/foreign-key and migration interruption/resume tests. Asset release runs manifest digest, supported matrix, `npm pack --dry-run` listing only, network-denied clean-install packaged inference, and enhanced `scripts/deploy.sh` gate. VC8C evidence from external Rad workspace must include:
 

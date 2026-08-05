@@ -150,6 +150,120 @@ function main() {
         name.endsWith(".js") && !name.endsWith(".test.js"),
       )
     : 0;
+  // VC4B added the residual subtree (types/dct/quantize/gf256/parity/stream/
+  // codec/fixture-payload). Mirror its runtime .js so the vc4b-acceptance
+  // aggregator's `./residual/...` imports resolve at the published
+  // dist/vector-cortex/ offset (tests excluded like the other subtrees).
+  const nResidual = existsSync(join(SRC_VECTOR, "residual"))
+    ? copyTree(join(SRC_VECTOR, "residual"), join(DEST_VECTOR, "residual"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
+  // VC4C added the reconstruct subtree (types/closure/assemble/validate). Mirror
+  // its runtime .js so the vc4c-acceptance aggregator's `./reconstruct/...`
+  // imports resolve at the published dist/vector-cortex/ offset (tests excluded).
+  const nReconstruct = existsSync(join(SRC_VECTOR, "reconstruct"))
+    ? copyTree(join(SRC_VECTOR, "reconstruct"), join(DEST_VECTOR, "reconstruct"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
+  // VC5A added the prompt-dag + planner subtrees (builder/validator/types +
+  // portfolio/manifest/types). Mirror their runtime .js so the vc5a-acceptance
+  // aggregator's `./prompt-dag/...` and `./planner/...` imports resolve at the
+  // published dist/vector-cortex/ offset (tests excluded like the other subtrees).
+  const nPromptDag = existsSync(join(SRC_VECTOR, "prompt-dag"))
+    ? copyTree(join(SRC_VECTOR, "prompt-dag"), join(DEST_VECTOR, "prompt-dag"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
+  const nPlanner = existsSync(join(SRC_VECTOR, "planner"))
+    ? copyTree(join(SRC_VECTOR, "planner"), join(DEST_VECTOR, "planner"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
+  // VC5B added the render + provider subtrees (renderer/validator/types +
+  // registry/types). Mirror their runtime .js so the vc5b-acceptance aggregator's
+  // `./render/...` and `./provider/...` imports resolve at the published
+  // dist/vector-cortex/ offset (tests excluded like the other subtrees).
+  const nRender = existsSync(join(SRC_VECTOR, "render"))
+    ? copyTree(join(SRC_VECTOR, "render"), join(DEST_VECTOR, "render"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
+  const nProvider = existsSync(join(SRC_VECTOR, "provider"))
+    ? copyTree(join(SRC_VECTOR, "provider"), join(DEST_VECTOR, "provider"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
+  // VC5C added the rollout subtree (types/assign/gate/emit). Mirror its runtime
+  // .js so the vc5c-acceptance aggregator's `./rollout/...` imports resolve at the
+  // published dist/vector-cortex/ offset (tests excluded like the other subtrees).
+  const nRollout = existsSync(join(SRC_VECTOR, "rollout"))
+    ? copyTree(join(SRC_VECTOR, "rollout"), join(DEST_VECTOR, "rollout"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
+  // VC5C's live integration seam lives under dist/extensions/mega-runtime/ (tsc
+  // compiles extensions/ at rootDir="."). The vc5c-acceptance aggregator imports
+  // it via `../extensions/mega-runtime/vector-cortex-live.js` from the published
+  // dist/vector-cortex/ offset, which resolves to dist/extensions/mega-runtime/
+  // (the tsc build output). Copy it into the published dist/extensions/ mirror so
+  // the aggregator's relative import resolves without a full extensions build in
+  // the publish step. Its own `../../src/...` imports resolve to dist/src/... (the
+  // already-mirrored subtrees + config), so the mirror is self-contained.
+  const SRC_MEGA_RUNTIME = join(REPO_ROOT, "dist", "extensions", "mega-runtime");
+  const DEST_MEGA_RUNTIME = join(REPO_ROOT, "dist", "extensions", "mega-runtime");
+  const nLive = existsSync(join(SRC_MEGA_RUNTIME, "vector-cortex-live.js"))
+    ? (mkdirSync(DEST_MEGA_RUNTIME, { recursive: true }),
+      copyFileSync(
+        join(SRC_MEGA_RUNTIME, "vector-cortex-live.js"),
+        join(DEST_MEGA_RUNTIME, "vector-cortex-live.js"),
+      ),
+      1)
+    : 0;
+  // VC6A added the heal subtree (types/closure-opt/proof/emit). Mirror its
+  // runtime .js so the vc6a-acceptance aggregator's `./heal/...` imports resolve
+  // at the published dist/vector-cortex/ offset (tests excluded like the others).
+  const nHeal = existsSync(join(SRC_VECTOR, "heal"))
+    ? copyTree(join(SRC_VECTOR, "heal"), join(DEST_VECTOR, "heal"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
+  // VC7A added the cache subtree (types/crystal/store/crystal-emit). Mirror its
+  // runtime .js so the vc7a-acceptance aggregator's `./cache/...` imports resolve
+  // at the published dist/vector-cortex/ offset (tests excluded like the others).
+  const nCache = existsSync(join(SRC_VECTOR, "cache"))
+    ? copyTree(join(SRC_VECTOR, "cache"), join(DEST_VECTOR, "cache"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
+  // VC8A added the outcomes subtree (types/ledger/consent/dataset/emit). Mirror
+  // its runtime .js so the vc8a-acceptance aggregator's `./outcomes/...` imports
+  // resolve at the published dist/vector-cortex/ offset (tests excluded like
+  // the other subtrees).
+  const nOutcomes = existsSync(join(SRC_VECTOR, "outcomes"))
+    ? copyTree(join(SRC_VECTOR, "outcomes"), join(DEST_VECTOR, "outcomes"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
+  // VC8B added the controller subtree (types/policy/shadow/policy-emit). Mirror
+  // its runtime .js so the vc8b-acceptance aggregator's `./controller/...` imports
+  // resolve at the published dist/vector-cortex/ offset (tests excluded like the
+  // other subtrees).
+  const nController = existsSync(join(SRC_VECTOR, "controller"))
+    ? copyTree(join(SRC_VECTOR, "controller"), join(DEST_VECTOR, "controller"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
+  // VC8C added the platform subtree (types/select/emit/cross-read). Mirror its
+  // runtime .js so the vc8c-acceptance aggregator's `./platform/...` imports
+  // resolve at the published dist/vector-cortex/ offset (tests excluded like
+  // the other subtrees).
+  const nPlatform = existsSync(join(SRC_VECTOR, "platform"))
+    ? copyTree(join(SRC_VECTOR, "platform"), join(DEST_VECTOR, "platform"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
   // VC3B support file (mode-B linear reference scan + helper producers) lives at
   // src/vector-cortex/vc3b-support.ts. Mirror its runtime .js so the
   // vc3b-acceptance aggregator's `./vc3b-support.js` import resolves at the
@@ -167,10 +281,20 @@ function main() {
   }
   if (existsSync(join(SRC_CONFIG, "vector-cortex.js"))) {
     mkdirSync(DEST_CONFIG, { recursive: true });
-    copyFileSync(
-      join(SRC_CONFIG, "vector-cortex.js"),
-      join(DEST_CONFIG, "vector-cortex.js"),
-    );
+    // Mirror every vector-cortex*.js sibling so re-exports resolve at the
+    // published dist/config/ offset. The config file has been split across
+    // vector-cortex.ts / vector-cortex-breakers.ts / vector-cortex-flag.ts /
+    // vector-cortex-early.ts; mirroring by glob is robust against further
+    // splits without needing a per-file block each time.
+    for (const name of readdirSync(SRC_CONFIG)) {
+      if (
+        name.startsWith("vector-cortex") &&
+        name.endsWith(".js") &&
+        !name.endsWith(".test.js")
+      ) {
+        copyFileSync(join(SRC_CONFIG, name), join(DEST_CONFIG, name));
+      }
+    }
   }
   // VC2B's encoder observers default-emit through src/log.ts (emit-vc2b.ts imports
   // `../../log.js`). The published dist/vector-cortex/ mirror runs the encoder
@@ -187,7 +311,7 @@ function main() {
     }
   }
   console.log(
-    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder + ${nCortex} cortex + ${nTopology} topology + ${nShards} shards + ${nSupport} support files`,
+    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder + ${nCortex} cortex + ${nTopology} topology + ${nShards} shards + ${nResidual} residual + ${nReconstruct} reconstruct + ${nPromptDag} prompt-dag + ${nPlanner} planner + ${nRender} render + ${nProvider} provider + ${nRollout} rollout + ${nHeal} heal + ${nCache} cache + ${nOutcomes} outcomes + ${nController} controller + ${nPlatform} platform + ${nLive} live-seam + ${nSupport} support files`,
   );
 }
 

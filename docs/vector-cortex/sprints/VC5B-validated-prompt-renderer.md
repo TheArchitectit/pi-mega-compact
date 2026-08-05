@@ -1,11 +1,11 @@
 # VC5B — Validated renderer and provider profiles
 
-**Status:** planned | **Depends on:** VC5A | **Phase:** VC5
+**Status:** done | **Depends on:** VC5A | **Phase:** VC5
 **Flag:** `MEGACOMPACT_VC5B`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC5B=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs
 
-Consume only reviewer-accepted predecessor contracts and [common contracts](../CONTRACTS.md). Own **RenderManifestV1 / ProviderProfileV1**. Production ownership: `src/vector-cortex/render/{types,renderer,validator}.ts; src/vector-cortex/provider/{types,registry}.ts; extensions/mega-context/vector-cortex.ts`. Algorithm: Base registry fixture-backed; unknown bypass; render DAG order without system-role injection; hash entire canonical outbound request. Split context-handler first if touched.
+Consume only reviewer-accepted predecessor contracts and [common contracts](../CONTRACTS.md). Own **RenderManifestV1 / ProviderProfileV1**. Production ownership: `src/vector-cortex/render/{types,renderer,validator}.ts; src/vector-cortex/render/{_acceptance-fixture,_acceptance-helpers,_acceptance-provider,_acceptance-scenario}.ts; src/vector-cortex/provider/{types,registry}.ts; extensions/mega-context/vector-cortex.ts`. Algorithm: Base registry fixture-backed; unknown bypass; render DAG order without system-role injection; hash entire canonical outbound request. Split context-handler first if touched.
 
 ## Numbered implementation tasks
 
@@ -39,7 +39,7 @@ Expected assertions: all `REN-001..020,PRO-001..015` conformance rows return the
 
 ## Migration, privacy, dashboard, and rollback
 
-Migration disposition: **pure—no migration; profile registry v1**. Every migration follows compatibility journal/copy-validate-switch and old-binary protocol; pure sprints write no migration. Privacy follows [SECURITY_PRIVACY](../SECURITY_PRIVACY.md); exact ledger is not training data. Dashboard: profile/status endpoint and client read model. Dashboard work must own `extensions/dashboard-server/api-contracts/vector-cortex.ts`, registration in `routes.ts`, handler `routes-vector-cortex.ts`, client `api/vector-cortex.ts`, `types/vector-cortex.ts`, `tabs/VectorCortexTab.tsx`, route/client/component tests, reader-only GET capability, and run `cd extensions/dashboard-client && npm run typecheck && npm run build`.
+Migration disposition: **pure—no migration; profile registry v1**. Every migration follows compatibility journal/copy-validate-switch and old-binary protocol; pure sprints write no migration. Privacy follows [SECURITY_PRIVACY](../SECURITY_PRIVACY.md); exact ledger is not training data. Dashboard: profile/status endpoint and client read model. Dashboard work must own `extensions/dashboard-server/api-contracts/vector-cortex.ts`, registration in `routes.ts`, handler `routes-vector-cortex.ts`, client `api/vector-cortex.ts`, `types/vector-cortex.ts`, `tabs/VectorCortexTab.tsx` plus the extracted `tabs/VectorCortexRenderCard.tsx`, `tabs/VectorCortexPlansCard.tsx`, `tabs/VectorCortexMetric.tsx` presentational components (delegate-shell split to keep the tab under the 500-line hard limit), route/client/component tests, reader-only GET capability, and run `cd extensions/dashboard-client && npm run typecheck && npm run build`.
 
 Rollback sets `MEGACOMPACT_VC5B=0`, selects C, restores the prior derived pointer without deleting evidence, and verifies predecessor golden bytes. Next handoff: VC5C receives RenderManifest and full request digest.
 

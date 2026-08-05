@@ -1,0 +1,1 @@
+{"assertion":"a zero-utility candidate is never selected","expected":{"ok":true,"omittedZeroUtility":true},"id":"PLN-015","input":{"candidates":"zero-utility","scenario":"plan-zero-utility","tokenBudget":100,"zeroFraming":true},"kind":"planner","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/planner-fixture.schema.json"}

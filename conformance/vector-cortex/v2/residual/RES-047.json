@@ -1,0 +1,1 @@
+{"assertion":"admission never compares coefficient bytes alone (shard metadata is counted)","expected":{"admitted":true,"ok":true},"id":"RES-047","input":{"admissionMode":"generous","payload":{"kind":"sequence","length":5000},"scenario":"admit-shard-metadata-counted"},"kind":"residual","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/residual-fixture.schema.json"}

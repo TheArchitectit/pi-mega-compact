@@ -1,0 +1,1 @@
+{"assertion":"an anchor hard fault freezes promotion and selects the pre-VC path","expected":{"ok":true,"promotionBlocked":true,"selectsPreVc":true},"id":"ROL-020","input":{"evidence":{"hardFaults":[{"detail":"anchor-loss","kind":"anchor"}]},"scenario":"gate-safety"},"kind":"rollout","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/rollout-fixture.schema.json"}

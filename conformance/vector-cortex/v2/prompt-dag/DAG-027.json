@@ -1,0 +1,1 @@
+{"assertion":"a deep chain (8 hops) orders fully and terminates","expected":{"ok":true,"orderLength":9},"id":"DAG-027","input":{"graph":"chain8","scenario":"validate-deep-chain"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

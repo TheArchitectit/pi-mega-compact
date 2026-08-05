@@ -1,11 +1,11 @@
 # VC5C — Powered live reconstruction rollout
 
-**Status:** planned | **Depends on:** VC5B | **Phase:** VC5
+**Status:** done | **Depends on:** VC5B | **Phase:** VC5
 **Flag:** `MEGACOMPACT_VC5C`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC5C=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs
 
-Consume only reviewer-accepted predecessor contracts and [common contracts](../CONTRACTS.md). Own **RolloutAssignmentV1 / LiveOutcomeV1**. Production ownership: `src/vector-cortex/rollout/{assign,gate}.ts; extensions/mega-runtime/vector-cortex-live.ts`. Algorithm: Hash session to stable 10k bucket; gates 1/5/25/50/100%; require 72h AND powered sample AND 10k events/200 sessions.
+Consume only reviewer-accepted predecessor contracts and [common contracts](../CONTRACTS.md). Own **RolloutAssignmentV1 / LiveOutcomeV1**. Production ownership: `src/vector-cortex/rollout/{types,assign,gate,emit}.ts; src/vector-cortex/rollout/{_acceptance-fixture,_acceptance-helpers,_acceptance-scenario}.ts; extensions/mega-runtime/vector-cortex-live.ts`. Algorithm: Hash session to stable 10k bucket; gates 1/5/25/50/100%; require 72h AND powered sample AND 10k events/200 sessions.
 
 ## Numbered implementation tasks
 

@@ -1,0 +1,1 @@
+{"assertion":"resolution is deterministic across repeated lookups","expected":{"deterministic":true,"ok":true,"profileId":"anthropic-claude-opus"},"id":"PRO-015","input":{"model":"v1","provider":"anthropic-claude-opus","scenario":"resolve-deterministic"},"kind":"provider","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/provider-fixture.schema.json"}

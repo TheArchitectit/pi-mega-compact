@@ -1,0 +1,1 @@
+{"expected":{"code":"RUST_PLATFORM_UNSUPPORTED","ok":false},"expectedFailureCode":"RUST_PLATFORM_UNSUPPORTED","expectedOutputHex":"","fixtureId":"RUST-029","id":"RUST-029","inputHex":"00","kind":"cross-language-platform","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/cross-language-fixture.schema.json"}

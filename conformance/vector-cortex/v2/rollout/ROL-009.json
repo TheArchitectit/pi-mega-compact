@@ -1,0 +1,1 @@
+{"assertion":"72h + powered + 200 sessions but <10k events cannot advance","expected":{"gateIndex":0,"ok":true,"promotionBlocked":false},"id":"ROL-009","input":{"evidence":{"events":9999,"powered":true,"sessions":250,"windowStartMs":0},"scenario":"gate-power"},"kind":"rollout","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/rollout-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"a single-session linear chain builds and orders by source seq","expected":{"ok":true,"order":["a","b","c"]},"id":"DAG-001","input":{"graph":"linear","scenario":"build-linear"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

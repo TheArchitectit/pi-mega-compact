@@ -1,0 +1,1 @@
+{"assertion":"a protected exact span is carried through unchanged","expected":{"ok":true,"protectedSpanCount":1},"id":"REC-003","input":{"graph":"protected","scenario":"assemble-protected","shards":"protected"},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"the closure output is deterministically sorted by id","expected":{"closureReachedFixedPoint":true,"ok":true},"id":"CLO-008","input":{"graph":"scrambled","scenario":"closure-deterministic-order","seeds":["m","a","z"]},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

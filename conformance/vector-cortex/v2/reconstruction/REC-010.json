@@ -1,0 +1,1 @@
+{"assertion":"all source tiers (exact/residual/semantic) coexist in one reconstruction","expected":{"ok":true,"spanCount":3},"id":"REC-010","input":{"graph":"mixed","scenario":"assemble-mixed-tiers","shards":"mixed"},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"the accepted plan token total never exceeds the budget","expected":{"ok":true,"withinBudget":true},"id":"PLN-014","input":{"candidates":"ratio","scenario":"plan-never-exceeds","tokenBudget":25,"zeroFraming":true},"kind":"planner","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/planner-fixture.schema.json"}

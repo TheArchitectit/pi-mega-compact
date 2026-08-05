@@ -1,0 +1,1 @@
+{"assertion":"an unknown provider/model cleanly bypasses (not an error)","expected":{"bypassClean":true,"code":"REN_PROFILE_UNKNOWN","ok":false},"id":"REN-017","input":{"graph":"single","profile":"unknown","scenario":"render-profile-unknown"},"kind":"render","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/render-fixture.schema.json"}

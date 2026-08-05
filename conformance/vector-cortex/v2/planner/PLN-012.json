@@ -1,0 +1,1 @@
+{"assertion":"equal ratios and equal source seq choose lower ID bytes","expected":{"firstSelected":"aaa","ok":true,"selected":["aaa"]},"id":"PLN-012","input":{"candidates":"tie-id","scenario":"plan-tie-id-bytes","tokenBudget":10,"zeroFraming":true},"kind":"planner","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/planner-fixture.schema.json"}

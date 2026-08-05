@@ -1,0 +1,1 @@
+{"assertion":"an optional candidate that does not fit is omitted, not truncated","expected":{"ok":true,"omittedOverBudget":true,"selected":["hi"]},"id":"PLN-010","input":{"candidates":"ratio","scenario":"plan-optional-omitted","tokenBudget":10,"zeroFraming":true},"kind":"planner","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/planner-fixture.schema.json"}

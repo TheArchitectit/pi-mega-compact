@@ -1,0 +1,1 @@
+{"assertion":"a changed byte length fails REN_BYTE_LENGTH_MISMATCH","expected":{"code":"REN_BYTE_LENGTH_MISMATCH","ok":false},"id":"REN-015","input":{"graph":"single","profile":"anthropic-claude-opus","scenario":"render-byte-length-changed"},"kind":"render","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/render-fixture.schema.json"}

@@ -1,0 +1,1 @@
+{"assertion":"a single node validates to itself","expected":{"ok":true,"order":["a"]},"id":"DAG-024","input":{"graph":"single","scenario":"validate-single"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

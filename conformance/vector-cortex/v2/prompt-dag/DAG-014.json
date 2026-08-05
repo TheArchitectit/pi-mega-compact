@@ -1,0 +1,1 @@
+{"assertion":"nodes order by source seq before ID bytes","expected":{"ok":true,"order":["z","y","x"]},"id":"DAG-014","input":{"graph":"seq-before-id","scenario":"validate-seq-before-id"},"kind":"prompt-dag","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/prompt-dag-fixture.schema.json"}

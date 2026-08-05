@@ -7,25 +7,10 @@
  *
  * PREVENT-011: no `any` type.
  */
+import type { SettingSpec, SettingGroup } from "./routes-rag-settings-types.js";
+import { VECTOR_CORTEX_SETTINGS } from "./routes-rag-settings-vector-cortex.js";
 
-
-/**
- * Base metadata for a single setting entry before its live `value` is resolved.
- * `category` and `value` are filled in at read time by the handler.
- */
-export interface SettingSpec {
-	key: string;
-	label: string;
-	description: string;
-	type: "boolean" | "number" | "string";
-	default: string | number | boolean;
-	/** True when this is a `_DISABLED`-convention opt-out flag. */
-	disabledConvention: boolean;
-	requiresLlm: boolean;
-	unit?: string;
-	min?: number;
-	max?: number;
-}
+export type { SettingSpec } from "./routes-rag-settings-types.js";
 
 // Shorthand builders to keep the inventory terse and unambiguous.
 const boolFlag = (
@@ -96,10 +81,7 @@ const str = (
 });
 
 /** Every adjustable setting, grouped by category. Read-only after module load. */
-export const SETTINGS: ReadonlyArray<{
-	name: string;
-	settings: SettingSpec[];
-}> = [
+export const SETTINGS: ReadonlyArray<SettingGroup> = [
 	{
 		name: "RAG Pipeline",
 		settings: [
@@ -233,6 +215,12 @@ export const SETTINGS: ReadonlyArray<{
 			boolDirect("MEGACOMPACT_MARK_ONLY_L1", "Mark Only L1", "L1 runs but does not collapse", false),
 			boolDirect("MEGACOMPACT_MARK_ONLY_L2", "Mark Only L2", "L2 runs but does not collapse", false),
 			boolDirect("MEGACOMPACT_MINILM", "MiniLM Embedder", "Use MiniLM instead of trigram", false),
+			boolDirect(
+				"MEGACOMPACT_DEDUP_AUDIT",
+				"Dedup Audit Trail",
+				"Append one events.log line per tier decision (which layer collapsed a region, onto what, at what similarity) to tune the thresholds below. Pure instrumentation — dedup behavior is identical either way.",
+				true,
+			),
 		],
 	},
 	{
@@ -274,89 +262,7 @@ export const SETTINGS: ReadonlyArray<{
 			num("MEGACOMPACT_EMBEDDING_CHARS_PER_TOKEN", "Embedding Chars per Token", "Estimated characters per token used for embedder chunking size", 4, 1, 32),
 		],
 	},
-	{
-		name: "Vector Cortex",
-		settings: [
-			boolDirect(
-				"MEGACOMPACT_VC0A",
-				"VC0A Baseline Observability",
-				"Structured evaluation observer (MetricEventV1 + latency histogram). OFF = mode C, byte-identical to predecessor.",
-				true,
-			),
-			boolDirect(
-				"MEGACOMPACT_VC0B",
-				"VC0B Replay Correctness",
-				"ReplayCutV2 effective-cut (min of boundary-safe/commit/capture high-water + pair retreat + anchor floor) and M3 effective-cut-v2 migration. OFF = legacy capped replay, byte-identical.",
-				true,
-			),
-			boolDirect(
-				"MEGACOMPACT_VC1A",
-				"VC1A Canonical Byte Events",
-				"EventV2 byte-authority ledger codec (original bytes + SHA-256, strict UTF-8, derived NFC) and canonical validator (EVT_DIGEST_MISMATCH / EVT_UTF8_TAG_INVALID / EVT_DUPLICATE_ID). OFF = mode C, transcript codec unchanged, byte-identical.",
-				true,
-			),
-			boolDirect(
-				"MEGACOMPACT_VC1B",
-				"VC1B Occurrence Ledger + Tool Identity",
-				"Neutral occurrence ledger (LedgerReader/Writer/Admin + CompatJournalV1): per-session monotonic seq, tool result references one earlier call, uniqueness by (eventId,digest) only, and the M2 copy-validate-switch downgrade journal. OFF = mode C, ledger unwritten, byte-identical.",
-				true,
-			),
-			boolDirect(
-				"MEGACOMPACT_VC0C",
-				"VC0C Live Safety Envelope",
-				"TriadResult/Breaker live circuit breaker (60s window, 20 attempts, 30s cooldown, 3 probes, 5min healthy residence) + durable spool before provider invocation; manual reset clears cooldown but never evidence. OFF = mode C, unchanged transcript, byte-identical.",
-				true,
-			),
-			boolDirect(
-				"MEGACOMPACT_VC1C",
-				"VC1C Cross-Language Conformance v2",
-				"FixtureManifestV2 canonical manifest validator + DowngradeReport deterministic downgrade export + MinHashV2 exact big-integer signatures and the M4 copy/validate/switch minhash-v2 migration (seed table frozen, cross-language byte-exact). OFF = mode C, v1 sync dedup scan unchanged, byte-identical.",
-				true,
-			),
-			boolDirect(
-				"MEGACOMPACT_VC2A",
-				"VC2A Offline Model Runtime",
-				"ModelManifestV1 digest-before-load ONNX runtime (opset17/batch1/max512) + asset-free trigram demotion. Asset path assets/vector-cortex/encoder-v1 is immutable/digest-pinned. OFF = mode C, byte-identical to predecessor.",
-				true,
-			),
-			boolDirect(
-				"MEGACOMPACT_VC2B",
-				"VC2B Multi-Head Encoder",
-				"VectorSetV1 five L2-normalized heads (384/128/128/64/32) with head-calibration draft + asset-free trigram B (512d) and lexical C fallbacks, plus the per-head emit seam. OFF = mode C, no per-head vectors emitted, byte-identical predecessor.",
-				true,
-			),
-			boolDirect(
-				"MEGACOMPACT_VC2C",
-				"VC2C Encoder Qualification + Calibration",
-				"QualifiedEncoderV1/CalibrationV1: calibration fit on the calibration split only (held-out labels prohibited) + atomic selection across MODEL_ASSET and per-head EVALUATION thresholds (any field failure demotes all of A). OFF = mode C, no qualification/calibration selection, byte-identical predecessor.",
-				true,
-			),
-			boolDirect(
-				"MEGACOMPACT_VC3A",
-				"VC3A Cortex Store",
-				"Capability-gated derived cortex store (CortexReader/Writer/Admin + CortexRecordV1): additive, keyed (sourceHighWater, algorithmVersion, id), immutable records, deterministic generation rebuild + one root digest. OFF = mode C, no cortex records written, byte-identical predecessor.",
-				true,
-			),
-			boolDirect(
-				"MEGACOMPACT_VC3B",
-				"VC3B Deterministic Topology",
-				"Deterministic cortical topology (TopologyV1/EdgeV1): per-(source,head) top-k=16/head calibrated-threshold edges, stable score-desc/then-target-ID sort, dependency directed + contradiction symmetric paired records, one stable generation digest. OFF = mode C, no topology graph built/emitted, predecessor-precise topology view, byte-identical predecessor.",
-				true,
-			),
-			boolDirect(
-				"MEGACOMPACT_VC3C",
-				"VC3C Topology Query + Router Invalidation",
-				"TopologyQueryV1/RouterKeyV2 structured keys (length-delimited, unsigned-byte order, no prefix ambiguity), exact (session,generation) invalidation, stale-generation rejection (TOP_GENERATION_STALE), and the M6 router-generation-v2 copy/validate/switch migration. OFF = mode C, no structured router key / generation invalidation, byte-identical predecessor.",
-				true,
-			),
-			boolDirect(
-				"MEGACOMPACT_VC4A",
-				"VC4A Dual-Tier Shards",
-				"SemanticShardV1/ExactShardV1/ShardManifestV1: partition a session ONLY at complete EventV2 boundaries; exact shards preserve every tool call/result pair, anchor and invalid UTF-8 event as original bytes (pairs never split across exact shards); manifest enforces disjoint sorted ranges + complete protected-span coverage. OFF = mode C, exact anchors/current transcript only, byte-identical predecessor.",
-				true,
-			),
-		],
-	},
+	VECTOR_CORTEX_SETTINGS,
 	{
 		name: "Cost API",
 		settings: [

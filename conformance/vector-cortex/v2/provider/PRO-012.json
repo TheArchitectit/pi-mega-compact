@@ -1,0 +1,1 @@
+{"assertion":"an excluded pointer does not affect cache identity","expected":{"cacheStable":true,"excludedPointers":["/requestId"],"ok":true,"profileId":"google-gemini"},"id":"PRO-012","input":{"model":"v1","provider":"google-gemini","scenario":"resolve-excluded-cache"},"kind":"provider","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/provider-fixture.schema.json"}

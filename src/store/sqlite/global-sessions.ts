@@ -82,9 +82,15 @@ export function recordSessionHeartbeat(
 	stateDir: string,
 	ctxWindow: number,
 	indexDir: string = getIndexDir(),
+	// Optional clock override for deterministic tests only. Production callers
+	// omit it → Date.now(), byte-identical behavior. The S39 prune test pins
+	// heartbeats to a known-old timestamp so pruneStaleSessions' Date.now()
+	// cutoff unambiguously exceeds them (no same-millisecond last_seen ==
+	// cutoff race that made pruned !== 2).
+	nowMs: number = Date.now(),
 ): void {
 	const db = openIndexStore(indexDir);
-	const now = Date.now();
+	const now = nowMs;
 	db.prepare(
 		`INSERT INTO session_heartbeats (pid, session_id, repo_root, state_dir, ctx_window, last_seen)
      VALUES (@pid, @session_id, @repo_root, @state_dir, @ctx_window, @last_seen)
@@ -127,9 +133,15 @@ export function appendTokenSample(
 	ctxWindow: number,
 	eventsLogPath: string | null,
 	indexDir: string = getIndexDir(),
+	// Optional clock override for deterministic tests only. Production callers
+	// omit it → falls back to Date.now(), byte-identical behavior. The S39
+	// timeseries test injects distinct timestamps so the per-ts totals map is
+	// not collapsed by same-millisecond sample coincidence (the pre-existing
+	// flake where 3 samples in one ms made totals.length == 1).
+	nowMs: number = Date.now(),
 ): void {
 	const db = openIndexStore(indexDir);
-	const now = Date.now();
+	const now = nowMs;
 	db.prepare(
 		`INSERT INTO token_samples (session_id, repo_root, tokens, percent, ctx_window, ts)
      VALUES (@session_id, @repo_root, @tokens, @percent, @ctx_window, @ts)`,

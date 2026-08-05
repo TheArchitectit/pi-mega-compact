@@ -1,0 +1,1 @@
+{"assertion":"the same session id always maps to the same bucket across calls","expected":{"ok":true},"id":"ROL-002","input":{"scenario":"assign-stable","sessionId":"session-alpha-0001"},"kind":"rollout","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/rollout-fixture.schema.json"}

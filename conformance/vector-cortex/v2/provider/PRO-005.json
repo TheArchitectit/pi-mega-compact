@@ -1,0 +1,1 @@
+{"assertion":"resolution is exact-match on provider + model","expected":{"ok":true,"profileId":"anthropic-claude-opus"},"id":"PRO-005","input":{"model":"v1","provider":"anthropic-claude-opus","scenario":"resolve-exact"},"kind":"provider","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/provider-fixture.schema.json"}

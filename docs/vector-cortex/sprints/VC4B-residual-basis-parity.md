@@ -1,11 +1,11 @@
 # VC4B — Residual codec and numeric parity
 
-**Status:** next | **Depends on:** VC4A | **Phase:** VC4
+**Status:** done | **Depends on:** VC4A | **Phase:** VC4
 **Flag:** `MEGACOMPACT_VC4B`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC4B=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs
 
-Consume only reviewer-accepted predecessor contracts and [common contracts](../CONTRACTS.md). Own **ResidualCodecV1 / ParityShardV1**. Production ownership: `src/vector-cortex/residual/types.ts`; `src/vector-cortex/residual/dct.ts`; `src/vector-cortex/residual/quantize.ts`; `src/vector-cortex/residual/parity.ts`; `src/vector-cortex/residual/codec.ts`. Algorithm: Implement RESIDUAL_CODEC: DCT4096, int16+corrections, RS(9,6) GF(0x11d), complete-byte admission <=95% exact compressed.
+Consume only reviewer-accepted predecessor contracts and [common contracts](../CONTRACTS.md). Own **ResidualCodecV1 / ParityShardV1**. Production ownership: `src/vector-cortex/residual/{types,dct,quantize,parity,codec,gf256,stream,fixture-payload}.ts`. Algorithm: Implement RESIDUAL_CODEC: DCT4096, int16+corrections, RS(9,6) GF(0x11d), complete-byte admission <=95% exact compressed.
 
 ## Numbered implementation tasks
 

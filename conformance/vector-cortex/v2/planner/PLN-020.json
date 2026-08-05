@@ -1,0 +1,1 @@
+{"assertion":"an unmutated plan passes manifest revalidation","expected":{"manifestStable":true,"ok":true},"id":"PLN-020","input":{"candidates":"mixed","scenario":"plan-manifest-stable","tokenBudget":100,"zeroFraming":true},"kind":"planner","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/planner-fixture.schema.json"}

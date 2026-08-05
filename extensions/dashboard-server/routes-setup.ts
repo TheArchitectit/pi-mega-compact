@@ -214,6 +214,7 @@ export function handleSetupDetect(
 
 const OLLAMA_DEFAULT_URL = "http://localhost:11434/api/embeddings"; // guardrails-allow PREVENT-PI-004: localhost-only config string, not a runtime fetch
 const LLAMA_DEFAULT_URL = "http://localhost:8080/v1/embeddings"; // guardrails-allow PREVENT-PI-004: localhost-only config string, not a runtime fetch
+const ONNX_DEFAULT_URL = "http://localhost:8081/v1/embeddings"; // guardrails-allow PREVENT-PI-004: localhost-only config string, not a runtime fetch — TEI / ONNX embedding server
 
 function readJsonBody(
 	req: IncomingMessage,
@@ -265,7 +266,7 @@ export function handleSetupConfigure(
 		}
 		const body = parsed.value as unknown as SetupConfigureRequest;
 		const embedder = body.embedder;
-		if (embedder !== "ollama" && embedder !== "llama" && embedder !== "trigram" && embedder !== "custom") {
+		if (embedder !== "ollama" && embedder !== "llama" && embedder !== "trigram" && embedder !== "custom" && embedder !== "onnx") {
 			res.writeHead(400, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ error: "invalid_embedder" }));
 			return;
@@ -275,6 +276,7 @@ export function handleSetupConfigure(
 		let allowRemote = false;
 		if (embedder === "ollama") resolvedUrl = typeof url === "string" && url ? url : OLLAMA_DEFAULT_URL;
 		else if (embedder === "llama") resolvedUrl = typeof url === "string" && url ? url : LLAMA_DEFAULT_URL;
+		else if (embedder === "onnx") resolvedUrl = typeof url === "string" && url ? url : ONNX_DEFAULT_URL;
 		else if (embedder === "custom") {
 			// Third-party / remote endpoint. Requires a URL; opts in to the
 			// non-loopback allowlist so embeddingConfigFromEnv() accepts it.

@@ -1,0 +1,1 @@
+{"assertion":"the mandatory token estimate is carried through unchanged","expected":{"mandatoryTokenEstimate":30,"ok":true},"id":"REC-007","input":{"graph":"tokened","scenario":"assemble-token-carried","shards":"tokened"},"kind":"reconstruction","producer":"vector-cortex-gen-fixtures.mjs","schema":"schemas/reconstruction-fixture.schema.json"}
