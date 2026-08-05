@@ -26,6 +26,7 @@ import { appendEvalRow } from "../../src/vector-cortex/eval/persist.js";
 
 /** The slice of `MegaRuntime` the observer bridge reads/writes. */
 export interface VcObserverContext {
+	appendEvent(event: string, fields: Record<string, unknown>): void;
 	readonly currentStateDir: string;
 }
 
@@ -37,10 +38,7 @@ export interface VcObserverContext {
  * The returned observer is a thin, best-effort observability seam that never
  * breaks the agent loop.
  */
-export function createVcObserver(self: {
-	appendEvent(event: string, fields: Record<string, unknown>): void;
-	currentStateDir: string;
-}): EvalObserver | null {
+export function createVcObserver(self: VcObserverContext): EvalObserver | null {
 	if (!VC0A_ENABLED()) return null;
 	try {
 		return createEvalObserver({
@@ -53,18 +51,39 @@ export function createVcObserver(self: {
 	}
 }
 
+// ---------------------------------------------------------------- weak cache
+
+/**
+ * Module-level observer cache keyed by the runtime object. Avoids adding a
+ * `vcObserver` field to MegaRuntime (keeping runtime.ts under its soft limit
+ * — no field, no constructor line, no import bloat). One observer per runtime
+ * instance, lazily built on the first latency recording.
+ */
+const observerCache = new WeakMap<object, EvalObserver | null>();
+
+/** Lazily create + cache the observer for the given runtime context. */
+export function getVcObserver(self: VcObserverContext): EvalObserver | null {
+	let obs = observerCache.get(self);
+	if (obs === undefined) {
+		obs = createVcObserver(self);
+		observerCache.set(self, obs);
+	}
+	return obs;
+}
+
 // ---------------------------------------------------------------- reporting
 
 /** Record a compact latency sample on the observer (no-op when absent). */
 export function recordCompactLatency(
-	self: { vcObserver: EvalObserver | null },
+	self: VcObserverContext,
 	elapsedMs: number,
 	sessionId: string,
 	epoch: number,
 ): void {
-	if (self.vcObserver == null) return;
+	const obs = getVcObserver(self);
+	if (obs == null) return;
 	try {
-		self.vcObserver.record({
+		obs.record({
 			session: sessionId,
 			seq: epoch,
 			event: "compact",
@@ -79,14 +98,15 @@ export function recordCompactLatency(
 
 /** Record a recall latency sample on the observer (no-op when absent). */
 export function recordRecallLatency(
-	self: { vcObserver: EvalObserver | null },
+	self: VcObserverContext,
 	elapsedMs: number,
 	sessionId: string,
 	epoch: number,
 ): void {
-	if (self.vcObserver == null) return;
+	const obs = getVcObserver(self);
+	if (obs == null) return;
 	try {
-		self.vcObserver.record({
+		obs.record({
 			session: sessionId,
 			seq: epoch,
 			event: "recall",
