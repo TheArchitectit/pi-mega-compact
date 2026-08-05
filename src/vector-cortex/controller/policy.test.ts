@@ -189,11 +189,12 @@ describe("VC8B evaluatePolicy", () => {
   });
 
   test("a dampened budget that falls under the floor is clamped up to it", () => {
-    // 120 * 0.25 (mega) = 30, which is below the 100 floor.
+    // 120 * 0.25 (mega) = 30, adjusted is below the 100 floor → budget_clamped_low.
     const decision = evaluatePolicy(
       input({ pressure: "mega", requestedBudget: 120 }),
     );
     assert.equal(decision.budget, 100);
+    assert.equal(decision.reason, "budget_clamped_low");
     assert.ok(isDecisionWithinBounds(decision, BOUNDS));
   });
 
@@ -218,12 +219,26 @@ describe("VC8B evaluatePolicy", () => {
       evaluatePolicy(input({ pressure: "high" })).reason,
       "pressure_elevated",
     );
-    for (const pressure of ["ultra", "mega"]) {
-      assert.equal(
-        evaluatePolicy(input({ pressure })).reason,
-        "pressure_critical",
-      );
-    }
+    // adjusted = 500 * 0.5 = 250 (in window) → pressure_critical
+    assert.equal(
+      evaluatePolicy(input({ pressure: "ultra" })).reason,
+      "pressure_critical",
+    );
+    // adjusted = 500 * 0.25 = 125 (in window) → pressure_critical
+    assert.equal(
+      evaluatePolicy(input({ pressure: "mega" })).reason,
+      "pressure_critical",
+    );
+    // adjusted = 200 * 0.5 = 100 = minBudget, lands exactly at floor → pressure_critical
+    assert.equal(
+      evaluatePolicy(input({ pressure: "ultra", requestedBudget: 200 })).reason,
+      "pressure_critical",
+    );
+    // adjusted = 120 * 0.25 = 30 < minBudget → budget_clamped_low
+    assert.equal(
+      evaluatePolicy(input({ pressure: "mega", requestedBudget: 120 })).reason,
+      "budget_clamped_low",
+    );
   });
 
   test("an unknown pressure rejects the whole evaluation", () => {

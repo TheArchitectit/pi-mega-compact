@@ -104,7 +104,7 @@ function policyRow(n, level, requestedBudget, minBudget, maxBudget) {
       action: ACTION[level],
       budget,
       pressure: level,
-      reason: reasonFor(level, requestedBudget, budget, minBudget, maxBudget),
+      reason: reasonFor(level, adjusted, budget, minBudget, maxBudget),
     },
   );
 }
