@@ -377,4 +377,5 @@ export interface VectorCortexLedgerView {
 export type {
   VectorCortexClosureProofView,
   VectorCortexRestoreView,
+  VectorCortexRepairView,
 } from "./vector-cortex-heal.js";

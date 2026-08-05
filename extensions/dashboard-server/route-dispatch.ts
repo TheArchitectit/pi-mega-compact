@@ -57,6 +57,9 @@ import {
 	handleVectorCortexClosureProof,
 	handleVectorCortexRestore,
 } from "./routes.js";
+// VC6C repair lives in its own module (routes-vector-cortex-repair.ts) so the
+// heal route file stays well under the 400-line extension soft limit.
+import { handleVectorCortexRepair } from "./routes-vector-cortex-repair.js";
 
 /**
  * Dispatch a request through every registered route handler.
@@ -110,5 +113,6 @@ export function dispatchRoutes(
 	if (handleVectorCortexRollout(req, res, ctx)) return true;
 	if (handleVectorCortexClosureProof(req, res, ctx)) return true;
 	if (handleVectorCortexRestore(req, res, ctx)) return true;
+	if (handleVectorCortexRepair(req, res, ctx)) return true;
 	return false;
 }

@@ -150,5 +150,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"Exact source restoration: restores the original bytes of closure spans ONLY from an exact shard (mode A) or a verified ledger range scan (mode B) — never inferred, reconstructed, or paraphrased from embeddings or semantic text. Requests are hard-bounded at 64 spans / 4MiB (HEAL_RESTORE_LIMIT); every span's SHA-256 is recomputed and bytes are inserted only after all requested span metadata validates, so a single bad span fails the whole request closed (HEAL_RESTORE_DIGEST_MISMATCH, HEAL_RESTORE_RANGE_MISMATCH). When no exact source exists (HEAL_RESTORE_SOURCE_MISSING) the old context is omitted and the loss is disclosed (mode C) rather than filled in. OFF = byte-identical predecessor (VC6A).",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_VC6C",
+			"VC6C Self-Healing Derived State",
+			"Self-healing derived-state controller: detects gaps between each derived subsystem's high-water mark and the durable authority high-water, then rebuilds derived state by copy -> root-digest verification -> atomic pointer switch, so a partially rebuilt subsystem is never made visible. A targeted single-subsystem rebuild is mode A; an ambiguous gap escalates to a full deterministic rebuild (mode B); if both rebuild paths fail the derived state is disabled rather than served stale (mode C). Rebuilds are rate-limited to one per subsystem per 5 minutes with deterministic exponential backoff, so a persistently failing subsystem cannot spin. OFF = byte-identical predecessor (VC6B); no controller runs, so the dashboard reports mode C.",
+			true,
+		),
 	],
 };

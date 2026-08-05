@@ -19,6 +19,7 @@ import {
 	fetchVectorCortexRollout,
 	fetchVectorCortexClosureProof,
 	fetchVectorCortexRestore,
+	fetchVectorCortexRepair,
 	fetchVectorCortexShards,
 	fetchVectorCortexTopology,
 	resetVectorCortexBreaker,
@@ -32,6 +33,7 @@ import {
 	type VectorCortexRolloutView,
 	type VectorCortexClosureProofView,
 	type VectorCortexRestoreView,
+	type VectorCortexRepairView,
 	type VectorCortexShardsView,
 	type VectorCortexTopologyView,
 } from "../api/vector-cortex";
@@ -42,6 +44,11 @@ import { VectorCortexRenderCard } from "./VectorCortexRenderCard";
 import { VectorCortexRolloutCard } from "./VectorCortexRolloutCard";
 import { VectorCortexClosureCard } from "./VectorCortexClosureCard";
 import { VectorCortexRestoreCard } from "./VectorCortexRestoreCard";
+import { VectorCortexRepairCard } from "./VectorCortexRepairCard";
+import {
+	VectorCortexShardsCard,
+	VectorCortexReconstructCard,
+} from "./VectorCortexShardsCard";
 import { VectorCortexPlansCard } from "./VectorCortexPlansCard";
 import { VectorCortexTopologyCard } from "./VectorCortexTopologyCard";
 import { VectorCortexLedgerCard } from "./VectorCortexLedgerCard";
@@ -71,6 +78,7 @@ export default function VectorCortexTab(): React.ReactElement {
 	const [rollout, setRollout] = useState<VectorCortexRolloutView | null>(null);
 	const [closureProof, setClosureProof] = useState<VectorCortexClosureProofView | null>(null);
 	const [restore, setRestore] = useState<VectorCortexRestoreView | null>(null);
+	const [repair, setRepair] = useState<VectorCortexRepairView | null>(null);
 
 	const poll = useCallback(() => {
 		fetchVectorCortexEvaluation()
@@ -111,6 +119,9 @@ export default function VectorCortexTab(): React.ReactElement {
 		});
 		fetchVectorCortexRestore().then(setRestore).catch(() => {
 			/* exact-source-restoration card is best-effort (VC6B) */
+		});
+		fetchVectorCortexRepair().then(setRepair).catch(() => {
+			/* self-healing derived-state card is best-effort (VC6C) */
 		});
 	}, []);
 
@@ -263,71 +274,14 @@ export default function VectorCortexTab(): React.ReactElement {
 				</CardContent>
 			</Card>
 			<VectorCortexTopologyCard topology={topology} query={query} />
-			<Card>
-				<CardHeader>
-					<div className="flex items-center justify-between">
-						<CardTitle>Dual-Tier Shards (VC4A)</CardTitle>
-						{shards?.enabled ? (
-							<Badge variant="success">ACTIVE</Badge>
-						) : (
-							<Badge variant="danger">OFF</Badge>
-						)}
-				</div>
-				</CardHeader>
-				<CardContent>
-					{!shards?.enabled ? (
-						<div className="vc-empty">Dual-tier shards disabled (VC4A off).</div>
-					) : (
-						<>
-							<div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-								<Metric label="Semantic shards" value={String(shards.semanticCount)} />
-								<Metric label="Exact shards" value={String(shards.exactCount)} />
-								<Metric label="Byte total" value={String(shards.byteTotal)} />
-								<Metric label="Protected bytes" value={String(shards.protectedByteTotal)} />
-							</div>
-							<div className="mt-3 text-xs text-muted-foreground">
-								Reader-only count/byte aggregate; staged in-memory this sprint.
-							</div>
-						</>
-					)}
-				</CardContent>
-			</Card>
-			<Card>
-				<CardHeader>
-					<div className="flex items-center justify-between">
-						<CardTitle>Reconstruction Fidelity (VC4C)</CardTitle>
-						{reconstruct?.enabled ? (
-							<Badge variant="success">ACTIVE</Badge>
-						) : (
-							<Badge variant="danger">OFF</Badge>
-						)}
-					</div>
-				</CardHeader>
-				<CardContent>
-					{!reconstruct?.enabled ? (
-						<div className="vc-empty">Reconstruction fidelity disabled (VC4C off).</div>
-					) : (
-						<>
-							<div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-								<Metric label="Closure attempts" value={String(reconstruct.closureAttempts)} />
-								<Metric label="Closure rejections" value={String(reconstruct.closureRejections)} />
-								<Metric label="Validated" value={String(reconstruct.validatedCount)} />
-								<Metric label="Invalidated" value={String(reconstruct.invalidatedCount)} />
-								<Metric label="Span total" value={String(reconstruct.spanTotal)} />
-								<Metric label="Byte total" value={String(reconstruct.byteTotal)} />
-							</div>
-							<div className="mt-3 text-xs text-muted-foreground">
-								Reader-only closure/validation aggregate; staged in-memory this sprint.
-							</div>
-						</>
-					)}
-				</CardContent>
-			</Card>
+			<VectorCortexShardsCard view={shards} />
+			<VectorCortexReconstructCard view={reconstruct} />
 			<VectorCortexPlansCard view={plans} />
 			<VectorCortexRenderCard view={render} />
 			<VectorCortexRolloutCard view={rollout} />
 			<VectorCortexClosureCard view={closureProof} />
 			<VectorCortexRestoreCard view={restore} />
+			<VectorCortexRepairCard view={repair} />
 			<VectorCortexLedgerCard ledger={ledger} />
 		</div>
 	);

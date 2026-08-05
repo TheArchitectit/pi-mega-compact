@@ -17,6 +17,7 @@ import type {
 	VectorCortexTopologyView,
 	VectorCortexClosureProofView,
 	VectorCortexRestoreView,
+	VectorCortexRepairView,
 } from "../types/vector-cortex";
 
 export type {
@@ -33,6 +34,7 @@ export type {
 	VectorCortexTopologyView,
 	VectorCortexClosureProofView,
 	VectorCortexRestoreView,
+	VectorCortexRepairView,
 };
 
 export async function fetchVectorCortexEvaluation(): Promise<VectorCortexEvaluationSummary> {
@@ -108,6 +110,13 @@ export async function fetchVectorCortexRestore(): Promise<VectorCortexRestoreVie
 	const r = await fetch("/api/vector-cortex/restore");
 	if (!r.ok) throw new Error(`vector-cortex restore: ${r.status}`);
 	return r.json() as Promise<VectorCortexRestoreView>;
+}
+
+/** Reader-only self-healing derived-state view (VC6C). Counts + codes only. */
+export async function fetchVectorCortexRepair(): Promise<VectorCortexRepairView> {
+	const r = await fetch("/api/vector-cortex/repair");
+	if (!r.ok) throw new Error(`vector-cortex repair: ${r.status}`);
+	return r.json() as Promise<VectorCortexRepairView>;
 }
 
 /** Reader-only occurrence-ledger identity view (VC1B). */

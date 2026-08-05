@@ -241,6 +241,23 @@ export const VC6A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC6A");
  */
 export const VC6B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC6B");
 
+/**
+ * VC6C — self-healing derived controller. Default ON. `MEGACOMPACT_VC6C=0`
+ * disables and is byte-identical to the predecessor (VC6B): the `detectGaps` /
+ * `planRebuild` / `rebuildGeneration` / `switchPointer` arithmetic STILL RUNS (it
+ * is PURE — a high-water comparison plus a SHA-256 root-digest check, with an
+ * INJECTED clock and no storage or network), but the
+ * `vector_cortex_repair_planned` / `vector_cortex_repair_pointer_switched` /
+ * `vector_cortex_repair_backoff` events are never emitted and the dashboard
+ * repair diagnostics seam is suppressed. Flag OFF gates the reporter + dashboard
+ * seam, never the gap-detection/rebuild arithmetic (in particular, an unverified
+ * pointer switch stays refused with the flag off), so flag-off
+ * outbound/predecessor golden bytes match exactly. This flag MUST also be a
+ * dashboard SETTINGS toggle (visible in config UI, never in EXCLUDED_SETTINGS),
+ * mirroring VC4A/VC4B/VC4C/VC5A/VC5B/VC5C/VC6A/VC6B.
+ */
+export const VC6C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC6C");
+
 // ---------------------------------------------------------------------------
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker).
 // Rolled numbers for one 60s window; VC0C consumes these at its breaker seam.

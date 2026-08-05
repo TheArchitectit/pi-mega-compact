@@ -71,3 +71,41 @@ export interface VectorCortexRestoreView {
   /** ISO timestamp of the snapshot. */
   readonly updatedAt: string;
 }
+
+/**
+ * Reader-only self-healing derived-state diagnostics view for
+ * GET /api/vector-cortex/repair (VC6C).
+ *
+ * COUNTS + ERROR CODES ONLY. Like the restore view, this surface deliberately
+ * carries no payload: no subsystem source bytes, no rebuilt derived rows, no
+ * subsystem names paired with their gap ranges, no high-water values, no root
+ * digests, and no ledger text (SECURITY_PRIVACY — a diagnostic surface never
+ * renders the authority's contents). Only the controller's rebuild counters,
+ * the backoff schedule's observable timing, and the last HEAL_REPAIR_* failure
+ * code are exposed; the per-subsystem gap detail lives in the structured event
+ * log, not the dashboard.
+ */
+export interface VectorCortexRepairView {
+  /** Whether the VC6C self-healing derived-controller flag is enabled. */
+  readonly enabled: boolean;
+  /**
+   * Runtime triad mode: "A" targeted single-subsystem rebuild, "B" full
+   * deterministic rebuild (ambiguous gap), "C" derived state disabled (both
+   * rebuild paths failed, or the controller is not running at all).
+   */
+  readonly mode: "A" | "B" | "C";
+  /** Total rebuild attempts started by the controller (event counter). */
+  readonly repairAttempts: number;
+  /** Rebuilds planned after gap detection, before rate limiting (counter). */
+  readonly repairsPlanned: number;
+  /** Rebuilds that reached a verified atomic pointer switch (counter). */
+  readonly pointersSwitched: number;
+  /** Attempts deferred by the rate limiter / exponential backoff (counter). */
+  readonly backoffs: number;
+  /** Most recent deterministic backoff delay in ms, or null if none yet. */
+  readonly lastBackoffMs: number | null;
+  /** Last failure reason (a HEAL_REPAIR_* code), or null if none yet. */
+  readonly lastFailure: string | null;
+  /** ISO timestamp of the snapshot. */
+  readonly updatedAt: string;
+}

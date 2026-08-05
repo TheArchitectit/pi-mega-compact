@@ -246,3 +246,31 @@ export {
   RESTORE_LIMIT_SPANS,
   RESTORE_LIMIT_BYTES,
 } from "./restore-types.js";
+
+// ---------------------------------------------------------------------------
+// VC6C self-healing derived controller (repair-types.ts). Re-exported here so
+// the heal contract keeps ONE entry point: VC6B restores the BYTES a plan needs,
+// and these types describe rebuilding the DERIVED state that indexes them —
+// detect a gap against durable authority, rebuild into a new generation, verify
+// its root digest, then switch the pointer.
+// ---------------------------------------------------------------------------
+
+export type {
+  Mode,
+  RepairSubsystem,
+  RepairPlanV1,
+  RepairEventV1,
+  RepairEventName,
+  RepairFailureCode,
+  RepairState,
+  RepairController,
+  RepairView,
+} from "./repair-types.js";
+export {
+  REPAIR_IDS,
+  REPAIR_NAMED_IDS,
+  REPAIR_RATE_LIMIT_MS,
+  REPAIR_BACKOFF_BASE_MS,
+  REPAIR_BACKOFF_CAP_MS,
+  REPAIR_BACKOFF_JITTER,
+} from "./repair-types.js";

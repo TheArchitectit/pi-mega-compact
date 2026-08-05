@@ -225,6 +225,23 @@ export interface VectorCortexRestoreView {
   updatedAt: string;
 }
 
+/**
+ * Reader-only self-healing derived-state view (VC6C). Counts + HEAL_REPAIR_*
+ * codes only — there is no payload endpoint, so no subsystem source bytes, gap
+ * ranges, high-water marks, root digests, or ledger text ever reach the client.
+ */
+export interface VectorCortexRepairView {
+  enabled: boolean;
+  mode: "A" | "B" | "C";
+  repairAttempts: number;
+  repairsPlanned: number;
+  pointersSwitched: number;
+  backoffs: number;
+  lastBackoffMs: number | null;
+  lastFailure: string | null;
+  updatedAt: string;
+}
+
 /** Reader-only closure-optimization diagnostics view (VC6A). Aggregate only. */
 export interface VectorCortexClosureProofView {
   enabled: boolean;

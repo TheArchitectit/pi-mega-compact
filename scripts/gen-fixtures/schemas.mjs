@@ -1221,3 +1221,110 @@ schemas["schemas/restoration-fixture.schema.json"] = {
     },
   },
 };
+
+schemas["schemas/healing-controller-fixture.schema.json"] = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "VC6C healing-controller fixture envelope",
+  description:
+    "Common structure every VC6C healing-controller fixture validates against. `input.states` is the controller's read-only view of each derived subsystem (derived high-water vs the DURABLE AUTHORITY high-water, which the controller reads and never writes), and `input.nowMs` is an INJECTED monotonic clock — VC6C takes the clock as an argument precisely so rate-limit and backoff rows are reproducible. `input.mode` dispatches the acceptance test to the real entry point: `detect` drives detectGaps(states, nowMs), `backoff` drives computeBackoff(subsystem, attempt), `rebuild` drives rebuildGeneration + switchPointer over `input.rebuild` (base64 source bytes plus the pinned BARE lowercase hex root digest). All rows are fed verbatim into the REAL heal modules (src/vector-cortex/heal/{controller,rebuild}.js), no mocks. `expected` pins the repair verdict: `ok` or the exact HEAL_REPAIR_* / HEAL_REBUILD_* code, the number of plans produced (`plannedCount`), the exact [seqStart, seqEnd] window of each plan in plan order (`ranges`, so a controller that plans the WRONG window fails even when the count is right), and for rebuild rows whether the pointer moved (`switched`) and the live generation afterwards (`generation`).",
+  type: "object",
+  required: ["id", "producer", "assertion", "kind", "expected", "input"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: { type: "string", enum: ["healing-controller"] },
+    expected: {
+      type: "object",
+      required: ["ok", "plannedCount", "ranges"],
+      properties: {
+        ok: { type: "boolean" },
+        code: {
+          type: "string",
+          enum: [
+            "HEAL_REPAIR_AUTHORITY_FROZEN",
+            "HEAL_REPAIR_DIGEST_MISMATCH",
+            "HEAL_REBUILD_FAILED",
+            "HEAL_REPAIR_RATE_LIMITED",
+          ],
+        },
+        plannedCount: { type: "integer", minimum: 0 },
+        ranges: {
+          type: "array",
+          items: {
+            type: "array",
+            items: { type: "integer", minimum: 0 },
+            minItems: 2,
+            maxItems: 2,
+          },
+        },
+        switched: { type: "boolean" },
+        generation: { type: "integer", minimum: 0 },
+        semanticLossStated: { type: "boolean" },
+        monotonic: { type: "boolean" },
+        capped: { type: "boolean" },
+        idempotent: { type: "boolean" },
+      },
+    },
+    input: {
+      type: "object",
+      required: ["scenario", "mode", "nowMs", "states"],
+      properties: {
+        scenario: { type: "string" },
+        mode: { type: "string", enum: ["detect", "backoff", "rebuild"] },
+        nowMs: { type: "integer", minimum: 0 },
+        states: {
+          type: "array",
+          items: {
+            type: "object",
+            required: [
+              "subsystem",
+              "derivedHighWater",
+              "authorityHighWater",
+              "lastRebuildAt",
+              "generation",
+              "mode",
+            ],
+            properties: {
+              subsystem: { type: "string" },
+              derivedHighWater: { type: "integer", minimum: 0 },
+              authorityHighWater: { type: "integer", minimum: 0 },
+              lastRebuildAt: { type: ["integer", "null"], minimum: 0 },
+              generation: { type: "integer", minimum: 0 },
+              mode: { type: "string", enum: ["A", "B", "C"] },
+              failedAttempts: { type: "integer", minimum: 0 },
+              authorityFrozen: { type: "boolean" },
+            },
+          },
+        },
+        rebuild: {
+          type: "object",
+          required: [
+            "subsystem",
+            "generation",
+            "currentGeneration",
+            "sourceBytesBase64",
+            "expectedDigest",
+            "triadMode",
+          ],
+          properties: {
+            subsystem: { type: "string" },
+            generation: { type: "integer", minimum: 0 },
+            currentGeneration: { type: "integer", minimum: 0 },
+            sourceBytesBase64: { type: "string" },
+            expectedDigest: { type: "string" },
+            triadMode: { type: "string", enum: ["A", "B", "C"] },
+          },
+        },
+        backoff: {
+          type: "object",
+          required: ["subsystem", "attempts"],
+          properties: {
+            subsystem: { type: "string" },
+            attempts: { type: "array", items: { type: "integer", minimum: 0 } },
+          },
+        },
+      },
+    },
+  },
+};
