@@ -254,6 +254,21 @@ export const VC7C_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC7C");
  */
 export const VC8A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC8A");
 
+/**
+ * VC8B — bounded shadow adaptive policy + M7 pressure-v2. Default ON.
+ * `MEGACOMPACT_VC8B=0` disables and is byte-identical to the predecessor
+ * (VC8A): the policy engine, shadow evaluator, and M7 migration STILL RUN
+ * (they are PURE — action validation, budget clamping, pressure canonicalization
+ * and copy/validate/switch, with no clock, storage, or network), so a budget is
+ * still clamped identically and an unknown pressure label is still rejected. The
+ * flag gates ONLY the `vector_cortex_shadow_decision_recorded` /
+ * `vector_cortex_policy_action_rejected` events and the policy dashboard seam,
+ * which reports `enabled:false` + mode C when off. This flag MUST also be a
+ * dashboard SETTINGS toggle (visible in config UI, never in EXCLUDED_SETTINGS),
+ * mirroring VC4A..VC8A.
+ */
+export const VC8B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC8B");
+
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker) extracted to
 // vector-cortex-breakers.ts to keep this file under the 300-line soft limit.
 export {
