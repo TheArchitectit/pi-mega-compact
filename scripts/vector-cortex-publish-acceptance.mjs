@@ -258,6 +258,12 @@ function main() {
       join(SRC_CONFIG, "vector-cortex.js"),
       join(DEST_CONFIG, "vector-cortex.js"),
     );
+    // VC7A split: breaker constants extracted to vector-cortex-breakers.ts.
+    // The published vector-cortex.js re-exports from it, so mirror it too.
+    const breakersSrc = join(SRC_CONFIG, "vector-cortex-breakers.js");
+    if (existsSync(breakersSrc)) {
+      copyFileSync(breakersSrc, join(DEST_CONFIG, "vector-cortex-breakers.js"));
+    }
   }
   // VC2B's encoder observers default-emit through src/log.ts (emit-vc2b.ts imports
   // `../../log.js`). The published dist/vector-cortex/ mirror runs the encoder
