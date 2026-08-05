@@ -42,6 +42,8 @@
 | 27-sprint roadmap/gates | [vector-cortex/SPRINT_PLAN.md](vector-cortex/SPRINT_PLAN.md) |
 | durable sprint evidence | [vector-cortex/EVIDENCE_TEMPLATE.md](vector-cortex/EVIDENCE_TEMPLATE.md) |
 | 9 phases / 27 sprint specifications | [vector-cortex/phases/](vector-cortex/phases/) / [vector-cortex/sprints/](vector-cortex/sprints/) |
+| **VC0E sprint: dashboard live data + status badges (ACTIVE)** | [vector-cortex/sprints/VC0E-dashboard-live-data.md](vector-cortex/sprints/VC0E-dashboard-live-data.md) |
+| VC0D wiring audit + remaining-wiring table for PLAN_V2/VC paths | [PLANV2_REMAINING_WIRING.md](PLANV2_REMAINING_WIRING.md) |
 
 **Read order:** README → readiness → contracts/architecture → model/codec/privacy → triad/conformance/evaluation → plan → active phase/sprint.
 
