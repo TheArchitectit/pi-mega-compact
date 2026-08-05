@@ -50,4 +50,9 @@ export interface VectorCortexCrystalsView {
   readonly lastFailure: string | null;
   /** ISO timestamp of the snapshot. */
   readonly updatedAt: string;
+  /**
+   * Present when the underlying subsystem is not fully wired yet, explaining
+   * why emit-only counters are reported instead of live cache-serve integration.
+   */
+  readonly deferredReason?: string;
 }

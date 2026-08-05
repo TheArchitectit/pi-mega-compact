@@ -94,6 +94,7 @@ describe("/api/vector-cortex/cache-economics (VC7B reader-only)", () => {
 				assert.deepEqual(
 					Object.keys(body).sort(),
 					[
+						"deferredReason",
 						"enabled",
 						"lastFailure",
 						"mode",

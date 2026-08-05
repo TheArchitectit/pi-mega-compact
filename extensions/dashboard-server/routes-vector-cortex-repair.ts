@@ -25,7 +25,15 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
 import { VC6C_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
+import { countVcEvents, vcCount } from "./vc-event-counts.js";
 import type { VectorCortexRepairView } from "./api-contracts/vector-cortex.js";
+
+// Actual event names emitted by src/vector-cortex/heal/repair-emit.ts.
+const REPAIR_EVENTS = [
+  "vector_cortex_repair_planned",
+  "vector_cortex_repair_pointer_switched",
+  "vector_cortex_repair_backoff",
+] as const;
 
 /**
  * Reader-only GET /api/vector-cortex/repair (VC6C).
@@ -38,7 +46,7 @@ import type { VectorCortexRepairView } from "./api-contracts/vector-cortex.js";
 export function handleVectorCortexRepair(
   req: IncomingMessage,
   res: ServerResponse,
-  _ctx: RouteContext,
+  ctx: RouteContext,
 ): boolean {
   const url = req.url ?? "";
   const path = url.split("?")[0] ?? url;
@@ -49,6 +57,7 @@ export function handleVectorCortexRepair(
   }
 
   const enabled = VC6C_ENABLED();
+  const counts = countVcEvents(ctx.stateDir, REPAIR_EVENTS);
   // Flag-off routes to mode C: with VC6C off no self-healing controller runs at
   // all, so neither the targeted rebuild (mode A) nor the full deterministic
   // rebuild (mode B) path is available. Mode C is exactly the spec's "derived
@@ -59,10 +68,10 @@ export function handleVectorCortexRepair(
   const body: VectorCortexRepairView = {
     enabled,
     mode,
-    repairAttempts: 0,
-    repairsPlanned: 0,
-    pointersSwitched: 0,
-    backoffs: 0,
+    repairAttempts: vcCount(counts, "vector_cortex_repair_planned"),
+    repairsPlanned: vcCount(counts, "vector_cortex_repair_planned"),
+    pointersSwitched: vcCount(counts, "vector_cortex_repair_pointer_switched"),
+    backoffs: vcCount(counts, "vector_cortex_repair_backoff"),
     lastBackoffMs: null,
     lastFailure: null,
     updatedAt: new Date().toISOString(),

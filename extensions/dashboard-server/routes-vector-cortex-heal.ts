@@ -24,16 +24,27 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
 import { VC6A_ENABLED, VC6B_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
+import { countVcEvents, vcCount } from "./vc-event-counts.js";
 import type {
   VectorCortexClosureProofView,
   VectorCortexRestoreView,
 } from "./api-contracts/vector-cortex.js";
 
+// Actual event names emitted by src/vector-cortex/heal/emit.ts + restore-emit.ts.
+const CLOSURE_EVENTS = [
+  "vector_cortex_closure_optimized",
+  "vector_cortex_closure_proof_rejected",
+] as const;
+const RESTORE_EVENTS = [
+  "vector_cortex_source_restored",
+  "vector_cortex_restore_digest_rejected",
+] as const;
+
 /** Reader-only GET /api/vector-cortex/closure-proof (VC6A). */
 export function handleVectorCortexClosureProof(
   req: IncomingMessage,
   res: ServerResponse,
-  _ctx: RouteContext,
+  ctx: RouteContext,
 ): boolean {
   const url = req.url ?? "";
   const path = url.split("?")[0] ?? url;
@@ -44,13 +55,14 @@ export function handleVectorCortexClosureProof(
   }
 
   const enabled = VC6A_ENABLED();
+  const counts = countVcEvents(ctx.stateDir, CLOSURE_EVENTS);
   // Flag-off routes to mode B (conservative closure, no reduction) per spec.
   const mode: "A" | "B" | "C" = enabled ? "A" : "B";
   const body: VectorCortexClosureProofView = {
     enabled,
     mode,
-    optimizations: 0,
-    proofRejections: 0,
+    optimizations: vcCount(counts, "vector_cortex_closure_optimized"),
+    proofRejections: vcCount(counts, "vector_cortex_closure_proof_rejected"),
     retainedEdgeTotal: 0,
     removedEdgeTotal: 0,
     conservativeTraversalTotal: 0,
@@ -72,7 +84,7 @@ export function handleVectorCortexClosureProof(
 export function handleVectorCortexRestore(
   req: IncomingMessage,
   res: ServerResponse,
-  _ctx: RouteContext,
+  ctx: RouteContext,
 ): boolean {
   const url = req.url ?? "";
   const path = url.split("?")[0] ?? url;
@@ -83,6 +95,7 @@ export function handleVectorCortexRestore(
   }
 
   const enabled = VC6B_ENABLED();
+  const counts = countVcEvents(ctx.stateDir, RESTORE_EVENTS);
   // Flag-off routes to mode C: with VC6B off there is no exact-restoration path
   // at all, so the honest OFF view is the disclose-loss mode (old context is
   // omitted rather than inferred) — mirroring how VC6A's OFF view reports the
@@ -91,10 +104,10 @@ export function handleVectorCortexRestore(
   const body: VectorCortexRestoreView = {
     enabled,
     mode,
-    restoreAttempts: 0,
+    restoreAttempts: vcCount(counts, "vector_cortex_source_restored"),
     restoredCount: 0,
     missingCount: 0,
-    digestRejections: 0,
+    digestRejections: vcCount(counts, "vector_cortex_restore_digest_rejected"),
     lastRejection: null,
     updatedAt: new Date().toISOString(),
   };

@@ -62,6 +62,7 @@ export function handleVectorCortexEconomics(
     unprovenExclusions: 0,
     lastFailure: null,
     updatedAt: new Date().toISOString(),
+    deferredReason: "economics_not_computed_v0_20_23",
   };
   sendJson(res, 200, body);
   return true;

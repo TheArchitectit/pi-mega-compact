@@ -11,12 +11,19 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
 import { VC4C_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
+import { countVcEvents, vcCount } from "./vc-event-counts.js";
 import type { VectorCortexReconstructView } from "./api-contracts/vector-cortex.js";
+
+// Closure attempt/rejection events emitted by src/vector-cortex/heal/emit.ts.
+const RECONSTRUCT_EVENTS = [
+  "vector_cortex_closure_optimized",
+  "vector_cortex_closure_proof_rejected",
+] as const;
 
 export function handleVectorCortexReconstruct(
   req: IncomingMessage,
   res: ServerResponse,
-  _ctx: RouteContext,
+  ctx: RouteContext,
 ): boolean {
   const url = req.url ?? "";
   const path = url.split("?")[0] ?? url;
@@ -26,10 +33,11 @@ export function handleVectorCortexReconstruct(
     return true;
   }
   const enabled = VC4C_ENABLED();
+  const counts = countVcEvents(ctx.stateDir, RECONSTRUCT_EVENTS);
   const body: VectorCortexReconstructView = {
     enabled,
-    closureAttempts: 0,
-    closureRejections: 0,
+    closureAttempts: vcCount(counts, "vector_cortex_closure_optimized"),
+    closureRejections: vcCount(counts, "vector_cortex_closure_proof_rejected"),
     validatedCount: 0,
     invalidatedCount: 0,
     spanTotal: 0,

@@ -28,12 +28,17 @@ import { assignNewMemoriesIncremental } from "../../../src/wiki/index.js";
 import { TrigramEmbedder } from "../../../src/embedder.js";
 import type { EmbeddedChunk } from "../../../src/topics/types.js";
 import type { MegaConfig } from "../../mega-config.js";
+import { reportClosureOptimized } from "../../../src/vector-cortex/heal/emit.js";
+import { reportRepairPlanned } from "../../../src/vector-cortex/heal/repair-emit.js";
+import { VC6A_ENABLED, VC6C_ENABLED } from "../../../src/config/vector-cortex.js";
 
 /** Shape of the compact result consumed by the epoch/maintenance writes. */
 interface CompactResult {
 	checkpointId?: string;
 	compactedFrom: number;
 	summary: string;
+	tokenEstimate?: number;
+	originalTokenEstimate?: number;
 }
 
 /**
@@ -251,6 +256,47 @@ export async function persistEpochAndMaintain(
 				}
 		} catch (e) {
 			runtime.logger.warn("db-mirror-epoch-fail", { error: String(e) });
+		}
+	}
+
+	// VC6 Heal lifecycle emits (post-compact). Wiring stubs — dashboard graph +
+	// event counts move; real gap detection/rebuild is a future sprint.
+	// VC6A: closure-optimization savings from the compact token delta.
+	const savings = Math.max(
+		0,
+		(ran.result.originalTokenEstimate ?? 0) - (ran.result.tokenEstimate ?? 0),
+	);
+	if (VC6A_ENABLED()) {
+		try {
+			reportClosureOptimized(
+				(name, payload) =>
+					runtime.appendEvent(name, payload as Record<string, unknown>),
+				{
+					sessionId: runtime.rt.sessionId,
+					removed: 0,
+					retained: ran.result.compactedFrom,
+					savings,
+				},
+			);
+		} catch {
+			/* non-fatal: VC6A heal emit never breaks compaction */
+		}
+	}
+	// VC6C: repair-planner placeholder (no real gap detection yet).
+	if (VC6C_ENABLED()) {
+		try {
+			reportRepairPlanned(
+				(name, payload) =>
+					runtime.appendEvent(name, payload as Record<string, unknown>),
+				{
+					subsystem: "post_compact",
+					generation: 1,
+					backoffMs: 0,
+					gapSize: 0,
+				},
+			);
+		} catch {
+			/* non-fatal: VC6C heal emit never breaks compaction */
 		}
 	}
 }

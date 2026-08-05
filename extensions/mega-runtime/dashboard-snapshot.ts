@@ -39,6 +39,9 @@ export interface SnapshotBuildContext {
 	readonly pressureBand: string;
 	readonly pressure: number;
 	readonly effectiveThreshold: number;
+	/** VC0A: count of latency samples the eval observer histogram should show
+	 *  (0 when the observer is absent / flag off). */
+	readonly vcObserverSamples?: number;
 	readonly statusKey: string | undefined;
 	readonly lastCtxTokens: number | null;
 	readonly lastCtxPercent: number | null;
@@ -76,6 +79,7 @@ export function buildDashboardSnapshot(ctx: SnapshotBuildContext): DashboardSnap
 		tier: ctx.pressureBand,
 		presetTier: ctx.config.tier,
 		pressure: ctx.pressure,
+		vcObserverSamples: ctx.vcObserverSamples ?? 0,
 		config: {
 			fastGatePct: ctx.config.fastGatePct,
 			thresholdTokens: ctx.effectiveThreshold,

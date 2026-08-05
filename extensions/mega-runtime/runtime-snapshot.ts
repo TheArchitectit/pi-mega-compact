@@ -42,6 +42,7 @@ import type { Dashboard } from "../mega-dashboard.js";
 import type { WidgetData } from "./widget.js";
 import { computeMegaSnapshot } from "./snapshot.js";
 import { buildDashboardSnapshot } from "./dashboard-snapshot.js";
+import type { EvalObserver } from "../../src/vector-cortex/eval/observer.js";
 import {
 	type RuntimeHelpersContext,
 	materialSigImpl,
@@ -65,6 +66,9 @@ export interface RuntimeSnapshotContext extends RuntimeHelpersContext {
 	store: VectorStore;
 	config: MegaConfig;
 	dashboard: Dashboard;
+	// VC0A mode-A eval observer (null when disabled); used to surface how many
+	// latency samples the dashboard observer histogram should expect.
+	vcObserver: EvalObserver | null;
 	currentStateDir: string;
 	widgetData: WidgetData | null;
 	/** v0.8.5: material-change signature; read + written by snapshot(). Public so
@@ -164,6 +168,7 @@ export function snapshotImpl(
 			pressureBand: self.pressureBand,
 			pressure: self.pressure,
 			effectiveThreshold: self.effectiveThreshold,
+			vcObserverSamples: self.vcObserver?.rows().length ?? 0,
 			statusKey: self.statusKey,
 			lastCtxTokens: self.lastCtxTokens,
 			lastCtxPercent: self.lastCtxPercent,

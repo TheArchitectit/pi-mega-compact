@@ -33,4 +33,6 @@ export interface VectorCortexPolicyView {
   readonly lastFailure: string | null;
   /** ISO timestamp of the snapshot. */
   readonly updatedAt: string;
+  /** Present when the shadow controller is not yet instantiated, with a reason. */
+  readonly deferredReason?: string;
 }

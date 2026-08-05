@@ -49,6 +49,7 @@ export function handleVectorCortexPolicy(
     pressureVersion: 1,
     lastFailure: null,
     updatedAt: new Date().toISOString(),
+    deferredReason: "shadow_controller_not_instantiated_v0_20_23",
   };
   sendJson(res, 200, body);
   return true;

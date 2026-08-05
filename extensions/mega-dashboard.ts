@@ -25,6 +25,8 @@ export interface DashboardSnapshot {
   presetTier: string;
   /** Live 0–1 pressure ratio (currentTokens / thresholdTokens). */
   pressure: number;
+  /** VC0A: count of eval-observer latency samples (0 when disabled/absent). */
+  vcObserverSamples: number;
   config: {
     fastGatePct: number;
     thresholdTokens: number;

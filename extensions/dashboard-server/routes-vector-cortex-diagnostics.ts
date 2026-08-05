@@ -30,7 +30,11 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
 import { VC7C_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
+import { countVcEvents, vcCount } from "./vc-event-counts.js";
 import type { VectorCortexDiagnosticsView } from "./api-contracts/vector-cortex-diagnostics.js";
+
+// Actual events emitted by src/vector-cortex/cache/diagnostics-emit.ts.
+const DIAGNOSTICS_EVENTS = ["vector_cortex_cache_serve_blocked"] as const;
 
 /**
  * Reader-only GET /api/vector-cortex/cache-diagnostics (VC7C).
@@ -41,7 +45,7 @@ import type { VectorCortexDiagnosticsView } from "./api-contracts/vector-cortex-
 export function handleVectorCortexDiagnostics(
   req: IncomingMessage,
   res: ServerResponse,
-  _ctx: RouteContext,
+  ctx: RouteContext,
 ): boolean {
   const url = req.url ?? "";
   const path = url.split("?")[0] ?? url;
@@ -52,6 +56,7 @@ export function handleVectorCortexDiagnostics(
   }
 
   const enabled = VC7C_ENABLED();
+  const counts = countVcEvents(ctx.stateDir, DIAGNOSTICS_EVENTS);
   // Flag-off routes to mode C: with VC7C off the diagnostics/breaker reporter is
   // suppressed, so no cache serve is attested here and the surface reports the
   // all-cache bypass outcome. Reporting A (crystal served) or B (fresh render
@@ -67,10 +72,11 @@ export function handleVectorCortexDiagnostics(
     requestMisses: 0,
     generationMisses: 0,
     unknownMisses: 0,
-    serveBlocked: 0,
+    serveBlocked: vcCount(counts, "vector_cortex_cache_serve_blocked"),
     breakerState: "closed",
     lastFailure: null,
     updatedAt: new Date().toISOString(),
+    deferredReason: "cache_classifier_not_wired_v0_20_23",
   };
   sendJson(res, 200, body);
   return true;

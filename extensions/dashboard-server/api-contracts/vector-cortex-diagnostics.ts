@@ -69,6 +69,8 @@ export interface VectorCortexDiagnosticsView {
   readonly serveBlocked: number;
   /** Observable cache-breaker state (a state name, not a payload). */
   readonly breakerState: string;
+  /** Present when the miss-classifier is not yet wired, with a reason. */
+  readonly deferredReason?: string;
   /** Last diagnostics rejection reason (a CACHE or M5 code), or null. */
   readonly lastFailure: string | null;
   /** ISO timestamp of the snapshot. */

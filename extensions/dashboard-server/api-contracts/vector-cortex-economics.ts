@@ -44,4 +44,6 @@ export interface VectorCortexEconomicsView {
   readonly lastFailure: string | null;
   /** ISO timestamp of the snapshot. */
   readonly updatedAt: string;
+  /** Present when the economic aggregate is not yet computed, with a reason. */
+  readonly deferredReason?: string;
 }

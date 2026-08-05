@@ -65,6 +65,8 @@ import { getStateDirImpl } from "./get-state-dir.js";
 import { renderWidgetImpl } from "./render-widget.js";
 import { setStatusImpl } from "./status.js";
 import { engineViewImpl } from "./engine-view.js";
+import { createVcObserver } from "./vc-observer.js";
+import type { EvalObserver } from "../../src/vector-cortex/eval/observer.js";
 
 export class MegaRuntime {
 	config: MegaConfig;
@@ -73,6 +75,8 @@ export class MegaRuntime {
 	store: VectorStore;
 	logger: Logger;
 	dashboard: Dashboard;
+	// VC0A mode-A eval observer (null when disabled or on construction failure).
+	readonly vcObserver: EvalObserver | null;
 	activeRepoRoot: string | null = null;
 	currentStateDir: string;
 
@@ -311,6 +315,7 @@ export class MegaRuntime {
 			path: join(config.stateDir, "mega-compact.log"),
 		});
 		this.dashboard = new Dashboard(config.stateDir);
+		this.vcObserver = createVcObserver(this);
 		this.currentStateDir = config.stateDir;
 		this.ensureGameStateWatcher();
 	}

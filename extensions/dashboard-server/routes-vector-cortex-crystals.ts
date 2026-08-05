@@ -28,7 +28,14 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
 import { VC7A_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
+import { countVcEvents, vcCount } from "./vc-event-counts.js";
 import type { VectorCortexCrystalsView } from "./api-contracts/vector-cortex-cache.js";
+
+// Actual events emitted by src/vector-cortex/cache/crystal-emit.ts.
+const CRYSTAL_EVENTS = [
+  "vector_cortex_crystal_written",
+  "vector_cortex_crystal_collision",
+] as const;
 
 /**
  * Reader-only GET /api/vector-cortex/cache-crystals (VC7A).
@@ -39,7 +46,7 @@ import type { VectorCortexCrystalsView } from "./api-contracts/vector-cortex-cac
 export function handleVectorCortexCrystals(
   req: IncomingMessage,
   res: ServerResponse,
-  _ctx: RouteContext,
+  ctx: RouteContext,
 ): boolean {
   const url = req.url ?? "";
   const path = url.split("?")[0] ?? url;
@@ -50,6 +57,7 @@ export function handleVectorCortexCrystals(
   }
 
   const enabled = VC7A_ENABLED();
+  const counts = countVcEvents(ctx.stateDir, CRYSTAL_EVENTS);
   // Flag-off routes to mode C: with VC7A off nothing is served from the crystal
   // cache, which is exactly the spec's "cache bypass" outcome. Reporting A (hit)
   // or B (fresh render forced by a miss) would imply a cache path that is not
@@ -58,16 +66,17 @@ export function handleVectorCortexCrystals(
   const body: VectorCortexCrystalsView = {
     enabled,
     mode,
-    crystalCount: 0,
+    crystalCount: vcCount(counts, "vector_cortex_crystal_written"),
     totalBytes: 0,
     hits: 0,
     misses: 0,
     hitBytes: 0,
     writes: 0,
     duplicateWrites: 0,
-    collisions: 0,
+    collisions: vcCount(counts, "vector_cortex_crystal_collision"),
     lastFailure: null,
     updatedAt: new Date().toISOString(),
+    deferredReason: "crystal_store_not_instantiated_v0_20_23",
   };
   sendJson(res, 200, body);
   return true;

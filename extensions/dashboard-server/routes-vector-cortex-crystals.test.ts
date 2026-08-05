@@ -108,6 +108,7 @@ describe("/api/vector-cortex/cache-crystals (VC7A reader-only)", () => {
 					[
 						"collisions",
 						"crystalCount",
+						"deferredReason",
 						"duplicateWrites",
 						"enabled",
 						"hitBytes",

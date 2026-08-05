@@ -110,6 +110,7 @@ describe("/api/vector-cortex/cache-diagnostics (VC7C reader-only)", () => {
 					Object.keys(body).sort(),
 					[
 						"breakerState",
+						"deferredReason",
 						"dependencyMisses",
 						"enabled",
 						"generationMisses",

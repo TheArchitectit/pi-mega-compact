@@ -22,7 +22,14 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
 import { VC4A_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
+import { countVcEvents, vcCount } from "./vc-event-counts.js";
 import type { VectorCortexShardsView } from "./api-contracts/vector-cortex.js";
+
+// Actual events emitted by src/vector-cortex/shards/manifest.ts. VC4A has no
+// per-tier (semantic/exact) write event — the manifest build is the single
+// shard-write signal — so semanticCount is wired to it and exactCount stays 0
+// until a per-tier write event exists.
+const SHARD_EVENTS = ["vector_cortex_shard_manifest_built"] as const;
 
 /**
  * Reader-only GET /api/vector-cortex/shards (VC4A).
@@ -30,7 +37,7 @@ import type { VectorCortexShardsView } from "./api-contracts/vector-cortex.js";
 export function handleVectorCortexShards(
   req: IncomingMessage,
   res: ServerResponse,
-  _ctx: RouteContext,
+  ctx: RouteContext,
 ): boolean {
   const url = req.url ?? "";
   const path = url.split("?")[0] ?? url;
@@ -42,11 +49,13 @@ export function handleVectorCortexShards(
   }
 
   const enabled = VC4A_ENABLED();
+  const counts = countVcEvents(ctx.stateDir, SHARD_EVENTS);
   const body: VectorCortexShardsView = {
     enabled,
-    // No durable shard manifest is staged yet in this sprint (pure in-memory
-    // partition), so the aggregates are truthfully zero.
-    semanticCount: 0,
+    // The manifest-build event is the only VC4A shard-write signal; semanticCount
+    // reflects manifests built and exactCount stays 0 (no per-tier write event
+    // distinguishes exact shards in events.log yet).
+    semanticCount: vcCount(counts, "vector_cortex_shard_manifest_built"),
     exactCount: 0,
     byteTotal: 0,
     protectedByteTotal: 0,

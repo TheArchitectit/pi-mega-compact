@@ -95,6 +95,7 @@ describe("/api/vector-cortex/policy (VC8B reader-only)", () => {
 					Object.keys(body).sort(),
 					[
 						"clampedDecisions",
+						"deferredReason",
 						"enabled",
 						"lastFailure",
 						"liveMutations",
