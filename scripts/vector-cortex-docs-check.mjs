@@ -28,7 +28,7 @@ const SPRINTS_DIR = join(DOCS, "sprints");
 const PHASES_DIR = join(DOCS, "phases");
 const MAX_MD_LINES = 500;
 const KNOWN_MIGRATIONS = new Set(["M2", "M3", "M4", "M5", "M6", "M7", "MIG-DOWN-001"]);
-const EXPECTED_SPRINTS = 27;
+const EXPECTED_SPRINTS = 29; // VC0A..VC8C (27) + VC0E + VC0F dashboard follow-ups
 const EXPECTED_PHASES = 9;
 
 const issues = [];

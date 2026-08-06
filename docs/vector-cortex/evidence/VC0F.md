@@ -1,8 +1,8 @@
 # VC0F — Dashboard Restart-on-Upgrade (session_start auto-restart)
 
-Status: implementer-complete
+Status: reviewer-accepted
 Implementation commits/sub-sprint gates: single commit (see git log); full gate run on the working tree (build / test / lint / regression / guardrails / conformance / dashboard-client tsc+build).
-Contract review: pending controller review (this record is implementer-complete, not reviewer-accepted).
+Contract review: reviewed by the controller (Opus) on 2026-08-05 — every touched file read (`mega-dashboard-bounce.ts` DI seam + once-per-process gate; `mega-dashboard-cmds.ts` wiring of `/mega-dashboard` + silent `session_start` hook + `markerVersion()` + B1 runner stamp; `server.ts` B2 `{port,pid,version}` marker write; spec `Production ownership:` field addition; 10-test coverage of C1/C2/C3/B2), mutation scan clean, per-gate re-runs green (build, lint, guardrails, conformance 771, docs-check after reconciliation, evidence-check 0 mismatches). Deviations accepted: Production ownership field added to the spec (mechanical scope-check requirement), DI signature required for C1–C3 stubbing, delegate-shell split into `mega-dashboard-bounce.ts` to stay under the extensions soft limit, no new MEGACOMPACT flag (flag-off byte-identical by construction — decision ratified). Pre-existing docs-check drift reconciled in the review fix commit (EXPECTED_SPRINTS 27→29; VC0E spec gained its flag/ownership lines + Status flip).
 Changed production/tests/docs: `extensions/mega-dashboard-cmds.ts`, `extensions/mega-dashboard-bounce.ts`, `extensions/mega-dashboard-cmds.test.ts`, `extensions/dashboard-server/server.ts`, `docs/vector-cortex/sprints/VC0F-dashboard-restart-on-upgrade.md`, `docs/vector-cortex/evidence/VC0F.md`.
 Fixtures and corpus digests: none changed — VC0F is a lifecycle/process sprint; conformance corpus untouched (771 fixtures canonical).
 Migration: pure sprint — no migration.
@@ -64,4 +64,6 @@ Reversible by removing the `session_start` hook and the bounce call from `/mega-
 
 ## Reviewer attestation
 
-Name/date/status: pending — controller review required to set `reviewer-accepted` and update SPRINT_PLAN status.
+Name/date/status: Claude (Opus controller), 2026-08-05, **reviewer-accepted**.
+
+Acceptance checklist deltas: (1) the delegate-shell split into `mega-dashboard-bounce.ts` is the mandated pattern and is declared in the spec's Production ownership field; (2) the `session_start` hook registered inside `registerDashboardCommands` is the correct in-scope seam (hooks register where `pi` is available); (3) `MEGACOMPACT_VC0F=0` parity is byte-identical by construction (no new flag), matching the VC0E convention; (4) the residual risk about the process-wide once-gate across repo re-binds is accepted per spec A2 (probe cost bounded to once per process).
