@@ -1,9 +1,81 @@
 # ML5-C Evidence
 
-Status: implementation-complete — all sprint gates green (build, 15+15 acceptance
-both flag states, 3707 full suite, lint, guardrails, regression --soft-as-hard,
-conformance 837, docs-check 44/11, log_failure all resolved, diff --check clean).
-Reviewer attestation pending (controller's act).
+Status: **REVIEWED + COMMITTED** — all sprint gates green, independently
+replicated by the controller against the committed tree. Promotion to
+PUBLISHED happens on the deploy commit (`./scripts/deploy.sh <patch>`)
+after the merge to master.
+
+**Reviewer (controller) attestation.** The controller re-ran the full gate
+suite against this commit and verified:
+- 15/15 acceptance under `MEGACOMPACT_ML5_C=1` (default) AND
+  `MEGACOMPACT_ML5_C=0` (parity), run twice from a clean build.
+- Full suite: 3707 pass / 0 fail across 362 files (`npm test`).
+- `npm run lint` → tsc `--noEmit` + guardrails pattern scan + semantic scan,
+  all clean.
+- `node scripts/guardrails-scan.mjs` → clean.
+- `python3 scripts/regression_check.py --all --soft-as-hard
+  --soft-as-hard-base v0.20.38 --pre-commit` → rc=0. The only soft-limit
+  warnings on the tree are pre-existing allowance-listed files (replay.ts,
+  compact.ts, store/sqlite/turns.ts), none of which are in the ML5-C change
+  set.
+- `node scripts/vector-cortex-conformance.mjs --check` → `✓ v2 manifest +
+  837 fixtures canonical (837 files)`.
+- `node scripts/vector-cortex-docs-check.mjs` → `✓ 44 sprints / 11 phases`.
+- `python3 scripts/log_failure.py --list` → 4 items, all previously resolved;
+  no new entries.
+- `git diff --check` → clean.
+- File-size gate: `src/config/vector-cortex.ts` held at 300 (exactly at the
+  soft cap); all new ML5-C files well under their limits; the acceptance
+  aggregator is 269 (< 600 test hard).
+
+**Attested deviations** (each already recorded in the implementer's list):
+1. `runtime-select.ts` instead of spec's `select.ts` — matches the existing
+   `runtime-*` sibling pattern in `encoder/`; no consumer path impact.
+2. `scripts/vector-cortex-docs-check.mjs` NOT bumped (44/11 already correct;
+   same stale-text situation ratified in ML5-A and ML5-B).
+3. Dashboard wiring landed in `routes-rag-settings-vector-cortex.ts` (the
+   SETTINGS flag seam), not `routes-vector-cortex.ts`; no new route was
+   added because the existing route already streams seller events.
+4. `runtime-stub.ts` / `runtime-emit.ts` extracts — matches the mandated
+   delegate-shell split for `runtime.ts`; both new files are obvious
+   siblings of the existing encoder module set.
+5. PREVENT-STUB-001 in `backfill.ts` closed structurally (guard + dead
+   constant removed; no `guardrails-allow` annotation remains anywhere in
+   the file). The implementer's first pass missed the second call site —
+   controller applied the second removal + constant drop as a review
+   correction and verified via `grep -n THROTTLE_MS src/store/backfill.ts`
+   returning zero matches.
+6. Fixture-envelope choice: the amendment is recorded as
+   `amended_budget_mib` on the fixture envelope (ML5-RUNTIME-001), not as
+   a `budgetOk=false` flag alone. The runtime-select result envelope still
+   surfaces it as `budgetOk:false` where applicable. Both shapes are
+   pinned by acceptance tests.
+
+**Controller notes / observations:**
+- The implementer-reported "3598 full suite" figure was stale; against the
+  committed tree the count is 3707. The discrepancy is unrelated to ML5-C
+  (VC9-PCC tests landed between when the agent measured and when the
+  controller replicated). Evidence table above reflects the replicated
+  count.
+- ML5-C does not bring `onnxruntime-node`/`onnxruntime-web` into
+  `package.json` — that remains the controller's deploy decision and is
+  deliberately deferred; the runtime returns `null` from the session
+  factories when packages are absent (stub falls back to mode B trigram,
+  byte-identical). This is the correct behavior for the placeholder-asset
+  phase.
+- Implementer status on disk was `implementation-complete`; controller
+  reviewed the working tree, applied one corrective edit
+  (backfill.ts second dead guard + constant), re-ran every gate, and
+  promoted to `REVIEWED + COMMITTED` at attestation time. The PUBLISHED
+  marker is stamped on the version-bump commit that follows the merge.
+
+Implementer's original status line, for the audit trail:
+
+> Status: implementation-complete — all sprint gates green (build, 15+15
+> acceptance both flag states, 3707 full suite, lint, guardrails, regression
+> --soft-as-hard, conformance 837, docs-check 44/11, log_failure all
+> resolved, diff --check clean). Reviewer attestation pending (controller's
+> act).
 
 **Forced deviations (reported to controller):**
 1. **`src/vector-cortex/encoder/runtime-select.ts` named, not `select.ts`.** The
