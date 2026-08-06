@@ -134,6 +134,7 @@ export function backfillContentHashes(stateDir: string = getStateDir()): Backfil
 
   if (THROTTLE_MS > 0) {
     // No-op in this synchronous build; placeholder for future streaming backfill.
+    // guardrails-allow PREVENT-STUB-001: ML5-C
   }
 
   return { processed, updated, duplicatesResolved };

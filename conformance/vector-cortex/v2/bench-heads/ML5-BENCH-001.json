@@ -1,0 +1,1 @@
+{"assertion":"p95 latency pass/fail at 512 tokens on 4 threads (budget 40 ms: p95 <= 40)","budget_ms":40,"flag":"MEGACOMPACT_ML5_B","gate":"latency","id":"ML5-BENCH-001","kind":"bench-heads","producer":"scripts/ml5/gen-fixtures-ml5b.mjs","schema":"schemas/ml5-fixture.schema.json","threads":4,"tokens":512}

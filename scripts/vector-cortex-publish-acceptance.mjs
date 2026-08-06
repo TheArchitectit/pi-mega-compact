@@ -312,6 +312,24 @@ function main() {
       copyFileSync(s, join(REPO_ROOT, "dist", loose));
     }
   }
+  // ML5-B added logBenchEvent (the four `vector_cortex_encoder_bench_*` events)
+  // to monitoring.ts. The ml5b-acceptance aggregator imports `../monitoring.js`
+  // from the published dist/vector-cortex/ offset, so monitoring.js must be
+  // mirrored to dist/monitoring.js like log.js/config.js above. Its sole runtime
+  // deps are ./config.js (already mirrored) and the re-exported
+  // ./vectorStore/dedup-audit.js (which imports ../monitoring.js — satisfied by
+  // the same mirror), so a 2-file mirror makes the published offset self-contained.
+  for (const [rel, destRel] of [
+    ["monitoring.js", "monitoring.js"],
+    ["vectorStore/dedup-audit.js", "vectorStore/dedup-audit.js"],
+  ]) {
+    const s = join(REPO_ROOT, "dist", "src", rel);
+    const d = join(REPO_ROOT, "dist", destRel);
+    if (existsSync(s)) {
+      mkdirSync(dirname(d), { recursive: true });
+      copyFileSync(s, d);
+    }
+  }
   console.log(
     `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder + ${nCortex} cortex + ${nTopology} topology + ${nShards} shards + ${nResidual} residual + ${nReconstruct} reconstruct + ${nPromptDag} prompt-dag + ${nPlanner} planner + ${nRender} render + ${nProvider} provider + ${nRollout} rollout + ${nHeal} heal + ${nCache} cache + ${nOutcomes} outcomes + ${nController} controller + ${nPlatform} platform + ${nLive} live-seam + ${nSupport} support files`,
   );
