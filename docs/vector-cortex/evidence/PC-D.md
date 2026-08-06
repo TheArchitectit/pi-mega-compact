@@ -1,6 +1,6 @@
 # PC-D Evidence — Benchmark validation + conformance roll-up
 
-Status: implementer-complete
+Status: reviewer-accepted
 Implementation commit: `feat(pcd): benchmark validation + conformance roll-up` (see git log). Full gate run on the working tree (build / acceptance / full test / lint / regression --soft-as-hard --pre-commit / guardrails / failure-log / conformance / docs-check / diff-check).
 
 This is the PC phase **roll-up**: it introduces no new flag and no runtime code path, delivers the controlled benchmark runner + conformance fixture set, and records the measured cumulative effect of the PC-A (message separation) + PC-B (cache striping) flags across the three flag states.
@@ -75,4 +75,8 @@ All changed files under their soft/hard limits (scripts unlimited, src tests 600
 - [PC-A](../evidence/PC-A.md) — reviewer-accepted
 - [PC-B](../evidence/PC-B.md) — reviewer-accepted
 - [PC-C](../evidence/PC-C.md) — reviewer-accepted
-- [PC-D](../evidence/PC-D.md) — this record (implementer-complete; controller performs attestation)
+- [PC-D](../evidence/PC-D.md) — this record (reviewer-accepted)
+
+## Reviewer attestation
+
+Name/date/status: Claude (Opus controller), 2026-08-05, **reviewer-accepted**. Contract review: every touched file read and verified — `scripts/pc-prompt-cache/bench-hit-rate.mjs` (241, new — controlled benchmark runner reading local SQLite `perf_samples`, flag-state grouping via deploy-date cutoffs, providerCachePct = cacheRead/(cacheRead+input+cacheWrite)*100 matching the perf-samples aggregator, `--synthetic` mode deterministic fixed-sequence replay, no LLM no network PREVENT-PI-004, aggregate ratios only EVAL-REDACT-002); `scripts/pc-prompt-cache/gen-fixtures-pcd.mjs` (164, new — canonical generator, pca/pcb/pcc sibling pattern, id-dedupe, seam-header convention, strictly additive manifest update); `src/vector-cortex/pcd-acceptance.test.ts` (197, new — fixture-driven flag-agnostic aggregator, 7/7 both flag states, pins fixture integrity + semantic matrix + owner-span tiling without gap/overlap); 4 conformance fixtures PC-016..019 canonical, manifest 815 canonical / 35 owners / reserved range PC-001..019 fully registered. Mutation scan clean (no disabled guards, no payload-surface mutation). Per-gate re-runs green: build PASS; acceptance 7/7; full suite 3429 passed 0 failed across 349 files; lint clean; regression `--all --soft-as-hard --soft-as-hard-base v0.20.33 --pre-commit` 0 blocking; guardrails + semantic scans clean; conformance 815 canonical; docs-check 37 sprints / 10 phases; scope-check 9 files all in ownership; evidence-check 3 claims validated, 1 expected reviewer-attestation warning (resolved by this attestation); `git diff --check` exit 0. Synthetic replay independently verified: pre-pc 0.1818, pc-a 0.7273, pc-b 0.8182 — direction separated>unseparated=true, striped>=separated=true. Spec arithmetic noted as stale (795→811 pre-existing, EXPECTED_SPRINTS already 37) — documented correctly in evidence. **PC phase roll-up**: all four sprints (PC-A message-separation default-ON, PC-B cache-striping default-ON, PC-C dashboard prefix-stability visibility, PC-D benchmark + roll-up) are complete with accepted evidence; both PLAN_V2 prompt-cache flags follow the standard positive-sprint-flag convention (default ON, =0 byte-identical, single config-driven gate at call site, both builder functions pure); 15 + 4 = 19 conformance fixtures across the reserved range PC-001..019. **HG-1/HG-3/HG-4/HG-5 restated OPEN, never closed in-workstream.**
