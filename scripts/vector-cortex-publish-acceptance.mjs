@@ -47,7 +47,9 @@ const DEST_CONFIG = join(REPO_ROOT, "dist", "config");
 const SRC_DEDUP = join(REPO_ROOT, "dist", "src", "dedup");
 const DEST_DEDUP = join(REPO_ROOT, "dist", "dedup");
 
-const ACCEPTANCE_RE = /^[a-z0-9]+-acceptance\.test\.js$/;
+// Dash-segment id (e.g. `vc6c-impl`) is allowed so VC6C-IMPL's acceptance
+// aggregator mirrors like its siblings (vc6c-acceptance, pca-acceptance, ...).
+const ACCEPTANCE_RE = /^[a-z0-9-]+-acceptance\.test\.js$/;
 
 function copyTree(src, dest, filter) {
   mkdirSync(dest, { recursive: true });

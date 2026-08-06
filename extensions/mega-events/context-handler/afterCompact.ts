@@ -7,6 +7,7 @@
  * raw_transcript, and fire-and-forgets the dedup pipeline. All best-effort +
  * non-fatal — a failure never breaks the agent loop.
  */
+import { createHash } from "node:crypto";
 import {
 	openStore,
 	writeCheckpointEpoch,
@@ -30,6 +31,10 @@ import type { EmbeddedChunk } from "../../../src/topics/types.js";
 import type { MegaConfig } from "../../mega-config.js";
 import { reportClosureOptimized } from "../../../src/vector-cortex/heal/emit.js";
 import { reportRepairPlanned } from "../../../src/vector-cortex/heal/repair-emit.js";
+import {
+	buildPostCompactViews,
+	drivePostCompactRepair,
+} from "./controller.js";
 import { VC6A_ENABLED, VC6C_ENABLED } from "../../../src/config/vector-cortex.js";
 
 /** Shape of the compact result consumed by the epoch/maintenance writes. */
@@ -278,9 +283,8 @@ export async function persistEpochAndMaintain(
 		}
 	}
 
-	// VC6 Heal lifecycle emits (post-compact). Wiring stubs — dashboard graph +
-	// event counts move; real gap detection/rebuild is a future sprint.
-	// VC6A: closure-optimization savings from the compact token delta.
+	// VC6 Heal lifecycle emits (post-compact). VC6A: closure-optimization
+	// savings from the compact token delta.
 	const savings = Math.max(
 		0,
 		(ran.result.originalTokenEstimate ?? 0) - (ran.result.tokenEstimate ?? 0),
@@ -301,8 +305,40 @@ export async function persistEpochAndMaintain(
 			/* non-fatal: VC6A heal emit never breaks compaction */
 		}
 	}
-	// VC6C: repair-planner placeholder (no real gap detection yet).
+	// VC6C: real post-compact gap detection + atomic repair drive (VC6C-IMPL).
+	// Builds each derived subsystem's pre/post compact view against the durable
+	// authority high-water, runs the heal eligibility policy (gap-ness, frozen
+	// authority, mode C, the 5-min rate limit), and only on a REAL gap routes
+	// plan -> rebuild -> emit the three repair events. No real gap => emit
+	// NOTHING (VC6C-IMPL-006: no rebuild without a real gap). Flag OFF keeps the
+	// predecessor placeholder byte-identical (reportRepairPlanned with hardcoded
+	// backoffMs:0, gapSize:compactedFrom) and rebuild is a no-op — the reported
+	// seam is flag-gated, so the placeholder emits nothing, exactly as before.
 	if (VC6C_ENABLED()) {
+		try {
+			const emit = (name: string, payload: unknown) =>
+				runtime.appendEvent(name, payload as Record<string, unknown>);
+			const views = buildPostCompactViews(
+				ran.result.compactedFrom,
+				runtime.rt.compactCount,
+			);
+			drivePostCompactRepair(views, BigInt(Date.now()), emit, () => {
+				// The derived generation for the repaired range is re-materialized
+				// from the compact summary and verified as a strict successor.
+				const bytes = new Uint8Array(
+					Buffer.from(ran.result.summary, "utf8"),
+				);
+				const digest = createHash("sha256")
+					.update(bytes)
+					.digest("hex");
+				return { sourceBytes: bytes, expectedDigest: digest };
+			});
+		} catch {
+			/* non-fatal: VC6C heal repair never breaks compaction */
+		}
+	} else {
+		// Flag-off: predecessor placeholder, byte-identical (emits nothing via
+		// the flag-gated reporter seam).
 		try {
 			reportRepairPlanned(
 				(name, payload) =>

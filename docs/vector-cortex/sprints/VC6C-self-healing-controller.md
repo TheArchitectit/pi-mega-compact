@@ -1,6 +1,6 @@
 # VC6C — Self-healing derived controller
 
-**Status:** next | **Depends on:** VC6B | **Phase:** VC6
+**Status:** implementation-complete (via VC6C-IMPL) | **Depends on:** VC6B | **Phase:** VC6
 **Flag:** `MEGACOMPACT_VC6C`, defined in `src/config/vector-cortex.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_VC6C=0` disables and must be byte-identical to the predecessor. Add to dashboard `SETTINGS`, or record the immutable/security exclusion below.
 
 ## Goal and inputs/outputs

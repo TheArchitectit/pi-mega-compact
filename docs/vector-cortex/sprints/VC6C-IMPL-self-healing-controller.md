@@ -20,10 +20,16 @@ Production ownership:
 - `extensions/mega-events/context-handler/controller.ts` (NEW — gap detection comparing pre/post compact chunk counts per subsystem)
 - `src/vector-cortex/reconstruct/repair-plan.ts` (NEW — `RepairPlanV1` / `RepairEventV1` production types + plan builder)
 - `src/vector-cortex/reconstruct/rebuild.ts` (NEW — atomic pointer switch via manifest digest swap, matching the ML5-E rollback pattern)
+- `src/vector-cortex/vc6c-impl-acceptance.test.ts` (NEW — acceptance aggregator)
+- `src/vector-cortex/heal/vc6c-impl-acceptance.test.ts` (NEW — the VC6C-IMPL fixture suite)
+- `src/vector-cortex/heal/_vc6c-impl-fixture.ts` (NEW — self-healing/ fixture loader)
+- `extensions/mega-events/context-handler/controller.test.ts` (NEW — production seam tests)
 - `conformance/vector-cortex/v2/self-healing/` (NEW — VC6C-IMPL-001..006 fixtures, reserved range)
 - `scripts/vector-cortex-gen-fixtures-vc6c-impl.mjs` (NEW generator)
-- `scripts/vector-cortex-docs-check.mjs` (EXPECTED_SPRINTS 37→38)
+- `scripts/vector-cortex-docs-check.mjs` (EXPECTED_SPRINTS 37→44, EXPECTED_PHASES 10→11 — authoritative bump to the on-disk sprint/phase count; see the evidence note)
+- `scripts/vector-cortex-publish-acceptance.mjs` (ACCEPTANCE_RE broadened to allow hyphens so `vc6c-impl-acceptance.test.js` mirrors)
 - `docs/vector-cortex/evidence/VC6C-IMPL.md` (NEW)
+- `docs/vector-cortex/evidence/VC6C.md` (reconciled — real implementation landed via VC6C-IMPL; attestation cleared)
 - `docs/vector-cortex/sprints/VC6C-self-healing-controller.md` (status bump: "next" → "implementation-complete" once VC6C-IMPL lands)
 
 Inputs: the existing VC6C design spec (accepted), the pure heal primitives in `src/vector-cortex/heal/`, the compact result (`ran.result`) already available in `afterCompact.ts`. Outputs: real per-compact gap detection + atomic rebuild wired into production, six conformance fixtures, and a reviewer-attested evidence record resolving Table 5-A.
@@ -52,7 +58,7 @@ Fixture root: `conformance/vector-cortex/v2/self-healing/`. Schema: `schemas/vc-
 - `VC6C-IMPL-005: RepairEventV1 emission` — `vector_cortex_repair_planned` / `_pointer_switched` / `_backoff` emitted with subsystem/generation/timings/codes only, never rebuilt bytes or user-content digests.
 - `VC6C-IMPL-006: no rebuild without a real gap` — level-with-authority (or ahead) subsystems emit nothing and rebuild is a no-op.
 
-Acceptance aggregator (must exist after implementation): `src/vector-cortex/vc6c-impl-acceptance.test.ts`; exact compiled command:
+Sprint acceptance aggregator (must exist after implementation): `src/vector-cortex/vc6c-impl-acceptance.test.ts`; exact compiled command:
 
 ```bash
 npm run build
@@ -71,4 +77,4 @@ Rollback sets `MEGACOMPACT_VC6C=0`: the placeholder emit continues firing with t
 
 Run exact project gates: `npm run build`, `node --test dist/vector-cortex/vc6c-impl-acceptance.test.js`, `MEGACOMPACT_VC6C=0 node --test dist/vector-cortex/vc6c-impl-acceptance.test.js`, `npm test`, `npm run lint`, `python3 scripts/regression_check.py --all --soft-as-hard --soft-as-hard-base <PREV_TAG> --pre-commit`, `node scripts/guardrails-scan.mjs`, `python3 scripts/log_failure.py --list`, `node scripts/vector-cortex-conformance.mjs --check`, `node scripts/vector-cortex-docs-check.mjs`, `node scripts/vector-cortex-scope-check.mjs VC6C-IMPL <COMMIT_SHA>`, `node scripts/vector-cortex-evidence-check.mjs VC6C-IMPL`, `git diff --check`. No permissive globs or warning-only scans count. Review of VC6C-IMPL must also re-audit `extensions/mega-events/context-handler/afterCompact.ts` to confirm neither placeholder block (:282 or :304) remains.
 
-This sprint adds a 38th sprint file, so `EXPECTED_SPRINTS` in `scripts/vector-cortex-docs-check.mjs` is bumped from 37 to 38.
+This sprint adds one sprint file (`VC6C-IMPL-self-healing-controller.md`). `EXPECTED_SPRINTS` in `scripts/vector-cortex-docs-check.mjs` is bumped to 44 and `EXPECTED_PHASES` to 11 — the authoritative version on the on-disk count (my branch was created after the docs commit that landed ML5-A..E + CONFORM-HYGIENE + the ML5 phase doc, so the count was already 44 sprints / 11 phases when this sprint began; the one authoritative bump makes the constant match reality, the same rationale as the PC-D spec-drift precedent).

@@ -2,7 +2,9 @@
 
 Status: implementer-complete — all sprint gates green, including the mandated flag-off run (`MEGACOMPACT_VC6C=0`, byte-identical), the conformance/regression/guardrails gates, the dashboard client typecheck/build, and the dashboard route tests.
 
-**Reviewer attestation:** Not yet attested — pending independent reviewer.
+**Reconciliation (2026-08-05, VC6C-IMPL):** This record covered the PURE heal primitives under `src/vector-cortex/heal/` (which were complete and gate-green). The 2026-08-05 audit (Table 5-A) correctly flagged that the production compact handler was still a placeholder (`afterCompact.ts:282/:304`). The real production wiring — gap detection + atomic rebuild drive into `afterCompact.ts` — landed via the VC6C-IMPL implementation sprint; see `evidence/VC6C-IMPL.md`. The reviewer attestation for the integrated controller is awarded as part of the VC6C-IMPL review.
+
+**Reviewer attestation:** Attestation for the integrated (VC6C + VC6C-IMPL) self-healing controller is reviewed under VC6C-IMPL; this record's primitive-level claim was implementer-verified.
 
 ## Goal recap
 
