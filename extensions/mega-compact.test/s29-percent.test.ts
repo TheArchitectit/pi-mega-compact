@@ -13,6 +13,11 @@ function s29TieredCtx(
 	delete process.env.MEGACOMPACT_LEGACY_DURABLE_TRIM;
 	delete process.env.MEGACOMPACT_DURABLE_TRIM_FLOOR;
 	process.env.MEGACOMPACT_ANCHOR_USER_MESSAGES = "1";
+	// PC-A: messageSeparation now defaults ON, which makes the no-trim context
+	// event return a pass-through {messages} tail view instead of undefined.
+	// These tests isolate the compaction PERCENT gate, so pin the flag OFF to
+	// keep their no-trim assertions byte-identical to the pre-PC-A OFF state.
+	process.env.MEGACOMPACT_MESSAGE_SEPARATION = "0";
 	return h.ctx({
 		isIdle: () => true,
 		hasPendingMessages: () => false,

@@ -126,7 +126,7 @@ export const SETTINGS: ReadonlyArray<SettingGroup> = [
 				"MEGACOMPACT_MESSAGE_SEPARATION",
 				"Message Separation (P2)",
 				"PLAN_V2: split conversation thread from tool results to grow stable cache prefix",
-				false,
+				true,
 			),
 			boolDirect(
 				"MEGACOMPACT_CACHE_STRIPING",

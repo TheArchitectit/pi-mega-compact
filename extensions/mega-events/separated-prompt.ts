@@ -12,8 +12,11 @@
  * 3 (thread: user/assistant turns) -> 4 (tool results at tail).
  *
  * Feature-gated by MEGACOMPACT_CACHE_STRIPING (default OFF).
- * MEGACOMPACT_MESSAGE_SEPARATION must also be ON for any layering to occur.
  * Flag-OFF = byte-identical to pre-sprint — returns messages unchanged.
+ *
+ * PC-A: buildSeparatedPrompt is PURE — the MEGACOMPACT_MESSAGE_SEPARATION gate
+ * lives at the single call site (tailResult.ts, config.messageSeparation),
+ * not inside this function.
  */
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
@@ -61,18 +64,14 @@ const TOPIC_SHIFT_THRESHOLD = 0.7;
  * Layer order: 0 (system) -> 1 (summary) -> 3 (thread: user/assistant turns) ->
  * 4 (tool results at tail).
  *
- * Feature gate: MEGACOMPACT_MESSAGE_SEPARATION env var.  When OFF (default),
- * returns `messages` unchanged (byte-identical to pre-sprint).
+ * PURE function: the MEGACOMPACT_MESSAGE_SEPARATION gate moved to the single
+ * call site (tailResult.ts, config.messageSeparation) — this never reads env.
+ * When there is nothing to reorder, returns `messages` unchanged (byte-identical).
  */
 export function buildSeparatedPrompt(
   messages: AgentMessage[],
   _opts?: SeparatedPromptOptions,
 ): AgentMessage[] {
-  const flag = process.env.MEGACOMPACT_MESSAGE_SEPARATION;
-  if (flag === "0" || flag === "false" || flag === undefined || flag === "") {
-    return messages;
-  }
-
   // pi's AgentMessage union has no "system" role — the system prompt lives in
   // AgentState.systemPrompt, separate from this array. The cache-relevant,
   // low-risk transformation is moving volatile tool results/executions to the
