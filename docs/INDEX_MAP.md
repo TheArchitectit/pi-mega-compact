@@ -41,7 +41,7 @@
 | annotations/power/rollout | [vector-cortex/EVALUATION.md](vector-cortex/EVALUATION.md) |
 | 27-sprint roadmap/gates | [vector-cortex/SPRINT_PLAN.md](vector-cortex/SPRINT_PLAN.md) |
 | durable sprint evidence | [vector-cortex/EVIDENCE_TEMPLATE.md](vector-cortex/EVIDENCE_TEMPLATE.md) |
-| 10 phases / 37 sprint specifications | [vector-cortex/phases/](vector-cortex/phases/) / [vector-cortex/sprints/](vector-cortex/sprints/) |
+| 11 phases / 44 sprint specifications (spec-declared; constants bumped by implementer per convention) | [vector-cortex/phases/](vector-cortex/phases/) / [vector-cortex/sprints/](vector-cortex/sprints/) |
 | VC0E sprint: dashboard live data + status badges (COMPLETED v0.20.25) | [vector-cortex/sprints/VC0E-dashboard-live-data.md](vector-cortex/sprints/VC0E-dashboard-live-data.md) |
 | **VC0F sprint: dashboard restart-on-upgrade (ACTIVE)** | [vector-cortex/sprints/VC0F-dashboard-restart-on-upgrade.md](vector-cortex/sprints/VC0F-dashboard-restart-on-upgrade.md) |
 | VC0D wiring audit + remaining-wiring table for PLAN_V2/VC paths | [PLANV2_REMAINING_WIRING.md](PLANV2_REMAINING_WIRING.md) |
@@ -50,8 +50,25 @@
 | PC-B sprint: cacheStriping flag unification + default ON | [vector-cortex/sprints/PC-B-cache-striping-default-on.md](vector-cortex/sprints/PC-B-cache-striping-default-on.md) |
 | PC-C sprint: dashboard prompt-cache per-turn visibility | [vector-cortex/sprints/PC-C-dashboard-cache-visibility.md](vector-cortex/sprints/PC-C-dashboard-cache-visibility.md) |
 | PC-D sprint: benchmark validation + conformance roll-up | [vector-cortex/sprints/PC-D-benchmark-validation-rollup.md](vector-cortex/sprints/PC-D-benchmark-validation-rollup.md) |
+| **ML5 phase: self-improving cortex — close the Mode-A gate (HG-1/3/4/5)** | [vector-cortex/phases/ML5-self-improving-cortex.md](vector-cortex/phases/ML5-self-improving-cortex.md) |
+| ML5-A sprint: five-head training + calibration corpus build (HG-1 partial, closes stubs 1/2/3/7) | [vector-cortex/sprints/ML5-A-encoder-training-five-head.md](vector-cortex/sprints/ML5-A-encoder-training-five-head.md) |
+| ML5-B sprint: production bench harness (HG-5 RSS measurement, HG-3 perf input, closes stub 5) | [vector-cortex/sprints/ML5-B-production-bench-harness.md](vector-cortex/sprints/ML5-B-production-bench-harness.md) |
+| ML5-C sprint: runtime decision + packaging WASM vs native (HG-3 budget, HG-4 darwin-x64) | [vector-cortex/sprints/ML5-C-runtime-decision-packaging.md](vector-cortex/sprints/ML5-C-runtime-decision-packaging.md) |
+| ML5-D sprint: dashboard "Improve Cortex" surface + promote workflow (closes stub 8) | [vector-cortex/sprints/ML5-D-dashboard-improve-cortex.md](vector-cortex/sprints/ML5-D-dashboard-improve-cortex.md) |
+| ML5-E sprint: nightly retraining cron + feedback loop (manifest append-only, digest-swap rollback) | [vector-cortex/sprints/ML5-E-nightly-retraining-cron.md](vector-cortex/sprints/ML5-E-nightly-retraining-cron.md) |
+| VC6C-IMPL sprint: self-healing controller implementation (closes stub 4, resolves status) | [vector-cortex/sprints/VC6C-IMPL-self-healing-controller.md](vector-cortex/sprints/VC6C-IMPL-self-healing-controller.md) |
+| CONFORM-HYGIENE sprint: conformance + docs hygiene (closes Table 4 gaps, Table 2 sentinels, HG-6/7 registration) | [vector-cortex/sprints/CONFORM-HYGIENE-conformance-and-docs-hygiene.md](vector-cortex/sprints/CONFORM-HYGIENE-conformance-and-docs-hygiene.md) |
 
 **Read order:** README → readiness → contracts/architecture → model/codec/privacy → triad/conformance/evaluation → plan → active phase/sprint.
+
+---
+
+## AUDITS & SELF-IMPROVEMENT
+
+| Keyword | Document |
+| --- | --- |
+| **Stub / hard-gate / mock-data audit (2026-08-05, 5-agent sweep, file:line-verified)** | [audits/2026-08-05-stub-gate-mock-audit.md](audits/2026-08-05-stub-gate-mock-audit.md) |
+| **Self-improving development framework (8 proposed PREVENT-STUB/MOCK/HYGIENE rules)** | [development-framework/SELF_IMPROVING_DEVELOPMENT.md](development-framework/SELF_IMPROVING_DEVELOPMENT.md) |
 
 ---
 
