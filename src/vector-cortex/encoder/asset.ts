@@ -2,7 +2,8 @@
  * vector-cortex/encoder/asset.ts — VC2A asset verification (task 2).
  *
  * Verifies a ModelManifestV1 before any allocation: SHA-256 the ONNX and
- * tokenizer against the manifest digests, require opset 17, batch exactly 1 and
+ * tokenizer against the manifest digests, require opset 21 (ENC-0a re-baseline),
+ * batch exactly 1 and
  * maximum 512 tokens, and confirm the current platform is in the supported
  * matrix. On ANY of these the caller demotes to mode B (asset-free trigram) —
  * never a remote fetch (PREVENT-PI-004). A truncated/unreadable asset during
@@ -88,7 +89,7 @@ function isManifest(m: unknown): m is ModelManifestV1 {
  *
  *   - manifest parse/shape failure      -> ENC_MANIFEST_INVALID -> mode B
  *   - unsupported platform              -> ENC_PLATFORM_UNSUPPORTED -> mode B
- *   - opset != 17                       -> ENC_OPSET_INVALID -> mode B
+ *   - opset != 21                       -> ENC_OPSET_INVALID -> mode B
  *   - batch != 1                        -> ENC_BATCH_INVALID -> mode B
  *   - maxTokens > 512                   -> ENC_TOKENS_EXCEEDED -> mode B
  *   - on-disk digest != manifest digest -> ENC_DIGEST_MISMATCH (one-byte mutation)

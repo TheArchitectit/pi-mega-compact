@@ -24,7 +24,7 @@ This is the single substantive track in the deferred/stub audit program: every o
 
 | Sprint | Title | Hard gate closed | Depends |
 |--------|-------|------------------|---------|
-| ENC-0a | Backend decision: transformers.js vs onnxruntime-node | HG-3 (budget decision + opset re-baseline 17→21) | vc2-model-prep |
+| ENC-0a | Backend decision: transformers.js vs onnxruntime-node | HG-3 (budget decision + opset baseline 21 locked) | vc2-model-prep |
 | ENC-0b | Real trunk fetch + gated ONNX inference path | HG-3 (install), HG-1 (real trunk live) | ENC-0a |
 | ENC-0c | Five-head supervision transfer on frozen trunk | HG-1 (real weights) | ENC-0b |
 | ENC-0d | Promotion gate over real trained assets + atomic swap | (no HG; closes the promotion loop for real assets) | ENC-0c |
@@ -33,13 +33,13 @@ This is the single substantive track in the deferred/stub audit program: every o
 
 ### ENC-0a — Backend decision record
 
-Locks the runtime backend, the per-platform install-size matrix, the opset baseline, and the license/pinning audit in a durable decision record produced deterministically by `scripts/encoder/resolve-backend-decision.mjs`. Records opset 21 (not 17), the 80 MiB budget, the transformers.js/WASM leading candidate vs the 258 MiB onnxruntime-node failing case, and the darwin-x64 `demotion:"wasm"` platform row. Output: `docs/vector-cortex/encoder-backend-decision.md`. No UI touch.
+Locks the runtime backend, the per-platform install-size matrix, the opset baseline, and the license/pinning audit in a durable decision record produced deterministically by `scripts/encoder/resolve-backend-decision.mjs`. Records opset 21 (not 17), the 80 MiB budget, the transformers.js/WASM leading candidate vs the 258 MiB onnxruntime-node failing case, and the darwin-x64 `demotion:"wasm"` platform row. ENC-0a owns the opset flip: `ENCODER_OPSET` in `src/vector-cortex/encoder/types.ts` is re-baselined 17→21 in this sprint alongside the placeholder manifest. Output: `docs/vector-cortex/encoder-backend-decision.md`. No UI touch.
 
 **Ownership:** `docs/vector-cortex/encoder-backend-decision.md; scripts/encoder/resolve-backend-decision.mjs; src/vector-cortex/encoder/decision.ts; src/config/vector-cortex-enc0a.ts; conformance/vector-cortex/v2/encoder-decision/; scripts/ml5-enc/gen-fixtures.mjs; docs/vector-cortex/evidence/ENC-0a.md`.
 
 ### ENC-0b — Real trunk fetch + gated inference
 
-Acquires the BGE-small int8 ONNX encoder at release time into `assets/vector-cortex/encoder-v1/` (publisher-side fetch, sha256-pinned, modeled on `scripts/vc2-model-prep/fetch-model.sh`); wires a real ONNX `InferenceSession` at `src/vector-cortex/encoder/runtime.ts:269` behind `MEGACOMPACT_ENC_0B`. The LCG stub remains the flag-off byte-identical fallback. Manifest re-versioned `encoder-v1-placeholder` → `encoder-v1`; `ENCODER_OPSET` re-baselined 17→21. No UI touch.
+Acquires the BGE-small int8 ONNX encoder at release time into `assets/vector-cortex/encoder-v1/` (publisher-side fetch, sha256-pinned, modeled on `scripts/vc2-model-prep/fetch-model.sh`); wires a real ONNX `InferenceSession` at `src/vector-cortex/encoder/runtime.ts:269` behind `MEGACOMPACT_ENC_0B`. The LCG stub remains the flag-off byte-identical fallback. Manifest re-versioned `encoder-v1-placeholder` → `encoder-v1`; `ENCODER_OPSET` already 21 from ENC-0a (no change needed). No UI touch.
 
 **Ownership:** `assets/vector-cortex/encoder-v1/{model.onnx,tokenizer.json,manifest.json,model-card.json}; src/vector-cortex/encoder/{types.ts,onnx.ts,runtime.ts}; scripts/encoder/fetch-bge-model.sh; scripts/encoder/verify-staged-asset.mjs; conformance/vector-cortex/v2/encoder-trunk/; scripts/ml5-enc/gen-fixtures.mjs; docs/vector-cortex/evidence/ENC-0b.md`.
 

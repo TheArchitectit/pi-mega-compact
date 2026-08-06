@@ -19,10 +19,11 @@ function encFixture(id, assertion, input, expected) {
 }
 
 export const fixtures = [
-  // ENC-001 — a valid opset-17 manifest + matching digests verify (mode A).
+  // ENC-001 — a valid opset-21 manifest + matching digests verify (mode A).
+  // Opset re-based 17→21 by ENC-0a.
   encFixture(
     "ENC-001",
-    "a valid opset17/batch1/max512 manifest with matching digests verifies",
+    "a valid opset21/batch1/max512 manifest with matching digests verifies",
     { scenario: "valid" },
     { ok: true, mode: "A" },
   ),
@@ -78,10 +79,10 @@ export const fixtures = [
 ];
 
 export const named = [
-  // ENC-ASSET-001 — opset17 manifest + digest load successfully.
+  // ENC-ASSET-001 — opset21 manifest + digest load successfully (opset re-based by ENC-0a).
   encFixture(
     "ENC-ASSET-001",
-    "an opset17 manifest and matching digest load successfully",
+    "an opset21 manifest and matching digest load successfully",
     { scenario: "valid" },
     { ok: true, mode: "A" },
   ),

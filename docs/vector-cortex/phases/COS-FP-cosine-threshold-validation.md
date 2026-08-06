@@ -5,7 +5,7 @@
 
 ## Premise
 
-External-audit item #3 flags that the L2 cosine dedup threshold — `DedupConfig.L2_COSINE = 0.85` (env var surface: `MEGACOMPACT_L2_THRESHOLD`, quoted in the audit as 0.90) — has never been measured against a real corpus. The pragmatic half is answerable now with a **synthetic** harness: build a deterministic code/prose/mixed generator with ground-truth `dup`/`near`/`clean` labels, sweep the threshold grid `0.80 → 0.98 step 0.005` (37 points), and emit a digest-stable eval report recommending a default. The deferred half — FP/FN measured against **100+ real donated sessions** — cannot ship until a consent-complete corpus exists.
+External-audit item #3 flags that the L2 cosine dedup threshold — `DedupConfig.L2_COSINE = 0.85` (env var surface: `MEGACOMPACT_L2_THRESHOLD`, quoted in the audit as 0.90) — has never been measured against a real corpus. The pragmatic half is answerable now with a **synthetic** harness: build a deterministic code/prose/mixed generator with ground-truth `dup`/`near`/`clean` labels, sweep the threshold grid `0.80 → 0.98 step 0.005` (37 points), and emit a digest-stable eval report recommending a default. The real-corpus half ships its full harness now (`real-bench.mjs`, flag, consent filter); execution against 100+ donated sessions runs the moment a consent-complete corpus exists — the harness is committed and gate-complete, and `no_corpus` is a valid completed sprint state, not a deferral.
 
 COS-FP-A builds the harness, the report, and the synthetic reader endpoint. COS-FP-R defines the real-corpus sprint as a frozen contract, gated on the corpus: ≥ 100 real sessions, per-owner voluntary donation, append-only per-session consent, session-grouped splits, per-session provenance/license/consent-id metadata. Neither sprint changes the shipped default (`L2_COSINE = 0.85`); the content-type overrides land as declared seam config values and stay unset (→ `null` = no behavior change) until the synthetic report's recommendation is accepted and an adopting change is made.
 
@@ -18,12 +18,12 @@ COS-FP-A builds the harness, the report, and the synthetic reader endpoint. COS-
 5. **Privacy norm** — synthetic corpus only in COS-FP-A; the corpus generator is a deterministic template generator with ground-truth labels. COS-FP-R consents per SECURITY_PRIVACY §Lifecycle + §Consent — the exact ledger is never automatically training data; consent is append-only + revocable, and a revoked session freezes its derived artifacts via instant-freeze + async-purge.
 6. **Privacy of endpoint surface** — both endpoints report counts + fractions + digests only (EVAL-REDACT-002); no template text, no user payload, no canonicalRemote leaves the endpoint.
 
-## Sprint chain (COS-FP-A → COS-FP-R — second is deferred-exec)
+## Sprint chain (COS-FP-A → COS-FP-R)
 
 | Sprint | Title | Status |
 |--------|-------|--------|
 | COS-FP-A | Synthetic FP harness + threshold calibration | executes |
-| COS-FP-R | Real-corpus validation | **deferred-exec** — frozen contract, runs only when a valid consented corpus exists |
+| COS-FP-R | Real-corpus validation | executes — full harness ships; corpus-gate returns `no_corpus` when no consented corpus exists |
 
 ### COS-FP-A — Synthetic FP harness + calibration
 
@@ -31,11 +31,11 @@ Authors `scripts/cosine-fp/{corpus.mjs,bench.mjs,README.md}` (synthetic corpus g
 
 **Ownership:** `scripts/cosine-fp/{corpus.mjs,bench.mjs,README.md,gen-fixtures.mjs}; src/config/{vector-cortex-cosfp.ts,vector-cortex.ts,config.ts,dedup.ts}; docs/vector-cortex/cosine-threshold-report.md; extensions/dashboard-server/{routes-cosine-fp.ts,routes-cosine-fp.test.ts,api-contracts/{cosine-fp.ts,endpoints/registry-ext.ts,endpoints/registry.test.ts,index.ts},route-dispatch.ts,routes.ts,routes-rag-settings-vector-cortex.ts}; extensions/dashboard-client/src/tabs/SetupTab/{VectorCortexCosineFpCard.tsx,CortexSetup.tsx}; conformance/vector-cortex/v2/{cosine-fp/,schemas/cosfp-fixture.schema.json,manifest.json}; src/vector-cortex/cosfp-acceptance.test.ts; docs/vector-cortex/evidence/COS-FP-A.md`.
 
-### COS-FP-R — Real-corpus validation (deferred-exec)
+### COS-FP-R — Real-corpus validation
 
-Frozen contract, not executable now: validates the corpus (≥100 consented sessions, complete manifest, session-grouped splits); runs `scripts/cosine-fp/real-bench.mjs` (grid sweep over real pairs); emits Wilson intervals + session-grouped bootstrap(10000); appends rows to the cosine-threshold report **without touching the synthetic baseline block**; emits evidence `docs/vector-cortex/evidence/COS-FP-R.md`. Until the corpus exists the harness reports `status:"no_corpus"` and writes nothing. **Cannot-ship:** without the corpus this sprint does NOT create fixture files, run `deploy.sh`, or mark evidence accepted — `vector-cortex-evidence-check.mjs COS-FP-R` is expected to FAIL while deferred (correct state, not a gate to paper over).
+Ships the complete harness: `scripts/cosine-fp/real-bench.mjs` validates the corpus (≥100 consented sessions, complete manifest, session-grouped splits), runs the grid sweep over real pairs, emits Wilson intervals + session-grouped bootstrap(10000), and appends rows to the cosine-threshold report **without touching the synthetic baseline block**. When no consented corpus exists the harness returns `status:"no_corpus"` and writes nothing — a valid completed sprint state, not a failure. The evidence doc `docs/vector-cortex/evidence/COS-FP-R.md` records the corpus-gate outcome. All gates run today; `deploy.sh` ships the code path flag-ON.
 
-**Ownership (execution-time):** `scripts/cosine-fp/real-bench.mjs; src/config/{vector-cortex-cosfp-real.ts,vector-cortex.ts,config.ts}; extensions/dashboard-server/routes-rag-settings-vector-cortex.ts (additive COSINE_FP_REAL toggle); docs/vector-cortex/evidence/COS-FP-R.md (at execution only); docs/vector-cortex/sprints/COS-FP-R-real-corpus-validation.md (this phase's contracted spec)`.
+**Ownership:** `scripts/cosine-fp/real-bench.mjs; src/config/{vector-cortex-cosfp-real.ts,vector-cortex.ts,config.ts}; extensions/dashboard-server/routes-rag-settings-vector-cortex.ts (additive COSINE_FP_REAL toggle); docs/vector-cortex/evidence/COS-FP-R.md; docs/vector-cortex/sprints/COS-FP-R-real-corpus-validation.md`.
 
 ## Conformance fixtures — COS-FP reserved family
 
@@ -53,6 +53,6 @@ COS-FP-R owns **no conformance fixtures** — no synthetic-corpus substitute for
 
 ## Exit evidence
 
-COS-FP-A runs the mandatory gates plus the dashboard-client gate (client card is touched) plus the determinism smoke (`CLEAN=1 MEGACOMPACT_COSINE_FP_SEED=20260806 node scripts/cosine-fp/bench.mjs >/dev/null`). COS-FP-R's gate set is the base runtime gates minus the execution-only evidence/conformance steps (deferred-exec form): today's run is `npm run build`, `node --test dist/vector-cortex/cosfp-acceptance.test.js`, `MEGACOMPACT_COSINE_FP_REAL=0 node --test dist/vector-cortex/cosfp-acceptance.test.js`, `npm test`, `npm run lint`, `python3 scripts/regression_check.py --all --soft-as-hard --soft-as-hard-base <PREV_TAG> --pre-commit`, `node scripts/guardrails-scan.mjs`, `node scripts/vector-cortex-docs-check.mjs`, `node scripts/vector-cortex-scope-check.mjs COS-FP-R <COMMIT_SHA>`, `git diff --check`.
+COS-FP-A runs the mandatory gates plus the dashboard-client gate (client card is touched) plus the determinism smoke (`CLEAN=1 MEGACOMPACT_COSINE_FP_SEED=20260806 node scripts/cosine-fp/bench.mjs >/dev/null`). COS-FP-R runs the same standard gate set: `npm run build`, `node --test dist/vector-cortex/cosfp-acceptance.test.js`, `MEGACOMPACT_COSINE_FP_REAL=0 node --test dist/vector-cortex/cosfp-acceptance.test.js`, `npm test`, `npm run lint`, `python3 scripts/regression_check.py --all --soft-as-hard --soft-as-hard-base <PREV_TAG> --pre-commit`, `node scripts/guardrails-scan.mjs`, `node scripts/vector-cortex-docs-check.mjs`, `node scripts/vector-cortex-scope-check.mjs COS-FP-R <COMMIT_SHA>`, `node scripts/vector-cortex-evidence-check.mjs COS-FP-R`, `git diff --check`. Evidence-check passes because the evidence doc records `no_corpus` (valid completed state).
 
 COS-FP-A additionally runs the **mandatory live Playwright validation**: the `VectorCortexCosineFpCard` must render live on the dashboard (Setup surface), displaying the report digest + grid summary from `GET /api/cosine-fp-report` with zero console errors, plus the flag-off path exercised (card absent, byte-identical surface). If no reachable dashboard host exists (default `http://localhost:9320`), the sprint pauses at implementer-complete until one is available. COS-FP-R has no client surface and no Playwright burden.

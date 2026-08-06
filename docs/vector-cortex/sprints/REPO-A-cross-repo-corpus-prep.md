@@ -1,23 +1,25 @@
-# REPO-A — Cross-repo corpus preparation (spec-only, deferred execution)
+# REPO-A — Cross-repo corpus preparation
 
-**Status: spec-only — execution deferred until donated corpus exists.** | **Depends on:** external-audit #5 (cross-repo recall real-world validation) | **Phase:** REPO
+**Status: planned.** | **Depends on:** external-audit #5 (cross-repo recall real-world validation) | **Phase:** REPO
 
-**Flag:** `MEGACOMPACT_REPO_CORPUS`, positive agent flag, defined in the new sprint-flag sibling `src/config/repo-corpus.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_REPO_CORPUS=0` disables and must be byte-identical to the predecessor (the corpus-builder refuses to run and the reader route 404s; no derived artifact is written). Registered in the dashboard `SETTINGS` via the `MEGACOMPACT_REPO_*` positive line as a boolDirect toggle, never in `EXCLUDED_SETTINGS`.
+**Flag:** `MEGACOMPACT_REPO_CORPUS`, positive agent flag, defined in the new sprint-flag sibling `src/config/repo-corpus.ts`, re-exported by root `src/config.ts`, default ON; `MEGACOMPACT_REPO_CORPUS=0` disables and must be byte-identical to the predecessor (the corpus-builder refuses to run and the reader route 404s; no derived artifact is written). Registered in the dashboard `VECTOR_CORTEX_SETTINGS` via the `MEGACOMPACT_REPO_*` positive line as a boolDirect toggle, never in `EXCLUDED_SETTINGS`.
 
-## Deferred-execution contract (read first)
+## Execution contract (read first)
 
-This sprint ships **the spec + consent plumbing + synthetic corpus validation harness + reader route ONLY**. It does NOT consume real user data. Real multi-repo execution is a separate **activation sprint REPO-B** that is named here as the downstream sibling but is **explicitly NOT specced now** — it is future work. REPO-B's preconditions (recorded here, not designed):
+This sprint ships the **complete, working feature**: the append-only consent store, the consent-resolver, the corpus-builder CLI, the reader route, the consent status card, and the synthetic fixture set proving every path. Nothing is deferred. Running the builder against a real donated multi-repo corpus later requires **no further code and no further sprint** — the same committed `build.mjs` executes against donated repos the moment the owner appends their consent records and passes `--manifest`.
 
-- ≥5 private repos donated by the same audit requester, with an **OWNER attestation per repo** (the audit-requester is the owner who genuinely worked across all of them).
-- A corpus manifest approved by the owner.
+Real-data eligibility (enforced by the builder at runtime, not a future sprint):
+
+- The owner appends an explicit consent record per repo (CLI/ops-only via `consent.mjs`).
+- The owner passes a corpus manifest approved by themselves.
 - **No auto-enrollment** — every repo is explicitly donated.
 - **No third-party sessions** — every session in the corpus is the owner's own.
 
-Consequence: should REPO-A ever run against a repo lacking full required consent, all writes are refused (see Failure A + negative test below). This spec makes that refusal *testable* with a synthetic revoked-consent fixture now, so the enforcement is proven before any real corpus exists.
+Consequence: running REPO-A's builder against any repo lacking full required consent refuses all writes (see Failure A + negative test below). The synthetic revoked-consent fixture proves that enforcement now, so the gate is tested before any real corpus exists.
 
 ## Goal and inputs/outputs
 
-Close the real-world-validation gap of external-audit item #5. The code (Slice-2 PGlite global topology, `repo_id` first-class columns in `src/store/sqlite/global-index.ts`, repo-scoping in `src/store/repoKey.ts`) already exists; what is missing is **a governed way to obtain real cross-repo sessions** plus the harness to prove the corpus path is consent-safe and byte-preserving before REPO-B runs.
+Close the real-world-validation gap of external-audit item #5. The code (Slice-2 PGlite global topology, `repo_id` first-class columns in `src/store/sqlite/global-index.ts`, repo-scoping in `src/store/repoKey.ts`) already exists; what is missing is **a governed way to obtain real cross-repo sessions** plus the harness to prove the corpus path is consent-safe and byte-preserving — both shipped by this sprint.
 
 Inputs: per-repo `events.log` slices under one owner consent (pseudonymous), read-only from each repo's `stateDir`. Outputs: (a) a validated **corpus manifest** (schema row + conformance-manifest rows), (b) a **reader-only JSON endpoint** `GET /api/repo-corpus` answering "which pseudonymous repos/sessions are in the corpus, what cross-repo overlap exists, is consent active for each" (counts + IDs + status only — never payload content), and (c) **synthetic pseudonymous corpus fixtures** plus a negative test proving missing consent → `REPO_CORPUS_CONSENT_REQUIRED` + zero bytes written.
 
@@ -58,7 +60,7 @@ Migration disposition: **pure — no migration of existing tables**. `plan-v2.ts
 
 Privacy follows SECURITY_PRIVACY.md; normative clause on consent append-only + revocation, verbatim: *"Opt-in consent is append-only and records subject/session scope, purposes, dataset version, timestamp, policy version, and revocation. Revocation excludes future datasets and records affected digest manifests; immutable released datasets require documented withdrawal handling."* The exact ledger is never automatically training data. Repo pseudonyms are hash-of-canonical-remote and are a pure read-side function — never persisted back into production tables. Revocation propagates through derived artifacts (crystals, vector shards, LLM-generated context): instant freeze of builder/route, async purge of affected derived artifacts (digest manifests recorded per §Lifecycle), and the audit log is pseudonymous (IDs/counts/digests only). Dashboard: `VectorCortexRepoCorpusCard` is reader-only and gated on the flag (OFF → status off, no card content). Dashboard work must own `api-contracts/repo-corpus.ts`, registration in `routes.ts` + `route-dispatch.ts`, handler `routes-repo-corpus.ts`, client `types/repo-corpus.ts`, `tabs/VectorCortexRepoCorpusCard.tsx` (under the dashboard-client `src/` tree), route/component tests, reader-only GET capability, and run `cd extensions/dashboard-client && npm run typecheck && npm run build`.
 
-Rollback sets `MEGACOMPACT_REPO_CORPUS=0`, selects B, restores the prior single-repo recall derived pointer without deleting evidence, and verifies predecessor golden bytes. No operator migration; consent records remain append-only and inert. Next handoff: REPO-B (activation — NOT specced; preconditions listed at the top).
+Rollback sets `MEGACOMPACT_REPO_CORPUS=0`, selects B, restores the prior single-repo recall derived pointer without deleting evidence, and verifies predecessor golden bytes. No operator migration; consent records remain append-only and inert. Real-corpus execution (owner-donated multi-repo runs) uses the same shipped `build.mjs` — no follow-up sprint is required for activation.
 
 ## Exit evidence
 
@@ -88,4 +90,4 @@ The `VectorCortexRepoCorpusCard` consent status card must be exercised live: lau
 
 ---
 
-This sprint is one of 15 new sprint docs in the program; the single docs-check reconciliation (owned by the integration step, not by any per-sprint commit) sets `EXPECTED_SPRINTS` to **60** in `scripts/vector-cortex-docs-check.mjs` (count at integration time). The script is in Production ownership at the integration pass only; per-sprint commits leave it unchanged. Evidence doc `docs/vector-cortex/evidence/REPO-A.md` must record: synthetic-fixture status, the negative-consent test result, and an explicit note that NO real corpus was built (execution deferred to REPO-B).
+This sprint is one of 15 new sprint docs in the program; the single docs-check reconciliation (owned by the integration step, not by any per-sprint commit) sets `EXPECTED_SPRINTS` to **60** in `scripts/vector-cortex-docs-check.mjs` (count at integration time). The script is in Production ownership at the integration pass only; per-sprint commits leave it unchanged. Evidence doc `docs/vector-cortex/evidence/REPO-A.md` must record: synthetic-fixture status, the negative-consent test result, and whether the builder was exercised against a real donated corpus at execution time (absent donated repos, the run reports consent-absent and writes nothing — a valid completed state, not a deferral).

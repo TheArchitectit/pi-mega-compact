@@ -270,8 +270,13 @@ function main() {
   // src/vector-cortex/vc3b-support.ts. Mirror its runtime .js so the
   // vc3b-acceptance aggregator's `./vc3b-support.js` import resolves at the
   // published dist/vector-cortex/ offset (test-support, not itself a test).
+  // ENC-0a added _acceptance-{vc2a,vc2b,enc0a}-*.js sibling extracts (delegate-shell
+  // splits of vc2a/vc2b/enc0a acceptance aggregators for the soft-as-hard gate).
+  // Mirror them so the aggregators' `./_acceptance-*.js` imports resolve at
+  // the published dist/vector-cortex/ offset.
   const nSupport = copyTree(SRC_VECTOR, DEST_VECTOR, (name) =>
-    name === "vc3b-support.js" || name === "improve.js",
+    name === "vc3b-support.js" || name === "improve.js" ||
+    (name.startsWith("_acceptance-") && name.endsWith(".js")),
   );
   // DEDUP-ATTR added the dedup-attr subtree (rollup.ts). Mirror its runtime
   // .js so the dedup-attr-acceptance aggregator's `./dedup-attr/rollup.js`

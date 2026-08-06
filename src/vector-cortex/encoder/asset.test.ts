@@ -54,7 +54,7 @@ function buildAssetDir(input: {
 }): { dir: string; manifest: ModelManifestV1 } {
   const dir = join(tmpdir(), `vc2a-asset-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
-  const onnx = input.onnxBytes ?? Buffer.from("00000000-pretend-onnx-opset17", "binary");
+  const onnx = input.onnxBytes ?? Buffer.from("00000000-pretend-onnx-opset21", "binary");
   const tok = input.tokBytes ?? Buffer.from('{"vocab":[]}', "utf8");
   writeFileSync(join(dir, "model.onnx"), onnx);
   writeFileSync(join(dir, "tokenizer.json"), tok);
@@ -84,7 +84,7 @@ function cleanup(dir: string): void {
 }
 
 describe("VC2A asset verification (ENC-ASSET-001)", () => {
-  test("opset17 manifest + matching digests load successfully (mode A eligible)", () => {
+  test("opset21 manifest + matching digests load successfully (mode A eligible)", () => {
     const { dir } = buildAssetDir({});
     try {
       const res = verifyEncoderAsset(dir, readEncoderManifest(dir));
@@ -211,7 +211,7 @@ describe("VC2A asset verification (ENC-ASSET-001)", () => {
     }
   });
 
-  test("opset != 17 demotes ENC_OPSET_INVALID", () => {
+  test("opset != 21 demotes ENC_OPSET_INVALID", () => {
     const { dir, manifest } = buildAssetDir({});
     try {
       const res = verifyEncoderAsset(dir, { ...manifest, opset: 16 });

@@ -7,7 +7,7 @@
 
 External-audit item #5 calls out cross-repo recall: the global topology from Slice 2 (PGlite, `repo_id` first-class, cross-repo NN by default) already exists in code, but no **governed real-world validation** of cross-repo recall has ever been performed against an actual multi-repo corpus. The blocker is not code — it is the absence of (a) a consent-complete per-owner donation model, (b) a place to record that consent append-only, and (c) a harness that proves the consent gate works BEFORE any real bytes flow. REPO-A closes the groundwork: an append-only consent record schema, a read-side corpus builder (pseudonymized by hash-of-canonical-remote), a reader-only dashboard route, a synthetic fixture set proving the happy path, and a negative test proving missing/revoked consent refuses with zero bytes written.
 
-REPO-B (cross-repo activation against a real donated corpus) is **NOT specced now** — it is gated on ≥5 private repos donated by the same audit requester, per-repo owner attestation, and a completed corpus manifest under REPO-A's consent gate. REPO-A makes the consent plumbing testable; REPO-B uses it.
+REPO-A ships the complete working feature — nothing is deferred to a follow-up sprint. Running the builder against real donated repos later requires no new code: the owner appends consent records via `consent.mjs`, passes a manifest, and the same committed `build.mjs` executes. Real-data eligibility is a runtime consent gate, not a phase boundary.
 
 ## Architectural invariants (do not violate)
 
@@ -22,9 +22,9 @@ REPO-B (cross-repo activation against a real donated corpus) is **NOT specced no
 
 | Sprint | Title | Reachable surface |
 |--------|-------|-------------------|
-| REPO-A | Cross-repo corpus prep (spec-only, deferred-execution against real data; consent + harness + reader route execute now) | `GET /api/repo-corpus`, `VectorCortexRepoCorpusCard`, `scripts/repo-corpus/{consent.mjs,build.mjs}` |
+| REPO-A | Cross-repo corpus prep — complete working feature (consent store, resolver, builder, route, card, synthetic fixtures) | `GET /api/repo-corpus`, `VectorCortexRepoCorpusCard`, `scripts/repo-corpus/{consent.mjs,build.mjs}` |
 
-REPO-A is a single-sprint phase. Its successor (REPO-B — cross-repo activation on real data) is gated on the four REPO-B preconditions listed in the REPO-A spec header and is **not specced now**.
+REPO-A is a single-sprint phase and ships everything. Real-corpus runs use the same committed `build.mjs` once the owner appends consent records — no follow-up sprint is needed for activation.
 
 ### REPO-A — Cross-repo corpus preparation
 
@@ -46,6 +46,6 @@ The `test-consent/` sibling directory holds the synthetic revoked-consent corpus
 
 ## Exit evidence
 
-REPO-A runs the mandatory gates plus the dashboard-client gate (the consent card is touched) plus the route unit tests + negative consent test + acceptance aggregator with flag-on and flag-off runs (`node --test dist/vector-cortex/repo-corpus-acceptance.test.js` and `MEGACOMPACT_REPO_CORPUS=0 node --test dist/vector-cortex/repo-corpus-acceptance.test.js`). At execution time, the evidence doc `docs/vector-cortex/evidence/REPO-A.md` records the synthetic-fixture status, the negative-consent test result, and an explicit note that NO real corpus was built (execution deferred to REPO-B).
+REPO-A runs the mandatory gates plus the dashboard-client gate (the consent card is touched) plus the route unit tests + negative consent test + acceptance aggregator with flag-on and flag-off runs (`node --test dist/vector-cortex/repo-corpus-acceptance.test.js` and `MEGACOMPACT_REPO_CORPUS=0 node --test dist/vector-cortex/repo-corpus-acceptance.test.js`). The evidence doc `docs/vector-cortex/evidence/REPO-A.md` records the synthetic-fixture status, the negative-consent test result, and whether the builder ran against real donated repos at execution time (absent donations, the builder reports consent-absent and writes nothing — a valid completed state, not a deferral).
 
 REPO-A additionally runs the **mandatory live Playwright validation**: the `VectorCortexRepoCorpusCard` consent-status card must render live on the dashboard, displaying pseudonymous consent status from `GET /api/repo-corpus` with zero console errors, plus the flag-off path (endpoint 404, card absent). If no reachable dashboard host exists (default `http://localhost:9320`), the sprint pauses at implementer-complete until one is available.

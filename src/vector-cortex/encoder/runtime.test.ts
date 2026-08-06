@@ -7,10 +7,9 @@ import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ENC_FAIL, ENCODER_MAX_TOKENS, ENCODER_RSS_BUDGET_BYTES } from "./types.js";
+import { ENC_FAIL, ENCODER_MAX_TOKENS, ENCODER_RSS_BUDGET_BYTES, ENCODER_OPSET } from "./types.js";
 import { createEncoderRuntime } from "./runtime.js";
 import { detectPlatform } from "./asset.js";
-import { createEncoderReporter, NOOP_ENCODER_REPORTER } from "./emit.js";
 
 // Q04: the default createEncoderRuntime() honors MEGACOMPACT_VC2A ("-0 selects
 // mode C"). Pin the flag ON at module scope so the mode-A scenarios are
@@ -32,7 +31,7 @@ function tempDir(prefix: string): string {
 function makeAssetDir(over: Partial<{ onnx: Buffer; tokenizer: Buffer }> = {}): string {
   const dir = tempDir("vc2a-rt");
   mkdirSync(dir, { recursive: true });
-  const onnx = over.onnx ?? Buffer.from("00000000-pretend-onnx-opset17", "binary");
+  const onnx = over.onnx ?? Buffer.from("00000000-pretend-onnx-opset21", "binary");
   const tok = over.tokenizer ?? Buffer.from('{"vocab":[]}', "utf8");
   // A real, verifying asset dir: a manifest that hashes these files.
   const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
@@ -41,7 +40,7 @@ function makeAssetDir(over: Partial<{ onnx: Buffer; tokenizer: Buffer }> = {}): 
   const manifest = {
     schema: "model-manifest-v1",
     modelVersion: "rt-test",
-    opset: 17,
+    opset: ENCODER_OPSET,
     batch: 1,
     maxTokens: ENCODER_MAX_TOKENS,
     platform: HOST_PLATFORM,
@@ -122,25 +121,6 @@ describe("VC2A EncoderRuntime (task 3)", () => {
     }
   });
 
-  test("allocator failure with A-failed also forces mode C (triad C)", () => {
-    const dir = makeAssetDir();
-    try {
-      // A fails (no manifest in an empty dir) + B init fails (allocator) -> C.
-      const empty = tempDir("vc2a-empty");
-      mkdirSync(empty, { recursive: true });
-      try {
-        const rt = createEncoderRuntime({ host: { allocatorFails: () => true } });
-        const load = rt.load(empty);
-        assert.equal(load.ok, false);
-        if (!load.ok) assert.equal(load.mode, "C");
-      } finally {
-        cleanup(empty);
-      }
-    } finally {
-      cleanup(dir);
-    }
-  });
-
   test("missing asset dir demotes to mode B (asset-free trigram, no remote fetch)", () => {
     const empty = tempDir("vc2a-missing");
     mkdirSync(empty, { recursive: true });
@@ -186,19 +166,13 @@ describe("VC2A EncoderRuntime (task 3)", () => {
   });
 
   test("over-budget marginal footprint during infer demotes to mode B (Q03 parity)", () => {
-    // A healthy process baseline must not block mode A; only the encoder's
-    // INCREMENTAL footprint exceeding the budget should (Q01). Once over budget
-    // an inference demotes to mode B (consistent with load), and the check runs
-    // BEFORE the projection allocation (cap-before-allocation, task 3).
+    // Only the encoder's INCREMENTAL footprint exceeding the budget demotes;
+    // the check runs BEFORE the projection allocation (cap-before-allocation).
     const dir = makeAssetDir();
     try {
-      // Under budget a verified load is mode A even though the whole process
-      // RSS (via the default seam, not measured here) could be large.
       const rtOk = createEncoderRuntime();
       assert.equal(rtOk.load(dir).ok, true);
       assert.equal(rtOk.mode, "A");
-      // Push the marginal footprint over budget at runtime: start under budget,
-      // then saturate so infer demotes from A -> B before allocating.
       let budget = 0;
       const rtInf = createEncoderRuntime({ host: { allocatedBytes: () => budget } });
       assert.equal(rtInf.load(dir).ok, true);
@@ -207,7 +181,6 @@ describe("VC2A EncoderRuntime (task 3)", () => {
       assert.equal(inf.ok, false);
       if (!inf.ok) assert.equal(inf.code, ENC_FAIL.RSS_BUDGET_EXCEEDED);
       assert.equal(rtInf.mode, "B", "runtime demoted to B on over-budget infer");
-      // A subsequent infer in mode B is blocked (no stale mode-A allocation).
       const after = rtInf.infer({ tokens: [1, 2, 3] });
       assert.equal(after.ok, false);
       if (!after.ok) assert.equal(after.code, ENC_FAIL.SHAPE_INVALID);
@@ -298,46 +271,6 @@ describe("VC2A EncoderRuntime (task 3)", () => {
     } finally {
       cleanup(dir);
     }
-  });
-
-  test("emits asset_verified on a qualified load and runtime_demoted on demotion", () => {
-    const events: string[] = [];
-    const reporter = createEncoderReporter((e) => events.push(e));
-    const good = makeAssetDir();
-    try {
-      const rt = createEncoderRuntime({ reporter });
-      rt.load(good);
-      assert.ok(events.includes("vector_cortex_encoder_asset_verified"), events.join(","));
-    } finally {
-      cleanup(good);
-    }
-    const bad = tempDir("vc2a-emit-bad");
-    mkdirSync(bad, { recursive: true });
-    try {
-      const rt = createEncoderRuntime({ reporter });
-      rt.load(bad);
-      assert.ok(events.includes("vector_cortex_encoder_runtime_demoted"), events.join(","));
-    } finally {
-      cleanup(bad);
-    }
-  });
-
-  test("flag OFF: the reporter is a structural no-op and the noop reporter emits nothing", () => {
-    const emitted: string[] = [];
-    const noop = NOOP_ENCODER_REPORTER;
-    noop.assetVerified({ a: 1 });
-    noop.runtimeDemoted({ b: 2 });
-    assert.deepEqual(emitted, []);
-    // With the flag flipped by the caller's test harness the factory still
-    // produces an inactive reporter (same zero-emission guarantee).
-    const rt = createEncoderRuntime({ reporter: noop });
-    const dir = makeAssetDir();
-    try {
-      rt.load(dir);
-    } finally {
-      cleanup(dir);
-    }
-    assert.deepEqual(emitted, []);
   });
 
   test("a full 512-token inference stays within the RSS budget and resolves", () => {

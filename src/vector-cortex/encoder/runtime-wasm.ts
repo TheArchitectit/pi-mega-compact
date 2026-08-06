@@ -45,7 +45,7 @@ export interface OrtWasmModule {
 
 /** The backend's inference session — a thin wrapper over the real WASM session. */
 export interface WasmSession {
-  /** The declared ONNX opset in the loaded manifest (normative 17). */
+  /** The declared ONNX opset in the loaded manifest (normative 21). */
   readonly opset: number;
   /** The semantic embedding width (normative 384). */
   readonly semanticWidth: number;

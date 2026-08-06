@@ -252,5 +252,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"Dedup tier-attribution rollup: per-tier dedup catch shares (L0/L1/L2/new percent of dedup decisions) read from the local events.log dedup_audit stream (GET /api/dedup-tier-attribution). OFF = 404 + no cache file, byte-identical predecessor.",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_ENC_0A",
+			"ENC-0a Encoder Backend Decision",
+			"ENC-0a learned-encoder backend-decision lock: records the transformers.js/WASM vs onnxruntime-node choice, per-platform install matrix, opset-21 baseline and pinned digests in docs/vector-cortex/encoder-backend-decision.md. OFF = no decision record written / no resolver runs, mode B trigram byte-identical predecessor.",
+			true,
+		),
 	],
 };

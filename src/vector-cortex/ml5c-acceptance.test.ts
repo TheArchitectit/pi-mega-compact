@@ -4,7 +4,7 @@
  *
  * Drives ML5-RUNTIME-001..005 against the canonical v2 conformance corpus +
  * the REAL code: the five runtime-choice envelope fixtures (byte-count budget,
- * per-platform matrix, opset-17 handshake, stub-fallback to mode B,
+ * per-platform matrix, opset-21 handshake, stub-fallback to mode B,
  * native-opt-in routing), the normative pins from encoder/types.ts, the
  * pure decision-rule dispatch in runtime-select.ts, and the seller event
  * shape (EVAL-REDACT-002: aggregate-only).
@@ -111,9 +111,9 @@ describe("ML5-RUNTIME-001..005 envelope invariants", () => {
     assert.equal(fx.matrix_complete, true);
     assert.equal(fx.no_missing_optional_dep, true);
   });
-  test("003 opset-17 session handshake (placeholder-committed asset accepted)", () => {
+  test("003 opset-21 session handshake (placeholder-committed asset accepted)", () => {
     const fx = fixture("ML5-RUNTIME-003");
-    assert.equal(fx.opset, ENCODER_OPSET); // 17
+    assert.equal(fx.opset, ENCODER_OPSET); // 21
     assert.equal(fx.handshake, "ok");
   });
   test("004 stub-fallback routes to mode B trigram when WASM artifact is absent", () => {
@@ -138,7 +138,7 @@ describe("ML5-C decision-rule dispatch (runtime-select.ts pure)", () => {
   test("normative gate pins match the spec constants", () => {
     assert.equal(ENCODER_MAX_TOKENS, 512);
     assert.equal(ENCODER_LATENCY_P95_MS, 40);
-    assert.equal(ENCODER_OPSET, 17);
+    assert.equal(ENCODER_OPSET, 21);
   });
   test("flag-off returns modeB byte-identical to the ML5-B survivor", () => {
     // Under MEGACOMPACT_ML5_C=0, the dispatch itself returns modeB and the seller
@@ -205,7 +205,7 @@ describe("ML5-C decision-rule dispatch (runtime-select.ts pure)", () => {
       rssMib: 145,
       rssBaselineMib: 120,
       rssMarginalMib: 25,
-      opset: 17,
+      opset: ENCODER_OPSET,
       deterministic: true,
       digest: "ab".repeat(32),
       gates: { latency: true, rss: true, opset: true, determinism: true, all: true },
@@ -232,7 +232,7 @@ describe("ML5-C decision-rule dispatch (runtime-select.ts pure)", () => {
       rssMib: 341,
       rssBaselineMib: 100,
       rssMarginalMib: 241,
-      opset: 17,
+      opset: ENCODER_OPSET,
       deterministic: true,
       digest: "cd".repeat(32),
       gates: { latency: false, rss: true, opset: true, determinism: true, all: false },

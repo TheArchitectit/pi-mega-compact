@@ -17,14 +17,23 @@
  * encoder's working set, and reports a false budget breach. Run under
  * `node --expose-gc` so the GC step is real.
  *
+ * ENC-0a --transformers mode (additive): measures the SAME p95 gate for the
+ * bge-small-en-v1.5 int8 asset under the transformers.js WASM pipeline (the
+ * leading ENC backend candidate) and emits one JSONL line in the resolver's
+ * bench-input shape. Run separately; does not touch the native-mode path.
+ *
  * Usage:
  *   node --expose-gc scripts/vc2-model-prep/bench-onnx.mjs <model.onnx> \
  *     [--tokens=512] [--iters=300] [--threads=4] [--repeats=200]
+ *
+ *   node scripts/vc2-model-prep/bench-onnx.mjs --transformers \
+ *     [--tokens=512] [--iters=300] [--threads=4]
  */
 
 import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
+import { join } from "node:path";
 
 const require = createRequire(import.meta.url);
 
@@ -157,7 +166,137 @@ async function main() {
   process.exit(report.gates.all ? 0 : 1);
 }
 
-main().catch((e) => {
-  console.error("BENCH_FAIL", e && e.message);
-  process.exit(1);
-});
+// ---------------------------------------------------------------------------
+// ENC-0a --transformers mode (additive; does not touch the native-mode path).
+// Measures the p95 gate for bge-small int8 under the transformers.js WASM
+// pipeline and emits ONE JSONL row in the resolver's bench-input shape.
+// ---------------------------------------------------------------------------
+
+/**
+ * Best-effort byte/sha256 for a cached transformers.js asset file. Returns
+ * null when the file is not present (the ENC-0a degraded baseline — real
+ * asset not yet fetched; the sizes are recorded constants instead).
+ */
+function cachedAsset(path) {
+  try {
+    const buf = fs.readFileSync(path);
+    return { bytes: buf.length, sha256: createHash("sha256").update(buf).digest("hex") };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Locates the transformers.js cache dir for the bge-small-en-v1.5 ONNX int8
+ * release (`~/.cache/huggingface/hub/models--Xenova--bge-small-en-v1.5/` on
+ * Linux/macOS). ENC-0b (asset fetch) will pin the definitive cache layout; this
+ * is best-effort developer tooling.
+ */
+function transformersCachePaths() {
+  const home = process.env.HOME || process.env.USERPROFILE || ".";
+  const base = join(home, ".cache", "huggingface", "hub", "models--Xenova--bge-small-en-v1.5", "snapshots");
+  let modelOnnx = null;
+  let tokenizerJson = null;
+  try {
+    const snapshots = fs.readdirSync(base);
+    const snapshot = snapshots.sort().at(-1);
+    if (snapshot) {
+      const snap = join(base, snapshot);
+      for (const name of fs.readdirSync(snap)) {
+        const full = join(snap, name);
+        if (/quantized.*\.onnx$/.test(name)) modelOnnx = full;
+        if (name === "tokenizer.json") tokenizerJson = full;
+      }
+    }
+  } catch {
+    // no cache yet -> degraded baseline
+  }
+  return { modelOnnx, tokenizerJson };
+}
+
+/** ENC-0a degenerate recorded constants (matching the resolver's RECORDED table). */
+const TF_WASM_SHELL_MIB = 9.5;
+const TF_BGE_INT8_MIB = 23;
+
+async function mainTransformers() {
+  const tokens = arg("tokens", 512);
+  const iters = arg("iters", 300);
+  const threads = arg("threads", 4);
+  const platform = `${process.platform}-${process.arch}`;
+
+  // guardrails-allow PREVENT-PI-004: release-time developer benchmark tooling
+  // that loads the transformers.js asset (cached locally by the tool), not
+  // extension runtime code — the runtime itself never performs network access.
+  let pipeline;
+  try {
+    pipeline = require("@huggingface/transformers");
+  } catch {
+    // @huggingface/transformers not installed -> degraded baseline, never block.
+    const metrics = { bytes: Math.round((TF_WASM_SHELL_MIB + TF_BGE_INT8_MIB) * 1048576) };
+    const row = {
+      measured_p95_ms: null,
+      install_bytes_model: metrics.bytes,
+      install_bytes_tokenizer: 0,
+      model_sha256: "01cbed8b0b301609542ff8c392c3e7d927b0d848ac53a768dfffd33bfe6005ff",
+      tokenizer_sha256: "ada18e5c4dfcb5c369c05f4ffc10bc40298ce707e78f16135c6d33019f6db8cd",
+      platform,
+      degraded: true,
+    };
+    process.stdout.write(JSON.stringify(row) + "\n");
+    console.error("BENCH_TRANSFORMERS_DEGRADED: @huggingface/transformers not installed; no p95 measured.");
+    process.exit(2);
+  }
+
+  const extractor = await pipeline("feature-extraction", "Xenova/bge-small-en-v1.5", {
+    dtype: "q8",
+    device: "cpu",
+    threads,
+  });
+
+  // 512-token input: 505 content tokens + [CLS]/[SEP] padding handled by the
+  // pipeline tokenizer; a deterministic repeated sentence yields a fixed shape.
+  const input = (Array(64).fill("the quick brown fox jumps over the lazy dog")).join(" ");
+  const extract = async () => {
+    const start = process.hrtime.bigint();
+    await extractor(input, { pooling: "mean", normalize: true });
+    return Number(process.hrtime.bigint() - start) / 1e6;
+  };
+
+  for (let i = 0; i < 5; i++) await extract(); // warm-up
+  const lat = [];
+  for (let i = 0; i < iters; i++) lat.push(await extract());
+  lat.sort((a, b) => a - b);
+  const p95 = percentile(lat, 0.95);
+
+  // Best-effort install bytes + sha256 from the local cache (degraded -> constants).
+  const { modelOnnx, tokenizerJson } = transformersCachePaths();
+  const model = cachedAsset(modelOnnx);
+  const tokenizer = cachedAsset(tokenizerJson);
+
+  const row = {
+    measured_p95_ms: p95,
+    install_bytes_model: model ? model.bytes : Math.round(TF_WASM_SHELL_MIB * 1048576),
+    install_bytes_tokenizer: tokenizer ? tokenizer.bytes : Math.round(TF_BGE_INT8_MIB * 1048576),
+    model_sha256: model ? model.sha256 : "01cbed8b0b301609542ff8c392c3e7d927b0d848ac53a768dfffd33bfe6005ff",
+    tokenizer_sha256: tokenizer ? tokenizer.sha256 : "ada18e5c4dfcb5c369c05f4ffc10bc40298ce707e78f16135c6d33019f6db8cd",
+    platform,
+  };
+
+  process.stdout.write(JSON.stringify(row) + "\n");
+  if (!model || !tokenizer) {
+    console.error("BENCH_TRANSFORMERS_DEGRADED: assets missing from cache; sizes/digests are recorded constants.");
+  }
+  process.exit(p95 <= LATENCY_BUDGET_MS ? 0 : 1);
+}
+
+if (process.argv.includes("--transformers")) {
+  mainTransformers().catch((e) => {
+    console.error("BENCH_FAIL", e && e.message);
+    process.exit(1);
+  });
+} else {
+  main().catch((e) => {
+    console.error("BENCH_FAIL", e && e.message);
+    process.exit(1);
+  });
+}

@@ -45,7 +45,7 @@ export interface OrtNativeModule {
 
 /** The backend's inference session — a thin wrapper over the real native session. */
 export interface NativeSession {
-  /** The declared ONNX opset in the loaded manifest (normative 17). */
+  /** The declared ONNX opset in the loaded manifest (normative 21). */
   readonly opset: number;
   /** The semantic embedding width (normative 384). */
   readonly semanticWidth: number;

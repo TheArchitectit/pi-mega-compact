@@ -4,8 +4,8 @@
  *
  * Drives ML5-BENCH-001..004 against the canonical v2 conformance corpus + the
  * REAL code: the four bench-heads envelope fixtures (p95 latency, marginal RSS,
- * opset-17 handshake, determinism + end-to-end event path), the normative gate
- * pins (40 ms / 150 MiB / opset 17 / 3-run determinism from encoder/types.ts),
+ * opset-21 handshake, determinism + end-to-end event path), the normative gate
+ * pins (40 ms / 150 MiB / opset 21 / 3-run determinism from encoder/types.ts),
  * the event-path integration (corpus → bench shell → BenchResultV1 → four
  * `vector_cortex_encoder_bench_*` events), and the no-payload-leakage invariant
  * (EVAL-REDACT-002: aggregate measurements + digest only, never chunk content).
@@ -110,11 +110,11 @@ describe("ML5-BENCH-001..004 envelope invariants", () => {
     assert.equal(fx.budget_mib, ENCODER_RSS_BUDGET_BYTES / (1024 * 1024)); // 150
     assert.equal(fx.baseline_subtracted, true);
   });
-  test("003 opset-17 handshake pin", () => {
+  test("003 opset-21 handshake pin", () => {
     const fx = fixture("ML5-BENCH-003");
     assert.equal(fx.kind, "bench-heads");
     assert.equal(fx.gate, "opset");
-    assert.equal(fx.opset, ENCODER_OPSET); // 17
+    assert.equal(fx.opset, ENCODER_OPSET); // 21
     assert.equal(fx.handshake, "ok");
   });
   test("004 determinism + end-to-end integration pin", () => {
@@ -131,11 +131,11 @@ describe("ML5-B gate pins + event path", () => {
   test("the flag exports a live boolean regardless of env state", () => {
     assert.equal(typeof ML5B_ENABLED(), "boolean");
   });
-  test("normative gate pins match the fixtures (40 ms / 150 MiB / opset 17 / 512 tokens)", () => {
+  test("normative gate pins match the fixtures (40 ms / 150 MiB / opset 21 / 512 tokens)", () => {
     assert.equal(ENCODER_MAX_TOKENS, 512);
     assert.equal(ENCODER_LATENCY_P95_MS, 40);
     assert.equal(ENCODER_RSS_BUDGET_BYTES, 150 * 1024 * 1024);
-    assert.equal(ENCODER_OPSET, 17);
+    assert.equal(ENCODER_OPSET, 21);
   });
   test("BenchResultV1 carries aggregate measurements + digest only, never chunk content (EVAL-REDACT-002)", () => {
     const result: BenchResultV1 = {
@@ -149,7 +149,7 @@ describe("ML5-B gate pins + event path", () => {
       rssMib: 60,
       rssBaselineMib: 59,
       rssMarginalMib: 1,
-      opset: 17,
+      opset: ENCODER_OPSET,
       deterministic: true,
       digest: "ab".repeat(32),
       gates: { latency: true, rss: true, opset: true, determinism: true, all: true },
@@ -166,7 +166,7 @@ describe("ML5-B gate pins + event path", () => {
       const run = { platform: "linux-x64", encoderNative: false, threads: 4, tokens: 512 };
       logBenchEvent(eventsPath, "vector_cortex_encoder_bench_p95_ms", { ...run, p95Ms: 5, pass: true });
       logBenchEvent(eventsPath, "vector_cortex_encoder_bench_rss_mib", { ...run, rssMarginalMib: 1, pass: true });
-      logBenchEvent(eventsPath, "vector_cortex_encoder_bench_opset_ok", { ...run, opset: 17, pass: true });
+      logBenchEvent(eventsPath, "vector_cortex_encoder_bench_opset_ok", { ...run, opset: ENCODER_OPSET, pass: true });
       logBenchEvent(eventsPath, "vector_cortex_encoder_bench_deterministic", { ...run, deterministic: true, pass: true });
       const lines = readFileSync(eventsPath, "utf8").trim().split("\n").filter(Boolean);
       assert.equal(lines.length, 4, "exactly four events written");

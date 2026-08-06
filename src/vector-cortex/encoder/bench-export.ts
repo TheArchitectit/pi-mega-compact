@@ -17,7 +17,7 @@ export interface BenchGatesV1 {
   readonly latency: boolean;
   /** steady-state marginal RSS over the process baseline <= 150 MiB. */
   readonly rss: boolean;
-  /** the loaded model's declared opset_import equals 17. */
+  /** the loaded model's declared opset_import equals ENCODER_OPSET (21, ENC-0a re-baseline). */
   readonly opset: boolean;
   /** SHA-256 of the embedding output identical across 3 runs (maxAbsDelta=0). */
   readonly determinism: boolean;
@@ -53,7 +53,7 @@ export interface BenchResultV1 {
   readonly rssBaselineMib: number | null;
   /** rssMib - rssBaselineMib: the encoder's marginal footprint. */
   readonly rssMarginalMib: number | null;
-  /** declared opset_import (17); null when no asset manifest is readable. */
+  /** declared opset_import (21, ENC-0a re-baseline); null when no asset manifest is readable. */
   readonly opset: number | null;
   /** true when the output SHA-256 is identical across 3 runs. */
   readonly deterministic: boolean;

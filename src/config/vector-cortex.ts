@@ -5,8 +5,7 @@
  * `=0`/`_DISABLED` off. Flag-OFF is byte-identical to the predecessor sprint's
  * behavior (for VC0A: mode C — observer absent, zero evaluation writes).
  *
- * The breaker/triad constants (TRIAD_RESILIENCE.md) live here so VC0C consumes
- * them without re-declaring the ownership boundary. Pi-agnostic, dependency-free.
+ * Breaker/triad constants (TRIAD_RESILIENCE.md) live here; pi-agnostic, dep-free.
  */
 
 import { sprintFlag } from "./vector-cortex-flag.js";
@@ -281,6 +280,7 @@ export { ML5C_ENABLED } from "./vector-cortex-ml5c.js";
 export { ML5D_ENABLED } from "./vector-cortex-ml5d.js";
 export { ML5E_ENABLED } from "./vector-cortex-ml5e.js";
 export { DEDUP_ATTR_ENABLED } from "./vector-cortex-dedup-attr.js";
+export { ENC_0A_ENABLED } from "./vector-cortex-enc0a.js";
 
 // Breaker constants (TRIAD_RESILIENCE.md §breaker) extracted to vector-cortex-breakers.ts.
 export {
