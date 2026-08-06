@@ -126,7 +126,7 @@ void _c_achievements;
 // correct paths.
 
 const ENDPOINT_KEYS = Object.keys(ENDPOINTS) as (keyof typeof ENDPOINTS)[];
-const EXPECTED_ENDPOINT_COUNT = 53; // 52 + prefix-stability (PC-C)
+const EXPECTED_ENDPOINT_COUNT = 55; // 53 + improve-cortex + improve-cortex-status (ML5-D)
 
 /** All `/api/*` paths served by server.ts (extracted from the route handlers). */
 const SERVER_TS_PATHS: string[] = [
@@ -153,6 +153,8 @@ const SERVER_TS_PATHS: string[] = [
 	"/api/setup-cortex-action",
 	"/api/setup-cortex-action-log",
 	"/api/prefix-stability",
+	"/api/cortex/improve",
+	"/api/cortex/improve/status/:jobId",
 ];
 
 // ─── Tests ───────────────────────────────────────────────────────────────────

@@ -62,3 +62,7 @@ export {
 	handleSetupCortexAction,
 	handleSetupCortexActionLog,
 } from "./routes-setup-cortex-actions.js";
+export {
+	handleImproveCortex,
+	handleImproveCortexStatus,
+} from "./routes-cortex-improve.js";

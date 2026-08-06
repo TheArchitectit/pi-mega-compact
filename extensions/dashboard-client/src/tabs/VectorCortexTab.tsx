@@ -36,6 +36,7 @@ import { VectorCortexPlansCard } from "./VectorCortexPlansCard";
 import { VectorCortexTopologyCard } from "./VectorCortexTopologyCard";
 import { VectorCortexLedgerCard } from "./VectorCortexLedgerCard";
 import { VcStatusBadge } from "./VcStatusBadge";
+import { ModelImprovementCard } from "../components/ModelImprovementCard";
 
 function ModeChip({ mode, count }: { mode: string; count: number }): React.ReactElement {
 	return (
@@ -193,6 +194,11 @@ export default function VectorCortexTab(): React.ReactElement {
 					)}
 				</CardContent>
 			</Card>
+			<ModelImprovementCard
+				encoderMode={health?.encoderMode ?? "B"}
+				encoderAssetDigest={health?.encoderAssetDigest ?? null}
+				status={data.status}
+			/>
 			<VectorCortexTopologyCard topology={poll.topology} query={poll.query} />
 			<VectorCortexShardsCard view={poll.shards} />
 			<VectorCortexReconstructCard view={poll.reconstruct} />

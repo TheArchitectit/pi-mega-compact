@@ -1,2 +1,0 @@
-import{z as s,E as t,A as r}from"./index-DqjmZ88m.js";function n(){return s(t.modelThresholds.path)}function d(e){return r(t.modelThresholds.path,e)}async function l(e){const o=await fetch(`${t.modelThresholds.path}/${encodeURIComponent(e)}`,{method:"DELETE"});if(!o.ok)throw new Error(`deleteModelThreshold ${o.status}`);return o.json()}function a(e=50){return s(`${t.prefixStability.path}?limit=${e}`)}export{a,l as d,n as f,d as p};
-//# sourceMappingURL=client-extra-BZbw21wu.js.map

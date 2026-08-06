@@ -25,6 +25,11 @@ import type {
   SetupCortexActionLogResponse,
 } from "../setup-cortex.js";
 import type { PrefixStabilityResponse } from "../prefix-stability.js";
+import type {
+  CortexImproveStartRequest,
+  CortexImproveStart,
+  CortexImproveStatus,
+} from "../cortex-improve.js";
 
 /** Additive endpoint entries spread into the ENDPOINTS registry. */
 export const EXTRA_ENDPOINTS = {
@@ -122,5 +127,31 @@ export const EXTRA_ENDPOINTS = {
 		"GET",
 		undefined,
 		PrefixStabilityResponse
+	>,
+
+	// ─── ML5-D Improve Cortex (dashboard Vector Cortex tab) ───────────
+
+	/** POST /api/cortex/improve — launch a local ML5-A training job. */
+	improveCortex: {
+		method: "POST",
+		path: "/api/cortex/improve",
+		description:
+			"Launch a local ML5-A training job that re-qualifies the five heads against the latest local corpus and returns an opaque jobId. Requires confirm:true; flag-off returns 404. Local-only — never fetches anything.",
+	} as const satisfies EndpointDef<
+		"POST",
+		CortexImproveStartRequest,
+		CortexImproveStart
+	>,
+
+	/** GET /api/cortex/improve/status/:jobId — poll an improve job. */
+	improveCortexStatus: {
+		method: "GET",
+		path: "/api/cortex/improve/status/:jobId",
+		description:
+			"Poll an in-process Cortex improve job to terminal qualified / demoted_to_B. Unknown jobId or flag-off returns 404. Read-only, in-memory job state.",
+	} as const satisfies EndpointDef<
+		"GET",
+		undefined,
+		CortexImproveStatus
 	>,
 } as const;

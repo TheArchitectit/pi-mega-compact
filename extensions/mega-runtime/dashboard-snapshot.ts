@@ -159,8 +159,8 @@ export function buildDashboardSnapshot(ctx: SnapshotBuildContext): DashboardSnap
 			// per-session in rt and there's no cumulative counter yet.
 			total: ctx.repo.dedupCollapsed,
 			sessionTokensSaved: ctx.rt.cacheHitTokens,
-			// Cumulative tokens saved across all sessions in this repo —
-			// was a placeholder (dedupCollapsed * 100).
+			// Cumulative tokens saved across all sessions in this repo = the
+			// real repo counter (audit Table 1 stub 8 closed — no rolled-up math).
 			totalTokensSaved: ctx.repo.tokensSaved,
 		},
 		compacts: {

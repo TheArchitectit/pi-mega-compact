@@ -269,8 +269,7 @@ export const VC8A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC8A");
  */
 export const VC8B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC8B");
 
-// VC8C (canary selection + Rust parity) extracted to vector-cortex-vc8c.ts;
-// re-exported so existing `./config/vector-cortex.js` imports keep resolving.
+// VC8C (canary selection + Rust parity) extracted to vector-cortex-vc8c.ts; re-exported so existing imports keep resolving.
 export { VC8C_ENABLED } from "./vector-cortex-vc8c.js";
 // Sibling extracts to stay under the 300-line soft limit.
 export { VC9A_ENABLED } from "./vector-cortex-vc9a.js";
@@ -281,6 +280,7 @@ export { PCC_ENABLED } from "./vector-cortex-pcc.js";
 export { ML5A_ENABLED } from "./vector-cortex-ml5a.js";
 export { ML5B_ENABLED } from "./vector-cortex-ml5b.js";
 export { ML5C_ENABLED } from "./vector-cortex-ml5c.js";
+export { ML5D_ENABLED } from "./vector-cortex-ml5d.js";
 
 // Breaker constants (TRIAD_RESILIENCE.md §breaker) extracted to vector-cortex-breakers.ts.
 export {

@@ -234,5 +234,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"ML5-C runtime backend selection (WASM vs native): selects the ONNX runtime backend based on the ML5-B bench record and platform support. ON (default) = the runtime-selection dispatch runs and emits vector_cortex_runtime_selected. OFF = no selection runs — encoder serves mode B trigram, byte-identical to ML5-B.",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_ML5_D",
+			"ML5-D Dashboard Improve Cortex",
+			"ML5-D dashboard 'Improve Cortex' surface: the ModelImprovementCard + POST /api/cortex/improve + GET /api/cortex/improve/status/:jobId. ON (default) = the card renders and Improve launches a local ML5-A training job. OFF = both improve endpoints return 404 and VectorCortexTab omits the card, byte-identical to ML5-C.",
+			true,
+		),
 	],
 };

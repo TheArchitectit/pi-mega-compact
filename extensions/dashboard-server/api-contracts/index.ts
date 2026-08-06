@@ -323,3 +323,15 @@ export type {
 	ModelThresholdDeleteResponse,
 	ModelThresholdsError,
 } from "./model-thresholds.js";
+
+// ML5-D — dashboard "Improve Cortex" job API
+export type {
+	QualificationV1,
+	CortexImproveStart,
+	CortexImproveStatus,
+	CortexImproveProgress,
+	CortexImproveQualified,
+	CortexImproveDemoted,
+	CortexImproveDisabled,
+	CortexImproveStartRequest,
+} from "./cortex-improve.js";

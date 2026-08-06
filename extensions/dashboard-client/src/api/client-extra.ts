@@ -13,8 +13,10 @@ import type {
 	ModelThresholdPutRequest,
 	ModelThresholdPutResponse,
 	PrefixStabilityResponse,
+	CortexImproveStart,
+	CortexImproveStatus,
 } from "@contracts";
-import { getJson, putJson } from "./client-http.js";
+import { getJson, postJson, putJson } from "./client-http.js";
 
 /** GET /api/model-thresholds — list known models with their thresholds. */
 export function fetchModelThresholds(): Promise<ModelThresholdsResponse> {
@@ -49,5 +51,21 @@ export function fetchPrefixStability(
 ): Promise<PrefixStabilityResponse> {
 	return getJson<PrefixStabilityResponse>(
 		`${ENDPOINTS.prefixStability.path}?limit=${limit}`,
+	);
+}
+
+/** Launch a local ML5-A improve job (POST /api/cortex/improve, ML5-D). */
+export function improveCortex(): Promise<CortexImproveStart> {
+	return postJson<CortexImproveStart>(ENDPOINTS.improveCortex.path, {
+		confirm: true,
+	});
+}
+
+/** Poll an improve job (GET /api/cortex/improve/status/:jobId, ML5-D). */
+export function fetchCortexImproveStatus(
+	jobId: string,
+): Promise<CortexImproveStatus> {
+	return getJson<CortexImproveStatus>(
+		ENDPOINTS.improveCortexStatus.path.replace(":jobId", encodeURIComponent(jobId)),
 	);
 }

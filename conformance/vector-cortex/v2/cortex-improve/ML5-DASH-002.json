@@ -1,0 +1,1 @@
+{"assertion":"card render — unqualified mode-B asset renders the Rejected / demoted_to_B state with the demotion reason surfaced","badge":"Rejected","flag":"MEGACOMPACT_ML5_D","id":"ML5-DASH-002","kind":"cortex-improve","mode":"B","producer":"scripts/ml5/gen-fixtures-ml5d.mjs","reason_field":true,"render":"rejected","schema":"schemas/ml5-fixture.schema.json"}

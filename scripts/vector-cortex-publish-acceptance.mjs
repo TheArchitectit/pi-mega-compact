@@ -271,7 +271,7 @@ function main() {
   // vc3b-acceptance aggregator's `./vc3b-support.js` import resolves at the
   // published dist/vector-cortex/ offset (test-support, not itself a test).
   const nSupport = copyTree(SRC_VECTOR, DEST_VECTOR, (name) =>
-    name === "vc3b-support.js",
+    name === "vc3b-support.js" || name === "improve.js",
   );
   // VC1C MinHashV2 lives in src/dedup/. Mirror the runtime .js to dist/dedup/ so
   // the acceptance aggregator's `../dedup/l1-minhash-v2.js` import (from the
