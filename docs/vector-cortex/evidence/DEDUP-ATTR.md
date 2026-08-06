@@ -1,6 +1,6 @@
 # DEDUP-ATTR Evidence
 
-Status: REVIEWED + COMMITTED (impl commit `62e1a08`, spec-amendment commit `92d259a`)
+Status: PUBLISHED v0.20.42 (impl `62e1a08`, spec-amendment `92d259a`, attestation `7143273`)
 Sprint: [DEDUP-ATTR tier attribution rollup](../sprints/DEDUP-ATTR-tier-attribution-rollup.md) — closes the last open piece of external-audit item #6 (per-tier dedup catch attribution).
 
 ## Deliverables
@@ -74,3 +74,4 @@ Production / config / tests / docs / conformance (all under soft caps; `src` 300
 
 - **Client not touched:** the client poll surface for this endpoint is VC9-style card work explicitly out of scope for DEDUP-ATTR.
 - **Controller attestation (Opus):** gates replicated on controller — `npm run build`, acceptance flag-default + flag-off parity (7/7 both), rollup pure-fn (7/7 via `dist/src/vector-cortex/dedup-attr/rollup.test.js`), routes (7/7 after controller-applied Deviation-4 fix), npm test (3693 pass / 0 fail / 370 files), npm run lint (tsc --noEmit + guardrails + semantic scan), regression `--all --soft-as-hard --soft-as-hard-base v0.20.41 --pre-commit` (0 blocking; 7 dev-only non-blocking warnings), conformance 852 canonical, docs-check 45 sprints / 11 phases, log_failure --list all resolved, git diff --check clean, scope-check 62e1a08 + 92d259a both pass. Controller fixed Deviation 4 (querystring claim) + added the `nDedupAttr` publish-acceptance mirror block; Deviation 1 stays; Deviations 2–3 stand as implementer decisions. Impl commit `62e1a08`, spec-amendment `92d259a`.
+- **Publish:** `./scripts/deploy.sh 0.20.42` green; `npm view pi-mega-compact@0.20.42` confirms the new surface (`dist/src/vector-cortex/dedup-attr/rollup.js`, `dist/vector-cortex/dedup-attr/rollup.js` (mirror), `dist/src/config/vector-cortex-dedup-attr.js`, `dist/config/vector-cortex-dedup-attr.js`, `dist/extensions/dashboard-server/routes-dedup-attribution.js`, `dist/extensions/dashboard-server/api-contracts/dedup-attribution.js`). GitHub release v0.20.42 auto-created with notes. Dashboard live-verify on localhost:9320 is not reachable from this host without an active pi session (deploy bounces local runners); the npm-tarball surface verification above substitutes for live-verify here.
