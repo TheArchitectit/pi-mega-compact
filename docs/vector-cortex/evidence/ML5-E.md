@@ -1,6 +1,6 @@
 # ML5-E Evidence
 
-Status: **REVIEWED + COMMITTED** — all 7 numbered sprint tasks delivered.
+Status: **PUBLISHED v0.20.41** — all 7 numbered sprint tasks delivered.
 Controller corrections applied during review: (1) `retrain-nightly.mjs` step 6
 was writing a `verdict:"trained"` ledger row not in the PromotionV1 enum —
 replaced with a call to the promotion gate (which writes its own
