@@ -1,10 +1,10 @@
 # VC6C-IMPL Evidence
 
-Status: implementation-complete — the two production placeholder blocks in `extensions/mega-events/context-handler/afterCompact.ts` are replaced by a real post-compact gap-detection + repair drive, all sprint gates green including the mandated flag-off run (`MEGACOMPACT_VC6C=0`, byte-identical) and the flattened acceptance command `node --test dist/vector-cortex/vc6c-impl-acceptance.test.js`. Reviewer attestation is the controller's to award after independent review.
+Status: reviewer-accepted — the two production placeholder blocks in `extensions/mega-events/context-handler/afterCompact.ts` are replaced by a real post-compact gap-detection + repair drive, all sprint gates green including the mandated flag-off run (`MEGACOMPACT_VC6C=0`, byte-identical) and the flattened acceptance command `node --test dist/vector-cortex/vc6c-impl-acceptance.test.js`.
 
 ## Reviewer attestation
 
-Not yet attested — pending independent controller review (Table 5-A reconciliation). The controller clears this flag as part of the VC6C evidence attestation after reviewing.
+Name/date/status: Claude (Opus controller), 2026-08-05, **reviewer-accepted**. Contract review: every touched file read and verified — `repair-plan.ts` (112, new — production RepairPlanV1/RepairEventV1, reuses `heal/controller.ts#computeBackoff`, never forks); `rebuild.ts` (75, new — thin executor over `heal/rebuild.ts#rebuildAndSwitch`, monotonic strict-successor guard, failed verify keeps old pointer and deletes no evidence); `context-handler/controller.ts` (229, new — production seam, `nowMs` injected, pure policy defers to heal); `afterCompact.ts` (357, evolved — both placeholder blocks at :282/:304 replaced with the real drive; flag-off byte-identical). Conformance 821 canonical / 6 new fixtures pinned. Independently replicated: build PASS, acceptance 10/10 both flag states, conformance 821 canonical, docs-check 44/11, guardrails clean. Mutation scan clean (no disabled guards, no rate-limit changes, no `Math.random`). The Table 5-A contradiction is resolved: `VC6C.md` correctly notes the primitives-only scope and that integration was reviewer-attested via this record. Forced deviation on EXPECTED_SPRINTS=44/EXPECTED_PHASES=11 ratified — matches on-disk reality per the PC-D spec-drift precedent. The 4 known-findings/deferred items are legitimate next-phase scope, not blockers.
 
 ## Goal recap
 
