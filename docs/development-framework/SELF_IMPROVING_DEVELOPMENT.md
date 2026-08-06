@@ -222,8 +222,8 @@ live verification pass **before** dispatching the next sprint:
 3. **Sprint-specific endpoints** → hit every API endpoint the sprint added or modified; confirm they
    return real data (not an empty shell). A new endpoint returning `{}` or a shaped-but-null payload is
    a finding, not a pass.
-4. **Dashboard UI** (when the sprint added client components): open in a browser (Playwright headless)
-   and confirm the component renders with data.
+4. **Dashboard UI** (when the sprint added client components): the controller additionally navigates
+   via Playwright headless and confirms the component renders with data (see §8.4).
 
 ### 8.2 Where the result lives
 
@@ -232,13 +232,41 @@ to all previously-shipped sprints via the retroactive pass described below). The
 exact curl command and a one-line PASS/FAIL/NOTED verdict. A FAIL blocks the sprint from advancing to
 the next — the controller fixes the live defect first.
 
-### 8.3 Retroactive pass
+### 8.3 Retroactive pass — done 2026-08-06
 
-Sprints shipped before this protocol (VC9A through VC6C-IMPL / v0.20.35) get a single live-verification
-pass against the current live dashboard + the version on disk. Findings are recorded in a new file:
-`docs/audits/2026-08-06-live-verification-retro.md` with per-sprint verdict + endpoint tested.
+Sprints shipped before this protocol (VC9A through VC6C-IMPL / v0.20.35) were verified in a single
+pass against the live dashboard + version on disk. Findings: `docs/audits/2026-08-06-live-verification-retro.md`.
+**Verdict: ALL PASS** — no live defects found across VC0A→VC6C-IMPL. One non-finding noted
+(EADDRINUSE retry loop is pre-existing behavior, not a bug).
 
-### 8.4 Escape hatch
+### 8.4 Playwright UI smoke — mandatory for dashboard-touching sprints
+
+When a sprint adds, removes, or changes any dashboard client component
+(`extensions/dashboard-client/src/`), the controller MUST ALSO run a Playwright headless pass against
+the live dashboard:
+
+1. `scripts/dashboard-tab-smoke.mjs` (existing) covers the tab-render happy path.
+2. The controller additionally navigates to each UI surface the sprint touched and confirms:
+   - component renders without error
+   - data flows from the API (not an empty shell)
+   - status badges reflect the server-side `deriveVcStatus` value seen in the curl pass
+3. The smoke result is recorded in the evidence record's "Live verification" section alongside the
+   curl results.
+
+From v0.20.36 onward, "curl API endpoints + confirm version" alone is **insufficient** for any sprint
+that touches `dashboard-client/`. The curl pass is the floor; Playwright headless is the dashboard gate.
+
+### 8.5 Multi-model / multi-repo topology — future feature branch (observation)
+
+**Noted 2026-08-06:** the Vector Cortex dashboard header shows a single model (`gpt-5.4`) even when
+multiple pi agents (different models) share a repo and contribute to the same cortex. The cortex is
+already per-repo-aggregated; what's missing is a per-model breakdown (sessions grouped by model,
+stacked memory graph, per-model cost). Deferred to a future feature branch — recorded here so the
+observation doesn't get lost. Candidate approach: per-model selector chip row on Cortex tab; each
+model is a filter over `sessions` + `events`; stacked graph overlays per-model occurrence counts.
+NOT in scope for ML5 chain.
+
+### 8.6 Escape hatch
 
 None. There is no `guardrails-allow` for "skipped live verification" — that would be the exact defect
 this protocol exists to prevent.
