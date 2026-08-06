@@ -1,0 +1,1 @@
+{"assertion":"rollup is pure — two calls with the same events + window + now are deep-equal (determinism)","expected_status":"live","id":"DEDUP-ATTR-004","kind":"dedup-attribution","producer":"scripts/dedup-attr/gen-fixtures.mjs","scenario":"pure","schema":"schemas/dedup-attribution-fixture.schema.json","shares_sum_to_one":true,"total_decisions":4}

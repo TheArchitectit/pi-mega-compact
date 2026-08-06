@@ -273,6 +273,15 @@ function main() {
   const nSupport = copyTree(SRC_VECTOR, DEST_VECTOR, (name) =>
     name === "vc3b-support.js" || name === "improve.js",
   );
+  // DEDUP-ATTR added the dedup-attr subtree (rollup.ts). Mirror its runtime
+  // .js so the dedup-attr-acceptance aggregator's `./dedup-attr/rollup.js`
+  // import resolves at the published dist/vector-cortex/ offset (tests excluded
+  // like the other subtrees).
+  const nDedupAttr = existsSync(join(SRC_VECTOR, "dedup-attr"))
+    ? copyTree(join(SRC_VECTOR, "dedup-attr"), join(DEST_VECTOR, "dedup-attr"), (name) =>
+        name.endsWith(".js") && !name.endsWith(".test.js"),
+      )
+    : 0;
   // VC1C MinHashV2 lives in src/dedup/. Mirror the runtime .js to dist/dedup/ so
   // the acceptance aggregator's `../dedup/l1-minhash-v2.js` import (from the
   // published dist/vector-cortex/ offset) resolves at dist/dedup/.
@@ -336,7 +345,7 @@ function main() {
   // mirrored above and the runtime-select.ts / runtime-emit.ts siblings land
   // under dist/vector-cortex/encoder/ by the same nEncoder copyTree pass.
   console.log(
-    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder + ${nCortex} cortex + ${nTopology} topology + ${nShards} shards + ${nResidual} residual + ${nReconstruct} reconstruct + ${nPromptDag} prompt-dag + ${nPlanner} planner + ${nRender} render + ${nProvider} provider + ${nRollout} rollout + ${nHeal} heal + ${nCache} cache + ${nOutcomes} outcomes + ${nController} controller + ${nPlatform} platform + ${nLive} live-seam + ${nSupport} support files`,
+    `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder + ${nCortex} cortex + ${nTopology} topology + ${nShards} shards + ${nResidual} residual + ${nReconstruct} reconstruct + ${nPromptDag} prompt-dag + ${nPlanner} planner + ${nRender} render + ${nProvider} provider + ${nRollout} rollout + ${nHeal} heal + ${nCache} cache + ${nOutcomes} outcomes + ${nController} controller + ${nPlatform} platform + ${nLive} live-seam + ${nSupport} support + ${nDedupAttr} dedup-attr files`,
   );
 }
 

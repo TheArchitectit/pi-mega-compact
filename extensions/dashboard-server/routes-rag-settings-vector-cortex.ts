@@ -246,5 +246,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"ML5-E nightly retraining + feedback loop: the user's own post-redaction conversation turns become fresh training signal, the five heads are re-fit nightly via system cron, calibration is re-validated, and mode-A promotion is re-checked without human intervention. The cron is system-configured (crontab -e); the extension never installs or writes a crontab. Candidates are written to ~/.pi/mega-compact-encoder/candidates/ and promoted via the ML5-D Improve Cortex flow. ON (default) = the scripts may be invoked by the system cron. OFF = scripts are never invoked; byte-identical to ML5-D.",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_DEDUP_ATTR",
+			"Dedup Tier Attribution Rollup",
+			"Dedup tier-attribution rollup: per-tier dedup catch shares (L0/L1/L2/new percent of dedup decisions) read from the local events.log dedup_audit stream (GET /api/dedup-tier-attribution). OFF = 404 + no cache file, byte-identical predecessor.",
+			true,
+		),
 	],
 };

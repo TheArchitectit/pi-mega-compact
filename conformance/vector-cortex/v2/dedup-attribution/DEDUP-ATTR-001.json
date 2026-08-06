@@ -1,0 +1,1 @@
+{"assertion":"non-empty window returns shares summing to 1.0 with status live — the endpoint reports real parsed tiers, not zeros","expected_status":"live","id":"DEDUP-ATTR-001","kind":"dedup-attribution","producer":"scripts/dedup-attr/gen-fixtures.mjs","scenario":"non-empty","schema":"schemas/dedup-attribution-fixture.schema.json","shares_sum_to_one":true,"total_decisions":4}

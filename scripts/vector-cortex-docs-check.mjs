@@ -28,7 +28,7 @@ const SPRINTS_DIR = join(DOCS, "sprints");
 const PHASES_DIR = join(DOCS, "phases");
 const MAX_MD_LINES = 500;
 const KNOWN_MIGRATIONS = new Set(["M2", "M3", "M4", "M5", "M6", "M7", "MIG-DOWN-001"]);
-const EXPECTED_SPRINTS = 44; // 37 prior + ML5-A..ML5-E (5) + VC6C-IMPL (1) + CONFORM-HYGIENE (1) — the 7 specs landed as committed docs on master after this file last bumped, so one authoritative bump to the on-disk count
+const EXPECTED_SPRINTS = 45; // 44 prior + DEDUP-ATTR — the 45th sprint spec (dedup tier-attribution rollup)
 const EXPECTED_PHASES = 11; // 10 prior + the ML5 phase doc (the 11th phase doc is pre-existing on master)
 
 const issues = [];

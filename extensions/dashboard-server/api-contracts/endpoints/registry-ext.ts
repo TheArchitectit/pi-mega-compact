@@ -30,6 +30,7 @@ import type {
   CortexImproveStart,
   CortexImproveStatus,
 } from "../cortex-improve.js";
+import type { DedupTierAttributionResponse } from "../dedup-attribution.js";
 
 /** Additive endpoint entries spread into the ENDPOINTS registry. */
 export const EXTRA_ENDPOINTS = {
@@ -153,5 +154,19 @@ export const EXTRA_ENDPOINTS = {
 		"GET",
 		undefined,
 		CortexImproveStatus
+	>,
+
+	// ─── DEDUP-ATTR tier-attribution rollup ───────────────────────────
+
+	/** GET /api/dedup-tier-attribution — reader-only per-tier dedup shares. */
+	dedupTierAttribution: {
+		method: "GET",
+		path: "/api/dedup-tier-attribution",
+		description:
+			"Reader-only dedup tier-attribution rollup (DEDUP-ATTR): L0/L1/L2/new percent of dedup decisions in a query window (default 24h, ?windowMs=, capped 30d). Counts + shares only, never matched checkpoint contents or raw query text. Flag-off returns 404.",
+	} as const satisfies EndpointDef<
+		"GET",
+		undefined,
+		DedupTierAttributionResponse
 	>,
 } as const;

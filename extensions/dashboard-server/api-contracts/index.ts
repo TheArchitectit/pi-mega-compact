@@ -335,3 +335,11 @@ export type {
 	CortexImproveDisabled,
 	CortexImproveStartRequest,
 } from "./cortex-improve.js";
+
+// DEDUP-ATTR — dedup tier-attribution rollup
+export type {
+	DedupTierCounts,
+	DedupTierRollupV1,
+	DedupTierAccumulator,
+	DedupTierAttributionResponse,
+} from "./dedup-attribution.js";
