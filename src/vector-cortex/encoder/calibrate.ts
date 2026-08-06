@@ -23,6 +23,8 @@
  */
 
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { ML5A_ENABLED } from "../../config/vector-cortex.js";
 import {
   ENCODER_HEAD_ORDER,
   ENCODER_SEED,
@@ -222,4 +224,51 @@ export function fitCalibration(
     seed,
   };
   return { ok: true, calibration };
+}
+
+/**
+ * Load a persisted `CalibrationV1` artifact (schema "calibration-v1") from disk.
+ * ML5-A: gated on MEGACOMPACT_ML5_A; flag-off, absent file, malformed JSON,
+ * wrong schema, non-canonical five-head order, or non-finite temp/threshold each
+ * return null (non-fatal, never throws). Deterministic, local (PREVENT-PI-004).
+ */
+export function loadCalibrationV1(path: string): CalibrationV1 | null {
+  if (!ML5A_ENABLED()) return null;
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const r = parsed as Record<string, unknown> | null;
+  if (!r || r["schema"] !== "calibration-v1") return null;
+  const order = r["headOrder"];
+  if (!Array.isArray(order)) return null;
+  if (order.length !== ENCODER_HEAD_ORDER.length || !ENCODER_HEAD_ORDER.every((h, i) => order[i] === h)) {
+    return null;
+  }
+  const temperatures = r["temperatures"] as Record<string, unknown> | undefined;
+  const thresholds = r["thresholds"] as Record<string, unknown> | undefined;
+  const splitDigest = r["calibrationSplitDigest"];
+  if (!temperatures || !thresholds || typeof splitDigest !== "string" || splitDigest.length !== 64) return null;
+  for (const h of ENCODER_HEAD_ORDER) {
+    const t = Number(temperatures[h]);
+    const th = Number(thresholds[h]);
+    if (!Number.isFinite(t) || !Number.isFinite(th)) return null;
+  }
+  return {
+    schema: "calibration-v1",
+    headOrder: [...ENCODER_HEAD_ORDER],
+    calibrationSplitDigest: splitDigest,
+    fittedOnCalibrationOnly: true,
+    temperatures: { ...(temperatures as Record<EncoderHeadName, number>) },
+    thresholds: { ...(thresholds as Record<EncoderHeadName, number>) },
+    seed: Number(r["seed"] ?? ENCODER_SEED),
+  };
 }

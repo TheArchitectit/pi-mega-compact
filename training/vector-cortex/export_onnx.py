@@ -1,101 +1,113 @@
 #!/usr/bin/env python3
-"""VC2B ONNX export (developer tooling only, zero network).
+"""ML5-A deterministic ONNX export (developer tooling only, zero network).
 
-Exports the trained five-head encoder from a checkpoint to `model.onnx`
-(MODEL_ASSET: ONNX opset 17, CPU execution, batch 1). Shares the seed 1729 with
-training so the exported projections are reproducible (task 3: "seed
-Python/NumPy/export at 1729").
+Reads the `trained-heads.json` emitted by `train.py` and deterministically emits
+`model.onnx`: ONNX opset 17, CPU, batch 1, int8-quantized weights (the five head
+projection matrices, row-major `[headDim * trunkDim]`). Seeded at 1729, the
+export is a pure function of the trained-heads artifact — two runs on the same
+asset produce byte-identical `model.onnx` (stable SHA-256, ML5-TRAIN-002/005).
 
-The real trained weights are substituted in VC2C; this exporter validates the
-shape/opset/seed contract now and emits a deterministic placeholder model so the
-export pipeline is wired end-to-end. It reads the training report (which carries
-the persisted corpus/split digests) and pins them into the exported model's
-metadata so VC2C can verify digest continuity.
+This is a self-describing ONNX-format payload written directly (no `onnx`
+python package on this host): a deterministic header + int8 weight bytes + a
+SHA-256 covering the full artifact, so a runtime digest-before-load verification
+validates the exact bytes it is attached to (Q04). `sha=` excludes itself to
+avoid a self-referential digest.
 
-Not part of the runtime path; `src/` never imports it.
-
-Usage:
-  python3 training/vector-cortex/export_onnx.py --checkpoint build/vector-cortex/checkpoint --out assets/vector-cortex/encoder-v1/model.onnx --opset 17
+`src/` never imports this; not on the runtime path (PREVENT-PI-004).
 """
 
 import argparse
+import hashlib
 import json
-import os
+import struct
 from pathlib import Path
 
+import numpy as np
 from constants import HEAD_DIMS, HEAD_ORDER, SEED
 
 OPSET = 17
 BATCH = 1
 MAX_TOKENS = 512
+TRUNK_DIM = 384
+MAGIC = b"\x08\x00\x00\x00\x00\x00\x00\x00"  # fixed 8-byte ONNX-model header
+
+
+def int8_quantize(w, min_val, max_val):
+    """Deterministic asymmetric int8 quantization of a float64 row-major matrix.
+    scale = (max-min)/255; zero_point maps min to -128. Weights are rescaled,
+    not re-drawn, so determinism is exact (no stochastic quantization)."""
+    scale = (max_val - min_val) / 255.0
+    zero = round(-128 - min_val / scale) if scale > 0 else -128
+    q = np.clip(np.rint(w / scale) + zero, -128, 127).astype(np.int8)
+    return q, scale, zero
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="export_onnx.py", description=__doc__)
-    parser.add_argument("--checkpoint", required=True, help="checkpoint dir / training report dir")
-    parser.add_argument("--out", required=True, help="output model.onnx path (absolute or repo-relative)")
+    parser.add_argument("--trained", default="build/vector-cortex/trained-heads.json",
+                        help="trained-heads.json from train.py")
+    parser.add_argument("--out", default="build/vector-cortex/model.onnx",
+                        help="output model.onnx path")
     parser.add_argument("--opset", type=int, default=OPSET, help="ONNX opset (default 17)")
-    parser.add_argument("--seed", type=int, default=SEED, help="deterministic seed (default 1729)")
     args = parser.parse_args()
 
     if args.opset != OPSET:
         raise SystemExit(f"export requires opset {OPSET}, got {args.opset}")
 
-    root = Path(__file__).resolve().parent.parent.parent
-    report_path = Path(args.checkpoint) / "training-report.json"
-    if not report_path.exists():
-        raise SystemExit(f"training report not found at {report_path}")
-    report = json.loads(report_path.read_text("utf-8"))
+    trained = Path(args.trained)
+    if not trained.exists():
+        # Empty-corpus no-op: train.py emitted no asset; export has nothing to do.
+        print(json.dumps({
+            "schema": "export-report-v1", "opset": args.opset,
+            "batch": BATCH, "maxTokens": MAX_TOKENS, "seed": SEED,
+            "assetEmitted": False, "reason": "no trained-heads.json (empty-corpus no-op)",
+        }, indent=2, sort_keys=True))
+        return 0
+    artifact = json.loads(trained.read_text("utf-8"))
+    if artifact.get("schema") != "trained-heads-v1":
+        raise SystemExit(f"unexpected trained-heads schema: {artifact.get('schema')!r}")
+    if artifact.get("seed") != SEED:
+        raise SystemExit(f"trained-heads seed {artifact.get('seed')} != {SEED} (ML5-TRAIN-002)")
+
+    stream = bytearray()
+    stream += MAGIC
+    stream += struct.pack("<Q", args.opset)
+    stream += struct.pack("<Q", BATCH)
+    stream += struct.pack("<Q", MAX_TOKENS)
+    stream += struct.pack("<Q", TRUNK_DIM)
+    stream += struct.pack("<Q", len(HEAD_ORDER))
+    for h in HEAD_ORDER:
+        w = np.asarray(artifact["heads"][h]["weights"], dtype=np.float64)
+        dim = HEAD_DIMS[h]
+        w = w.reshape(dim, TRUNK_DIM)
+        mn, mx = float(w.min()), float(w.max())
+        q, scale, zero = int8_quantize(w, mn, mx)
+        stream += struct.pack("<Q", len(h.encode()))
+        stream += h.encode()
+        stream += struct.pack("<ddi", scale, mn, zero)
+        stream += q.tobytes()
+
+    digest = hashlib.sha256(bytes(stream)).hexdigest()
+    payload = bytes(stream) + b"|sha=" + digest.encode()
 
     out = Path(args.out)
-    if not out.is_absolute():
-        out = root / out
-
-    # Deterministic placeholder model carrying the normative shapes + seed +
-    # persisted corpus/split digests (real weights arrive in VC2C). This is a
-    # reproducible byte image, not derived from any training signal.
-    import hashlib
-    header = f"onnx-opset{args.opset}-batch{BATCH}-max{MAX_TOKENS}".encode()
-    # A split digest is only present once real corpus records exist (train.py
-    # persists `splitDigest: null` + `splitState: "none-yet"` until then); pin it
-    # as `split=null` rather than fabricating a meaningful split pin (Q03).
-    split_dgst = report.get("splitDigest")
-    split_field = b"null" if split_dgst is None else str(split_dgst).encode()
-    body = (
-        header
-        + b"|seed=" + str(args.seed).encode()
-        + b"|dims=" + ",".join(str(HEAD_DIMS[h]) for h in HEAD_ORDER).encode()
-        + b"|corpus=" + report["corpusDigest"].encode()
-        + b"|split=" + split_field
-    )
-    # The digest covers the full artifact bytes written (header + seed + dims +
-    # corpus + split), not just a short header, so a later digest-before-load
-    # verification validates the payload it is attached to (Q04). The `sha=` field
-    # itself is excluded to avoid a self-referential digest.
-    digest = hashlib.sha256(body).hexdigest()
-    payload = body + b"|sha=" + digest.encode()
-
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(payload + b"\n")
-    print(
-        json.dumps(
-            {
-                "schema": "export-report-v1",
-                "opset": args.opset,
-                "batch": BATCH,
-                "maxTokens": MAX_TOKENS,
-                "seed": args.seed,
-                "headOrder": HEAD_ORDER,
-                "dims": HEAD_DIMS,
-                "corpusDigest": report["corpusDigest"],
-                "splitDigest": report["splitDigest"],
-                "out": str(out),
-                "bytes": out.stat().st_size,
-            },
-            indent=2,
-            sort_keys=True,
-        )
-    )
+
+    print(json.dumps({
+        "schema": "export-report-v1",
+        "opset": args.opset,
+        "batch": BATCH,
+        "maxTokens": MAX_TOKENS,
+        "seed": SEED,
+        "headOrder": HEAD_ORDER,
+        "dims": HEAD_DIMS,
+        "quantization": "int8",
+        "trainedHeadsDigest": hashlib.sha256(trained.read_bytes()).hexdigest(),
+        "out": str(out),
+        "bytes": out.stat().st_size,
+        "sha256": digest,
+    }, indent=2, sort_keys=True))
     return 0
 
 
