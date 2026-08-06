@@ -38,6 +38,9 @@ SRC_HARD = 500
 EXT_SOFT = 400
 EXT_HARD = 500
 TEST_HARD = 600
+# ML5-A training pipeline (not tsc/npm-managed): its own hard cap, no soft limit.
+TRAIN_DIRS = (f"training{os.sep}vector-cortex",)
+PY_TRAIN_HARD = 600
 
 
 def _classify_file(rel_path: str) -> tuple[int | None, int | None]:
@@ -55,6 +58,10 @@ def _classify_file(rel_path: str) -> tuple[int | None, int | None]:
         return (EXT_SOFT, TEST_HARD if is_test else EXT_HARD)
     if rel_path.startswith("src" + os.sep):
         return (SRC_SOFT, TEST_HARD if is_test else SRC_HARD)
+    for train in TRAIN_DIRS:
+        if rel_path.startswith(train + os.sep) and rel_path.endswith(".py"):
+            # Training python has its own hard cap only (no soft split trigger).
+            return (None, PY_TRAIN_HARD)
     return (None, None)
 
 
@@ -67,6 +74,38 @@ def check_file_sizes(repo_root: Path) -> list[dict]:
     """
     violations: list[dict] = []
     warnings: list[dict] = []
+
+    def _size_file(abs_path: Path, rel_path: str) -> None:
+        soft, hard = _classify_file(rel_path)
+        if hard is None:
+            return
+        try:
+            with open(abs_path, encoding="utf-8", errors="replace") as f:
+                line_count = sum(1 for _ in f)
+        except OSError:
+            return
+        if line_count > hard:
+            violations.append(
+                {
+                    "file": rel_path,
+                    "lines": line_count,
+                    "soft": soft,
+                    "hard": hard,
+                    "severity": "error",
+                    "kind": "hard",
+                }
+            )
+        elif soft is not None and line_count > soft:
+            warnings.append(
+                {
+                    "file": rel_path,
+                    "lines": line_count,
+                    "soft": soft,
+                    "hard": hard,
+                    "severity": "warning",
+                    "kind": "soft",
+                }
+            )
 
     for top in FILE_SIZE_DIRS:
         base = repo_root / top
@@ -81,36 +120,24 @@ def check_file_sizes(repo_root: Path) -> list[dict]:
                     rel_path = abs_path.relative_to(repo_root).as_posix()
                 except ValueError:
                     continue
-                soft, hard = _classify_file(rel_path)
-                if hard is None:
+                _size_file(abs_path, rel_path)
+
+    # ML5-A training pipeline: python files under training/vector-cortex get the
+    # same size scan with their own hard cap (no soft split trigger).
+    for train in TRAIN_DIRS:
+        base = repo_root / train
+        if not base.is_dir():
+            continue
+        for dirpath, _dirnames, filenames in os.walk(base):
+            for name in filenames:
+                if not name.endswith(".py"):
                     continue
+                abs_path = Path(dirpath) / name
                 try:
-                    with open(abs_path, encoding="utf-8", errors="replace") as f:
-                        line_count = sum(1 for _ in f)
-                except OSError:
+                    rel_path = abs_path.relative_to(repo_root).as_posix()
+                except ValueError:
                     continue
-                if line_count > hard:
-                    violations.append(
-                        {
-                            "file": rel_path,
-                            "lines": line_count,
-                            "soft": soft,
-                            "hard": hard,
-                            "severity": "error",
-                            "kind": "hard",
-                        }
-                    )
-                elif soft is not None and line_count > soft:
-                    warnings.append(
-                        {
-                            "file": rel_path,
-                            "lines": line_count,
-                            "soft": soft,
-                            "hard": hard,
-                            "severity": "warning",
-                            "kind": "soft",
-                        }
-                    )
+                _size_file(abs_path, rel_path)
 
     violations.sort(key=lambda d: d["lines"], reverse=True)
     warnings.sort(key=lambda d: d["lines"], reverse=True)
@@ -142,6 +169,50 @@ def print_file_size_report(size_issues: list[dict]) -> None:
     print(
         f"  {hard_count} over hard limit (blocks commit), {soft_count} over soft limit (warning)"
     )
+    print("=" * 70)
+
+
+# ---------------------------------------------------------------------------
+# Python compile check — every training/vector-cortex .py must byte-compile.
+# ---------------------------------------------------------------------------
+
+def check_python_compile(repo_root: Path) -> list[dict]:
+    """Byte-compile every .py under the training dirs (no execution). Returns a
+    list of issue dicts {file, error} for files that fail to compile."""
+    issues: list[dict] = []
+    for train in TRAIN_DIRS:
+        base = repo_root / train
+        if not base.is_dir():
+            continue
+        for dirpath, _dirnames, filenames in os.walk(base):
+            for name in filenames:
+                if not name.endswith(".py"):
+                    continue
+                abs_path = Path(dirpath) / name
+                prod = subprocess.run(
+                    [sys.executable, "-m", "py_compile", str(abs_path)],
+                    capture_output=True,
+                    text=True,
+                    cwd=str(repo_root),
+                )
+                if prod.returncode != 0:
+                    issues.append(
+                        {"file": str(abs_path.relative_to(repo_root)), "error": (prod.stderr or prod.stdout).strip()}
+                    )
+    return issues
+
+
+def print_python_compile_report(compile_issues: list[dict]) -> None:
+    if not compile_issues:
+        print("✓ All training/vector-cortex python files compile")
+        return
+    print("\n" + "=" * 70)
+    print("PYTHON COMPILE CHECK (training/vector-cortex)")
+    print("=" * 70)
+    for issue in compile_issues:
+        print(f"  ERROR  {issue['file']}\n    {issue['error']}")
+    print("-" * 70)
+    print(f"  {len(compile_issues)} python file(s) failed to compile (blocks commit)")
     print("=" * 70)
 
 
@@ -888,6 +959,11 @@ Examples:
     if not args.no_audit:
         audit_blocking, audit_warnings, audit_issues = check_npm_audit(Path.cwd())
 
+    # Python compile check (training/vector-cortex) — a syntax error in the
+    # training pipeline would otherwise pass the tsc-only build gate.
+    python_compile = check_python_compile(Path.cwd())
+    py_compile_count = len(python_compile)
+
     # Output results
     if args.json:
         print(
@@ -899,6 +975,8 @@ Examples:
                     "settings_missing": settings_count,
                     "npm_audit_blocking": audit_blocking,
                     "npm_audit_warnings": audit_warnings,
+                    "python_compile": python_compile,
+                    "python_compile_count": py_compile_count,
                     "issues": issues,
                     "file_sizes": size_issues,
                     "settings_coverage": settings_issues,
@@ -931,6 +1009,8 @@ Examples:
             not args.quiet or audit_blocking > 0 or not audit_issues
         ):
             print_npm_audit_report(audit_blocking, audit_warnings, audit_issues)
+        if not args.quiet or py_compile_count > 0:
+            print_python_compile_report(python_compile)
         if args.soft_as_hard and soft_as_hard_count > 0:
             print("\n" + "=" * 70)
             print(
@@ -957,6 +1037,7 @@ Examples:
         or soft_as_hard_count > 0
         or settings_count > 0
         or audit_blocking > 0
+        or py_compile_count > 0
     ):
         sys.exit(1)
     sys.exit(0)

@@ -222,5 +222,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"Dashboard per-turn prompt-cache visibility: surfaces the per-turn stable-prefix ratio trend (GET /api/prefix-stability) in the CacheTab PrefixStabilityCard. Reads aggregate ratios/counts from the local monitoring events log only — no payload bytes. OFF = byte-identical predecessor (PC-B-era): /api/prefix-stability returns 404 and the CacheTab omits the PrefixStabilityCard.",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_ML5_A",
+			"ML5-A Five-Head Training Load",
+			"ML5-A real trained-head loading: loadHeadProjections (trained-heads-v1) feeds selectQualifiedEncoder (trainedHeadsPath atomic demotion) + loadCalibrationV1. ON (default) = a pinned trained-heads path must load for mode A. OFF = loaders return null and selection ignores trainedHeadsPath — byte-identical to the placeholder-weighted VC2C path.",
+			true,
+		),
 	],
 };

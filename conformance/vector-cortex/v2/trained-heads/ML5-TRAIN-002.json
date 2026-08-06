@@ -1,0 +1,1 @@
+{"assertion":"the ONNX export is deterministic and reproducible: seed 1729, opset 17, int8 quantization, and a byte-stable SHA-256 across repeated runs","id":"ML5-TRAIN-002","kind":"ml5-train","opset":17,"producer":"scripts/ml5/gen-fixtures-ml5a.mjs","quantized":"int8","schema":"schemas/ml5-fixture.schema.json","seed":1729,"sha256_stable_across_runs":true}

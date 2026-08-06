@@ -1,0 +1,30 @@
+{
+  "schema": "model-card-v1",
+  "trunk": {
+    "provider": "Xenova/bge-small-en-v1.5",
+    "params": 33400000,
+    "hiddenWidth": 384,
+    "seq": 512,
+    "kind": "int8-onnx"
+  },
+  "heads": {
+    "semantic": 384,
+    "dependency": 128,
+    "contradiction": 128,
+    "cacheStability": 64,
+    "payloadRouting": 32
+  },
+  "lossWeights": {
+    "semantic": 0.35,
+    "dependency": 0.2,
+    "contradiction": 0.2,
+    "cacheStability": 0.15,
+    "payloadRouting": 0.1
+  },
+  "seed": 1729,
+  "opset": 17,
+  "quantized": "int8",
+  "trainingCorpusDigest": null,
+  "calibrationDate": null,
+  "onnxSha256": null
+}

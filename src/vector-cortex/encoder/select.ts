@@ -34,6 +34,8 @@
  */
 
 import { createHash } from "node:crypto";
+import { ML5A_ENABLED } from "../../config/vector-cortex.js";
+import { loadHeadProjections } from "./heads.js";
 import {
   ENC_QUALIFICATION_FAIL,
   EVALUATION_THRESHOLDS,
@@ -83,6 +85,13 @@ export interface QualificationCandidate {
    * corrupt-qualification-manifest injection (ENC_QUALIFICATION_DIGEST_MISMATCH).
    */
   readonly expectedQualificationManifestDigest?: string;
+  /**
+   * ML5-A: path to the `trained-heads-v1` artifact. When supplied AND the
+   * MEGACOMPACT_ML5_A gate is on, the candidate qualifies to mode A only if the
+   * real trained head weights load; a load failure atomically demotes all of A
+   * to B (non-fatal, reported as THRESHOLD_FAILED / head.weights.trainedHeadsPath).
+   */
+  readonly trainedHeadsPath?: string;
 }
 
 /**
@@ -183,6 +192,14 @@ export function selectQualifiedEncoder(
 
   // Atomic: collect EVERY failed field across asset + all heads + reconstruction.
   const failed: string[] = [];
+  // ML5-A: real trained-head weights must load for mode A. When the gate is on
+  // and a trained-heads path is pinned, an unloadable/wrong-seed/malformed
+  // artifact is a qualification failure (any failed field demotes ALL of A).
+  if (ML5A_ENABLED() && candidate.trainedHeadsPath !== undefined) {
+    if (loadHeadProjections(candidate.trainedHeadsPath) === null) {
+      failed.push("head.weights.trainedHeadsPath");
+    }
+  }
   assetPasses(candidate.asset, failed);
   const heads: EncoderHeadName[] = ["semantic", "dependency", "contradiction", "cacheStability", "payloadRouting"];
   for (const h of heads) {

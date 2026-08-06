@@ -60,6 +60,10 @@ tmp/
 .pi-subagents/
 scripts/__pycache__/
 
+# Python bytecode caches (training/vector-cortex pipeline)
+__pycache__/
+*.pyc
+
 # VC1C downgrade exporter output (generated legacy copy + report; not authority
 # data and never committed — kept out of the tree so deploy.sh's clean-tree
 # publish gate is not tripped by an evidence run).

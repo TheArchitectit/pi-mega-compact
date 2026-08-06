@@ -20,6 +20,8 @@
  * Pi-agnostic, zero network (PREVENT-PI-004), no `any` (PREVENT-011).
  */
 
+import { readFileSync } from "node:fs";
+import { ML5A_ENABLED } from "../../config/vector-cortex.js";
 import {
   ENCODER_HEAD_DIMS,
   ENCODER_HEAD_ORDER,
@@ -137,6 +139,110 @@ export function encodeVectorSet(
  */
 export function headLossWeights(): Readonly<Record<EncoderHeadName, number>> {
   return { ...ENCODER_HEAD_LOSS_WEIGHTS };
+}
+
+// ---------------------------------------------------------------------------
+// ML5-A real trained-head loading. Produces the projection matrices that the
+// deterministic placeholder `projectHead` approximates: row-major
+// `weights[h]` of length `headDim * trunkDim`, applied `W[i*t+j]*trunk[j]`,
+// L2-normalized. Loaded from the `trained-heads-v1` JSON that
+// `training/vector-cortex/train.py` emits, under the MEGACOMPACT_ML5_A gate.
+// Non-fatal: any violation (flag off, absent, malformed, wrong seed, wrong
+// shape) yields null, never a throw (all loaders return null on violation).
+// ---------------------------------------------------------------------------
+
+/** The real loadable form of the trained five-head projection table. */
+export interface HeadProjectionTable {
+  readonly schema: "trained-heads-v1";
+  readonly seed: number;
+  /** Input/trunk embedding dimension every head projects from (uniform 384). */
+  readonly trunkDim: number;
+  /** Per-head OUTPUT dimension (semantic 384 / ... / payloadRouting 32). */
+  readonly dims: Readonly<Record<EncoderHeadName, number>>;
+  /** Row-major `[headDim * trunkDim]` projection matrix per head. */
+  readonly weights: Readonly<Record<EncoderHeadName, Float32Array>>;
+  readonly temperatures: Readonly<Record<EncoderHeadName, number>>;
+}
+
+/** True when every head's output dim + weight length matches the contract. */
+export function headsShapeValid(t: HeadProjectionTable): boolean {
+  return ENCODER_HEAD_ORDER.every(
+    (h) => t.dims[h] === ENCODER_HEAD_DIMS[h] && t.weights[h].length === ENCODER_HEAD_DIMS[h] * t.trunkDim,
+  );
+}
+
+/**
+ * Load a `trained-heads-v1` artifact into a `HeadProjectionTable`. Gated on
+ * MEGACOMPACT_ML5_A: flag-off, absent file, malformed JSON, wrong schema,
+ * wrong seed, or a shape mismatch each return null (non-fatal). Deterministic
+ * and local (PREVENT-PI-004).
+ */
+export function loadHeadProjections(path: string): HeadProjectionTable | null {
+  if (!ML5A_ENABLED()) return null;
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const r = parsed as Record<string, unknown> | null;
+  if (!r || r["schema"] !== "trained-heads-v1") return null;
+  if (r["seed"] !== ENCODER_SEED) return null;
+  const dims = r["dims"] as Record<string, unknown> | undefined;
+  const heads = r["heads"] as Record<string, unknown> | undefined;
+  if (!dims || !heads) return null;
+  const trunkDim = Number(r["trunkDim"] ?? 0);
+  if (!Number.isFinite(trunkDim) || trunkDim <= 0) return null;
+  const weights: Record<string, Float32Array> = {};
+  const temperatures: Record<string, number> = {};
+  for (const h of ENCODER_HEAD_ORDER) {
+    const hd = heads[h] as Record<string, unknown> | undefined;
+    if (!hd || typeof hd !== "object") return null;
+    const w = hd["weights"];
+    if (!Array.isArray(w)) return null;
+    weights[h] = Float32Array.from(w as number[]);
+    if (Number(hd["dim"] ?? 0) !== ENCODER_HEAD_DIMS[h]) return null;
+    temperatures[h] = Number(hd["temperature"] ?? 1);
+    if (!Number.isFinite(dims[h])) return null;
+  }
+  const table: HeadProjectionTable = {
+    schema: "trained-heads-v1",
+    seed: Number(r["seed"]),
+    trunkDim,
+    dims: { semantic: 384, dependency: 128, contradiction: 128, cacheStability: 64, payloadRouting: 32 } as unknown as Record<EncoderHeadName, number>,
+    weights: weights as unknown as Record<EncoderHeadName, Float32Array>,
+    temperatures: temperatures as unknown as Record<EncoderHeadName, number>,
+  };
+  if (!headsShapeValid(table)) return null;
+  return table;
+}
+
+/**
+ * Project a trunk embedding through a trained head's real weights, applying the
+ * row-major matrix then L2-normalizing (all-zero on zero norm). Returns a
+ * `HeadVector` of the head's normative dimension.
+ */
+export function projectHeadFromTrunk(
+  head: EncoderHeadName,
+  trunk: Float32Array,
+  table: HeadProjectionTable,
+): HeadVector {
+  const dim = ENCODER_HEAD_DIMS[head];
+  const W = table.weights[head];
+  const t = table.trunkDim;
+  const out = new Float32Array(dim);
+  for (let i = 0; i < dim; i++) {
+    let acc = 0;
+    for (let j = 0; j < t; j++) acc += W[i * t + j]! * (trunk[j] ?? 0);
+    out[i] = acc;
+  }
+  return { head, dim, values: l2Normalize(out) };
 }
 
 export { ENCODER_HEAD_ORDER, ENCODER_HEAD_DIMS, ENCODER_HEAD_LOSS_SUM, ENCODER_SEED, NOOP_VC2B_REPORTER };
