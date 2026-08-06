@@ -28,8 +28,8 @@ const SPRINTS_DIR = join(DOCS, "sprints");
 const PHASES_DIR = join(DOCS, "phases");
 const MAX_MD_LINES = 500;
 const KNOWN_MIGRATIONS = new Set(["M2", "M3", "M4", "M5", "M6", "M7", "MIG-DOWN-001"]);
-const EXPECTED_SPRINTS = 33; // VC0A..VC8C (27) + VC0E + VC0F dashboard follow-ups + VC9A setup cortex + VC9B setup-cortex actions + VC9C setup-tab cortex + VC9D embedder-detect consolidation
-const EXPECTED_PHASES = 9;
+const EXPECTED_SPRINTS = 37; // VC0A..VC8C (27) + VC0E + VC0F dashboard follow-ups + VC9A setup cortex + VC9B setup-cortex actions + VC9C setup-tab cortex + VC9D embedder-detect consolidation + PC-A message-separation + PC-B cache-striping + PC-C dashboard cache visibility + PC-D benchmark roll-up
+const EXPECTED_PHASES = 10; // VC0..VC8 (9) + PC prompt-cache rollout
 
 const issues = [];
 function fail(msg) {

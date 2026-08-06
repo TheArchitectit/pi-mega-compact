@@ -41,10 +41,15 @@
 | annotations/power/rollout | [vector-cortex/EVALUATION.md](vector-cortex/EVALUATION.md) |
 | 27-sprint roadmap/gates | [vector-cortex/SPRINT_PLAN.md](vector-cortex/SPRINT_PLAN.md) |
 | durable sprint evidence | [vector-cortex/EVIDENCE_TEMPLATE.md](vector-cortex/EVIDENCE_TEMPLATE.md) |
-| 9 phases / 27 sprint specifications | [vector-cortex/phases/](vector-cortex/phases/) / [vector-cortex/sprints/](vector-cortex/sprints/) |
+| 10 phases / 37 sprint specifications | [vector-cortex/phases/](vector-cortex/phases/) / [vector-cortex/sprints/](vector-cortex/sprints/) |
 | VC0E sprint: dashboard live data + status badges (COMPLETED v0.20.25) | [vector-cortex/sprints/VC0E-dashboard-live-data.md](vector-cortex/sprints/VC0E-dashboard-live-data.md) |
 | **VC0F sprint: dashboard restart-on-upgrade (ACTIVE)** | [vector-cortex/sprints/VC0F-dashboard-restart-on-upgrade.md](vector-cortex/sprints/VC0F-dashboard-restart-on-upgrade.md) |
 | VC0D wiring audit + remaining-wiring table for PLAN_V2/VC paths | [PLANV2_REMAINING_WIRING.md](PLANV2_REMAINING_WIRING.md) |
+| **PC phase: prompt-cache flag rollout (PLAN_V2 P2/P3 default-ON)** | [vector-cortex/phases/PC-prompt-cache-rollout.md](vector-cortex/phases/PC-prompt-cache-rollout.md) |
+| PC-A sprint: messageSeparation flag unification + default ON | [vector-cortex/sprints/PC-A-message-separation-default-on.md](vector-cortex/sprints/PC-A-message-separation-default-on.md) |
+| PC-B sprint: cacheStriping flag unification + default ON | [vector-cortex/sprints/PC-B-cache-striping-default-on.md](vector-cortex/sprints/PC-B-cache-striping-default-on.md) |
+| PC-C sprint: dashboard prompt-cache per-turn visibility | [vector-cortex/sprints/PC-C-dashboard-cache-visibility.md](vector-cortex/sprints/PC-C-dashboard-cache-visibility.md) |
+| PC-D sprint: benchmark validation + conformance roll-up | [vector-cortex/sprints/PC-D-benchmark-validation-rollup.md](vector-cortex/sprints/PC-D-benchmark-validation-rollup.md) |
 
 **Read order:** README → readiness → contracts/architecture → model/codec/privacy → triad/conformance/evaluation → plan → active phase/sprint.
 
