@@ -1,6 +1,6 @@
 # ML5-A Evidence
 
-Status: implementation-complete — all sprint gates green, including the mandated flag-off run (`MEGACOMPACT_ML5_A=0`, byte-identical), the conformance/regression/guardrails gates, and the python training-lint extension to `regression_check.py`.
+Status: reviewer-accepted — all sprint gates green (independently replicated by the controller), including the mandated flag-off run (`MEGACOMPACT_ML5_A=0`, byte-identical), the conformance/regression/guardrails gates, the python training-lint extension to `regression_check.py`, and the framework §8 live verification (15/15 endpoints + Playwright UI render PASS).
 
 **Reconciliation (2026-08-05):** This record covers the ML5-A five-head training + calibration-corpus sprint end to end — the deterministic python pipeline (`train.py` → `export_onnx.py` → `calibrate.py`), the real `trained-heads-v1` / `calibration-v1` loaders in the existing encoder stubs, the six conformance fixtures (`ML5-TRAIN-001..006`) + schema, the acceptance aggregator, the regression_check python-coverage extension, and this evidence record. **Mid-sprint, a concurrent agent's `git reset --hard` on the shared tree wiped every tracked-file edit (the python pipeline, the encoder/calibrate/select loaders, the config + dashboard wiring, the manifest re-registration, and the regression_check python gate); all of it was rebuilt and re-verified, and the manifest was re-registered by re-running `gen-fixtures-ml5a.mjs` (idempotent).** The deterministic digests below are from the rebuilt pipeline.
 
@@ -125,6 +125,49 @@ Deterministic local toolchain: python + numpy only (scikit-learn absent on the h
 4. **`train-v1.json` (pre-existing VC2B util) is unchanged.** It remains a constants/seed reference; the ML5-A pipeline is self-contained in `train.py`/`export_onnx.py`/`calibrate.py` (+ `constants.py`).
 5. **Reviewer attestation pending.** Attestation is the controller's act (Claude Opus controller to review), consistent with the sprint-chain convention.
 
+## Live verification
+
+Per framework §8.1+8.4 — mandatory since v0.20.36. Run against the ML5-A build via
+`node scripts/dashboard-live-verify.mjs --port=9395` (fresh `/tmp/mega-live-verify-*` state):
+
+| Step | Command / check | Result |
+| --- | --- | --- |
+| Version | `curl localhost:9395/api/version` | PASS — `0.20.35` |
+| Root React bundle | `grep 'id="root"'` in `/` | PASS — `id="root"` + hashed JS asset |
+| 15 core API endpoints | `/api/summary`, `/api/snapshot`, `/api/setup-cortex-status`, `/api/setup-status`, `/api/vector-cortex/{health,evaluation,repair,rollout,outcomes,platform}`, `/api/embedder-health`, `/api/memory-status`, `/api/context-health`, `/api/prefix-stability` | PASS — all 15 return 200 + JSON with real shape |
+| ML5_A registration | `grep ML5_A routes-rag-settings-vector-cortex.ts` | PASS — `MEGACOMPACT_ML5_A` at line 226 |
+| Playwright UI render | headless chromium via system `/usr/bin/chromium` against live server | PASS — overview renders 13 headings + 1687 chars in `<main>` |
+
+No findings; live state is consistent with the acceptance gates.
+
 ## Reviewer attestation
 
-Name/date/status: pending — Claude (Opus controller) to review. Implementation-complete; the controller attests the sprint gate (as with the peer sprints) before the sprint is marked reviewer-accepted.
+Name/date/status: Claude (Opus controller), 2026-08-06, **reviewer-accepted**.
+
+Files read and verified in this review:
+
+- `src/config/vector-cortex-ml5a.ts` (30) — sprint-flag wrapper, flag-on=true default, flag-off byte-identical. Reuses `sprintFlag`. No mutations.
+- `src/vector-cortex/encoder/heads.ts` (248) — adds `HeadProjectionTable` / `headsShapeValid` / `loadHeadProjections` / `projectHeadFromTrunk`. Flag-gated on `ML5A_ENABLED`; any violation (flag off / absent / malformed / wrong schema / wrong seed / shape mismatch) returns null non-fatally. No `any`, no `Math.random`, no runtime network. L2-norm math is correct (`l2Normalize` zero-norm → all-zero vector). Three `as unknown as Record<K, ...>` casts on homogeneous record projections (lines 218-221) — cosmetic, defensible; PREVENT-011 (bare `any`) passes.
+- `src/vector-cortex/encoder/calibrate.ts` (274) — VC2C placeholder scaffolding unchanged for `fitCalibration`/`fitThreshold`/`fitTemperature` (their normative contract still holds under Mode A pending real training); `loadCalibrationV1` is new: flag-gated, validates schema/head-order/finite temps, never throws. Held-out-fit prohibition preserved (`HELD_OUT_IN_FIT`).
+- `src/vector-cortex/encoder/select.ts` (254) — atomically demotes ALL of A when `trainedHeadsPath` is supplied and `loadHeadProjections` returns null (flag-on + path pinned). The demotion code/field are additive; no existing threshold loosened.
+- `src/vector-cortex/ml5a-acceptance.test.ts` (275) — 12/12 fixtures-driven tests, flag-agnostic (parity asserted both states).
+- `scripts/ml5/gen-fixtures-ml5a.mjs` (276) — idempotent generator; writes under `conformance/vector-cortex/v2/trained-heads/`; manifest registered in canonical sort order.
+- `scripts/regression_check.py` — adds `TRAIN_DIRS` walk + `check_python_compile` + `print_python_compile_report`; `--pre-commit` blocks on python compile failure. Existing size scans unchanged.
+- `conformance/vector-cortex/v2/schemas/ml5-fixture.schema.json` + 6 fixtures — envelope invariants assert seed 1729 / opset 17 / int8 / deterministic corpus digests / `loss weights sum == 1.0` / calibration-v1 shape.
+- `docs/vector-cortex/evidence/ML5-A.md` (this record) — implementer gate results +SPEC DRIFT notes + forced deviations table.
+
+**Gates independently re-run by the controller against HEAD of `sprint/ml5-a`:**
+- `npm run build` → PASS (clean `tsc` + postbuild publish-acceptance mirror).
+- `npm test` → **3647 pass / 0 fail across 358 files** (54.1 s).
+- `node --test dist/vector-cortex/ml5a-acceptance.test.js` → **12 pass / 0 fail**.
+- `MEGACOMPACT_ML5_A=0 node --test dist/vector-cortex/ml5a-acceptance.test.js` → **12 pass / 0 fail** (byte-identical parity).
+- `npm run lint` → PASS (tsc + pattern-scan + semantic-scan).
+- `node scripts/guardrails-scan.mjs` → PASS (PREVENT-PI-001..004 + SEMANTIC-001).
+- `node scripts/vector-cortex-conformance.mjs --check` → PASS (828 canonical).
+- `node scripts/vector-cortex-docs-check.mjs` → PASS (44 sprints / 11 phases).
+- `python3 scripts/regression_check.py --all --soft-as-hard --soft-as-hard-base v0.20.35 --pre-commit` → **rc=0**. No ML5-A file over any limit. 67 pre-existing soft warnings (none new). All training `.py` files byte-compile.
+- `node scripts/dashboard-live-verify.mjs --port=9395` → 15/15 endpoints PASS, Playwright UI render PASS.
+
+Mutation scan clean — no removed guards, no weakened thresholds, no `MUTATION`/`TODO`/`FIXME` markers in any changed file.
+
+The two forced deviations are ratified: `EXPECTED_SPRINTS=44` / `EXPECTED_PHASES=11` stay where VC6C-IMPL landed them (the spec's "37→38" text is the stale literal the audit's PREVENT-SPEC-DRIFT-001 row exists to catch); the flag name `MEGACOMPACT_ML5_A` (spec) is authoritative over the task's `MEGACOMPACT_ENCODER_NATIVE` (my earlier task brief's typo).
