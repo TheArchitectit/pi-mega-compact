@@ -28,6 +28,7 @@ import {
 	handleProviderCache,
 	handleMemoryStatus,
 	handleCacheStripes,
+	handlePrefixStability,
 	handleSetupStatus,
 	handleSetupDetect,
 	handleSetupConfigure,
@@ -114,6 +115,7 @@ export function dispatchRoutes(
 	if (handleProviderCache(req, res, ctx)) return true;
 	if (handleMemoryStatus(req, res, ctx)) return true;
 	if (handleCacheStripes(req, res, ctx)) return true;
+	if (handlePrefixStability(req, res, ctx)) return true;
 	if (handleSetupStatus(req, res, ctx)) return true;
 	if (handleSetupDetect(req, res, ctx)) return true;
 	if (handleSetupConfigure(req, res, ctx)) return true;

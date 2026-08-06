@@ -126,7 +126,7 @@ void _c_achievements;
 // correct paths.
 
 const ENDPOINT_KEYS = Object.keys(ENDPOINTS) as (keyof typeof ENDPOINTS)[];
-const EXPECTED_ENDPOINT_COUNT = 52; // 47 + vector-cortex evaluation (VC0A) + ledger (VC1B) + setup-cortex-status (VC9A) + setup-cortex-action + setup-cortex-action-log (VC9B)
+const EXPECTED_ENDPOINT_COUNT = 53; // 52 + prefix-stability (PC-C)
 
 /** All `/api/*` paths served by server.ts (extracted from the route handlers). */
 const SERVER_TS_PATHS: string[] = [
@@ -152,6 +152,7 @@ const SERVER_TS_PATHS: string[] = [
 	"/api/vector-cortex/evaluation",
 	"/api/setup-cortex-action",
 	"/api/setup-cortex-action-log",
+	"/api/prefix-stability",
 ];
 
 // ─── Tests ───────────────────────────────────────────────────────────────────

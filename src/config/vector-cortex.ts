@@ -280,9 +280,9 @@ export { VC9A_ENABLED } from "./vector-cortex-vc9a.js";
 export { VC9B_ENABLED } from "./vector-cortex-vc9b.js";
 export { VC9C_ENABLED } from "./vector-cortex-vc9c.js";
 export { VC9D_ENABLED } from "./vector-cortex-vc9d.js";
+export { PCC_ENABLED } from "./vector-cortex-pcc.js";
 
-// Breaker state machine constants (TRIAD_RESILIENCE.md §breaker) extracted to
-// vector-cortex-breakers.ts to keep this file under the 300-line soft limit.
+// Breaker constants (TRIAD_RESILIENCE.md §breaker) extracted to vector-cortex-breakers.ts.
 export {
   BREAKER_WINDOW_MS,
   BREAKER_MIN_ATTEMPTS,

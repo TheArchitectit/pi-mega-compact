@@ -87,7 +87,11 @@ export function buildTailResult(
 						}
 					}
 					lastTurnPrefix.set(runtime, { sessionId, turn, fingerprints });
-					runtime.logger.info("prefix_stability", {
+					// PC-C: write to the always-on monitoring events log (appendEvent),
+					// not the debug-gated runtime logger (mega-compact.log), so the
+					// dashboard /api/prefix-stability endpoint can read this per-turn
+					// stable-prefix ratio from ctx.eventsPath. Same field shape.
+					runtime.appendEvent("prefix_stability", {
 						stablePrefix,
 						totalMessages: result.length,
 						separation: config.messageSeparation ? "v2" : "off",

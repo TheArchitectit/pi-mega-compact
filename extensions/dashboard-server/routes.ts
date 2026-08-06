@@ -30,6 +30,7 @@ export {
 export { handleMemoryMap } from "./routes-memory-map.js";
 export { handleRaptorTree, handleRaptorBuildHistory } from "./routes-raptor.js";
 export { handleCacheStripes } from "./routes-cache.js";
+export { handlePrefixStability } from "./routes-prefix-stability.js";
 export {
 	handleContextHealth,
 	handleCachePoison,

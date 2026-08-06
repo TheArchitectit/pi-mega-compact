@@ -17,12 +17,14 @@ import type {
 	ProviderCacheResponse,
 	CacheStripesResponse,
 	PerfResponse,
+	PrefixStabilityResponse,
 } from "@contracts";
 import { useApi } from "../hooks/useApi";
 import {
 	fetchSnapshot,
 	fetchProviderCache,
 	fetchCacheStripes,
+	fetchPrefixStability,
 	fetchPerf,
 } from "../api/client";
 import { CacheHitsCard } from "../components/CacheHitsCard";
@@ -30,6 +32,7 @@ import { TimeSavedCard } from "../components/TimeSavedCard";
 import { ProviderCacheCard } from "../components/ProviderCacheCard";
 import { StripeDistributionCard } from "../components/StripeDistributionCard";
 import { CacheHitRateTrendCard } from "../components/CacheHitRateTrendCard";
+import { PrefixStabilityCard } from "../components/PrefixStabilityCard";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 
@@ -62,6 +65,15 @@ export default function CacheTab(): React.ReactElement {
 		error: perfError,
 	} = useApi<PerfResponse>(
 		useCallback(() => fetchPerf({ minutes: 30 }), []),
+		{ pollInterval: 15000 },
+	);
+
+	/* --- Per-turn stable-prefix ratio trend (PC-C, 15s poll) --- */
+	const {
+		data: prefixStability,
+		loading: psLoading,
+	} = useApi<PrefixStabilityResponse>(
+		useCallback(() => fetchPrefixStability(50), []),
 		{ pollInterval: 15000 },
 	);
 
@@ -162,6 +174,21 @@ export default function CacheTab(): React.ReactElement {
 				</p>
 			) : perf ? (
 				<CacheHitRateTrendCard perf={perf} />
+			) : null}
+
+			{/* ==============================================================
+			    Section 3b -- Per-Turn Stable Prefix (PC-C)
+			    Omitted when flag-off: the endpoint 404s, so psError is set and
+			    this section stays empty. No sample/time-series data, only
+			    per-turn prefix ratios read from the local events log.
+			    ============================================================== */}
+			{prefixStability && !psLoading ? (
+				<div>
+					<h2 className="font-heading text-lg font-semibold">
+						Per-Turn Stable Prefix
+					</h2>
+					<PrefixStabilityCard data={prefixStability} />
+				</div>
 			) : null}
 
 			{/* ==============================================================

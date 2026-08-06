@@ -216,5 +216,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"Embedder-detect consolidation + VC9 workstream roll-up: memoizes /api/setup-detect against the mutable input (resolved binary path + mtime) so consecutive requests reuse the result without re-spawning, and unifies the embedder + cortex sub-tabs' 5s poll contract. OFF = byte-identical predecessor (VC9C-era): detect spawns fresh per request and the embedder poll keeps its previous cadence.",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_PC_C",
+			"PC-C Dashboard Cache Visibility",
+			"Dashboard per-turn prompt-cache visibility: surfaces the per-turn stable-prefix ratio trend (GET /api/prefix-stability) in the CacheTab PrefixStabilityCard. Reads aggregate ratios/counts from the local monitoring events log only — no payload bytes. OFF = byte-identical predecessor (PC-B-era): /api/prefix-stability returns 404 and the CacheTab omits the PrefixStabilityCard.",
+			true,
+		),
 	],
 };

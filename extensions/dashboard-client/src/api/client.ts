@@ -54,9 +54,6 @@ import type {
 	SettingsUpdateRequest,
 	SettingsResponsePost,
 	RagMetricsResponse,
-	ModelThresholdsResponse,
-	ModelThresholdPutRequest,
-	ModelThresholdPutResponse,
 	WikiIndexResponse,
 	WikiPageResponse,
 	CurationResult,
@@ -67,74 +64,17 @@ import type {
 	TopicEvolutionResponse,
 } from "@contracts";
 
-/** Error thrown when a dashboard API response is not 2xx. */
-export class ApiError extends Error {
-	readonly status: number;
-	constructor(status: number, message: string) {
-		super(`dashboard API ${status}: ${message}`);
-		this.name = "ApiError";
-		this.status = status;
-	}
-}
-
-/** Internal: typed GET that throws ApiError on non-2xx. */
-async function getJson<T>(path: string): Promise<T> {
-	// guardrails-allow PREVENT-PI-004: relative-path fetch to same-origin dashboard server (loopback-only, static bundle served by the same Node HTTP server).
-	const res = await fetch(path);
-	if (!res.ok) {
-		throw new ApiError(
-			res.status,
-			await res.text().catch(() => res.statusText),
-		);
-	}
-	return res.json() as Promise<T>;
-}
-
-/** Internal: typed PUT that throws ApiError on non-2xx. */
-async function putJson<T>(path: string, body: unknown): Promise<T> {
-	// guardrails-allow PREVENT-PI-004: relative-path fetch to same-origin dashboard server (loopback-only).
-	const res = await fetch(path, {
-		method: "PUT",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(body),
-	});
-	if (!res.ok) {
-		throw new ApiError(
-			res.status,
-			await res.text().catch(() => res.statusText),
-		);
-	}
-	return res.json() as Promise<T>;
-}
-
-/** Internal: typed POST that throws ApiError on non-2xx. */
-async function postJson<T>(path: string, body: unknown): Promise<T> {
-	// guardrails-allow PREVENT-PI-004: relative-path fetch to same-origin dashboard server (loopback-only, static bundle served by the same Node HTTP server).
-	const res = await fetch(path, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(body),
-	});
-	if (!res.ok) {
-		throw new ApiError(
-			res.status,
-			await res.text().catch(() => res.statusText),
-		);
-	}
-	return res.json() as Promise<T>;
-}
-
-/** Build a query string from a record, skipping undefined/null values. */
-function query(
-	params: Record<string, string | number | undefined | null>,
-): string {
-	const sp = new URLSearchParams();
-	for (const [k, v] of Object.entries(params)) {
-		if (v !== undefined && v !== null) sp.set(k, String(v));
-	}
-	const qs = sp.toString();
-	return qs ? `?${qs}` : "";
-}
+// Shared HTTP helpers (ApiError/getJson/putJson/postJson/query) live in
+// client-http.ts (delegate-shell split keeps client.ts under 400 lines).
+import { getJson, putJson, postJson, query } from "./client-http.js";
+// Newer endpoint groups (model thresholds, PC-C prefix-stability) live in
+// client-extra.ts; re-exported here so downstream imports are unchanged.
+export {
+	fetchModelThresholds,
+	putModelThreshold,
+	deleteModelThreshold,
+	fetchPrefixStability,
+} from "./client-extra.js";
 
 // ─── Endpoint wrappers ──────────────────────────────────────────────────────
 
@@ -455,33 +395,4 @@ export function fetchTopicTimeline(
 /** GET /api/wiki/evolution — global D3 topic-evolution graph feed. */
 export function fetchTopicEvolution(): Promise<TopicEvolutionResponse> {
 	return getJson<TopicEvolutionResponse>(ENDPOINTS.topicEvolution.path);
-}
-
-// ─── Per-model compaction thresholds (S52 / v0.16.1) ────────────────────
-
-/** GET /api/model-thresholds — list known models with their thresholds. */
-export function fetchModelThresholds(): Promise<ModelThresholdsResponse> {
-	return getJson<ModelThresholdsResponse>(ENDPOINTS.modelThresholds.path);
-}
-
-/** PUT /api/model-thresholds — upsert a per-model override. */
-export function putModelThreshold(
-	body: ModelThresholdPutRequest,
-): Promise<ModelThresholdPutResponse> {
-	return putJson<ModelThresholdPutResponse>(
-		ENDPOINTS.modelThresholds.path,
-		body,
-	);
-}
-
-/** DELETE /api/model-thresholds/:modelId — delete an override (revert). */
-export async function deleteModelThreshold(
-	modelId: string,
-): Promise<{ deleted: boolean }> {
-	const res = await fetch(
-		`${ENDPOINTS.modelThresholds.path}/${encodeURIComponent(modelId)}`,
-		{ method: "DELETE" },
-	);
-	if (!res.ok) throw new Error(`deleteModelThreshold ${res.status}`);
-	return res.json() as Promise<{ deleted: boolean }>;
 }

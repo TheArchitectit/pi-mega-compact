@@ -269,6 +269,12 @@ export type {
 	CacheStripesResponse,
 } from "./cache-stripes.js";
 
+// PC-C — prompt-cache prefix-stability per-turn trend
+export type {
+	PrefixStabilitySample,
+	PrefixStabilityResponse,
+} from "./prefix-stability.js";
+
 // RAG Settings — comprehensive adjustable settings (B6)
 export type {
 	SettingState,

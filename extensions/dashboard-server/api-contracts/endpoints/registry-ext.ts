@@ -24,6 +24,7 @@ import type {
   SetupCortexActionLogQuery,
   SetupCortexActionLogResponse,
 } from "../setup-cortex.js";
+import type { PrefixStabilityResponse } from "../prefix-stability.js";
 
 /** Additive endpoint entries spread into the ENDPOINTS registry. */
 export const EXTRA_ENDPOINTS = {
@@ -107,5 +108,19 @@ export const EXTRA_ENDPOINTS = {
 		"GET",
 		SetupCortexActionLogQuery,
 		SetupCortexActionLogResponse
+	>,
+
+	// ─── PC-C Prompt-cache prefix stability (dashboard Cache tab) ───────
+
+	/** GET /api/prefix-stability — per-turn stable-prefix ratio trend (PC-C). */
+	prefixStability: {
+		method: "GET",
+		path: "/api/prefix-stability",
+		description:
+			"Per-turn prompt-cache stable-prefix ratio trend (GET /api/prefix-stability?limit=N) read from prefix_stability rows in the local events log. Flag-off (MEGACOMPACT_PC_C=0) returns 404.",
+	} as const satisfies EndpointDef<
+		"GET",
+		undefined,
+		PrefixStabilityResponse
 	>,
 } as const;
