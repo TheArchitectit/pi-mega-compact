@@ -9,12 +9,19 @@
  * Each decoration line carries a guardrails-allow annotation.
  */
 
-import { spawnSync } from "node:child_process"; // guardrails-allow PREVENT-PI-004: local subprocess detection only
-import { createRequire } from "node:module";
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
+import { VC9D_ENABLED } from "../../src/config.js";
+import {
+	detectOllama,
+	detectLlamaCpp,
+	detectOnnx,
+	memoizedDetectOllama,
+	memoizedDetectLlamaCpp,
+	memoizedDetectOnnx,
+} from "./routes-setup-detect-cache.js";
 import type {
 	SetupStatusResponse,
 	SetupDetectResponse,
@@ -91,80 +98,10 @@ export function handleSetupStatus(
 // handleSetupDetect — "/api/setup-detect"
 // ---------------------------------------------------------------------------
 
-function detectOllama(): OllamaDetectResult | null {
-	try {
-		const version = spawnSync("ollama", ["--version"], {
-			timeout: 5000,
-			encoding: "utf-8",
-			stdio: ["ignore", "pipe", "pipe"],
-		});
-		if (version.status !== 0) {
-			return { installed: false, models: [], running: false, detail: version.stderr?.trim() || "not found" };
-		}
-		// Check for running server
-		let running = false;
-		let models: string[] = [];
-		try {
-			const listResult = spawnSync("ollama", ["list"], {
-				timeout: 5000,
-				encoding: "utf-8",
-				stdio: ["ignore", "pipe", "pipe"],
-			});
-			if (listResult.status === 0) {
-				running = true;
-				// Parse lines: NAME  ID  SIZE  MODIFIED
-				const lines = listResult.stdout?.split("\n") ?? [];
-				for (const line of lines) {
-					const name = line.split(/\s+/)[0];
-					if (name && name !== "NAME") models.push(name);
-				}
-			}
-		} catch {
-			// ollama list failed — server may not be running
-			running = false;
-		}
-		return {
-			installed: true,
-			models,
-			running,
-			detail: version.stdout?.trim() || null,
-		};
-	} catch {
-		return { installed: false, models: [], running: false, detail: "detection error" };
-	}
-}
-
-function detectLlamaCpp(): DetectResult | null {
-	try {
-		const which = spawnSync("which", ["llama-server", "llama.cpp"], {
-			timeout: 3000,
-			encoding: "utf-8",
-			stdio: ["ignore", "pipe", "pipe"],
-		});
-		const installed = which.status === 0 && which.stdout.trim().length > 0;
-		return {
-			installed,
-			detail: installed ? which.stdout.trim() : null,
-		};
-	} catch {
-		return { installed: false, detail: "detection error" };
-	}
-}
-
-function detectOnnx(): DetectResult | null {
-	try {
-		// Check for onnxruntime-node in a parent node_modules
-		const req = createRequire(import.meta.url);
-		try {
-			req.resolve("onnxruntime-node");
-			return { installed: true, detail: "onnxruntime-node found in node_modules" };
-		} catch {
-			return { installed: false, detail: "onnxruntime-node not found in node_modules" };
-		}
-	} catch {
-		return { installed: false, detail: "detection error" };
-	}
-}
+// Detection bodies live in routes-setup-detect-cache.ts (single source). When
+// MEGACOMPACT_VC9D is ON the memoized wrappers reuse the result across requests
+// (keyed by the mutable input: resolved binary path + mtime); when OFF we call
+// the raw fresh detectors — byte-identical to the VC9C-era per-request spawn.
 
 export function handleSetupDetect(
 	req: IncomingMessage,
@@ -183,20 +120,23 @@ export function handleSetupDetect(
 	let llamaCpp: DetectResult | null = null;
 	let onnx: DetectResult | null = null;
 
+	// guardrails-allow PREVENT-PI-004: local subprocess detection only (memoized or fresh)
+	const cached = VC9D_ENABLED();
+
 	try {
-		ollama = detectOllama();
+		ollama = cached ? memoizedDetectOllama() : detectOllama();
 	} catch (e) {
 		error = `ollama detection failed: ${e instanceof Error ? e.message : String(e)}`;
 	}
 
 	try {
-		llamaCpp = detectLlamaCpp();
+		llamaCpp = cached ? memoizedDetectLlamaCpp() : detectLlamaCpp();
 	} catch (e) {
 		error = error ?? `llama.cpp detection failed: ${e instanceof Error ? e.message : String(e)}`;
 	}
 
 	try {
-		onnx = detectOnnx();
+		onnx = cached ? memoizedDetectOnnx() : detectOnnx();
 	} catch (e) {
 		error = error ?? `onnx detection failed: ${e instanceof Error ? e.message : String(e)}`;
 	}

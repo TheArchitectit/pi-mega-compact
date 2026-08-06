@@ -210,5 +210,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"SetupTab Cortex sub-tab (client UI): a Cortex sub-tab inside SetupTab that consumes the VC9A status endpoint (GET /api/setup-cortex-status) + the VC9B action endpoints. It surfaces the encoder mode A/B/C, asset digest prefix, qualification verdict + threshold failures, the open hard-gate blockers, and the confirmation-gated fetch/bench/verify actions. OFF = byte-identical predecessor (VC9B-era): the Cortex sub-tab is filtered from SUB_TABS and the Setup tab renders exactly as before.",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_VC9D",
+			"VC9D Embedder Detect Consolidation",
+			"Embedder-detect consolidation + VC9 workstream roll-up: memoizes /api/setup-detect against the mutable input (resolved binary path + mtime) so consecutive requests reuse the result without re-spawning, and unifies the embedder + cortex sub-tabs' 5s poll contract. OFF = byte-identical predecessor (VC9C-era): detect spawns fresh per request and the embedder poll keeps its previous cadence.",
+			true,
+		),
 	],
 };

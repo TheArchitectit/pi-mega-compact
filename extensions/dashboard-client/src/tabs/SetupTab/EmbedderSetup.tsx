@@ -70,11 +70,23 @@ export default function EmbedderSetup(): React.ReactElement {
 		loadStatus();
 	}, [loadStatus]);
 
-	// Poll status every 30s
+	// Poll status every 5s — the same cadence the Setup Cortex sub-tab uses
+	// (see useSetupCortexPoll) so the embedder + cortex sub-tabs share one poll
+	// contract (VC9D consolidation). Detection is memoized server-side, so the
+	// periodic detect refresh below hits the cache rather than re-spawning.
 	useEffect(() => {
-		const id = setInterval(loadStatus, 30000);
+		const id = setInterval(loadStatus, 5000);
 		return () => clearInterval(id);
 	}, [loadStatus]);
+
+	// Auto-refresh the (server-memoized) detection at the same 5s cadence so the
+	// embedder sub-tab reflects cached detect changes without manual clicks; the
+	// manual "Run Detection" button still works for an explicit refresh.
+	useEffect(() => {
+		runDetect();
+		const id = setInterval(runDetect, 5000);
+		return () => clearInterval(id);
+	}, [runDetect]);
 
 	const embedderLabel = (e: string): string => {
 		switch (e) {
