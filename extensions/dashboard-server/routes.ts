@@ -56,3 +56,4 @@ export {
 	handleVectorCortexClosureProof,
 	handleVectorCortexRestore,
 } from "./routes-vector-cortex.js";
+export { handleSetupCortexStatus } from "./routes-setup-cortex.js";

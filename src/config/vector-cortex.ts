@@ -275,6 +275,11 @@ export const VC8B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC8B");
 // import keeps resolving unchanged.
 export { VC8C_ENABLED } from "./vector-cortex-vc8c.js";
 
+// VC9A (setup-cortex status read path) extracted to vector-cortex-vc9a.ts to
+// keep this file under the 300-line soft limit. Re-exported here so every
+// existing `from "./config/vector-cortex.js"` import keeps resolving unchanged.
+export { VC9A_ENABLED } from "./vector-cortex-vc9a.js";
+
 // Breaker state machine constants (TRIAD_RESILIENCE.md §breaker) extracted to
 // vector-cortex-breakers.ts to keep this file under the 300-line soft limit.
 export {

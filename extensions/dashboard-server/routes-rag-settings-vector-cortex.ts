@@ -192,5 +192,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"Canary selection and external Rust parity. The selector admits a qualified external Rust artifact only when ABI version, URL metadata, commit, Cargo.lock digest, and platform all match evidence; a Cargo.lock digest mismatch rejects the artifact (RUST_CARGO_DIGEST_MISMATCH). The cross-conformance runner exchanges length-framed neutral records over a local stdin/stdout channel — a subprocess, never a URL (PREVENT-PI-004). A parity mismatch selects TS mode B. A qualified external artifact is mode A, TS reference is mode B, legacy path is mode C. OFF = byte-identical predecessor (VC8B); the selector and cross-conformance arithmetic still run, only the reporter + dashboard seam is suppressed.",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_VC9A",
+			"VC9A Setup Cortex Status",
+			"Reader-only Setup Cortex status read path (GET /api/setup-cortex-status): surfaces the vector-cortex encoder gate — mode A/B/C, qualification verdict, open blockers, encoder health — to the dashboard Setup tab without closing the ML gate. OFF = byte-identical predecessor (VC8C-era): returns enabled:false / mode:C / status:off.",
+			true,
+		),
 	],
 };

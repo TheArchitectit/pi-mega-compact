@@ -16,6 +16,7 @@ import type {
   VectorCortexEvaluationSummary,
   VectorCortexLedgerView,
 } from "../vector-cortex.js";
+import type { SetupCortexStatusResponse } from "../setup-cortex.js";
 
 /** Additive endpoint entries spread into the ENDPOINTS registry. */
 export const EXTRA_ENDPOINTS = {
@@ -64,4 +65,14 @@ export const EXTRA_ENDPOINTS = {
 		undefined,
 		VectorCortexLedgerView
 	>,
+
+	// ─── VC9A Setup Cortex (dashboard Setup tab cortex status) ─────────
+
+	/** GET /api/setup-cortex-status — reader-only vector-cortex encoder gate. */
+	setupCortexStatus: {
+		method: "GET",
+		path: "/api/setup-cortex-status",
+		description:
+			"Reader-only vector-cortex encoder gate: mode A/B/C, qualification verdict, blockers, encoder health — for the dashboard Setup tab. Never closes the ML gate.",
+	} as const satisfies EndpointDef<"GET", undefined, SetupCortexStatusResponse>,
 } as const;
