@@ -71,3 +71,28 @@ export const SETUP_CORTEX_BLOCKERS: readonly SetupCortexBlockerV1[] = [
 export function setupCortexBlocker(id: string): SetupCortexBlockerV1 | undefined {
   return SETUP_CORTEX_BLOCKERS.find((b) => b.id === id);
 }
+
+// ─── VC9B action gating ─────────────────────────────────────────────────────
+
+/** The VC9B action kinds the drivers know how to run. */
+export type SetupCortexActionKind = "fetch-model" | "bench" | "verify-asset";
+
+/**
+ * The open hard-gate ids that BLOCK a given action. fetch-model and bench are
+ * gated by HG-1 (five-head training open) and HG-3 (install budget open) per the
+ * VC9 workstream plan; verify-asset is a pure re-read of committed assets and is
+ * NOT gated. When a gated action is requested, the route returns
+ * action_blocked_by_open_item with these ids and does NOT spawn. The ids are
+ * always drawn from SETUP_CORTEX_BLOCKERS (each exists — verified by test).
+ */
+export function setupCortexActionBlockers(
+  action: SetupCortexActionKind,
+): readonly string[] {
+  switch (action) {
+    case "fetch-model":
+    case "bench":
+      return ["HG-1", "HG-3"];
+    case "verify-asset":
+      return [];
+  }
+}

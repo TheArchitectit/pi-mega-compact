@@ -57,3 +57,7 @@ export {
 	handleVectorCortexRestore,
 } from "./routes-vector-cortex.js";
 export { handleSetupCortexStatus } from "./routes-setup-cortex.js";
+export {
+	handleSetupCortexAction,
+	handleSetupCortexActionLog,
+} from "./routes-setup-cortex-actions.js";

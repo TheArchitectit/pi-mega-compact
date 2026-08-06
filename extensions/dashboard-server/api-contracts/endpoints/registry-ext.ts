@@ -16,7 +16,14 @@ import type {
   VectorCortexEvaluationSummary,
   VectorCortexLedgerView,
 } from "../vector-cortex.js";
-import type { SetupCortexStatusResponse } from "../setup-cortex.js";
+import type {
+  SetupCortexStatusResponse,
+  SetupCortexActionRequest,
+  SetupCortexActionResult,
+  SetupCortexActionBlocked,
+  SetupCortexActionLogQuery,
+  SetupCortexActionLogResponse,
+} from "../setup-cortex.js";
 
 /** Additive endpoint entries spread into the ENDPOINTS registry. */
 export const EXTRA_ENDPOINTS = {
@@ -75,4 +82,30 @@ export const EXTRA_ENDPOINTS = {
 		description:
 			"Reader-only vector-cortex encoder gate: mode A/B/C, qualification verdict, blockers, encoder health — for the dashboard Setup tab. Never closes the ML gate.",
 	} as const satisfies EndpointDef<"GET", undefined, SetupCortexStatusResponse>,
+
+	// ─── VC9B Setup Cortex actions (dashboard Setup tab action drivers) ─────
+
+	/** POST /api/setup-cortex-action — confirmation-gated fetch/bench/verify. */
+	setupCortexAction: {
+		method: "POST",
+		path: "/api/setup-cortex-action",
+		description:
+			"Confirmation-gated driver: fetch-model / bench / verify-asset. Executes only the committed local scripts (scripts/vc2-model-prep/*) or re-reads the committed encoder assets; an OPEN hard-gate item returns action_blocked_by_open_item and does NOT spawn. Never payload bytes; confirm:true required.",
+	} as const satisfies EndpointDef<
+		"POST",
+		SetupCortexActionRequest,
+		SetupCortexActionResult | SetupCortexActionBlocked
+	>,
+
+	/** GET /api/setup-cortex-action-log — bounded, redacted action log tail. */
+	setupCortexActionLog: {
+		method: "GET",
+		path: "/api/setup-cortex-action-log",
+		description:
+			"Bounded (8 KiB) redacted tail of a VC9B action log under <stateDir>/logs/vc9b/; the name must be a validated basename (path traversal rejected).",
+	} as const satisfies EndpointDef<
+		"GET",
+		SetupCortexActionLogQuery,
+		SetupCortexActionLogResponse
+	>,
 } as const;
