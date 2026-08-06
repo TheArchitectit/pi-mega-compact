@@ -1,6 +1,6 @@
 # DEDUP-ATTR Evidence
 
-Status: IMPLEMENTATION-COMPLETE (implementer handoff to Opus controller for gate-run + commit + review)
+Status: REVIEWED + COMMITTED (impl commit `62e1a08`, spec-amendment commit `92d259a`)
 Sprint: [DEDUP-ATTR tier attribution rollup](../sprints/DEDUP-ATTR-tier-attribution-rollup.md) — closes the last open piece of external-audit item #6 (per-tier dedup catch attribution).
 
 ## Deliverables
@@ -73,4 +73,4 @@ Production / config / tests / docs / conformance (all under soft caps; `src` 300
 ## Residual risks
 
 - **Client not touched:** the client poll surface for this endpoint is VC9-style card work explicitly out of scope for DEDUP-ATTR.
-- **Reviewer attestation pending (Opus controller)** — see the implementation-commissioned handoff above.
+- **Controller attestation (Opus):** gates replicated on controller — `npm run build`, acceptance flag-default + flag-off parity (7/7 both), rollup pure-fn (7/7 via `dist/src/vector-cortex/dedup-attr/rollup.test.js`), routes (7/7 after controller-applied Deviation-4 fix), npm test (3693 pass / 0 fail / 370 files), npm run lint (tsc --noEmit + guardrails + semantic scan), regression `--all --soft-as-hard --soft-as-hard-base v0.20.41 --pre-commit` (0 blocking; 7 dev-only non-blocking warnings), conformance 852 canonical, docs-check 45 sprints / 11 phases, log_failure --list all resolved, git diff --check clean, scope-check 62e1a08 + 92d259a both pass. Controller fixed Deviation 4 (querystring claim) + added the `nDedupAttr` publish-acceptance mirror block; Deviation 1 stays; Deviations 2–3 stand as implementer decisions. Impl commit `62e1a08`, spec-amendment `92d259a`.
