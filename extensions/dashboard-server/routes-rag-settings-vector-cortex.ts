@@ -228,5 +228,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"ML5-A real trained-head loading: loadHeadProjections (trained-heads-v1) feeds selectQualifiedEncoder (trainedHeadsPath atomic demotion) + loadCalibrationV1. ON (default) = a pinned trained-heads path must load for mode A. OFF = loaders return null and selection ignores trainedHeadsPath — byte-identical to the placeholder-weighted VC2C path.",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_ML5_C",
+			"ML5-C Runtime Decision + Packaging",
+			"ML5-C runtime backend selection (WASM vs native): selects the ONNX runtime backend based on the ML5-B bench record and platform support. ON (default) = the runtime-selection dispatch runs and emits vector_cortex_runtime_selected. OFF = no selection runs — encoder serves mode B trigram, byte-identical to ML5-B.",
+			true,
+		),
 	],
 };

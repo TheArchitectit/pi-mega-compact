@@ -28,7 +28,6 @@ import { defaultEmbedder } from "../embedder.js";
 import { getStateDir } from "../store.js";
 
 const BATCH = 1000;
-const THROTTLE_MS = 0; // synchronous backfill; no cross-process yield needed
 
 /** Backfill phases, in order (Sprint 14 full-pipeline wiring). */
 export type BackfillPhase = "L0" | "L1" | "L2" | "RAPTOR";
@@ -132,11 +131,6 @@ export function backfillContentHashes(stateDir: string = getStateDir()): Backfil
     ).run(lastSid, lastId, updated, duplicatesResolved);
   }
 
-  if (THROTTLE_MS > 0) {
-    // No-op in this synchronous build; placeholder for future streaming backfill.
-    // guardrails-allow PREVENT-STUB-001: ML5-C
-  }
-
   return { processed, updated, duplicatesResolved };
 }
 
@@ -220,7 +214,6 @@ export function backfillPhase(
     });
     savePhaseCursor(db, phase, cursor ?? null, processed);
     batches++;
-    if (THROTTLE_MS > 0) { const end = Date.now() + THROTTLE_MS; while (Date.now() < end) { /* throttle */ } }
     if (opts.interruptAfterBatches && batches >= opts.interruptAfterBatches) {
       interrupted = true;
       break;
