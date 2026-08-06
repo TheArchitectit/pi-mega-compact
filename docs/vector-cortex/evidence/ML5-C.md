@@ -1,9 +1,10 @@
 # ML5-C Evidence
 
-Status: **REVIEWED + COMMITTED** — all sprint gates green, independently
-replicated by the controller against the committed tree. Promotion to
-PUBLISHED happens on the deploy commit (`./scripts/deploy.sh <patch>`)
-after the merge to master.
+Status: **REVIEWED + COMMITTED + PUBLISHED as v0.20.39** — all sprint gates
+green, independently replicated by the controller against the committed
+tree. Deploy ran `./scripts/deploy.sh 0.20.39` from `2e27663` (Merge
+sprint/ml5-c); npm release landed at
+https://github.com/TheArchitectit/pi-mega-compact/releases/tag/v0.20.39.
 
 **Reviewer (controller) attestation.** The controller re-ran the full gate
 suite against this commit and verified:
@@ -67,7 +68,8 @@ suite against this commit and verified:
   reviewed the working tree, applied one corrective edit
   (backfill.ts second dead guard + constant), re-ran every gate, and
   promoted to `REVIEWED + COMMITTED` at attestation time. The PUBLISHED
-  marker is stamped on the version-bump commit that follows the merge.
+  marker is stamped here on the follow-up commit that lands after
+  `chore(release): v0.20.39`.
 
 Implementer's original status line, for the audit trail:
 
