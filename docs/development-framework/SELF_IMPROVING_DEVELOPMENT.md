@@ -205,5 +205,45 @@ Description).
 
 ---
 
+## 8. Controller review protocol — live verification (added 2026-08-06)
+
+**Defect class addressed:** Controller review was code-only — read files, run gates, mutation scan. A
+sprint could pass every static gate while the actual runtime behavior was broken (dashboard serves stale
+bundle, endpoint returns shaped-but-empty data, UI doesn't render). **Code review ≠ live verification.**
+
+### 8.1 The rule
+
+After every sprint's `./scripts/deploy.sh <version>` publish completes, the controller **MUST** run a
+live verification pass **before** dispatching the next sprint:
+
+1. **`curl -sS localhost:9320/api/version`** → confirm response shows the just-published version.
+2. **`curl -sS http://localhost:9320/ | grep 'id="root"'`** → confirm React bundle is served (the
+   0.8.5 regression check).
+3. **Sprint-specific endpoints** → hit every API endpoint the sprint added or modified; confirm they
+   return real data (not an empty shell). A new endpoint returning `{}` or a shaped-but-null payload is
+   a finding, not a pass.
+4. **Dashboard UI** (when the sprint added client components): open in a browser (Playwright headless)
+   and confirm the component renders with data.
+
+### 8.2 Where the result lives
+
+Each sprint's evidence record gains a **"Live verification"** section (added 2026-08-06, retroactive
+to all previously-shipped sprints via the retroactive pass described below). The section records the
+exact curl command and a one-line PASS/FAIL/NOTED verdict. A FAIL blocks the sprint from advancing to
+the next — the controller fixes the live defect first.
+
+### 8.3 Retroactive pass
+
+Sprints shipped before this protocol (VC9A through VC6C-IMPL / v0.20.35) get a single live-verification
+pass against the current live dashboard + the version on disk. Findings are recorded in a new file:
+`docs/audits/2026-08-06-live-verification-retro.md` with per-sprint verdict + endpoint tested.
+
+### 8.4 Escape hatch
+
+None. There is no `guardrails-allow` for "skipped live verification" — that would be the exact defect
+this protocol exists to prevent.
+
+---
+
 *Companion plan to `docs/audits/2026-08-05-stub-gate-mock-audit.md`. Every rule is traceable to an audit
 finding by file:line or audit-table reference. No code changed; no commit made.*
