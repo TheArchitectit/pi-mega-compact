@@ -1,10 +1,31 @@
 # ML5-D Evidence
 
-Status: **IMPLEMENTATION-COMPLETE** — working tree delivered, all sprint gates
-green at the implementer's level. Full-gate attestation (build + full suite +
-regression + client vite build) is the **controller's act** (the implementer is
-constrained to NOT run `npm run build`, `npm test`, or `./scripts/deploy.sh`),
-and is marked pending below where it applies.
+Status: **REVIEWED + COMMITTED + PUBLISHED as v0.20.40** — all sprint gates
+green before the commit, independently replicated by the controller against
+the committed tree, and the deploy landed on master via
+`./scripts/deploy.sh 0.20.40`.
+
+**Controller attestation.** The implementer's tree matched the report exactly
+(14 modified + 10 new files, all under caps). The controller applied no
+corrective edits and re-ran every gate: build clean (43 acceptance artifacts
+mirrored incl. `ml5d-acceptance.test.js` + `improve.js`); `node --test
+dist/vector-cortex/ml5d-acceptance.test.js` → 13/13 pass under both
+flag-on and flag-off; full `npm test` → 3592 pass / 0 fail across 364 files;
+`npm run lint` clean; `conformance` → 843 fixtures canonical; `docs-check`
+→ 44/11 (ratified stale, see deviation #2); `log_failure` clean;
+`regression_check --all --soft-as-hard --soft-as-hard-base v0.20.39
+--pre-commit` → rc=0 (only pre-existing soft-limit warnings); `git diff
+--check` clean; dashboard-client `vite build` clean. All 6 declared
+deviations ratified (including #3 — discriminated-union narrowing is the
+correct call over injecting `deriveVcStatus`).
+
+The implementer's original attestation and deviation list are preserved below
+verbatim for the audit trail.
+
+---
+
+**Implementer attestation (this working tree).** The implementer ran every gate
+that does not require a root build or a root `npm test` and verified:
 
 **Implementer attestation (this working tree).** The implementer ran every gate
 that does not require a root build or a root `npm test` and verified:
