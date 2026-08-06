@@ -15,6 +15,15 @@ Neutral artifacts live only under `conformance/vector-cortex/v2/`: `manifest.jso
 | VC6 | `closure-optimization/`, `restoration/`, `healing-controller/` |
 | VC7 | `cache-crystals/`, `cache-economics/`, `cache-diagnostics/` |
 | VC8 | `outcomes/`, `adaptive-policy/`, `cross-language/` |
+| VC9 | `setup-dashboard/` |
+| ML5 | `bench-assets/`, `encoder-health/`, `cortex-improvement/`, `runtime-selection/` |
+| PC | `prompt-dag-v2/`, `striping-telemetry/`, `cache-visibility/`, `rollout-validation/` |
+| DEDUP-ATTR | `dedup-attribution/` |
+| ENC | `encoder-decision/`, `encoder-trunk/`, `encoder-heads-real/`, `encoder-promotion/`, `encoder-demotion/`, `encoder-budget/` |
+| DASH | `dashboard-consolidation/` |
+| COS-FP | `cosine-fp/` |
+| REPO | `repo-corpus/` |
+| DOC | (none — pure-docs phase; no conformance fixtures) |
 
 `manifest.json` lists fixture ID, relative path, SHA-256, schema/algorithm version, producer, expected result/error code, and license. `scripts/vector-cortex-conformance.mjs --check` fails for an absent/unlisted/extra file, digest drift, schema error, duplicate ID, or noncanonical JSON. VC1C adds package inclusion policy and verifies fixture paths in `npm pack --dry-run` output; it never creates a tarball.
 
@@ -45,4 +54,4 @@ node --test dist/vector-cortex/conformance.test.js
 npm pack --dry-run
 ```
 
-The implementation adds the scripts/tests before these gates are claimed. `docs-check` validates links, 27 sprint/9 phase count, positive flags, exact test commands, migration IDs, and Markdown files <500 lines.
+The implementation adds the scripts/tests before these gates are claimed. `docs-check` validates links, 60 sprint/16 phase count, positive flags, exact test commands, migration IDs, and Markdown files <500 lines.

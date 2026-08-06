@@ -28,8 +28,8 @@ const SPRINTS_DIR = join(DOCS, "sprints");
 const PHASES_DIR = join(DOCS, "phases");
 const MAX_MD_LINES = 500;
 const KNOWN_MIGRATIONS = new Set(["M2", "M3", "M4", "M5", "M6", "M7", "MIG-DOWN-001"]);
-const EXPECTED_SPRINTS = 45; // 44 prior + DEDUP-ATTR — the 45th sprint spec (dedup tier-attribution rollup)
-const EXPECTED_PHASES = 11; // 10 prior + the ML5 phase doc (the 11th phase doc is pre-existing on master)
+const EXPECTED_SPRINTS = 60; // 45 prior + 15 new sprint specs (DASH×4 + ENC×6 + COS-FP×2 + REPO×1 + DOC×2) — the deferred/stub audit program
+const EXPECTED_PHASES = 16; // 11 prior + 5 new phase docs (ENC, DASH, COS-FP, REPO, DOC)
 
 const issues = [];
 function fail(msg) {
