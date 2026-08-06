@@ -20,7 +20,7 @@ All touched files under their extension (500) / src (500) / scripts (no cap) / d
 - `src/config.ts` (196)
 - `extensions/dashboard-server/setup-cortex-blockers.ts` (98)
 - `extensions/dashboard-server/setup-cortex-actions.ts` (242)
-- `extensions/dashboard-server/api-contracts/setup-cortex.ts` (124)
+- `extensions/dashboard-server/api-contracts/setup-cortex.ts` (123)
 - `extensions/dashboard-server/routes-setup-cortex-actions.ts` (133)
 - `extensions/dashboard-server/routes-setup-cortex-actions.test.ts` (275)
 - `extensions/dashboard-server/routes.ts` (63)
@@ -29,7 +29,7 @@ All touched files under their extension (500) / src (500) / scripts (no cap) / d
 - `extensions/dashboard-server/api-contracts.test/endpoints-registry.test.ts` (196) — forced deviation: `EXPECTED_ENDPOINT_COUNT` 50→52 for the two new `setup-cortex-action` / `setup-cortex-action-log` endpoints
 - `extensions/dashboard-server/routes-rag-settings-vector-cortex.ts` (208)
 - `scripts/vc9-setup-dashboard/gen-fixtures-vc9b.mjs` (226)
-- `src/vector-cortex/vc9b-acceptance.test.ts` (181)
+- `src/vector-cortex/vc9b-acceptance.test.ts` (184)
 - `scripts/vector-cortex-docs-check.mjs` (183) — `EXPECTED_SPRINTS` 30→31
 - `docs/vector-cortex/sprints/VC9B-setup-cortex-actions.md` (this sprint's spec)
 - `docs/vector-cortex/evidence/VC9B.md` (this record)
