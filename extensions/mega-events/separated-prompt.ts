@@ -236,22 +236,15 @@ export function refreshStripeAssignments(
  * Build a cache-optimized prompt with 5 layers:
  *   0 (system) -> 1 (summary) -> 2 (cache stripes) -> 3 (thread) -> 4 (tool)
  *
- * Feature gate: MEGACOMPACT_CACHE_STRIPING (default OFF). When OFF, delegates
- * to buildSeparatedPrompt (byte-identical to Phase 2 behavior).
- *
- * When ON but MEGACOMPACT_MESSAGE_SEPARATION is OFF, also delegates to
- * buildSeparatedPrompt (which returns messages unchanged).
+ * Positive sprint flag driven by config.cacheStriping at the call site
+ * (tailResult.ts); this function is pure and never reads process.env.
+ * With flag ON but no stripe rows for the epoch, it returns the base
+ * separated prompt unchanged (byte-identical to buildSeparatedPrompt).
  */
 export function buildCacheOptimizedPrompt(
   messages: AgentMessage[],
   opts?: SeparatedPromptOptions,
 ): AgentMessage[] {
-  const flag = process.env.MEGACOMPACT_CACHE_STRIPING;
-  if (flag === "0" || flag === "false" || flag === undefined || flag === "") {
-    // Flag OFF: delegate to buildSeparatedPrompt (byte-identical).
-    return buildSeparatedPrompt(messages, opts);
-  }
-
   // Build the base 4-layer structure first.
   const base = buildSeparatedPrompt(messages, opts);
 

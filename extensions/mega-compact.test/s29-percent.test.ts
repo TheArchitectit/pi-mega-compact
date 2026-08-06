@@ -18,6 +18,11 @@ function s29TieredCtx(
 	// These tests isolate the compaction PERCENT gate, so pin the flag OFF to
 	// keep their no-trim assertions byte-identical to the pre-PC-A OFF state.
 	process.env.MEGACOMPACT_MESSAGE_SEPARATION = "0";
+	// PC-B: cacheStriping now defaults ON and takes precedence over separation
+	// in the tail-result gate, so the no-trim path would again return a
+	// pass-through {messages} view via buildCacheOptimizedPrompt. Pin it OFF to
+	// keep the percent-isolation intent (byte-identical no-trim assumption).
+	process.env.MEGACOMPACT_CACHE_STRIPING = "0";
 	return h.ctx({
 		isIdle: () => true,
 		hasPendingMessages: () => false,

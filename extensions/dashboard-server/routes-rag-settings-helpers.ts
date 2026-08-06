@@ -132,7 +132,7 @@ export const SETTINGS: ReadonlyArray<SettingGroup> = [
 				"MEGACOMPACT_CACHE_STRIPING",
 				"Cache Striping (P3)",
 				"PLAN_V2: order stable context by stability score so durable chunks lead the prompt",
-				false,
+				true,
 			),
 		],
 	},

@@ -206,7 +206,8 @@ export function loadConfig(): MegaConfig {
 		// PC-A: positive sprint flag, default ON. =0 byte-identical to the
 		// pre-change OFF state (single gate lives at the call site in tailResult.ts).
 		messageSeparation: envBool("MEGACOMPACT_MESSAGE_SEPARATION", true),
-			cacheStriping: envBool("MEGACOMPACT_CACHE_STRIPING", false),
+		// positive sprint flag: default ON, =0 byte-identical to OFF
+		cacheStriping: envBool("MEGACOMPACT_CACHE_STRIPING", true),
 		tuiWidget: envBool("MEGACOMPACT_TUI_WIDGET", true),
 		ragQueryReformulation: envBool("MEGACOMPACT_QUERY_REFORMULATION", false),
 		ragTieredRouter: envBool("MEGACOMPACT_TIERED_ROUTER", false),
