@@ -302,9 +302,11 @@ export async function launchDashboardServer(
 					v6.listen(port, "::1", () => log("ipv6 loopback bound", { port })); // guardrails-allow PREVENT-PI-004: IPv6 loopback (::1) mirror of the dashboard server
 				}
 
-				// Write port.pid
+				// Write port.pid (VC0F B2: stamp `version` so the launcher can detect
+				// a stale runner by comparing the marker against its own version
+				// without an HTTP probe — closes the orphan case for pre-B2 servers).
 				try {
-					writeFileSync(portFile, JSON.stringify({ port, pid: process.pid }));
+					writeFileSync(portFile, JSON.stringify({ port, pid: process.pid, version: SERVER_VERSION }));
 				} catch (e) {
 					log("could not write port.pid", { error: String(e) });
 				}

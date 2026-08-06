@@ -1,6 +1,10 @@
 # VC Dashboard Restart-on-Upgrade (session_start auto-restart)
 
-Status: **PLANNED** | Branch: (to be created from `master` after v0.20.26+) | Date: 2026-08-05
+Status: **done** | Branch: master (serial sprint on master) | Date: 2026-08-05
+
+Flag: VC0F introduces **no new `MEGACOMPACT_*` flag** — it extends the existing dashboard lifecycle (already gated by the same `MEGACOMPACT_DASHBOARD_*` / extension-load behavior), so flag-off behavior is byte-identical by construction. The once-per-process bounce gate is module-internal and not user-configurable.
+
+Production ownership: `extensions/mega-dashboard-cmds.ts`, `extensions/mega-dashboard-bounce.ts`, `extensions/dashboard-server/server.ts`.
 
 Follow-up to VC0E. The v0.20.25 release shipped honest status badges, but
 the underlying **dashboard runner staleness gap** remains for the durable case:

@@ -12,6 +12,15 @@ import { fileURLToPath } from "node:url";
 import { existsSync, writeFileSync, readFileSync, unlinkSync, openSync, closeSync } from "node:fs";
 import { spawn, execSync } from "node:child_process"; // guardrails-allow PREVENT-PI-004: spawns the optional, user-triggered localhost dashboard server only
 import type { MegaRuntime } from "./mega-runtime.js";
+import {
+  bounceStaleRunnerIfAny,
+  type BounceStaleDeps,
+} from "./mega-dashboard-bounce.js";
+
+// Re-export the VC0F bounce seam for the unit tests, which import the parent
+// module. The implementation + once-per-process gate live in the sibling
+// delegate file to keep this module under the extensions/ soft limit (400).
+export { bounceStaleRunnerIfAny, resetStalenessGateForTests, type BounceStaleDeps } from "./mega-dashboard-bounce.js";
 
 /** Register the dashboard server lifecycle commands. */
 export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime): void {
@@ -111,6 +120,28 @@ export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime
     try { unlinkSync(portFile()); } catch { /* ignore */ }
   }
 
+  /** Version stamped in the current repo's port.pid marker (VC0F B2), or null
+   *  when the marker is absent or predates the stamped `version` field. */
+  function markerVersion(): string | null {
+    try {
+      const info = JSON.parse(readFileSync(portFile(), "utf-8")) as { version?: unknown };
+      return typeof info.version === "string" ? info.version : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Build the dependency set `bounceStaleRunnerIfAny` needs for the CURRENT
+   * repo's dashboard lifecycle (port.pid / runner / launch-log all resolve via
+   * `runtime.currentStateDir`, so a repo switch re-targets the bounce).
+   * `notify` is threaded here so the interactive /mega-dashboard path surfaces
+   * the replace messages while the silent session-start path is a no-op.
+   */
+  function staleBounceDeps(notify: (msg: string) => void): BounceStaleDeps {
+    return { isServerRunning, serverVersion, markerVersion, ownVersion, killServerOnPort, notify };
+  }
+
   /**
    * Resolve the launchable dashboard-server module.
    *
@@ -148,9 +179,14 @@ export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime
     const resolved = resolveDashboardEntry();
     if (!resolved) return false;
     dashboardNeedsStrip = resolved.needsStripTypes;
+    // VC0F B1: stamp the extension version in the generated script at WRITE time
+    // so a future probe can compare it against ownVersion() without a live HTTP
+    // round-trip (useful when the server is hung and /api/version times out).
+    const stampedVersion = ownVersion() ?? "0.0.0";
     const script = [
       `import { appendFileSync } from "node:fs";`,
       `const __log = ${JSON.stringify(launchLog())};`,
+      `const __VERSION = ${JSON.stringify(stampedVersion)}; // mega-compact bundle version stamped at write time (VC0F B1)`,
       `function __fail(err) {`,
       `  const msg = "[mega-compact] dashboard failed: " + (err && err.stack ? err.stack : String(err));`,
       `  try { appendFileSync(__log, msg + "\\n"); } catch { /* ignore */ }`,
@@ -181,32 +217,18 @@ export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime
     description: "Start the local web dashboard and optionally open it in the default browser.",
     handler: async (_args: string, ctx: ExtensionContext) => {
       runtime.bindRepo(ctx.cwd);
-      let info = await isServerRunning();
+      // VC0F A1: lift the stale-replace decision out of the handler. Interactive
+      // path is unchanged — the user is still notified before a stale runner is
+      // killed. When a stale server is bounced, we fall straight through to a
+      // fresh spawn; otherwise reuse the live current server if there is one.
+      const { bounced } = await bounceStaleRunnerIfAny(staleBounceDeps((msg) => ctx.ui.notify(msg)));
+      const info = bounced ? null : await isServerRunning();
 
       if (info) {
-        // Replace the server when it's stale: either (a) an orphan — a live
-        // server with no port.pid (e.g. left running from a detached spawn or a
-        // previous upgrade) that keeps serving old HTML from memory; or (b) a
-        // server that reports a different version than this extension (an older
-        // build). A live server WITH a matching pid file and version is reused.
-        const orphan = !info.hasPidFile;
-        const running = await serverVersion(info.port);
-        const want = ownVersion();
-        const stale = orphan || (want != null && running != null && running !== want);
-        if (stale) {
-          ctx.ui.notify(
-            orphan
-              ? "[mega-compact] replacing orphaned dashboard server…"
-              : `[mega-compact] replacing stale dashboard (${running} → ${want})…`,
-          );
-          killServerOnPort(info.port);
-          info = null;
-        } else {
-          ctx.ui.notify(`[mega-compact] dashboard already running at ${info.url}`);
-          const open = await ctx.ui.confirm("mega-compact dashboard", `Open ${info.url} in browser?`);
-          if (open) openBrowser(info.url);
-          return;
-        }
+        ctx.ui.notify(`[mega-compact] dashboard already running at ${info.url}`);
+        const open = await ctx.ui.confirm("mega-compact dashboard", `Open ${info.url} in browser?`);
+        if (open) openBrowser(info.url);
+        return;
       }
 
       // Start the server
@@ -309,5 +331,22 @@ export function registerDashboardCommands(pi: ExtensionAPI, runtime: MegaRuntime
         ctx.ui.notify("[mega-compact] dashboard is not running. Use /dashboard to start it.");
       }
     },
+  });
+
+  // VC0F A3 — durable restart-on-upgrade: after `pi update --extensions`
+  // replaces the on-disk package, the next pi session probes the running
+  // dashboard, sees the version mismatch, and kills + respawns the stale runner
+  // automatically. SILENT — no ctx.ui.notify on this session-start path (unlike
+  // the explicit /mega-dashboard path). Best-effort and non-fatal: a probe or
+  // kill failure here never breaks session startup.
+  pi.on("session_start", async (_event, ctx) => {
+    runtime.bindRepo(ctx.cwd);
+    try {
+      await bounceStaleRunnerIfAny(
+        staleBounceDeps(() => { /* session-start path stays silent (VC0F A3) */ }),
+      );
+    } catch {
+      /* best-effort — never break the session */
+    }
   });
 }
