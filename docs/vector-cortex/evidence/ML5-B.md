@@ -1,8 +1,16 @@
 # ML5-B Evidence
 
-Status: implementation-complete — all sprint gates green at the code level. Reviewer
-attestation pending — Claude (Opus controller) to review the working tree (no commit made
-by the implementer).
+Status: REVIEWED + COMMITTED + PUBLISHED — Claude (Opus controller) independent review
+complete. Attested against the working tree at commit cd47e4c. Deployed as v0.20.37;
+device-side verification (update + 15/15 endpoints green) runs post-merge per cadence.
+
+**Reviewer attestation (2026-08-06, Claude Opus controller):** Working tree verified
+as-is; all 10 deliverable files match claimed line counts; regression gate
+`--all --soft-as-hard --pre-commit` rc=0 with zero ML5-B-owned violations; conformance
+832/832 clean; docs-check 44/11 clean. Deviations #1–#3 ratified (shared-file changes
+are additive and bounded; the registered-allow on `backfill.ts` is correctly deferred
+to ML5-C). Redaction contract honored (aggregate-only fixtures, no payload leakage).
+Independence arm (B = flag-off) verified green in evidence's parity run. Approved.
 
 **Reconciliation (2026-08-05):** This record covers the ML5-B production bench harness
 sprint end to end — the corpus exporter (`bench-corpus-export.mjs`), the qualification
