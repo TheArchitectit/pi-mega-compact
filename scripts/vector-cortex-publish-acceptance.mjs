@@ -330,6 +330,11 @@ function main() {
       copyFileSync(s, d);
     }
   }
+  // ML5-C added the runtime-select dispatch + emitRuntimeSelected seller event
+  // to runtime.ts, which reads STATE_DIR_DEFAULT (config.js) for the events.log
+  // state dir. No new loose-module mirror is required: config.js is already
+  // mirrored above and the runtime-select.ts / runtime-emit.ts siblings land
+  // under dist/vector-cortex/encoder/ by the same nEncoder copyTree pass.
   console.log(
     `vector-cortex-publish-acceptance: published ${nAccept} acceptance + ${nEval} eval + ${nReplay} replay + ${nMigrations} migrations + ${nLedger} ledger + ${nResilience} resilience + ${nConformance} conformance + ${nEncoder} encoder + ${nCortex} cortex + ${nTopology} topology + ${nShards} shards + ${nResidual} residual + ${nReconstruct} reconstruct + ${nPromptDag} prompt-dag + ${nPlanner} planner + ${nRender} render + ${nProvider} provider + ${nRollout} rollout + ${nHeal} heal + ${nCache} cache + ${nOutcomes} outcomes + ${nController} controller + ${nPlatform} platform + ${nLive} live-seam + ${nSupport} support files`,
   );
