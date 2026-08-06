@@ -204,5 +204,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"Setup Cortex action drivers (POST /api/setup-cortex-action + GET /api/setup-cortex-action-log): confirmation-gated wrappers that fetch-model / bench / verify-asset by spawning only the committed local scripts (scripts/vc2-model-prep/fetch-model.sh, bench-onnx.mjs) or re-reading the committed encoder assets — never payload bytes, no network. Actions gated by an OPEN hard-gate item (HG-1/HG-3) return action_blocked_by_open_item and do NOT spawn. OFF = byte-identical predecessor (VC9A-era): the action POST returns a disabled/404 shape and flag-off bytes are unchanged.",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_VC9C",
+			"VC9C SetupTab Cortex Sub-tab",
+			"SetupTab Cortex sub-tab (client UI): a Cortex sub-tab inside SetupTab that consumes the VC9A status endpoint (GET /api/setup-cortex-status) + the VC9B action endpoints. It surfaces the encoder mode A/B/C, asset digest prefix, qualification verdict + threshold failures, the open hard-gate blockers, and the confirmation-gated fetch/bench/verify actions. OFF = byte-identical predecessor (VC9B-era): the Cortex sub-tab is filtered from SUB_TABS and the Setup tab renders exactly as before.",
+			true,
+		),
 	],
 };

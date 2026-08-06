@@ -1,29 +1,34 @@
 /**
  * dashboard-client/src/tabs/SetupTab.tsx — Setup wizard tab shell (P0b).
  *
- * Sub-tab shell routing between Embedder / Config / Game Mode / Achievements.
- * The embedder setup section lives in SetupTab/EmbedderSetup.tsx.
+ * Sub-tab shell routing between Embedder / Thresholds / Config / Game Mode /
+ * Achievements / Cortex. The embedder setup section lives in
+ * SetupTab/EmbedderSetup.tsx; the VC9C Cortex sub-tab lives in
+ * SetupTab/CortexSetup.tsx.
  *
  * PREVENT-PI-004: all data comes from localhost dashboard API endpoints —
  * no external network calls.
  */
 import type React from "react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import GameTab from "./GameTab";
 import AchievementsTab from "./AchievementsTab";
 import ConfigTab from "./ConfigTab";
 import EmbedderSetup from "./SetupTab/EmbedderSetup";
 import ThresholdsPanel from "./SetupTab/ThresholdsPanel";
+import CortexSetup from "./SetupTab/CortexSetup";
 import { Toggle } from "../components/ui/toggle";
+import { useSetupCortexPoll, isCortexSubTabVisible } from "./useSetupCortexPoll";
 
 type SetupSubTab =
 	| "embedder"
 	| "thresholds"
 	| "config"
 	| "game"
-	| "achievements";
+	| "achievements"
+	| "cortex";
 
-const SUB_TABS: ReadonlyArray<{ id: SetupSubTab; label: string }> = [
+const BASE_SUB_TABS: ReadonlyArray<{ id: SetupSubTab; label: string }> = [
 	{ id: "embedder", label: "Embedder" },
 	{ id: "thresholds", label: "Thresholds" },
 	{ id: "config", label: "Config" },
@@ -31,8 +36,18 @@ const SUB_TABS: ReadonlyArray<{ id: SetupSubTab; label: string }> = [
 	{ id: "achievements", label: "Achievements" },
 ];
 
+/** The Cortex sub-tab is filtered out when VC9A reports the off/disabled shape. */
+const CORTEX_TAB = { id: "cortex", label: "Cortex" } as const;
+
 export default function SetupTab(): React.ReactElement {
 	const [subTab, setSubTab] = useState<SetupSubTab>("embedder");
+	const [cortex] = useSetupCortexPoll();
+
+	const subTabs = useMemo(() => {
+		const tabs = [...BASE_SUB_TABS];
+		if (isCortexSubTabVisible(cortex.data)) tabs.push(CORTEX_TAB);
+		return tabs;
+	}, [cortex.data]);
 
 	return (
 		<div className="mx-auto flex max-w-3xl flex-col gap-4 p-4">
@@ -40,7 +55,7 @@ export default function SetupTab(): React.ReactElement {
 				className="flex gap-2 border-b border-border pb-2"
 				aria-label="Setup sections"
 			>
-				{SUB_TABS.map((t) => (
+				{subTabs.map((t) => (
 					<Toggle
 						key={t.id}
 						pressed={subTab === t.id}
@@ -56,6 +71,7 @@ export default function SetupTab(): React.ReactElement {
 			{subTab === "config" && <ConfigTab />}
 			{subTab === "game" && <GameTab />}
 			{subTab === "achievements" && <AchievementsTab />}
+			{subTab === "cortex" && <CortexSetup />}
 		</div>
 	);
 }

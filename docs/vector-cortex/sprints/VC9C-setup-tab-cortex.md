@@ -1,0 +1,54 @@
+# VC9C — SetupTab Cortex sub-tab (client UI)
+
+**Status:** implementer-complete | **Depends on:** VC9B | **Phase:** VC9
+**Flag:** `MEGACOMPACT_VC9C`, defined in `src/config/vector-cortex-vc9c.ts` (extracted to the `vector-cortex-vc9c.ts` sibling), re-exported by `vector-cortex.ts` + root `src/config.ts`, default ON; `MEGACOMPACT_VC9C=0` disables and must be byte-identical to the VC9B predecessor (the Cortex sub-tab is filtered from `SUB_TABS`; the Setup tab renders exactly as before). The client gates the sub-tab's visible state on the flag via the VC0E honest-status pattern: when the VC9A status payload reports the off/disabled shape (`enabled:false` / `status:"off"`), the sub-tab is filtered from `SUB_TABS` (not rendered). Registered in `VECTOR_CORTEX_SETTINGS` as a visible boolDirect toggle, never in `EXCLUDED_SETTINGS`.
+
+## Goal and inputs/outputs
+
+Add a **"Cortex" sub-tab inside `SetupTab.tsx`** alongside the existing Embedder / Thresholds / Config / Game / Achievements sub-tabs. It mirrors `EmbedderSetup`'s shape but is thinner, consuming the VC9A status endpoint (`GET /api/setup-cortex-status`) and the VC9B action endpoints (`POST /api/setup-cortex-action`, `GET /api/setup-cortex-action-log`). **NO server code changes in this sprint.** Production ownership: `extensions/dashboard-client/src/tabs/SetupTab/CortexSetup.tsx; extensions/dashboard-client/src/tabs/SetupTab/CortexEncoderCard.tsx; extensions/dashboard-client/src/tabs/SetupTab/CortexBlockersCard.tsx; extensions/dashboard-client/src/tabs/SetupTab/CortexActionsCard.tsx; extensions/dashboard-client/src/tabs/SetupTab/CortexSetupStyles.ts; extensions/dashboard-client/src/types/setup-cortex.ts; extensions/dashboard-client/src/api/setup-cortex.ts; extensions/dashboard-client/src/tabs/useSetupCortexPoll.ts; extensions/dashboard-client/src/tabs/SetupTab.tsx (additive); src/config/vector-cortex-vc9c.ts; src/config/vector-cortex.ts; src/config.ts; extensions/dashboard-server/routes-rag-settings-vector-cortex.ts; conformance/vector-cortex/v2/setup-dashboard/ (fixtures SETUP-CORTEX-020..022); conformance/vector-cortex/v2/manifest.json; scripts/vc9-setup-dashboard/gen-fixtures-vc9c.mjs (new generator, following the vc9b sibling convention); src/vector-cortex/vc9c-acceptance.test.ts; docs/vector-cortex/sprints/VC9C-setup-tab-cortex.md; docs/vector-cortex/evidence/VC9C.md; scripts/vector-cortex-docs-check.mjs (EXPECTED_SPRINTS 31→32)`. The endpoints registry is NOT touched — VC9C adds no new server endpoint; it consumes VC9A/VC9B only.
+
+Algorithm: the sub-tab polls `fetchSetupCortexStatus()` via `useSetupCortexPoll` (a sibling of `useVectorCortexPoll` — only the URL + payload types differ) every 5s, best-effort. `SetupTab` filters the `cortex` entry out of `SUB_TABS` when the poll payload reports the off/disabled shape (`enabled:false` or `status:"off"`, gated by `isCortexSubTabVisible`); while the payload is loading/absent the sub-tab defaults visible so a transient poll isn't mistaken for the off state. The three cards — `CortexEncoderCard` (mode A/B/C, asset digest prefix, qualification verdict + threshold failures, encoder health, the shared `VcStatusBadge` driven by the status field), `CortexBlockersCard` (open hard-gate blocker rows id/title/severity/status/resolution, with highlighted rows when an action is blocked), `CortexActionsCard` (fetch-model / bench / verify-asset using the `ActionDef` + `window.confirm` pattern, POST body always `confirm:true`, blocked-423 callout, disabled/confirmation-required states rendered honestly, returned logName + bounded log tail) — are composed by `CortexSetup`. Client types are mirror-redeclared in `types/setup-cortex.ts` in lockstep with the server contract; the api functions in `api/setup-cortex.ts` hit only the loopback dashboard (PREVENT-PI-004). Never surface payload bytes/prompts/ledger (EVAL-REDACT-002).
+
+## Numbered implementation tasks
+
+1. Add the `MEGACOMPACT_VC9C` flag (default ON, `=0` byte-identical) in `src/config/vector-cortex-vc9c.ts` + the `vector-cortex.ts`/`src/config.ts` re-exports, and the `VECTOR_CORTEX_SETTINGS` boolDirect toggle in `routes-rag-settings-vector-cortex.ts`.
+2. Author the client contract pair `types/setup-cortex.ts` (mirrors of the server contract — no `any`) + `api/setup-cortex.ts` (`fetchSetupCortexStatus`, `postSetupCortexAction` returning a discriminated outcome, `fetchSetupCortexActionLog`) against the loopback dashboard.
+3. Author `useSetupCortexPoll.ts` (polls status every 5s, exposes payload + loading/error slice) + `isCortexSubTabVisible` (the off/disabled → hidden predicate), and wire the `cortex` sub-tab additively into `SetupTab.tsx` (union member + computed SUB_TABS entry filtered by the predicate + conditional render).
+4. Author the three cards + shell + styles: `CortexSetup.tsx`, `CortexEncoderCard.tsx`, `CortexBlockersCard.tsx`, `CortexActionsCard.tsx`, `CortexSetupStyles.ts`.
+5. Generate + commit the 3 `SETUP-CORTEX-020..022` UI fixtures + the `setup-cortex-ui-fixture` schema via `scripts/vc9-setup-dashboard/gen-fixtures-vc9c.mjs`; register them in the v2 manifest; bump `EXPECTED_SPRINTS` 31→32 in `scripts/vector-cortex-docs-check.mjs`.
+6. Add the sprint acceptance aggregator `vc9c-acceptance.test.ts`, then evidence `VC9C.md`; run `cd extensions/dashboard-client && npm run typecheck && npm run build` (the client is touched — MANDATORY).
+
+## Failure triad and independence
+
+A actor-only full projection: the Cortex sub-tab renders the status payload's mode A/B/C + qualification + blockers + status badge deterministically (flag-on, live/structural shape), and the confirmation-gated action buttons return the typed 200/400/423 responses; B hidden projection: the off/disabled shape (flag-off / `status:"off"`) filters the sub-tab from `SUB_TABS` so it is not rendered (VC0E honest-status parity with the predecessor); C the offset (flag-off) VC9B-era Setup tab renders byte-identical, produced purely by the flag gate (the sub-tab is absent). A is produced by the status projection + action confirm path; B is produced by `isCortexSubTabVisible` against the off shape; C is produced purely by the flag. Each uses independent inputs. Common cooldown/spool/restart/clock rules are normative in [TRIAD_RESILIENCE](../TRIAD_RESILIENCE.md).
+
+## Tests, fixtures, and assertions
+
+Fixture root: `conformance/vector-cortex/v2/setup-dashboard/`.
+
+- `SETUP-CORTEX-020: sub-tab renders mode A/B/C deterministically (drives the encoder-card projection)` — the representative projection (mode A, qualified, no threshold failures) is stable and the sub-tab is visible; `render_modes` covers A/B/C.
+- `SETUP-CORTEX-021: flag-off hides the sub-tab` — the off/disabled shape (`status:"off"`, `enabled:false`) filters the sub-tab from `SUB_TABS` (`expected_subtab_visible:false`) and leaks no blockers.
+- `SETUP-CORTEX-022: poll hook drives the badge correctly across live/awaiting_data/deferred/off status values` — the `status_badge_pairs` matrix pins that the badge mirrors the status field.
+
+Sprint acceptance aggregator (must exist after implementation): `src/vector-cortex/vc9c-acceptance.test.ts`; exact compiled command:
+
+```bash
+npm run build
+node --test dist/vector-cortex/vc9c-acceptance.test.js
+```
+
+Expected assertions: all `SETUP-CORTEX-020..022` rows are registered with algorithm `setup-cortex-ui` against the `setup-cortex-ui-fixture` schema; each fixture envelope satisfies the schema invariants (kind/mode/flag_enabled/status/expected_subtab_visible enums); 020 pins the deterministic three-mode render projection + a visible sub-tab; 021 pins the off/disabled → hidden rule; 022 pins the badge matrix for live/awaiting_data/deferred/off. Client component rendering is exercised by `cd extensions/dashboard-client && npm run typecheck && npm run build` (the client bundles the new modules; no phantom imports). The aggregator is flag-agnostic so the SAME suite is green under both flag states. Exact flag-off comparison command: `MEGACOMPACT_VC9C=0 node --test dist/vector-cortex/vc9c-acceptance.test.js`; its outbound/predecessor golden bytes must match exactly. Acceptance: zero payload leakage (the client renders aggregates only); ACTOR-only actions (always `window.confirm` + `confirm:true`); every blocked action surfaces the 423 gating blockers and never runs; 404-disabled and 400 confirmation-required are rendered honestly, never swallowed. Apply [EVALUATION](../EVALUATION.md) annotation/power rules; hard causal/tool/anchor/exact failures are zero-tolerance.
+
+## Migration, privacy, dashboard, and rollback
+
+Migration disposition: **pure—no migration; client-only UI sprint**. Every migration follows compatibility journal/copy-validate-switch and old-binary protocol; pure sprints write no migration. Privacy follows [SECURITY_PRIVACY](../SECURITY_PRIVACY.md); the sub-tab renders aggregates (mode/digest prefix/verdict/blocker ids/log tails of user-invoked actions) only, never payload bytes / prompts / ledger (EVAL-REDACT-002). Dashboard: the Setup Cortex sub-tab consumes VC9A/VC9B endpoints; no endpoint registry change; SETTINGS toggle in `routes-rag-settings-vector-cortex.ts`; client owns `CortexSetup.tsx` + cards + styles + `types/setup-cortex.ts` + `api/setup-cortex.ts` + `useSetupCortexPoll.ts`. Run `cd extensions/dashboard-client && npm run typecheck && npm run build`.
+
+Rollback sets `MEGACOMPACT_VC9C=0`; the Cortex sub-tab is filtered from `SUB_TABS` (byte-identical to the VC9B-era Setup tab), without deleting evidence; the predecessor golden bytes are unchanged. Next handoff: VC9D (embedder detect consolidation + conformance roll-up) receives the Setup Cortex surface.
+
+## Exit evidence
+
+Run exact project gates: `npm run build`, `node --test dist/vector-cortex/vc9c-acceptance.test.js`, `MEGACOMPACT_VC9C=0 node --test dist/vector-cortex/vc9c-acceptance.test.js`, `npm test`, `npm run lint`, `python3 scripts/regression_check.py --all`, `node scripts/guardrails-scan.mjs`, `python3 scripts/log_failure.py --list`, `node scripts/vector-cortex-conformance.mjs --check`, `node scripts/vector-cortex-docs-check.mjs`, `node scripts/vector-cortex-scope-check.mjs VC9C <COMMIT_SHA>`, `node scripts/vector-cortex-evidence-check.mjs VC9C`, `git diff --check`, `cd extensions/dashboard-client && npm run typecheck && npm run build`. No permissive globs or warning-only scans count.
+
+Clients are touched by this sprint, so then `<COMMIT_SHA>` in the scope-check command is this sprint's commit (run AFTER commit; if it flags files, extend the spec's Production ownership with a forced-deviation note and make a second commit so scope-check covers the union).
+
+This sprint adds a 32nd sprint file, so `EXPECTED_SPRINTS` in `scripts/vector-cortex-docs-check.mjs` is bumped from 31 to 32; that script is included in Production ownership (a genuine docs-check reconciliation, not scope drift).
