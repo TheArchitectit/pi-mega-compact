@@ -1,0 +1,1 @@
+{"assertion":"steady-state marginal RSS pass/fail over the process baseline (budget 150 MiB: marginal <= 150, baseline-subtracted)","baseline_subtracted":true,"budget_mib":150,"flag":"MEGACOMPACT_ML5_B","gate":"rss","id":"ML5-BENCH-002","kind":"bench-heads","producer":"scripts/ml5/gen-fixtures-ml5b.mjs","schema":"schemas/ml5-fixture.schema.json"}

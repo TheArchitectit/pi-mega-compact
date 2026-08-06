@@ -280,6 +280,7 @@ export { VC9C_ENABLED } from "./vector-cortex-vc9c.js";
 export { VC9D_ENABLED } from "./vector-cortex-vc9d.js";
 export { PCC_ENABLED } from "./vector-cortex-pcc.js";
 export { ML5A_ENABLED } from "./vector-cortex-ml5a.js";
+export { ML5B_ENABLED } from "./vector-cortex-ml5b.js";
 
 // Breaker constants (TRIAD_RESILIENCE.md §breaker) extracted to vector-cortex-breakers.ts.
 export {

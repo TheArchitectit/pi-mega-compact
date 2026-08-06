@@ -206,6 +206,30 @@ export function logRecallQuality(path: string, ev: RecallQualityEvent): void {
 }
 
 // ---------------------------------------------------------------------------
+// ML5-B encoder bench events (consumer-facing for the dashboard + evidence)
+// ---------------------------------------------------------------------------
+
+/**
+ * Append a structured ML5-B bench event to events.log (best-effort, non-fatal).
+ * Mirrors the extension's appendEvent schema ({ ts, event, ...fields }) so the
+ * dashboard live-stream tail and evidence tooling parse the four
+ * `vector_cortex_encoder_bench_*` events identically. The bench is developer/
+ * evidence tooling with no runtime gating; this only records its results.
+ */
+export function logBenchEvent(
+  path: string,
+  event: string,
+  fields: Record<string, unknown>,
+): void {
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    appendFileSync(path, JSON.stringify({ ts: Date.now(), event, ...fields }) + "\n", "utf8");
+  } catch {
+    /* best-effort — never break the caller */
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Dedup audit trail (external-audit item #2)
 // ---------------------------------------------------------------------------
 // The event shape and its append helper are DEFINED in vectorStore/dedup-audit.ts,
