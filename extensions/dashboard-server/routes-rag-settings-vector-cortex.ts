@@ -240,5 +240,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"ML5-D dashboard 'Improve Cortex' surface: the ModelImprovementCard + POST /api/cortex/improve + GET /api/cortex/improve/status/:jobId. ON (default) = the card renders and Improve launches a local ML5-A training job. OFF = both improve endpoints return 404 and VectorCortexTab omits the card, byte-identical to ML5-C.",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_ML5_E",
+			"ML5-E Nightly Retraining Cron",
+			"ML5-E nightly retraining + feedback loop: the user's own post-redaction conversation turns become fresh training signal, the five heads are re-fit nightly via system cron, calibration is re-validated, and mode-A promotion is re-checked without human intervention. The cron is system-configured (crontab -e); the extension never installs or writes a crontab. Candidates are written to ~/.pi/mega-compact-encoder/candidates/ and promoted via the ML5-D Improve Cortex flow. ON (default) = the scripts may be invoked by the system cron. OFF = scripts are never invoked; byte-identical to ML5-D.",
+			true,
+		),
 	],
 };

@@ -11,9 +11,8 @@
 
 import { sprintFlag } from "./vector-cortex-flag.js";
 
-// VC0/VC1/VC2 foundation-phase flags extracted to vector-cortex-early.ts to keep
-// this file under the 300-line soft limit. Re-exported here so every existing
-// `from "./config/vector-cortex.js"` import keeps resolving unchanged.
+// VC0/VC1/VC2 foundation-phase flags in vector-cortex-early.ts; re-exported
+// so every existing `from "./config/vector-cortex.js"` import resolves unchanged.
 export {
   VC0A_ENABLED,
   VC0B_ENABLED,
@@ -269,9 +268,9 @@ export const VC8A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC8A");
  */
 export const VC8B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC8B");
 
-// VC8C (canary selection + Rust parity) extracted to vector-cortex-vc8c.ts; re-exported so existing imports keep resolving.
+// VC8C extracted to vector-cortex-vc8c.ts; re-exported so existing imports keep resolving.
 export { VC8C_ENABLED } from "./vector-cortex-vc8c.js";
-// Sibling extracts to stay under the 300-line soft limit.
+// Sibling extracts: stay under the 300-line soft limit.
 export { VC9A_ENABLED } from "./vector-cortex-vc9a.js";
 export { VC9B_ENABLED } from "./vector-cortex-vc9b.js";
 export { VC9C_ENABLED } from "./vector-cortex-vc9c.js";
@@ -281,6 +280,7 @@ export { ML5A_ENABLED } from "./vector-cortex-ml5a.js";
 export { ML5B_ENABLED } from "./vector-cortex-ml5b.js";
 export { ML5C_ENABLED } from "./vector-cortex-ml5c.js";
 export { ML5D_ENABLED } from "./vector-cortex-ml5d.js";
+export { ML5E_ENABLED } from "./vector-cortex-ml5e.js";
 
 // Breaker constants (TRIAD_RESILIENCE.md §breaker) extracted to vector-cortex-breakers.ts.
 export {

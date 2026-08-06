@@ -1,0 +1,27 @@
+# ML5-E nightly retraining cron — operator reference
+# =====================================================
+#
+# This is a REFERENCE for the operator's `crontab -e`. The extension NEVER
+# installs or writes a crontab. Copy the relevant lines into your crontab.
+#
+# The cron runs at 2:00 AM local time every night. It:
+#   1. Re-exports the corpus snapshot (new redacted-tagged sessions).
+#   2. If no new rows since the last run → exits 0 (no-op, no training noise).
+#   3. Otherwise calls ML5-A train → ML5-B bench → ML5-C package.
+#   4. Appends a PromotionV1 ledger row to the append-only manifest.
+#   5. Runs the promotion gate: all five heads must pass per-head calibration
+#      thresholds AND the new asset must beat the committed asset on a fixed
+#      held-out dev set. On fail → candidate recorded as demoted_new_asset.
+#   6. Candidates land in ~/.pi/mega-compact-encoder/candidates/. The human
+#      operator reviews the dashboard and promotes via the ML5-D "Improve
+#      Cortex" flow — the cron NEVER commits or pushes.
+#
+# Environment:
+#   MEGACOMPACT_ML5_E=1         Enable the ML5-E nightly retraining loop.
+#   MEGACOMPACT_STATE_DIR       Path to the extension state dir (default:
+#                               ~/.pi/agent/extensions/pi-mega-compact).
+#
+# All computation is local — zero network (PREVENT-PI-004).
+
+# Nightly retraining at 2:00 AM local time.
+0 2 * * * cd ~/pi-mega-compact && MEGACOMPACT_ML5_E=1 node scripts/ml5/retrain-nightly.mjs >> ~/.pi/mega-compact-encoder/retrain.log 2>&1
