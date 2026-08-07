@@ -140,4 +140,23 @@ predecessor. No evidence deleted, no golden bytes changed. No operator migration
 
 ## Reviewer verdict
 
-Pending controller review. Gates are green. Dashboard-client typecheck + build: PASS.
+**reviewer-accepted** — Controller (Opus) two-stage review complete.
+
+### Controller attestation
+
+All gates green. Verified against HEAD (commit 1eba490 on `feat/DASH-0a`):
+
+- **Scope-check** (scope-check.mjs DASH-0A): all 14 committed files inside Production ownership. The spec's Production ownership field was amended (spec-staleness precedent from REPO-A) to list the actual root-`node --test` paths (`src/vector-cortex/dash0a-plan.test.ts`, `src/vector-cortex/dash0a-acceptance.test.ts`) instead of the originally-planned client-side paths — the dashboard-client has no test runner, documented as deviation #1 below.
+- **Evidence-check** (evidence-check.mjs DASH-0A): 0 mismatches.
+- **Soft-as-hard** (regression_check.py --all --soft-as-hard --soft-as-hard-base v0.20.57 --pre-commit): clean.
+- **npm test**: 4015 passed / 0 failed / 408 files.
+- **Conformance**: 934 fixtures canonical (930 baseline + 3 DASH-0A + 1 schema).
+- **Dashboard-client**: typecheck + build PASS (plan.ts typechecks; tree-shaken out of the bundle).
+- **Additive diffs**: config.ts +1 line (222), vector-cortex.ts +2 lines (104) — minimal, within soft limits.
+- **widget-types.ts**: comment-only at line 58 — stale "Stub = 1 until S33" reworded to reference `getTurnLevelImpl`. Pure-type module → emitted JS byte-identical.
+- **Flag-off byte-identical**: plan module never imported by the shell; `MEGACOMPACT_DASH_0A=0` leaves all 13 tab/section components rendering exactly as their predecessor. Fixture DASH-0A-003 pins this.
+- **git diff --check**: clean.
+
+The three documented spec-staleness deviations (plan.test.ts location, plan-test gate path, conformance count 934) are all legitimate: documented rationale in the §Spec-staleness deviations section above, each follows established precedent (REPO-A schema-row counting convention, root-tsc test compilation pattern), and none weaken a hard guarantee.
+
+**Ship ready**: merge → deploy.sh 0.20.58.
