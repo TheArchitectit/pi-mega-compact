@@ -157,13 +157,16 @@ Worker B (dashboard client):
       both exit 0 (vite, 2.38s; SetupTab chunk
       `dist/assets/SetupTab-*.js` 43.95 kB / gzip 12.70 kB).
 - [x] `git diff --check` → clean.
-- [ ] `node scripts/vector-cortex-scope-check.mjs ENC-1a <COMMIT_SHA>` → stamped
-      at the ENC-1a commit below.
-- [ ] `node scripts/vector-cortex-evidence-check.mjs ENC-1a` → stamped at the
-      ENC-1a commit below.
+- [x] `node scripts/vector-cortex-scope-check.mjs ENC-1a e868f67` → **all 74
+      committed files inside Production ownership** (ownership block amended in
+      b992277 for the sibling extracts + intentional non-touches).
+- [x] `node scripts/vector-cortex-evidence-check.mjs ENC-1a` → **0 mismatches,
+      0 warnings** (three historical-test-count notes only).
 
-Commits + deploy recorded below (spec §83 LIVE Playwright gates ENC-1a — not
-checked until a live host post-deploy).
+Implementation commit: **e868f67**; ownership amendment commit: **b992277**;
+deployed as **v0.20.50** via `./scripts/deploy.sh 0.20.50` (recorded below).
+Spec §83 LIVE Playwright gates ENC-1a — pauses at reviewer-accepted until a
+live host reaches v0.20.50.
 
 ### Controller review fixes / scope confirmations
 
