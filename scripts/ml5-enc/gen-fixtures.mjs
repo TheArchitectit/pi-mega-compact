@@ -1002,6 +1002,164 @@ const settingsFixtures = [
   },
 ];
 
+// ── ENC-1b: encoder-runtime-settings fixtures ───────────────────────────────
+// ONNX runtime backend + embedder API Settings surface (ENC-1b): the dim +
+// headers + allow-remote + native opt-in keys persist to the per-repo
+// `.mega-compact.env` (create-or-append, never deleting other keys); the GET
+// status route echoes the dim + returns booleans for headers-set / allow-remote
+// / native-opt-in and computes the current effective backend + demotion reason
+// through the EXISTING `selectRuntimeBackend` (reader-only). The raw headers
+// JSON (a secret-bearing JSON object) is NEVER echoed — only `headersSet:true`.
+// Validation rejections (out-of-range dim, invalid headers JSON) return 400 and
+// leave the file byte-unchanged. flag-off is byte-identical to the ENC-1a
+// survivor (fields omitted, keys unrecognized). The redaction invariant is
+// zero-tolerance (round-trip-set-headers-redacted).
+const ONNX_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema#",
+  title: "ENC-1b encoder-runtime-settings fixture envelope",
+  type: "object",
+  description:
+    "Common structure every ENC-1b encoder-runtime-settings fixture validates against. `kind` names the round-trip / validation-reject / native-opt-in / flag-off branch exercised; `setup` carries the dim + headers + allow_remote + native_opt_in + flag_on inputs for the route harness; `expected_outcome` is ok or error; `expected_result` pins the fields the writer+reader round-trip and the validation + redaction scans must assert (written_dim, written_headers, headers_set, dim_echo, allow_remote, native_opt_in, backend_effective, key_never_in_get, dim_rejected, headers_rejected, file_unchanged, get_omits_fields, post_disabled, byte_identical).",
+  required: ["id", "producer", "assertion", "kind", "setup", "expected_outcome", "expected_result"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: {
+      type: "string",
+      enum: [
+        "round-trip-set-headers-redacted",
+        "round-trip-set-dim-validated",
+        "dim-over-cap-rejected",
+        "headers-invalid-json-rejected",
+        "native-opt-in-flag",
+        "flag-off",
+      ],
+    },
+    setup: {
+      type: "object",
+      properties: {
+        dim: { type: ["string", "null"] },
+        headers: { type: ["string", "null"] },
+        allow_remote: { type: "boolean" },
+        native_opt_in: { type: "boolean" },
+        flag_on: { type: "boolean" },
+        runs: { type: "integer" },
+      },
+    },
+    expected_outcome: { type: "string", enum: ["ok", "error"] },
+    expected_result: { type: "object" },
+  },
+};
+
+const runtimeSettingsFixtures = [
+  {
+    id: "ENC-ONNX-001",
+    assertion:
+      "POST dim + headers + allowRemote + nativeOptIn round-trips to the per-repo .mega-compact.env; the next GET echoes the dim and reports headersSet:true, allowRemote and nativeOptIn — the raw headers JSON never appears in the GET body (zero-tolerance redaction)",
+    kind: "round-trip-set-headers-redacted",
+    setup: {
+      dim: "384",
+      headers: '{"x-extra":"1"}',
+      allow_remote: true,
+      native_opt_in: true,
+      flag_on: true,
+      runs: 1,
+    },
+    expected_outcome: "ok",
+    expected_result: {
+      written_dim: true,
+      written_headers: true,
+      dim_echo: "384",
+      headers_set: true,
+      allow_remote: true,
+      native_opt_in: true,
+      headers_never_in_get: true,
+      backend_surfaced: true,
+    },
+  },
+  {
+    id: "ENC-ONNX-002",
+    assertion:
+      "invalid headers JSON (array/primitive/malformed) is rejected with 400 invalid_embedding_headers and the file is left byte-unchanged",
+    kind: "headers-invalid-json-rejected",
+    setup: {
+      dim: null,
+      headers: '["not-an-object"]',
+      allow_remote: false,
+      native_opt_in: false,
+      flag_on: true,
+      runs: 1,
+    },
+    expected_outcome: "ok",
+    expected_result: { headers_rejected: true, error_code: "invalid_embedding_headers", file_unchanged: true },
+  },
+  {
+    id: "ENC-ONNX-003",
+    assertion:
+      "embeddingDim over the ENC-1b cap (or non-integer) is rejected with 400 invalid_embedding_dim and the file is left byte-unchanged",
+    kind: "dim-over-cap-rejected",
+    setup: {
+      dim: "999999",
+      headers: null,
+      allow_remote: false,
+      native_opt_in: false,
+      flag_on: true,
+      runs: 1,
+    },
+    expected_outcome: "ok",
+    expected_result: { dim_rejected: true, error_code: "invalid_embedding_dim", file_unchanged: true },
+  },
+  {
+    id: "ENC-ONNX-004",
+    assertion:
+      "encoderNativeOptIn round-trips; the GET surfaces the effective encoderBackend (wasm|native) and the runtime's own encoderDemotionReason when the selection falls back (e.g. darwin-x64 demotion)",
+    kind: "native-opt-in-flag",
+    setup: {
+      dim: null,
+      headers: null,
+      allow_remote: false,
+      native_opt_in: true,
+      flag_on: true,
+      runs: 1,
+    },
+    expected_outcome: "ok",
+    expected_result: { native_opt_in: true, backend_effective: true, demotion_reason_surfaced: true },
+  },
+  {
+    id: "ENC-ONNX-005",
+    assertion:
+      "embeddingDim within the cap is validated (positive integer string) and echoed on the next GET; contract is additive for pre-ENC-1b clients that omit the new keys",
+    kind: "round-trip-set-dim-validated",
+    setup: {
+      dim: "384",
+      headers: null,
+      allow_remote: false,
+      native_opt_in: false,
+      flag_on: true,
+      runs: 1,
+    },
+    expected_outcome: "ok",
+    expected_result: { dim_echo: "384", contract_additive: true, validates: true },
+  },
+  {
+    id: "ENC-ONNX-006",
+    assertion:
+      "flag-off (MEGACOMPACT_ENC_1B=0) -> GET omits all new fields, POST with the new keys is not recognized (disabled), byte-identical ENC-1a predecessor",
+    kind: "flag-off",
+    setup: {
+      dim: "384",
+      headers: '{"x-extra":"1"}',
+      allow_remote: true,
+      native_opt_in: true,
+      flag_on: false,
+      runs: 1,
+    },
+    expected_outcome: "ok",
+    expected_result: { get_omits_fields: true, post_disabled: true, byte_identical: true },
+  },
+];
+
 // ── Main (mirrors the VC9 setup generator coordinate with manifest.json) ─────
 export function writeAll() {
   mkdirSync(ENC_DIR, { recursive: true });
@@ -1290,6 +1448,41 @@ export function writeAll() {
     });
   }
 
+  // The ENC-ONNX schema row.
+  const onnxSchemaBytes = Buffer.from(canonicalJson(ONNX_SCHEMA), "utf8");
+  const onnxSchemaRel = "schemas/encoder-runtime-settings-fixture.schema.json";
+  writeFileSync(join(V2, onnxSchemaRel), onnxSchemaBytes);
+  rows.push({
+    id: "encoder-runtime-settings-fixture",
+    path: onnxSchemaRel,
+    sha256: sha256Hex(onnxSchemaBytes),
+    schema: onnxSchemaRel,
+    algorithm: "json-schema",
+    producer,
+    expected: "schema",
+    license: "synthetic",
+  });
+
+  // The 6 ENC-ONNX fixture rows + on-disk files.
+  const onnxDir = join(V2, "encoder-runtime-settings");
+  mkdirSync(onnxDir, { recursive: true });
+  for (const fx of runtimeSettingsFixtures) {
+    const obj = { ...fx, schema: onnxSchemaRel, producer };
+    const bytes = Buffer.from(canonicalJson(obj), "utf8");
+    const rel = `encoder-runtime-settings/${fx.id}.json`;
+    writeFileSync(join(V2, rel), bytes);
+    rows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: onnxSchemaRel,
+      algorithm: "encoder-runtime-settings",
+      producer,
+      expected: fx.expected_outcome,
+      license: "synthetic",
+    });
+  }
+
   // Merge into the existing manifest (id-dedupe so re-runs are idempotent) and
   // re-sort the whole fixtures array by id.
   const existing = manifest.fixtures.filter((r) => !rows.some((n) => n.id === r.id));
@@ -1330,6 +1523,9 @@ export function writeAll() {
   setCsv("domain", "encoder-settings");
   setCsv("schemaVersion", "encoder-settings-fixture");
   setOwnerCsv("owner", "ENC-1a");
+  setCsv("domain", "encoder-runtime-settings");
+  setCsv("schemaVersion", "encoder-runtime-settings-fixture");
+  setOwnerCsv("owner", "ENC-1b");
 
   writeFileSync(manifestPath, Buffer.from(canonicalJson(manifest), "utf8"));
 
@@ -1342,8 +1538,9 @@ export function writeAll() {
       demotionFixtures.length +
       budgetFixtures.length +
       statusFixtures.length +
-      settingsFixtures.length,
-    schemaCount: 8,
+      settingsFixtures.length +
+      runtimeSettingsFixtures.length,
+    schemaCount: 9,
   };
 }
 

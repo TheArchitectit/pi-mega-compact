@@ -190,3 +190,8 @@ describe("ENC-1a /api/setup-configure + /api/setup-status round-trip", () => {
 		);
 	});
 });
+
+// ENC-1b route tests live in routes-setup-enc1b.test.ts (split for the
+// extensions/ soft cap). Both the round-trip + flag-off describe and the
+// combined-payload defect-pinning describe run there against the same
+// spawn-and-fetch harness.

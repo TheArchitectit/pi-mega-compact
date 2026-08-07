@@ -9,12 +9,14 @@
  * Each decoration line carries a guardrails-allow annotation.
  */
 
-import { writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
 import { VC9D_ENABLED } from "../../src/config.js";
 import { enc1aStatusFields, writeEnc1aEnv, tryEnc1aConfigure, wantsEnc1a } from "./routes-setup-enc1a.js";
+import { enc1bStatusFields, tryEnc1bConfigure, tryEnc1bInto, enc1bValidateCombined } from "./routes-setup-enc1b.js";
+import { writeEmbedderEnv } from "./routes-setup-env-upsert.js";
 import {
 	detectOllama,
 	detectLlamaCpp,
@@ -91,7 +93,7 @@ export function handleSetupStatus(
 		minilm: ["1", "true", "yes"].includes(
 			(process.env["MEGACOMPACT_MINILM"] ?? "").trim().toLowerCase(),
 		),
-		...enc1aStatusFields(ctx.stateDir),
+		...enc1aStatusFields(ctx.stateDir), ...enc1bStatusFields(ctx.stateDir),
 	};
 	// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
 	res.writeHead(200, { "Content-Type": "application/json" });
@@ -215,6 +217,21 @@ export function handleSetupConfigure(
 		// Flag-off = the keys are simply not recognized, falling through to the
 		// pre-ENC-1a embedder path below (byte-identical predecessor).
 		if (tryEnc1aConfigure(body, res, ctx)) return;
+		if (tryEnc1bConfigure(body, res, ctx)) return; // pure ENC-1b configure (dim/headers/allow-remote/native)
+		// ENC-1b combined-payload validation: when a payload carries a valid
+		// embedder PLUS the ENC-1b keys, tryEnc1bConfigure above returned false
+		// (it handles only the pure-ENC-1b shape) and tryEnc1bInto below would
+		// write WITHOUT validating. Run the same dim/headers validation here so
+		// the combined path is rejected with the same 400 codes. Flag-off:
+		// enc1bValidateCombined returns null (byte-identical predecessor — the
+		// unknown keys fall through untouched).
+		const combinedError = enc1bValidateCombined(body);
+		if (combinedError !== null) {
+			// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: combinedError }));
+			return;
+		}
 		const embedder = body.embedder;
 		if (embedder !== "ollama" && embedder !== "llama" && embedder !== "trigram" && embedder !== "custom" && embedder !== "onnx") {
 			res.writeHead(400, { "Content-Type": "application/json" });
@@ -239,30 +256,14 @@ export function handleSetupConfigure(
 			allowRemote = true;
 		} else resolvedUrl = null;
 
-		// Write .mega-compact.env to the state dir (loaded by env-loader at next startup).
+		// Upsert-style write of the per-repo .mega-compact.env (sibling impl):
+		// preserves ENC-1a's endpoint/key + ENC-1b's dim/headers lines and any
+		// operator comments, replacing only the three keys this primary embedder
+		// write owns (URL / ALLOW_REMOTE / MINILM).
 		const stateDir = ctx.stateDir;
-		const envPath = join(stateDir, ".mega-compact.env");
-		const lines: string[] = [
-			"# Mega-Compact Embedder Configuration",
-			`# Configured via dashboard Setup tab at ${new Date().toISOString()}`,
-		];
-		if (resolvedUrl) {
-			lines.push(`export MEGACOMPACT_EMBEDDING_URL="${resolvedUrl}"`);
-			if (allowRemote) {
-				lines.push(`export MEGACOMPACT_ALLOW_REMOTE_EMBEDDER="1"`);
-			} else {
-				lines.push(`# MEGACOMPACT_ALLOW_REMOTE_EMBEDDER not set (loopback-only)`);
-			}
-		} else {
-			lines.push("# trigram: built-in embedder, no URL needed");
-			lines.push("# unset MEGACOMPACT_EMBEDDING_URL (commented to override any shell-set value)");
-			lines.push("# export MEGACOMPACT_EMBEDDING_URL=");
-			lines.push("# export MEGACOMPACT_ALLOW_REMOTE_EMBEDDER=");
-		}
-		lines.push("");
+		let envPath: string;
 		try {
-			mkdirSync(stateDir, { recursive: true });
-			writeFileSync(envPath, lines.join("\n"), "utf-8");
+			envPath = writeEmbedderEnv(stateDir, resolvedUrl, allowRemote);
 		} catch (e) {
 			res.writeHead(500, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ error: `write_failed: ${e instanceof Error ? e.message : String(e)}` }));
@@ -279,6 +280,7 @@ export function handleSetupConfigure(
 				apiKey: typeof body.embeddingApiKey === "string" ? body.embeddingApiKey : null,
 			});
 		}
+		tryEnc1bInto(stateDir, body); // ENC-1b combined upsert (dim/headers/allow-remote/native)
 		// Detect if the new config matches what's already active (no restart needed).
 		const currentUrl = process.env["MEGACOMPACT_EMBEDDING_URL"];
 		const alreadyActive = (resolvedUrl === null && !currentUrl) || (resolvedUrl !== null && currentUrl === resolvedUrl);

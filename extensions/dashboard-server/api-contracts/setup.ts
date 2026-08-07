@@ -33,6 +33,28 @@ export interface SetupStatusResponse {
   /** ENC-1a: whether an external embedder API key is configured. The raw key is
    *  NEVER returned — only this boolean presence marker (additive, flag-gated). */
   readonly embeddingApiKeySet?: boolean;
+  /** ENC-1b: the persisted `MEGACOMPACT_EMBEDDING_DIM` value as its numeric
+   *  string, when one is configured (additive, flag-gated). */
+  readonly embeddingDim?: string;
+  /** ENC-1b: whether `MEGACOMPACT_EMBEDDING_HEADERS` is configured. The raw
+   *  headers JSON is NEVER returned — only this boolean presence marker
+   *  (additive, flag-gated, redaction mirrors embeddingApiKeySet). */
+  readonly embeddingHeadersSet?: boolean;
+  /** ENC-1b: whether `MEGACOMPACT_ALLOW_REMOTE_EMBEDDER` is set (default off —
+   *  a deliberate escape hatch that skips the loopback-only check; additive,
+   *  flag-gated). */
+  readonly allowRemoteEmbedder?: boolean;
+  /** ENC-1b: whether `MEGACOMPACT_ENCODER_NATIVE=1` is set, i.e. the operator
+   *  opted into the onnxruntime-node native backend (additive, flag-gated). */
+  readonly encoderNativeOptIn?: boolean;
+  /** ENC-1b: the current effective ONNX runtime backend, computed live through
+   *  the existing `selectRuntimeBackend`. `modeB` (flag-off / no runtime) is
+   *  projected to `wasm` for display (additive, flag-gated). */
+  readonly encoderBackend?: "wasm" | "native";
+  /** ENC-1b: the runtime's own demotion reason when the effective backend
+   *  falls back (e.g. native selected but onnxruntime-node absent / darwin-x64
+   *  demoted), surfaced verbatim; null when no demotion (additive, flag-gated). */
+  readonly encoderDemotionReason?: string | null;
 }
 
 /**
@@ -84,6 +106,19 @@ export interface SetupConfigureRequest {
   /** ENC-1a: external embedder API key, persisted to the per-repo
    *  `.mega-compact.env` only — never returned by any GET (additive, flag-gated). */
   readonly embeddingApiKey?: string;
+  /** ENC-1b: persisted `MEGACOMPACT_EMBEDDING_DIM` as a positive integer string
+   *  within `ENC_1B_MAX_EMBEDDING_DIM` (validated; additive, flag-gated). */
+  readonly embeddingDim?: string;
+  /** ENC-1b: persisted `MEGACOMPACT_EMBEDDING_HEADERS` JSON object string
+   *  (secret-bearing — written verbatim, NEVER echoed back; validated to parse
+   *  as a JSON object; additive, flag-gated). */
+  readonly embeddingHeaders?: string;
+  /** ENC-1b: opt in to `MEGACOMPACT_ALLOW_REMOTE_EMBEDDER` (default off — a
+   *  deliberate escape hatch; additive, flag-gated). */
+  readonly allowRemoteEmbedder?: boolean;
+  /** ENC-1b: opt in to `MEGACOMPACT_ENCODER_NATIVE` (onnxruntime-node native
+   *  backend; additive, flag-gated). */
+  readonly encoderNativeOptIn?: boolean;
 }
 
 /** Response for POST /api/setup-configure. */

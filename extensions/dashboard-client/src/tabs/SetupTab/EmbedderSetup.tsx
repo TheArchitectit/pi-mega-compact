@@ -16,7 +16,7 @@ import EmbedderHealthCard from "./EmbedderHealthCard";
 import SettingsPanel from "./SettingsPanel";
 import CustomEndpointSection from "./CustomEndpointSection";
 import { styles } from "./EmbedderSetupStyles";
-import { embedderLabel, trigramWarning, detectBadge } from "./EmbedderSetupHelpers";
+import { detectBadge, CurrentConfigSection } from "./EmbedderSetupHelpers";
 
 export default function EmbedderSetup(): React.ReactElement {
 	const [status, setStatus] = useState<SetupStatusResponse | null>(null);
@@ -41,22 +41,43 @@ export default function EmbedderSetup(): React.ReactElement {
 			);
 	}, []);
 
-	const applyEmbedder = useCallback((embedder: "ollama" | "llama" | "trigram" | "custom" | "onnx", url?: string, apiKey?: string) => {
-		setConfiguring(embedder);
-		setConfigError(null);
-		setConfigResult(null);
-		// ENC-1a: optional custom-endpoint URL + bearer key ride on the setup-configure POST (additive; flag-off ignores them).
-		configureEmbedder({ embedder, url, embeddingEndpointUrl: url, embeddingApiKey: apiKey })
-			.then((r) => {
-				setConfigResult(r);
-				setConfiguring(null);
-				loadStatus();
+	const applyEmbedder = useCallback(
+		(
+			embedder: "ollama" | "llama" | "trigram" | "custom" | "onnx",
+			url?: string,
+			apiKey?: string,
+			dim?: string,
+			headers?: string,
+			allowRemote?: boolean,
+		) => {
+			setConfiguring(embedder);
+			setConfigError(null);
+			setConfigResult(null);
+			// ENC-1a: optional custom-endpoint URL + bearer key ride on the setup-configure POST (additive; flag-off ignores them).
+			// ENC-1b: the dim / headers / allow-remote fields are forwarded additively, gated on the same
+			// `embeddingHeadersSet` presence marker the aggregator/server uses (no separate client env read).
+			const enc1bOn = "embeddingHeadersSet" in (status ?? {});
+			configureEmbedder({
+				embedder,
+				url,
+				embeddingEndpointUrl: url,
+				embeddingApiKey: apiKey,
+				...(enc1bOn
+					? { embeddingDim: dim, embeddingHeaders: headers, allowRemoteEmbedder: allowRemote }
+					: {}),
 			})
-			.catch((e: unknown) => {
-				setConfigError(e instanceof Error ? e.message : String(e));
-				setConfiguring(null);
-			});
-	}, [loadStatus]);
+				.then((r) => {
+					setConfigResult(r);
+					setConfiguring(null);
+					loadStatus();
+				})
+				.catch((e: unknown) => {
+					setConfigError(e instanceof Error ? e.message : String(e));
+					setConfiguring(null);
+				});
+		},
+		[loadStatus, status],
+	);
 
 	const runDetect = useCallback(() => {
 		setRunningDetect(true);
@@ -114,69 +135,7 @@ export default function EmbedderSetup(): React.ReactElement {
 			<EmbedderHealthCard />
 
 			{/* Current Config Section */}
-			<div style={styles.section}>
-				<h3 style={styles.sectionTitle}>Current Embedder Configuration</h3>
-				{statusError && (
-					<p style={{ color: "#f44336", fontSize: "0.85rem" }}>
-						Error: {statusError}
-					</p>
-				)}
-				{status && (
-					<>
-						<div style={styles.row}>
-							<span style={styles.label}>Active Embedder:</span>
-							<span style={styles.value}>
-								{embedderLabel(status.currentEmbedder)}
-							</span>
-						</div>
-						{"configuredEmbedder" in status && status.configuredEmbedder !== status.currentEmbedder && (
-							<div style={styles.warning}>
-								<strong>Configured but not active:</strong>{" "}
-								{embedderLabel(status.configuredEmbedder)} is configured in
-								.mega-compact.env but not yet loaded.{" "}
-								<strong>Restart pi</strong> to activate it.
-								{status.configuredUrl && (
-									<> ({status.configuredUrl})</>
-								)}
-							</div>
-						)}
-						{"restartRequired" in status && status.restartRequired && (
-							<div style={{ ...styles.row, color: "#ff9800" }}>
-								<span style={styles.label}>Status:</span>
-								<span style={styles.value}>
-									Restart required to activate the configured embedder
-								</span>
-							</div>
-						)}
-						<div style={styles.row}>
-							<span style={styles.label}>Embedding URL:</span>
-							<span style={styles.value}>
-								{status.embeddingUrl ?? (
-									<span style={{ color: "#888" }}>not set</span>
-								)}
-							</span>
-						</div>
-						<div style={styles.row}>
-							<span style={styles.label}>Embed Cache:</span>
-							<span style={styles.value}>
-								{status.embedCache ?? (
-									<span style={{ color: "#888" }}>not set</span>
-								)}
-							</span>
-						</div>
-						<div style={styles.row}>
-							<span style={styles.label}>MiniLM:</span>
-							<span style={styles.value}>{status.minilm ? "enabled" : "disabled"}</span>
-						</div>
-						{trigramWarning(status)}
-					</>
-				)}
-				{!status && !statusError && (
-					<p style={{ color: "#888", fontSize: "0.85rem" }}>
-						Loading configuration...
-					</p>
-				)}
-			</div>
+			<CurrentConfigSection status={status} statusError={statusError} />
 
 			{/* Detection Section */}
 			<div style={styles.section}>
@@ -340,6 +299,9 @@ export default function EmbedderSetup(): React.ReactElement {
 				configuring={configuring}
 				inputEnabled={status !== null && "embeddingApiKeySet" in status}
 				apiKeySet={status?.embeddingApiKeySet === true}
+				embeddingDim={status?.embeddingDim}
+				embeddingHeadersSet={status?.embeddingHeadersSet === true}
+				allowRemoteEmbedder={status?.allowRemoteEmbedder}
 				configureResult={configResult}
 				configureError={configError}
 			/>

@@ -63,6 +63,14 @@ export { ENC_0E_ENABLED } from "./vector-cortex-enc0e.js";
 export { ENC_0F_ENABLED } from "./vector-cortex-enc0f.js";
 export { ENC_0G_ENABLED } from "./vector-cortex-enc0g.js";
 export { ENC_1A_ENABLED } from "./vector-cortex-enc1a.js";
+export {
+  ENC_1B_ENABLED,
+  ENC_1B_MAX_EMBEDDING_DIM,
+  ENC_1B_EMBEDDING_DIM_ENV,
+  ENC_1B_EMBEDDING_HEADERS_ENV,
+  ENC_1B_ALLOW_REMOTE_EMBEDDER_ENV,
+  ENC_1B_ENCODER_NATIVE_ENV,
+} from "./vector-cortex-enc1b.js";
 // Breaker constants (TRIAD_RESILIENCE.md §breaker) extracted to vector-cortex-breakers.ts.
 export {
   BREAKER_WINDOW_MS,

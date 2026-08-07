@@ -48,3 +48,78 @@ export function detectBadge(installed: boolean): React.ReactElement {
 		</span>
 	);
 }
+
+/** The "Current Embedder Configuration" readout block. */
+export function CurrentConfigSection({
+	status,
+	statusError,
+}: {
+	status: SetupStatusResponse | null;
+	statusError: string | null;
+}): React.ReactElement {
+	return (
+		<div style={styles.section}>
+			<h3 style={styles.sectionTitle}>Current Embedder Configuration</h3>
+			{statusError && (
+				<p style={{ color: "#f44336", fontSize: "0.85rem" }}>
+					Error: {statusError}
+				</p>
+			)}
+			{status && (
+				<>
+					<div style={styles.row}>
+						<span style={styles.label}>Active Embedder:</span>
+						<span style={styles.value}>
+							{embedderLabel(status.currentEmbedder)}
+						</span>
+					</div>
+					{"configuredEmbedder" in status && status.configuredEmbedder !== status.currentEmbedder && (
+						<div style={styles.warning}>
+							<strong>Configured but not active:</strong>{" "}
+							{embedderLabel(status.configuredEmbedder)} is configured in
+							.mega-compact.env but not yet loaded.{" "}
+							<strong>Restart pi</strong> to activate it.
+							{status.configuredUrl && (
+								<> ({status.configuredUrl})</>
+							)}
+						</div>
+					)}
+					{"restartRequired" in status && status.restartRequired && (
+						<div style={{ ...styles.row, color: "#ff9800" }}>
+							<span style={styles.label}>Status:</span>
+							<span style={styles.value}>
+								Restart required to activate the configured embedder
+							</span>
+						</div>
+					)}
+					<div style={styles.row}>
+						<span style={styles.label}>Embedding URL:</span>
+						<span style={styles.value}>
+							{status.embeddingUrl ?? (
+								<span style={{ color: "#888" }}>not set</span>
+							)}
+						</span>
+					</div>
+					<div style={styles.row}>
+						<span style={styles.label}>Embed Cache:</span>
+						<span style={styles.value}>
+							{status.embedCache ?? (
+								<span style={{ color: "#888" }}>not set</span>
+							)}
+						</span>
+					</div>
+					<div style={styles.row}>
+						<span style={styles.label}>MiniLM:</span>
+						<span style={styles.value}>{status.minilm ? "enabled" : "disabled"}</span>
+					</div>
+					{trigramWarning(status)}
+				</>
+			)}
+			{!status && !statusError && (
+				<p style={{ color: "#888", fontSize: "0.85rem" }}>
+					Loading configuration...
+				</p>
+			)}
+		</div>
+	);
+}

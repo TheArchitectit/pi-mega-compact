@@ -25,12 +25,21 @@ interface CustomEndpointSectionProps {
 		embedder: "ollama" | "llama" | "trigram" | "custom" | "onnx",
 		url?: string,
 		apiKey?: string,
+		dim?: string,
+		headers?: string,
+		allowRemote?: boolean,
 	) => void;
 	configuring: string | null;
 	/** ENC-1a surface active — true when the new setup-status fields are present. */
 	inputEnabled: boolean;
 	/** Server-reported "key is set" marker (the key itself is never returned). */
 	apiKeySet: boolean;
+	/** ENC-1b: the persisted `embeddingDim` value (numeric string), or undefined. One-shot seed. */
+	embeddingDim: string | undefined;
+	/** ENC-1b: server-reported "headers are set" marker (the raw JSON is never returned). */
+	embeddingHeadersSet: boolean;
+	/** ENC-1b: the persisted allow-remote flag, or undefined. One-shot seed. */
+	allowRemoteEmbedder: boolean | undefined;
 	configureResult: SetupConfigureResponse | null;
 	configureError: string | null;
 }
@@ -42,12 +51,35 @@ export default function CustomEndpointSection({
 	configuring,
 	inputEnabled,
 	apiKeySet,
+	embeddingDim,
+	embeddingHeadersSet,
+	allowRemoteEmbedder,
 	configureResult,
 	configureError,
 }: CustomEndpointSectionProps): React.ReactElement {
 	// The API key is intentionally local-only state: it always renders blank and
 	// is never seeded from the persisted value (the server never returns it).
 	const [customApiKey, setCustomApiKey] = useState("");
+	// ENC-1b: the embedding dim, seeded once from the persisted value (never
+	// re-seeded after a poll so the user's in-flight edits survive the 5s poll).
+	const [dim, setDim] = useState("");
+	const [dimSeeded, setDimSeeded] = useState(false);
+	// ENC-1b: the headers JSON is local-only, write-only state: NEVER prefilled,
+	// never seeded, never shown back — the server persists it verbatim and only
+	// ever reports its presence via `embeddingHeadersSet`.
+	const [headers, setHeaders] = useState("");
+	// ENC-1b: allow-remote toggle, seeded once from the persisted flag.
+	const [allowRemote, setAllowRemote] = useState(false);
+	const [allowRemoteSeeded, setAllowRemoteSeeded] = useState(false);
+
+	if (inputEnabled && !dimSeeded && typeof embeddingDim === "string") {
+		setDim(embeddingDim);
+		setDimSeeded(true);
+	}
+	if (inputEnabled && !allowRemoteSeeded && typeof allowRemoteEmbedder === "boolean") {
+		setAllowRemote(allowRemoteEmbedder);
+		setAllowRemoteSeeded(true);
+	}
 
 	return (
 		<div style={styles.section}>
@@ -109,14 +141,87 @@ export default function CustomEndpointSection({
 						API key saved
 					</span>
 				)}
+				{inputEnabled && embeddingHeadersSet && (
+					<span
+						style={{
+							fontSize: "0.75rem",
+							color: "#81c784",
+							border: "1px solid #2a4e2a",
+							borderRadius: "4px",
+							padding: "0.15rem 0.45rem",
+						}}
+					>
+						Headers saved
+					</span>
+				)}
 				<button
 					style={{ ...styles.button, opacity: customUrl ? 1 : 0.4 }}
-					onClick={() => applyEmbedder("custom", customUrl, customApiKey)}
+					onClick={() =>
+						applyEmbedder("custom", customUrl, customApiKey, dim, headers, allowRemote)
+					}
 					disabled={!customUrl || configuring !== null}
 				>
 					{configuring === "custom" ? "Writing..." : "Use Custom URL"}
 				</button>
 			</div>
+			{inputEnabled && (
+				<div style={{ marginTop: "0.75rem" }}>
+					<div style={{ marginBottom: "0.5rem" }}>
+						<label style={{ ...styles.label, display: "block", marginBottom: "0.25rem" }}>
+							Embedding dim (optional)
+						</label>
+						<input
+							type="number"
+							min={1}
+							placeholder="e.g. 384"
+							value={dim}
+							onChange={(e) => setDim(e.target.value)}
+							style={{
+								width: "200px",
+								background: "#12122a",
+								color: "#e0e0e0",
+								border: "1px solid #2a2a4e",
+								borderRadius: "6px",
+								padding: "0.4rem 0.6rem",
+								fontSize: "0.85rem",
+								fontFamily: "monospace",
+							}}
+						/>
+					</div>
+					<div style={{ marginBottom: "0.5rem" }}>
+						<label style={{ ...styles.label, display: "block", marginBottom: "0.25rem" }}>
+							Embedding headers (JSON, write-only — never re-displayed)
+						</label>
+						<textarea
+							placeholder={'{"Authorization": "Bearer ..."}'}
+							value={headers}
+							onChange={(e) => setHeaders(e.target.value)}
+							aria-label="Embedding headers JSON (write-only — never re-displayed)"
+							rows={2}
+							style={{
+								width: "100%",
+								background: "#12122a",
+								color: "#e0e0e0",
+								border: "1px solid #2a2a4e",
+								borderRadius: "6px",
+								padding: "0.4rem 0.6rem",
+								fontSize: "0.85rem",
+								fontFamily: "monospace",
+								resize: "vertical",
+							}}
+						/>
+					</div>
+					<label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem" }}>
+						<input
+							type="checkbox"
+							checked={allowRemote}
+							onChange={(e) => setAllowRemote(e.target.checked)}
+							aria-label="Allow remote embedder (skips loopback-only check)"
+						/>
+						Allow remote embedder (skips loopback-only check)
+					</label>
+				</div>
+			)}
 			{configureError !== null && (
 				<p style={{ color: "#f44336", fontSize: "0.85rem", marginTop: "0.5rem" }}>
 					Configure error: {configureError}

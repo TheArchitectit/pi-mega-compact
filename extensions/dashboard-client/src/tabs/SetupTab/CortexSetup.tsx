@@ -14,6 +14,7 @@ import { useSetupCortexPoll } from "../useSetupCortexPoll";
 import { CortexEncoderCard } from "./CortexEncoderCard";
 import { CortexBlockersCard } from "./CortexBlockersCard";
 import { CortexActionsCard } from "./CortexActionsCard";
+import CortexRuntimeCard from "./CortexRuntimeCard";
 import { styles } from "./CortexSetupStyles";
 
 export default function CortexSetup(): React.ReactElement {
@@ -39,6 +40,7 @@ export default function CortexSetup(): React.ReactElement {
 			</p>
 
 			<CortexEncoderCard data={state.data} error={state.error} />
+			<CortexRuntimeCard />
 			<CortexBlockersCard
 				blockers={state.data?.blockers ?? []}
 				highlight={highlight}

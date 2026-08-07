@@ -300,5 +300,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"ENC-1a adds a Settings-visible field pair for the external embedder endpoint URL + optional Bearer API key, persisted by the setup-configure writer branch to the per-repo .mega-compact.env (MEGACOMPACT_EMBEDDING_URL / MEGACOMPACT_EMBEDDING_KEY). The GET status route echoes the endpoint URL and reports embeddingApiKeySet as a boolean ONLY — the raw key is never returned. OFF = no new GET fields, no writer branch, no new Settings text rows (byte-identical ENC-0g predecessor).",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_ENC_1B",
+			"ENC-1b ONNX runtime backend + embedder API settings",
+			"ENC-1b completes the embedder API Settings surface (dim / headers / allow-remote persisted to the per-repo .mega-compact.env) and surfaces the ONNX runtime selection knob (MEGACOMPACT_ENCODER_NATIVE) as a toggle plus the current effective backend + demotion reason. OFF = no new GET fields, no writer branch, no new Settings rows or toggle (byte-identical ENC-1a predecessor).",
+			true,
+		),
 	],
 };
