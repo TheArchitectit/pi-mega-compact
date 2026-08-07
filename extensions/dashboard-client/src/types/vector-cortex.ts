@@ -18,6 +18,12 @@ export interface VectorCortexEvaluationSummary {
     total: number;
   };
   rejects: string[];
+  /**
+   * ML5-D dashboard "Improve Cortex" flag state. Additive/omitted when
+   * MEGACOMPACT_ML5_D is off — the client omits the ModelImprovementCard
+   * (byte-identical to the ML5-C-era tab). Present (true) only when enabled.
+   */
+  readonly ml5dEnabled?: boolean;
   updatedAt: string;
 }
 

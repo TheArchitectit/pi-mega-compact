@@ -1,8 +1,12 @@
 # VC8A Evidence
 
-Status: pending independent reviewer attestation — all sprint gates green.
+Status: **reviewer-accepted** — controller prod-prep sweep (2026-08-07): missing dataset.mjs CLI shipped; outstanding OPEN items none.
 
 **Reviewer attestation:** Not yet attested — pending independent reviewer.
+
+## Prod-prep sweep (2026-08-07)
+
+Close the spec ownership gap: `scripts/vector-cortex-dataset.mjs` (146) — the VC8A offline-learning dataset CLI required by spec task 6 ("add randomized export fixtures/tests and script"). It imports the compiled pure `buildManifest()` / `hasNonconsentedRecords()` from `dist/src/vector-cortex/outcomes/dataset.js`, reads `outcomes.jsonl` + `consent.jsonl` from a state dir, captures a single consent high-water, writes a `DatasetManifestV1` JSON, and exits non-zero on a nonconsented record. Local-only (PREVENT-PI-004). Outstanding OPEN items: none.
 
 ## Goal recap
 
@@ -21,7 +25,7 @@ Production (`src/vector-cortex/outcomes/`):
 - `types.ts` (95) — `OutcomeV1`, `ConsentV1`, `DatasetManifestV1`, `OutcomeMetric`, `DatasetSplit`, `DatasetManifestRow`, schema versions, failure codes (`OUT_PAYLOAD_FORBIDDEN`, `OUT_CONSENT_MISSING`, `OUT_SPLIT_VIOLATION`), `OUTCOMES_CONFORMANCE_IDS` (OUT-001..025), `OUTCOMES_NAMED_FIXTURES`.
 - `ledger.ts` (88) — `appendOutcome()`, `validateOutcome()`. Rejects 14 forbidden payload fields. Pure, no flag read.
 - `consent.ts` (82) — `hasActiveConsent()`, `appendGrant()`, `appendRevoke()`, `consentHighWater()`. Append-only, pure.
-- `dataset.ts` (93) — `buildManifest()`, `manifestDigest()`, `hasNonconsentedRecords()`. Groups by (repo, session), 70/15/15 split, SHA-256 over canonical sorted rows. Pure.
+- `dataset.ts` (132) — `buildManifest()`, `manifestDigest()`, `hasNonconsentedRecords()`. Groups by (repo, session), 70/15/15 split, SHA-256 over canonical sorted rows. Pure.
 - `emit.ts` (79) — `reportOutcomeAppended()` + `reportDatasetRecordExcluded()`, gated on `VC8A_ENABLED()`. `safe()` wrapper.
 
 Config:
@@ -51,6 +55,7 @@ Scripts:
 - `scripts/gen-fixtures/outcomes.mjs` (120) — 25 OUT-001..025 + 3 named (OUT-CONSENT-001, OUT-REVOKE-002, OUT-SPLIT-003). All digests via `node:crypto`.
 - `scripts/gen-fixtures/schemas.mjs` — added `outcome-fixture.schema.json`, `consent-fixture.schema.json`, `dataset-manifest-fixture.schema.json`.
 - `scripts/gen-fixtures/write.mjs` — wired outcomes import + OUTCOMES_DIR + fixture loop + manifest extensions.
+- `scripts/vector-cortex-dataset.mjs` (146) — VC8A offline-learning dataset CLI (spec ownership line 8 + task 6). Reads outcomes/consent JSONL from a state dir, captures one consent high-water, delegates to `buildManifest()` + `hasNonconsentedRecords()`, writes `DatasetManifestV1`. Local-only (PREVENT-PI-004).
 
 ## Fixtures and corpus digests
 

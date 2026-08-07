@@ -194,11 +194,13 @@ export default function VectorCortexTab(): React.ReactElement {
 					)}
 				</CardContent>
 			</Card>
-			<ModelImprovementCard
-				encoderMode={health?.encoderMode ?? "B"}
-				encoderAssetDigest={health?.encoderAssetDigest ?? null}
-				status={data.status}
-			/>
+			{data.ml5dEnabled && (
+				<ModelImprovementCard
+					encoderMode={health?.encoderMode ?? "B"}
+					encoderAssetDigest={health?.encoderAssetDigest ?? null}
+					status={data.status}
+				/>
+			)}
 			<VectorCortexTopologyCard topology={poll.topology} query={poll.query} />
 			<VectorCortexShardsCard view={poll.shards} />
 			<VectorCortexReconstructCard view={poll.reconstruct} />

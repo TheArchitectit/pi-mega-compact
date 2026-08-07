@@ -101,7 +101,7 @@ Zero runtime network egress (PREVENT-PI-004): `calibrate.ts`/`select.ts`/`fallba
 
 ## File sizes and baseline exceptions
 
-All new files within limits: calibrate.ts ~225 (under the 300 src soft limit), select.ts ~237, fallback.ts ~102, emit-vc2c.ts ~70 (src soft limit 300, hard 500), calibrate.test.ts ~120, select.test.ts ~228, fallback.test.ts ~76, vc2c-acceptance.test.ts ~563 (under the 600 test hard limit; over the 300 src test soft limit — same as the VC2A/VC2B aggregators, warning not failure). Pre-existing over-soft-limit `extensions/mega-events/agent-handlers/turnEndHandler/errorRetry.ts` (421) remains UNTOUCHED this sprint.
+All new files within limits: calibrate.ts ~274 (under the 300 src soft limit), select.ts ~237, fallback.ts ~102, emit-vc2c.ts ~70 (src soft limit 300, hard 500), calibrate.test.ts ~120, select.test.ts ~228, fallback.test.ts ~76, vc2c-acceptance.test.ts ~563 (under the 600 test hard limit; over the 300 src test soft limit — same as the VC2A/VC2B aggregators, warning not failure). Pre-existing over-soft-limit `extensions/mega-events/agent-handlers/turnEndHandler/errorRetry.ts` (421) remains UNTOUCHED this sprint.
 
 ## Rollback / downgrade rehearsal
 

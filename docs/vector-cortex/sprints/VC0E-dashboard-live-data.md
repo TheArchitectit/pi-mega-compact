@@ -4,7 +4,9 @@ Status: **done** | Branch: `feat/vc-dashboard-live-data` (merged at `863b7bd`) |
 
 Flag: VC0E wires existing emitters + adds status badges to routes/cards that already sit behind their own `MEGACOMPACT_VC*` flags (VC0A recall latency, VC5B render seam, VC5C live decision, VC8 outcomes/platform); it introduces **no new `MEGACOMPACT_*` flag** of its own. Setting any of those flags off yields the pre-VC0E response shapes (bare zero, no `status`) byte-identical; the added `status` field is only emitted on the flagged-on, data-bearing paths it annotates.
 
-Production ownership: `extensions/dashboard-server/routes-vector-cortex*.ts`, `extensions/dashboard-server/vc-status.ts`, `extensions/dashboard-server/vc-live-decisions.ts`, `extensions/mega-runtime/*.ts` (emitter wiring), `src/monitoring.ts`, `src/engine.ts`, `src/recall.ts`, plus the dashboard-client `VectorCortex*` badges/cards wiring and the cross-cutting seams the scope-check already covers.
+Production ownership: `extensions/dashboard-server/routes-vector-cortex*.ts`, `extensions/dashboard-server/vc-status.ts`, `extensions/mega-runtime/vector-cortex-live.ts; extensions/dashboard-server/routes-vector-cortex-rollout.ts`, `extensions/mega-runtime/*.ts` (emitter wiring), `src/monitoring.ts`, `src/engine.ts`, `src/recall.ts`, plus the dashboard-client `VectorCortex*` badges/cards wiring and the cross-cutting seams the scope-check already covers.
+
+> **Ownership amendment (prod-prep 2026-08-07):** `vc-live-decisions.ts` was never created; the live-decisions seam landed in `mega-runtime/vector-cortex-live.ts` (decideLivePath) + `routes-vector-cortex-rollout.ts` (reader-only route).
 
 Follow-up to VC0D production wiring. The v0.20.23 wiring shipped emitters, but the live dashboard still showed all zeros. Root-cause exploration identified 15 gaps across 3 classes.
 

@@ -12,7 +12,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
-import { VC0A_ENABLED } from "../../src/config.js";
+import { VC0A_ENABLED, ML5D_ENABLED } from "../../src/config.js";
 import { readEvalRows } from "../../src/vector-cortex/eval/persist.js";
 import { summarizeEvalRows } from "../../src/vector-cortex/eval/reader.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
@@ -53,6 +53,9 @@ export function handleVectorCortexEvaluation(
       total: summary.histogram.total,
     },
     rejects: [], // VC0C wires live breaker/reject telemetry here
+    // ML5-D: additive, present only when the flag is enabled → the client can
+    // omit the ModelImprovementCard when off (byte-identical to ML5-C-era tab).
+    ...(ML5D_ENABLED() ? { ml5dEnabled: true } : {}),
     updatedAt: new Date().toISOString(),
     status: deriveVcStatus({ enabled, hasData: summary.samples > 0 }),
   };

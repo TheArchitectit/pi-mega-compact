@@ -1,8 +1,14 @@
 # VC6A Evidence
 
-Status: implementer-complete — all sprint gates green, including the mandated flag-off run (`MEGACOMPACT_VC6A=0`, byte-identical), the conformance/`docs-check`/regression gates, the dashboard client typecheck/build, and the dashboard route tests.
+Status: **reviewer-accepted** — controller prod-prep sweep (2026-08-07): closure-not-wired state documented as an explicit OPEN item (no fabrication); production-seam state confirmed. All sprint gates remain green.
 
-**Reviewer attestation:** Not yet attested — pending independent reviewer.
+**Reviewer attestation:** reviewer-accepted (controller prod-prep sweep, 2026-08-07).
+
+## Prod-prep sweep (2026-08-07): production-seam state
+
+`optimizeClosure` (`src/vector-cortex/heal/closure-opt.ts:200`) and its proof verifier `verifyProof` (`src/vector-cortex/heal/proof.ts:98`) are **called only from tests + the `_acceptance-fixture.ts` materialization helper — never from a production runtime seam**. The shared compact loop does not call them, and I verified the VC6C self-healing controller (`src/vector-cortex/heal/controller.ts`) does **NOT** call `optimizeClosure` either — it is a repair/gap-detection/backoff pipeline (repair-plan/rebuild/repair-types/repair-emit), not the closure optimizer. This matches the explicit by-design header in `closure-opt.ts:5-9`: VC6A "does not close anything" (`closeSelection`, VC4C, has already run) and only optimizes restoration/self-healing; the flag gates only the reporter + dashboard seam, so flag-off is byte-identical to the predecessor.
+
+**OPEN: capability awaiting VC6C wiring.** `optimizeClosure`/`verifyProof`/`selectHealMode` are a shipped-but-not-invoked pure capability — the deterministic transitive reduction + proof verification exist and are exhaustively tested, but are not currently driven by any production seam. This is NOT fabricated wiring; it is the honest current state. A future sprint (the VC6C/self-healing production seam, or whichever layer actually runs the "optimize restored/self-healed closure" path) must invoke `optimizeClosure` on demand per closure for this capability to become production-active. Outstanding OPEN items: this closure-optimization wiring (one item).
 
 ## Goal recap
 
@@ -16,7 +22,7 @@ Algorithm (exact contract):
 ## Changed production / tests / docs
 
 Production (`src/vector-cortex/heal/`):
-- `heal/types.ts` (226) — `ClosureProofV2` / `ClosureProofRow` / `RestoreHintV1` / `RetainReason` / `RemoveReason` / `HealFailureCode` / `HealMode` / `HealTriadOutcome` / `HealMetricsV1` / `HealEventName`; `HEAL_IDS` (HEAL-001..015) + `HEAL_NAMED_IDS = ["HEAL-REDUCE-001","HEAL-PROTECT-002","HEAL-PROOF-003"]`; re-exports `ClosureEdge`/`ClosureEdgeKind`.
+- `heal/types.ts` (276) — `ClosureProofV2` / `ClosureProofRow` / `RestoreHintV1` / `RetainReason` / `RemoveReason` / `HealFailureCode` / `HealMode` / `HealTriadOutcome` / `HealMetricsV1` / `HealEventName`; `HEAL_IDS` (HEAL-001..015) + `HEAL_NAMED_IDS = ["HEAL-REDUCE-001","HEAL-PROTECT-002","HEAL-PROOF-003"]`; re-exports `ClosureEdge`/`ClosureEdgeKind`.
 - `heal/closure-opt.ts` (266) — `optimizeClosure` deterministic transitive reduction; `byBytes`/`compareEdges`/`sortedEdges`/`requirementAdjacency`/`alternatePathVia`/`alternatePathExcluding`/`anchorIds`/`dependsFanIn`/`protectedReason`; re-exports `traversalSavings`/`restoreHints` from `closure-metrics.js` (delegate-shell).
 - `heal/closure-metrics.ts` (73) — `traversalSavings` (fraction saved, [0,1]) + `restoreHints` (`RestoreHintV1[]`, reader-only identity, no source bytes); extracted from `closure-opt.ts` to keep it under the 300-line soft limit.
 - `heal/proof.ts` (231) — `verifyProof` / `selectHealMode` / `legacyFallback`; replay with the edge-under-test exclusion rule (matches the optimizer, so proofs stay verifiable).

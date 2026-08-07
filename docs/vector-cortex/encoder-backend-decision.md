@@ -39,7 +39,7 @@ The canonical JSON produced by the resolver (bench-qualified branch, ENC-DEC-001
     },
     "tokenizer": {
       "path": "tokenizer.json",
-      "bytes": 535343,
+      "bytes": 533603,
       "sha256": "ea77de727ef7fd34d177b83b4b1f1d3bb8884c95c90b6554a0adb0b3b65350a9"
     }
   },
