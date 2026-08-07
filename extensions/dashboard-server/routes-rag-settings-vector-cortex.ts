@@ -222,6 +222,7 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"Dashboard per-turn prompt-cache visibility: surfaces the per-turn stable-prefix ratio trend (GET /api/prefix-stability) in the CacheTab PrefixStabilityCard. Reads aggregate ratios/counts from the local monitoring events log only — no payload bytes. OFF = byte-identical predecessor (PC-B-era): /api/prefix-stability returns 404 and the CacheTab omits the PrefixStabilityCard.",
 			true,
 		),
+		// guardrails-allow PREVENT-STUB-001: ML5-A (description references the placeholder-weighted VC2C path; real trained-heads load is ML5-A)
 		boolDirect(
 			"MEGACOMPACT_ML5_A",
 			"ML5-A Five-Head Training Load",
@@ -258,6 +259,7 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"ENC-0a learned-encoder backend-decision lock: records the transformers.js/WASM vs onnxruntime-node choice, per-platform install matrix, opset-21 baseline and pinned digests in docs/vector-cortex/encoder-backend-decision.md. OFF = no decision record written / no resolver runs, mode B trigram byte-identical predecessor.",
 			true,
 		),
+		// guardrails-allow PREVENT-STUB-001: ENC-0b (description references the LCG placeholder; real ONNX trunk fetch + inference is ENC-0b)
 		boolDirect(
 			"MEGACOMPACT_ENC_0B",
 			"ENC-0b Real Trunk Fetch & Gated Path",

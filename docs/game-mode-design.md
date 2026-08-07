@@ -1,6 +1,14 @@
 # Game Mode — Gamified Compaction Stats + Theme System (Design Spec v0.2)
 
-- **Status:** design spec (v0.2) — ready for implementation planning
+> **STATUS: REFERENCE-ONLY (superseded).** This v0.2 design-family document lives
+> on the un-merged `game-mode` branch and was never shipped as a phase. Its §10
+> "Future (out of scope for v1)" list scopes game-mode items out of v1; there is
+> no shipped home for the earlier brief's unassigned GM-B/GM-C/GM-D workstream
+> rows (see `docs/audits/2026-08-05-stub-gate-mock-audit.md` §7 and the
+> CONFORM-HYGIENE evidence record). Treat this doc as a historical design note,
+> not current source-of-truth.
+
+- **Status:** design spec (v0.2) — ready for implementation planning (REFERENCE-ONLY)
 - **Branch:** `game-mode`
 - **Scope:** score-tracking fun + a theme/toggle system, **built together** so
   game-mode toggle, themes, and TUI display mode can be tested as one unit.

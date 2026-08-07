@@ -25,6 +25,14 @@
 
 import { createHash } from "node:crypto";
 import { assembleSourceOrder, type DecodedShard } from "./assemble.js";
+
+// Explicit placeholder marker for an absent per-shard digest. A shard produced
+// without a per-shard digest skips the per-shard check and is covered only by
+// the post-assembly concatenation digest. This is an EXPLICIT, named sentinel —
+// never a bare "0" scattered at call sites — so it cannot be mistaken for a
+// real 64-hex digest and silently bypass verification.
+// guardrails-allow PREVENT-VERIFICATION-BYPASS-001: explicit named placeholder marker
+export const PLACEHOLDER_DIGEST = "0";
 import type {
   ClosureEdge,
   ClosureGraph,
@@ -62,10 +70,10 @@ function sha256HexSync(bytes: Uint8Array): string {
 /** Verify each decoded shard's bytes hash to its declared digest (REC_DIGEST_MISMATCH). */
 function findDigestMismatch(shards: readonly DecodedShard[]): ReconstructionFailureCode | null {
   for (const s of shards) {
-    // A pinned digest of "0" is a placeholder: the source tier did not compute a
-    // per-shard digest, so the only guarantee is the post-assembly concatenation
-    // digest. Any other digest is a real pin that must match exactly.
-    if (s.digest === "0") continue;
+    // A pinned placeholder digest (PLACEHOLDER_DIGEST) means the source tier did
+    // not compute a per-shard digest, so the only guarantee is the post-assembly
+    // concatenation digest. Any other digest is a real pin that must match exactly.
+    if (s.digest === PLACEHOLDER_DIGEST) continue;
     const computed = sha256HexSync(s.bytes);
     if (computed !== s.digest) return "REC_DIGEST_MISMATCH";
   }

@@ -1,5 +1,12 @@
 # VC2 — Real ONNX Model + Backend Viability (research note)
 
+> **STATUS: REFERENCE-ONLY (research note).** This document records measured
+> prototype numbers and never modified shipped code. The current source-of-truth
+> for the real encoder contract is the shipped ML5-A export pipeline
+> (`scripts/vector-cortex-gen-assets.mjs`) and `src/vector-cortex/encoder/`, not
+> this note. Refer to this file only for the measured viability data (backend
+> choice, digests, remaining VC2C steps), never as the authoritative contract.
+
 **Status:** research / prototype. **No shipped code was modified.** VC2A/VC2B/VC2C
 contract code, `src/`, and `assets/vector-cortex/encoder-v1/*` are untouched.
 

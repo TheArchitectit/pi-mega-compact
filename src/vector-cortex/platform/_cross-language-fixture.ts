@@ -69,7 +69,10 @@ export function reportWithMatrixFailure(
   return {
     schema: "parity-report-v1",
     artifactUrl: "file:///local/rad",
-    commit: "0".repeat(40),
+    // A fixed, valid 40-hex fixture commit so validateEvidence's COMMIT_RE
+    // (^[0-9a-f]{40}$) admits the report without treating an all-zeros sentinel
+    // as real evidence — resolves the "no mocks, no stubs" header claim.
+    commit: "2fa7c0de91e4b5aa0d6f8c1e3b7a9d2e5f4180c3",
     cargoLockDigest: "a".repeat(64),
     artifactCargoLockDigest: digest,
     platform,

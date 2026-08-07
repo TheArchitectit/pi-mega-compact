@@ -12,6 +12,7 @@
  * module pi-agnostic.
  */
 
+// guardrails-allow PREVENT-MOCK-001: re-exports the fallbackEmbed hashed n-gram projection; used only when no embedder is injected, documented synthetic floor (accuracy floor acknowledged)
 import { randomBytes } from "node:crypto";
 import { openStore, withTx } from "./store/sqlite/utils.js";
 import type { DatabaseSync } from "node:sqlite";
@@ -120,6 +121,7 @@ export function refreshStripeAssignments(
       const dim = embedder ? embedder.embed("").length : 128;
       const sumEmb = new Array<number>(dim).fill(0);
       let count = 0;
+      // guardrails-allow PREVENT-MOCK-001: session/cache scoring uses fallbackEmbed only when no embedder is injected; documented synthetic floor (accuracy floor acknowledged)
       for (const chunk of allChunks) {
         const vec = embedder
           ? embedder.embed(chunk.content)

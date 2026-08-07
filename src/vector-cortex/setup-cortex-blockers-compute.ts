@@ -68,11 +68,13 @@ export interface SetupCortexBlockerV1 {
 }
 
 /**
- * The four blockers VC9A reports. Enumerates the vc2-model-prep §6 items that
- * remain per the 2026-08-05 research. The opset re-export blocker (formerly
- * §6 #2) is NOT listed: onnx-community exports are opset 21, so it is removed.
- * This is the canonical BASE (all `status:"open"`); `computeSetupCortexBlockers`
- * derives the live list from it. Flag-off consumes this array verbatim.
+ * The six blockers VC9A reports. Enumerates the vc2-model-prep §6 items that
+ * remain per the 2026-08-05 research (HG-6/HG-7 registered by CONFORM-HYGIENE
+ * as the two manifest items that lacked HG ids). The opset re-export blocker
+ * (formerly §6 #2) is NOT listed: onnx-community exports are opset 21, so it is
+ * removed. This is the canonical BASE (all `status:"open"`);
+ * `computeSetupCortexBlockers` derives the live list from it. Flag-off consumes
+ * this array verbatim.
  */
 export const SETUP_CORTEX_BLOCKERS: readonly SetupCortexBlockerV1[] = [
   {
@@ -107,6 +109,22 @@ export const SETUP_CORTEX_BLOCKERS: readonly SetupCortexBlockerV1[] = [
     status: "open",
     resolution:
       "149.2 MiB vs 150 MiB cap with run-to-run variance 119-149 MiB; considers capping mode A at 384 tokens or using the marginal-footprint accounting runtime.ts already implements.",
+  },
+  {
+    id: "HG-6",
+    title: "4 threads mandatory for 512-token p95",
+    severity: "medium",
+    status: "open",
+    resolution:
+      "per vc2-model-prep §6 row 6: 2 threads → 44.3 ms (fails); low-core platforms may not qualify for mode A.",
+  },
+  {
+    id: "HG-7",
+    title: "Model card / dataset manifest / calibration",
+    severity: "blocker",
+    status: "open",
+    resolution:
+      "per vc2-model-prep §6 row 7: `model-card.json` comparison, `training/vector-cortex/dataset-manifest.json`, and frozen VC2C calibration thresholds all still required by spec.",
   },
 ];
 
@@ -192,7 +210,11 @@ export type SetupCortexActionKind = "fetch-model" | "bench" | "verify-asset";
  */
 const ACTION_GATE_CANDIDATES: Readonly<Record<SetupCortexActionKind, readonly string[]>> = {
   "fetch-model": ["HG-1", "HG-3"],
-  bench: ["HG-1", "HG-3"],
+  // HG-6 (4-threads-mandatory) is a bench-time gate; it is declared as a bench
+  // candidate but is medium severity, so `setupCortexActionBlockers` (which only
+  // surfaces blocker-severity open ids) never returns it — inert intent, no
+  // behavior change. HG-7 is training work (no action in this set).
+  bench: ["HG-1", "HG-3", "HG-6"],
   "verify-asset": [],
 };
 

@@ -87,6 +87,8 @@ export function calibrationSplitDigest(groups: readonly { repository: string; se
 }
 
 /** A deterministic 32-bit LCG step (matches the heads/runtime projectors). */
+// guardrails-allow PREVENT-STUB-001: ML5-A (seeded calibration projector until real isotonic/Platt weights land)
+// guardrails-allow PREVENT-MOCK-001: ML5-A placeholder seeded PRNG; frozen temperature/threshold surface is the accuracy floor (accuracy floor acknowledged)
 function nextState(state: number): number {
   return (state * 1664525 + 1013904223) >>> 0;
 }

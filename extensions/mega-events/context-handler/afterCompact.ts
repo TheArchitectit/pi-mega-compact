@@ -339,6 +339,7 @@ export async function persistEpochAndMaintain(
 	} else {
 		// Flag-off: predecessor placeholder, byte-identical (emits nothing via
 		// the flag-gated reporter seam).
+		// guardrails-allow PREVENT-STUB-001: VC6C-IMPL (reportRepairPlanned placeholder with hardcoded backoffMs:0/gapSize; real post-compact gap detection + atomic repair drive is VC6C-IMPL)
 		try {
 			reportRepairPlanned(
 				(name, payload) =>

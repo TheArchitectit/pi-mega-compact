@@ -94,9 +94,9 @@ describe("/api/setup-cortex-status (VC9A reader-only)", () => {
 				assert.ok(["A", "B", "C"].includes(body.mode), `valid triad mode, got ${body.mode}`);
 				assert.ok(["qualified", "demoted", "unavailable"].includes(body.qualification.verdict));
 				assert.ok(Array.isArray(body.qualification.thresholdFailures));
-				assert.equal(body.blockers.length, 4, "four open hard-gate blockers");
+				assert.equal(body.blockers.length, 6, "six open hard-gate blockers (HG-6/HG-7 registered CONFORM-HYGIENE)");
 				const ids = body.blockers.map((b) => b.id).sort();
-				assert.deepEqual(ids, ["HG-1", "HG-3", "HG-4", "HG-5"]);
+				assert.deepEqual(ids, ["HG-1", "HG-3", "HG-4", "HG-5", "HG-6", "HG-7"]);
 				const enc0gOn = process.env.MEGACOMPACT_ENC_0G !== "0";
 				for (const b of body.blockers) {
 					if (enc0gOn) {
@@ -105,6 +105,8 @@ describe("/api/setup-cortex-status (VC9A reader-only)", () => {
 						else if (b.id === "HG-4") assert.equal(b.status, "open", "HG-4 binary gap persists");
 						else if (b.id === "HG-5")
 							assert.ok(["closed", "superseded"].includes(b.status), `HG-5 measured or superseded, got ${b.status}`);
+						else if (b.id === "HG-6") assert.equal(b.status, "open", "HG-6 stays open");
+						else if (b.id === "HG-7") assert.equal(b.status, "open", "HG-7 stays open");
 					} else {
 						assert.equal(b.status, "open", `${b.id} never closed (flag-off)`);
 					}

@@ -114,6 +114,7 @@ export class TrigramEmbedder implements Embedder {
     return vec;
   }
 
+  // guardrails-allow PREVENT-MOCK-001: TrigramEmbedder is a documented lexical 3-gram bag-of-counts projection (FNV-1a into a 512-dim L2-normalized vector), not a semantic model; captured as exchange-rate-limited lexical recall (accuracy floor acknowledged)
   /** Raw embed computation (no cache logic). Public so tests can bypass cache. */
   _embedRaw(text: string): Vector {
     const vec = new Array<number>(this.dim).fill(0);
