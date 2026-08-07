@@ -492,6 +492,106 @@ const headsFixtures = [
   },
 ];
 
+// ── ENC-0d: encoder-promotion fixtures ──────────────────────────────────────
+// Real-asset promotion gate over the ENC-0c trained candidate + ENC-0b trunk:
+// atomic swap with digest verification, byte-preserving rollback-to-previous on
+// qualification failure, emit promote/demote/rollback events, flag-off = nothing.
+const PROMO_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema#",
+  title: "ENC-0d encoder-promotion fixture envelope",
+  type: "object",
+  description:
+    "Common structure every ENC-0d encoder-promotion fixture validates against. `kind` names the promotion/digest/rollback branch exercised; `setup` carries the {color} candidate manifest + staged-byte mutation overrides for the gate harness; `expected_outcome` is ok or error; `expected_result` pins the fields the promotion gate must assert (atomic_swap, prior_asset_live, sha256_fail, partial_state, restored_sha256, event, mode, candidate_accepted).",
+  required: ["id", "producer", "assertion", "kind", "setup", "expected_outcome", "expected_result"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: {
+      type: "string",
+      enum: [
+        "green-swap",
+        "red-demote",
+        "digest-fail-trunk",
+        "digest-fail-heads",
+        "rollback-stack",
+        "flag-off",
+      ],
+    },
+    setup: {
+      type: "object",
+      properties: {
+        color: { type: "string", enum: ["green", "red"] },
+        flag_off: { type: "boolean" },
+        staged_bytes_mutated: { type: "string" },
+        head_digest_mismatch: { type: "boolean" },
+        regressed_promoted: { type: "boolean" },
+        stack_depth: { type: "integer" },
+        runs: { type: "integer" },
+      },
+    },
+    expected_outcome: { type: "string", enum: ["ok", "error"] },
+    expected_result: { type: "object" },
+  },
+};
+
+const promotionFixtures = [
+  {
+    id: "ENC-PROMO-001",
+    assertion:
+      "green digest-verified {color:green} candidate -> atomic swap of the shipped encoder-v1 manifest to the trained asset, event vector_cortex_asset_promoted, runtime mode A",
+    kind: "green-swap",
+    setup: { color: "green", runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { atomic_swap: true, event: "vector_cortex_asset_promoted", mode: "A" },
+  },
+  {
+    id: "ENC-PROMO-002",
+    assertion:
+      "red candidate (threshold/holdout miss) -> no swap, prior asset stays live, event vector_cortex_asset_demoted",
+    kind: "red-demote",
+    setup: { color: "red", runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { atomic_swap: false, event: "vector_cortex_asset_demoted", prior_asset_live: true },
+  },
+  {
+    id: "ENC-PROMO-003",
+    assertion:
+      "one-byte staged model.onnx mutation -> sha256 fail -> no swap, no partial state (temp-write-then-rename never in-place)",
+    kind: "digest-fail-trunk",
+    setup: { color: "green", staged_bytes_mutated: "model.onnx", runs: 1 },
+    expected_outcome: "error",
+    expected_result: { atomic_swap: false, partial_state: false, sha256_fail: true },
+  },
+  {
+    id: "ENC-PROMO-004",
+    assertion:
+      "digest-mismatched head weights -> no swap, prior asset preserved byte-for-byte",
+    kind: "digest-fail-heads",
+    setup: { color: "green", head_digest_mismatch: true, runs: 1 },
+    expected_outcome: "error",
+    expected_result: { atomic_swap: false, prior_preserved_bytes: true, sha256_fail: true },
+  },
+  {
+    id: "ENC-PROMO-005",
+    assertion:
+      "regressed previously-promoted asset -> atomic rollback to previous assetDigestStack entry (O(1) by sha256), event vector_cortex_asset_rollback_back, restored digest + o1 lookup",
+    kind: "rollback-stack",
+    setup: { color: "green", regressed_promoted: true, stack_depth: 2, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { event: "vector_cortex_asset_rollback_back", o1_lookup: true, restored_sha256: true },
+  },
+  {
+    id: "ENC-PROMO-006",
+    assertion:
+      "flag-off (MEGACOMPACT_ENC_0D=0) -> no candidate accepted, no swap, no events — byte-identical predecessor",
+    kind: "flag-off",
+    setup: { flag_off: true, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { atomic_swap: false, candidate_accepted: false, events: 0 },
+  },
+];
+
 // ── Main (mirrors the VC9 setup generator coordinate with manifest.json) ─────
 export function writeAll() {
   mkdirSync(ENC_DIR, { recursive: true });
@@ -605,6 +705,41 @@ export function writeAll() {
     });
   }
 
+  // The ENC-PROMO schema row.
+  const promoSchemaBytes = Buffer.from(canonicalJson(PROMO_SCHEMA), "utf8");
+  const promoSchemaRel = "schemas/encoder-promotion-fixture.schema.json";
+  writeFileSync(join(V2, promoSchemaRel), promoSchemaBytes);
+  rows.push({
+    id: "encoder-promotion-fixture",
+    path: promoSchemaRel,
+    sha256: sha256Hex(promoSchemaBytes),
+    schema: promoSchemaRel,
+    algorithm: "json-schema",
+    producer,
+    expected: "schema",
+    license: "synthetic",
+  });
+
+  // The 6 ENC-PROMO fixture rows + on-disk files.
+  const promoDir = join(V2, "encoder-promotion");
+  mkdirSync(promoDir, { recursive: true });
+  for (const fx of promotionFixtures) {
+    const obj = { ...fx, schema: promoSchemaRel, producer };
+    const bytes = Buffer.from(canonicalJson(obj), "utf8");
+    const rel = `encoder-promotion/${fx.id}.json`;
+    writeFileSync(join(V2, rel), bytes);
+    rows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: promoSchemaRel,
+      algorithm: "encoder-promotion",
+      producer,
+      expected: fx.expected_outcome,
+      license: "synthetic",
+    });
+  }
+
   // Merge into the existing manifest (id-dedupe so re-runs are idempotent) and
   // re-sort the whole fixtures array by id.
   const existing = manifest.fixtures.filter((r) => !rows.some((n) => n.id === r.id));
@@ -630,12 +765,15 @@ export function writeAll() {
   setCsv("domain", "encoder-heads-real");
   setCsv("schemaVersion", "encoder-heads-real-fixture");
   setOwnerCsv("owner", "ENC-0c");
+  setCsv("domain", "encoder-promotion");
+  setCsv("schemaVersion", "encoder-promotion-fixture");
+  setOwnerCsv("owner", "ENC-0d");
 
   writeFileSync(manifestPath, Buffer.from(canonicalJson(manifest), "utf8"));
 
   return {
-    fixtureCount: fixtures.length + trunkFixtures.length + headsFixtures.length,
-    schemaCount: 3,
+    fixtureCount: fixtures.length + trunkFixtures.length + headsFixtures.length + promotionFixtures.length,
+    schemaCount: 4,
   };
 }
 

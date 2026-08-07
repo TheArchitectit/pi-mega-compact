@@ -14,6 +14,15 @@
  * an atomic digest swap (flip the committed pointer to the prior entry's
  * digest in one step) — no partial state is possible because the swap is a
  * single value assignment.
+ *
+ * ENC-0d extends the ledger to the real-asset promotion path: `PromotionV1`
+ * carries `{color, assetDigestStack}` — a promotion color from gate
+ * qualification ("green" atomically swaps to the trained asset, "red" keeps
+ * the prior asset live) and a LIFO of prior shipped digest for O(1)-by-sha256
+ * rollback. The on-disk manifest byte-swap itself (write-temp-then-rename,
+ * never in-place partial) is the promotion gate script's job; these helpers
+ * stay pure and return the restorable digest + the updated manifest/stack so
+ * the script can perform the swap in one atomic step.
  */
 
 // ---------------------------------------------------------------------------
@@ -54,6 +63,13 @@ export interface PromotionV1 {
   readonly verdict: "promoted" | "demoted" | "noop";
   /** Present only when verdict is "demoted": the demotion event name. */
   readonly demotedEvent: "demoted_new_asset" | null;
+  /** ENC-0d promotion color from gate qualification. "green" atomically swaps
+   *  the shipped manifest to the trained asset; "red" keeps the prior asset
+   *  live and emits a demotion. */
+  readonly color: "green" | "red";
+  /** ENC-0d LIFO of prior shipped asset digests for O(1)-by-sha256 rollback.
+   *  The most recent prior digest (top of the stack) is the rollback target. */
+  readonly assetDigestStack: readonly string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -102,6 +118,85 @@ export function rollbackTo(
     entries: manifest.entries,
     committed: found.assetDigest,
   };
+}
+
+// ---------------------------------------------------------------------------
+// ENC-0d LIFO rollback stack + atomic swap. Pure pointer arithmetic; the
+// on-disk write-temp-then-rename of the swapped manifest bytes is the gate
+// script's job so no partial state can ever be observed (PREVENT-PI-004).
+// ---------------------------------------------------------------------------
+
+/** Push a freshly-shipped digest onto the LIFO rollback stack (top = latest
+ *  prior shipped digest). Non-mutating: returns a new array. */
+export function pushAssetDigest(
+  stack: readonly string[],
+  digest: string,
+): readonly string[] {
+  return [...stack, digest];
+}
+
+/** Pop the top (most recent prior) digest off the LIFO rollback stack without
+ *  mutating it. Returns the prior digest (null when the stack is empty) plus
+ *  the remaining stack for the caller to commit (atomic card-swap fallback:
+ *  a green swap pushes the incumbent digest; a rollback pops it). */
+export function popAssetDigest(
+  stack: readonly string[],
+): { prior: string | null; rest: readonly string[] } {
+  if (stack.length === 0) return { prior: null, rest: stack };
+  const rest = stack.slice(0, -1);
+  return { prior: stack[stack.length - 1]!, rest };
+}
+
+/** Outcome of an atomic promotion swap (pure): the (possibly restored)
+ *  manifest, the updated rollback stack, and whether a digest swap occurred. */
+export interface AtomicSwapOutcome {
+  readonly manifest: AssetManifest;
+  readonly stack: readonly string[];
+  /** True when the committed pointer changed (green swap or rollback). */
+  readonly swapped: boolean;
+}
+
+/** Atomically swap the committed manifest to a real trained asset's digest.
+ *  Green: append the new entry (append-only — the incumbent stays in the
+ *  ledger, never overwritten), commit to it, and record the INCUMBENT digest
+ *  onto the LIFO stack for O(1) rollback (rollback restores the incumbent, so
+ *  the stack must hold the pre-swap committed digest — pushing the swapped-in
+ *  digest would point rollback back at the very asset being rolled back). Red
+ *  (or no candidate digest): return the manifest and stack untouched — no
+ *  swap, prior asset stays live. */
+export function atomicSwap(
+  manifest: AssetManifest,
+  entry: AssetManifestEntry,
+  color: "green" | "red",
+  stack: readonly string[],
+): AtomicSwapOutcome {
+  if (color !== "green" || !entry.assetDigest) {
+    return { manifest, stack, swapped: false };
+  }
+  const incumbent = manifest.committed;
+  const next = appendAsset(manifest, entry);
+  return {
+    manifest: next,
+    stack: incumbent === null ? stack : pushAssetDigest(stack, incumbent),
+    swapped: true,
+  };
+}
+
+/** Roll back to the previous shipped asset by SHA-256 (O(1) via the LIFO
+ *  stack): restores the most recent prior digest in the manifest and pops that
+ *  entry off the stack. Returns null when no prior digest exists or the prior
+ *  digest is no longer in the append-only manifest (defensive: append-only
+ *  means it should always be findable). Never leaves a partial state — the
+ *  committed pointer flip and the stack pop happen together or not at all. */
+export function assetRollback(
+  manifest: AssetManifest,
+  stack: readonly string[],
+): AtomicSwapOutcome | null {
+  const { prior, rest } = popAssetDigest(stack);
+  if (prior === null) return null;
+  const restored = rollbackTo(manifest, prior);
+  if (!restored) return null;
+  return { manifest: restored, stack: rest, swapped: true };
 }
 
 // ---------------------------------------------------------------------------

@@ -270,5 +270,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"ENC-0c five-head supervision transfer on the frozen bge-small trunk: when a developer-trained head candidate is staged under ~/.pi/mega-compact-encoder/candidates/, the five heads serve the trained weights. OFF = no candidate is loaded, the heads serve byte-identical ENC-0b survivor defaults.",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_ENC_0D",
+			"ENC-0d Real-Asset Promotion Gate",
+			"ENC-0d promotion gate over real trained assets: accepts a {color} real candidate manifest (the ENC-0c trained head weights + the ENC-0b trunk), digest-verifies every staged byte, and atomically swaps the shipped manifest to a green candidate with rollback-to-previous on qualification failure. OFF = accepts no candidate, swaps nothing, emits nothing, shipped manifest stays at the ENC-0c survivor.",
+			true,
+		),
 	],
 };

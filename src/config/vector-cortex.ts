@@ -7,7 +7,6 @@
  *
  * Breaker/triad constants (TRIAD_RESILIENCE.md) live here; pi-agnostic, dep-free.
  */
-
 import { sprintFlag } from "./vector-cortex-flag.js";
 
 // VC0/VC1/VC2 foundation-phase flags in vector-cortex-early.ts; re-exported
@@ -282,6 +281,7 @@ export { DEDUP_ATTR_ENABLED } from "./vector-cortex-dedup-attr.js";
 export { ENC_0A_ENABLED } from "./vector-cortex-enc0a.js";
 export { ENC_0B_ENABLED } from "./vector-cortex-enc0b.js";
 export { ENC_0C_ENABLED } from "./vector-cortex-enc0c.js";
+export { ENC_0D_ENABLED } from "./vector-cortex-enc0d.js";
 // Breaker constants (TRIAD_RESILIENCE.md §breaker) extracted to vector-cortex-breakers.ts.
 export {
   BREAKER_WINDOW_MS,
