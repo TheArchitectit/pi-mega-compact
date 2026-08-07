@@ -342,5 +342,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"DASH-0b dashboard consolidation execution: (1) the Sessions surface absorbs TurnsTab as a drill-down — a SessionsViews toggle renders the existent session summary/chart/table or the turns view (TurnMemoryView); (2) VectorCortexTab re-groups its flat 14-card layout under 4 <section aria-labelledby> headers (Cortex status / repair / cache / adaptive). OFF = SessionsTab renders only its own body (no toggle, no TurnMemoryView) and VectorCortexTab keeps its flat card layout (byte-identical predecessor).",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_DASH_0C",
+			"Dashboard Consolidation — Cache+Performance / Admin",
+			"DASH-0c dashboard consolidation execution: (1) the Cache surface absorbs MetricsTab as a Performance section (CacheTab label becomes 'Cache+Performance'); (2) MaintenanceTab + ConfigTab combine under a new AdminTab delegate-shell with an AdminViews toggle (maintenance/config), and SetupTab hides its Config sub-tab. OFF = CacheTab renders only its cache sections, MetricsTab/MaintenanceTab/ConfigTab render as standalone surfaces, SetupTab keeps its Config sub-tab (byte-identical predecessor).",
+			true,
+		),
 	],
 };

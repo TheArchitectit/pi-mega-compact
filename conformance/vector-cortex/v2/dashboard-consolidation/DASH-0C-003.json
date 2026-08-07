@@ -1,0 +1,1 @@
+{"assertion":"flag-off keeps the cache-only surface plus the independent metrics/maintenance/config surfaces","expected":{"cache_only":true,"flag_enabled":false,"standalone_surfaces_intact":true},"id":"DASH-0C-003","kind":"dashboard-tab-plan","producer":"DASH-0c-merge-cache-metrics-and-admin-combine","schema":"schemas/dashboard-consolidation-fixture.schema.json"}

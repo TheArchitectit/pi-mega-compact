@@ -18,6 +18,7 @@ import type {
 	CacheStripesResponse,
 	PerfResponse,
 	PrefixStabilityResponse,
+	SettingsResponse,
 } from "@contracts";
 import { useApi } from "../hooks/useApi";
 import {
@@ -26,6 +27,7 @@ import {
 	fetchCacheStripes,
 	fetchPrefixStability,
 	fetchPerf,
+	fetchSettings,
 } from "../api/client";
 import { CacheHitsCard } from "../components/CacheHitsCard";
 import { TimeSavedCard } from "../components/TimeSavedCard";
@@ -35,6 +37,25 @@ import { CacheHitRateTrendCard } from "../components/CacheHitRateTrendCard";
 import { PrefixStabilityCard } from "../components/PrefixStabilityCard";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { MetricsCards } from "./CacheTab/MetricsCards";
+
+const DASH_0C_KEY = "MEGACOMPACT_DASH_0C";
+
+/** Resolve the DASH-0c consolidation flag from the server settings state.
+ *  The dashboard client is a browser bundle with NO `process` global, so the
+ *  positive sprint flag is read from the server-authoritative /api/rag-settings
+ *  state (the server resolves MEGACOMPACT_DASH_0C into a SettingState boolean).
+ *  Absent/not-yet-loaded => false (flag-off posture), so flag-off users never
+ *  see the Performance section flash; it mounts only once settings confirm ON. */
+function dash0cEnabled(settings: SettingsResponse | null): boolean {
+	if (!settings) return false;
+	for (const cat of settings.categories) {
+		for (const s of cat.settings) {
+			if (s.key === DASH_0C_KEY && s.type === "boolean") return s.value === true;
+		}
+	}
+	return false;
+}
 
 export default function CacheTab(): React.ReactElement {
 	const [infoExpanded, setInfoExpanded] = useState(false);
@@ -86,6 +107,13 @@ export default function CacheTab(): React.ReactElement {
 		useCallback(() => fetchSnapshot(), []),
 		{ pollInterval: 5000 },
 	);
+
+	/* --- DASH-0c: server-resolved settings state for the flag gate --- */
+	const { data: settingsData } = useApi<SettingsResponse>(
+		useCallback(() => fetchSettings(), []),
+		{ pollInterval: 0, maxRetries: 0 },
+	);
+	const dash0cOn = dash0cEnabled(settingsData);
 
 	return (
 		<div className="flex flex-col gap-4">
@@ -222,6 +250,24 @@ export default function CacheTab(): React.ReactElement {
 						</div>
 					);
 				})()
+			)}
+			{/* ==============================================================
+			    Section 5 -- Performance (DASH-0c)
+			    The metrics body (ModelBadge + PerfChart + PerfCards + RagDashboard)
+			    absorbed from MetricsTab as a Performance section. Moved VERBATIM to
+			    ./CacheTab/MetricsCards.tsx. Omitted entirely when flag-off so the
+			    cache-only body is byte-identical to the predecessor.
+			    ============================================================== */}
+			{dash0cOn && (
+				<section aria-labelledby="cache-perf-cards">
+					<h2
+						id="cache-perf-cards"
+						className="font-heading text-lg font-semibold"
+					>
+						Performance
+					</h2>
+					<MetricsCards />
+				</section>
 			)}
 		</div>
 	);

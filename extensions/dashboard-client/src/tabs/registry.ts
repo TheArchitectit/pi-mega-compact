@@ -75,3 +75,20 @@ export const DASH_SURFACE_IDS: readonly string[] = [
   "setup",
   "admin",
 ] as const;
+
+/**
+ * DASH-0c: labels for the consolidated surfaces. Additive — the 13-tab
+ * `PRIMARY_TABS`/`ADVANCED_TABS` labels above stay untouched (rollback-safe;
+ * the live 13-tab UI renders as today until the DASH-0d rewire). `cache-perf`
+ * takes the "Cache+Performance" label once MetricsTab folds in as a Performance
+ * section; `admin` hosts the combined Maintenance+Config AdminTab.
+ */
+export const DASH_SURFACE_LABELS: Readonly<Record<string, string>> = {
+  overview: "Overview",
+  sessions: "Sessions",
+  "cache-perf": "Cache+Performance",
+  "memory-graph": "Memory Graph",
+  diagnostics: "Diagnostics",
+  setup: "Setup",
+  admin: "Admin",
+} as const;

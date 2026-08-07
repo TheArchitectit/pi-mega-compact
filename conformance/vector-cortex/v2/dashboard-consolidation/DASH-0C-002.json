@@ -1,0 +1,1 @@
+{"assertion":"the admin surface exposes both the maintenance actions and the config editor","expected":{"config_present":true,"maintenance_present":true,"surface":"admin"},"id":"DASH-0C-002","kind":"dashboard-tab-plan","producer":"DASH-0c-merge-cache-metrics-and-admin-combine","schema":"schemas/dashboard-consolidation-fixture.schema.json"}

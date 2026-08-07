@@ -1,0 +1,1 @@
+{"assertion":"the cache+performance surface exposes the cache sections AND the performance cards (MetricsCards)","expected":{"cache_sections":true,"perf_cards":true,"surface":"cache-perf"},"id":"DASH-0C-001","kind":"dashboard-tab-plan","producer":"DASH-0c-merge-cache-metrics-and-admin-combine","schema":"schemas/dashboard-consolidation-fixture.schema.json"}

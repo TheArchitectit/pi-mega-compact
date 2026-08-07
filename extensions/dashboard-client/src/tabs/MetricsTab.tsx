@@ -1,58 +1,17 @@
 /**
- * dashboard-client/src/tabs/MetricsTab.tsx — Metrics tab (C2).
+ * dashboard-client/src/tabs/MetricsTab.tsx — Metrics tab (C2) shell.
  *
- * Fetches /api/perf (rolling-window aggregates) + /api/snapshot (for model).
- * Renders ModelBadge + PerfChart + 5 perf cards (latency, throughput, process,
- * snapshot cost, TUI lag proxy). Polls every 10s.
+ * DASH-0c: the Cache+Performance surface absorbs the metrics body as a
+ * Performance section; this file is reduced to a shell that re-exports
+ * `MetricsCards` (the byte-preserved body moved to ./CacheTab/MetricsCards.tsx).
+ * Kept as a deep-link anchor for #metrics and for rollback symmetry (flag-off
+ * renders MetricsTab as a standalone top-level surface). A DASH-0d cleanup deletes
+ * this standalone copy after a deep-link audit proves no live consumer points
+ * at it. The render body is otherwise identical to the pre-DASH-0c MetricsTab.
  */
 
-import type React from "react";
-import { useCallback } from "react";
-import { useApi } from "../hooks/useApi";
-import { fetchPerf, fetchSnapshot } from "../api/client";
-import type { PerfResponse, SnapshotResponse } from "@contracts";
-import { NEW_UI } from "../config";
-import { PerfChart } from "../components/PerfChart";
-import { PerfCards } from "../components/PerfCards";
-import { ModelBadge } from "../components/ModelBadge";
-import { RagDashboard } from "../components/RagDashboard";
+import { MetricsCards } from "./CacheTab/MetricsCards";
 
 export default function MetricsTab(): React.ReactElement {
-	const { data: perf, error: perfErr } = useApi<PerfResponse>(
-		useCallback(() => fetchPerf({ minutes: 30 }), []),
-		{ pollInterval: 10_000 },
-	);
-	const { data: snapshot } = useApi<SnapshotResponse>(
-		useCallback(() => fetchSnapshot(), []),
-		{ pollInterval: 10_000 },
-	);
-
-	if (perfErr && !perf) {
-		return (
-			<div className="tab-stub">Error loading perf: {perfErr.message}</div>
-		);
-	}
-	if (!perf) {
-		return <div className="tab-stub">Loading perf…</div>;
-	}
-
-	return (
-		<div className="flex flex-col gap-4">
-			{snapshot?.model && (
-				<ModelBadge
-					name={snapshot.model.name}
-					providerName={snapshot.model.providerName}
-					provider={snapshot.model.provider}
-					inputRate={snapshot.model.inputRate}
-					outputRate={snapshot.model.outputRate}
-				/>
-			)}
-			<PerfChart perf={perf} />
-			<PerfCards perf={perf} />
-			<div className="text-xs text-muted-foreground">
-				{perf.sampleCount} samples · updated {perf.updatedAt}
-			</div>
-			{NEW_UI() && <RagDashboard />}
-		</div>
-	);
+	return <MetricsCards />;
 }

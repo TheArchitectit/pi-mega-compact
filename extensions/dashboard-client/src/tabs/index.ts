@@ -10,12 +10,13 @@
  * Host mapping (surface → component):
  *   - overview            → OverviewTab
  *   - sessions            → SessionsTab  (TurnsTab folded in via TurnMemoryView)
- *   - cache-perf          → CacheTab
+ *   - cache-perf          → CacheTab      (label "Cache+Performance"; MetricsTab
+ *                            folded in via CacheTab/MetricsCards)
  *   - memory-graph        → MemoryMapTab
  *   - diagnostics         → VectorCortexTab
- *   - setup               → SetupTab
- *   - admin               → AdminTab  (RESERVED alias — maps to the existent
- *                            MaintenanceTab; no standalone AdminTab.tsx yet)
+ *   - setup               → SetupTab      (config sub-tab hidden when DASH-0c ON)
+ *   - admin               → AdminTab      (DASH-0c: MaintenanceTab + ConfigTab
+ *                            combined via an AdminViews toggle)
  *
  * PREVENT-PI-004: imports only — no network. PREVENT-011: no `any`.
  */
@@ -26,5 +27,5 @@ export { default as CacheTab } from "./CacheTab";
 export { default as MemoryMapTab } from "./MemoryMapTab";
 export { default as VectorCortexTab } from "./VectorCortexTab";
 export { default as SetupTab } from "./SetupTab";
-/** Reserved admin-surface alias: maps to the existent MaintenanceTab host. */
-export { default as AdminTab } from "./MaintenanceTab";
+/** DASH-0c: the Admin surface combines MaintenanceTab + ConfigTab. */
+export { default as AdminTab } from "./AdminTab";

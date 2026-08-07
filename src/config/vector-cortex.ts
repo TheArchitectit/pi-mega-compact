@@ -73,6 +73,8 @@ export { REPO_CORPUS_ENABLED } from "./repo-corpus.js";
 export { DASH_0A_ENABLED } from "./vector-cortex-dash-0a.js";
 // DASH-0b dashboard consolidation execution flag extracted to vector-cortex-dash-0b.ts.
 export { DASH_0B_ENABLED } from "./vector-cortex-dash-0b.js";
+// DASH-0c dashboard consolidation execution flag extracted to vector-cortex-dash-0c.ts.
+export { DASH_0C_ENABLED } from "./vector-cortex-dash-0c.js";
 export { ENC_1A_ENABLED } from "./vector-cortex-enc1a.js";
 export {
   ENC_1B_ENABLED,
