@@ -69,6 +69,8 @@ export { COSINE_FP_REAL_ENABLED } from "./vector-cortex-cosfp-real.js";
 // REPO-A cross-repo corpus prep flag extracted to repo-corpus.ts (no vector-cortex
 // prefix per spec); re-exported so root src/config.ts barrel resolves unchanged.
 export { REPO_CORPUS_ENABLED } from "./repo-corpus.js";
+// DASH-0a dashboard consolidation tab-plan flag extracted to vector-cortex-dash-0a.ts.
+export { DASH_0A_ENABLED } from "./vector-cortex-dash-0a.js";
 export { ENC_1A_ENABLED } from "./vector-cortex-enc1a.js";
 export {
   ENC_1B_ENABLED,

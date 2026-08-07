@@ -1,0 +1,1 @@
+{"assertion":"no placement collision and no dropped source","expected":{"collision":false,"dropped_sources":[]},"id":"DASH-0A-002","kind":"dashboard-tab-plan","producer":"DASH-0A-tab-audit-and-merge-plan","schema":"schemas/dashboard-consolidation-fixture.schema.json"}

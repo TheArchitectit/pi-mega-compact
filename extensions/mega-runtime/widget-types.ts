@@ -55,7 +55,8 @@ export interface WidgetData {
 	/** TUI display mode: 'full' (default) = the full stats panel; 'minimal' = a
 	 *  one-line `LVL n | cache NN%` view flanked by panel bars. */
 	tuiMode?: "full" | "minimal";
-	/** Player level (game-mode). Stub = 1 until S33 wires the real scoring. */
+	/** Player level (game-mode). S33 wired the real scoring: getTurnLevelImpl
+	 *  (runtime-helpers.ts) computes floor(log2(turns+1))+1 via turnLevel. */
 	level?: number;
 	/** Cache hit rate as a percent (0..100+, may exceed 100 → MEGA CACHE). */
 	cachePct?: number;

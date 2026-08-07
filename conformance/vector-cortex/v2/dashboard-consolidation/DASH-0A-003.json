@@ -1,0 +1,1 @@
+{"assertion":"flag-off leaves the shell untouched (byte-identical predecessor)","expected":{"flag_enabled":false,"routing_changed":false,"shell_touched":false},"id":"DASH-0A-003","kind":"dashboard-tab-plan","producer":"DASH-0A-tab-audit-and-merge-plan","schema":"schemas/dashboard-consolidation-fixture.schema.json"}

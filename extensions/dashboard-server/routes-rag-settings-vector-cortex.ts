@@ -330,5 +330,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"Cross-repo corpus preparation (REPO-A): the governed, consent-gated reader-only path that builds a pseudonymous corpus manifest from per-repo events.log slices and serves GET /api/repo-corpus answering which pseudonymous repos/sessions are in the corpus, what cross-repo overlap exists, and whether consent is active for each — counts + IDs + status only, never payload content. Consent is append-only (consent.mjs, CLI/ops-only); revocation freezes the builder + route. OFF = builder refuses to run, reader route 404s, single-repo recall untouched (byte-identical predecessor).",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_DASH_0A",
+			"Dashboard Consolidation — Tab Plan",
+			"DASH-0a dashboard tab-audit + consolidation merge plan: records (as typed constants) the collapse of the 13 current TabIds onto the fixed 7 navigational surfaces (Overview, Sessions, Cache+Performance, Memory Graph, Diagnostics, Setup, Admin), plus the deep-link map, a11y nav-map, and responsive plan. Contract-planning only — no component moves, no route change. OFF = the plan module is inert (never imported by the shell); all 13 tab/section top-level files render exactly as today (byte-identical predecessor).",
+			true,
+		),
 	],
 };

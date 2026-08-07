@@ -1,0 +1,1 @@
+{"assertion":"the 7-surface plan covers every current TabId exactly once","expected":{"each_mapped_once":true,"source_tab_ids":13,"surfaces":7},"id":"DASH-0A-001","kind":"dashboard-tab-plan","producer":"DASH-0A-tab-audit-and-merge-plan","schema":"schemas/dashboard-consolidation-fixture.schema.json"}
