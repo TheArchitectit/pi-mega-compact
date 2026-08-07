@@ -15,6 +15,8 @@ export function eq(a: readonly string[], b: readonly string[]): boolean {
 export function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   let seed = 0x9e3779b9;
+  // guardrails-allow PREVENT-STUB-001: VC5A (deterministic Fisher-Yates; permanent fixture determinism, not a runtime stub)
+  // guardrails-allow PREVENT-MOCK-001: VC5A fixed-seed shuffle for reproducible permutation tests; deterministic fixture-only (accuracy floor acknowledged)
   for (let i = a.length - 1; i > 0; i--) {
     seed = (seed * 1664525 + 1013904223) >>> 0;
     const j = seed % (i + 1);

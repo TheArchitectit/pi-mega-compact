@@ -84,6 +84,7 @@ import {
 } from "./types.js";
 import { selectRuntimeBackend } from "./runtime-select.js";
 import { emitRuntimeSelected } from "./runtime-emit.js";
+// guardrails-allow PREVENT-STUB-001: ML5-A (imports the VC2A seeded-projection placeholder; real inference subs in ML5-D/C)
 import { projectSemantic, seedFromBytes } from "./runtime-stub.js";
 import { STATE_DIR_DEFAULT } from "../../config.js";
 import { tryBuildOnnx, type OnnxDispatchState, NO_ONNX } from "./encoder-onnx-dispatch.js";
@@ -230,7 +231,7 @@ export function createEncoderRuntime(
       if (ML5C_ENABLED()) {
         const chosen = selectRuntimeBackend({
           platform: normalizePlatform(plat()),
-          benchRecord: null, // placeholder: real BenchResultV1 wiring ships in ML5-E
+          benchRecord: null, // guardrails-allow PREVENT-STUB-001: ML5-E (placeholder: real BenchResultV1 wiring ships in ML5-E)
           nativeOptIn: process.env.MEGACOMPACT_ENCODER_NATIVE === "1",
         });
         emitRuntimeSelected(host.stateDir ?? STATE_DIR_DEFAULT, chosen);

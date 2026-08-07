@@ -48,6 +48,8 @@ const HEAD_INDEX: Readonly<Record<EncoderHeadName, number>> = {
 };
 
 /** Deterministic 32-bit LCG step (matches runtime.ts projectSemantic). */
+// guardrails-allow PREVENT-STUB-001: ML5-A (seeded-projection placeholder until trained weights substitute in VC2C)
+// guardrails-allow PREVENT-MOCK-001: ML5-A placeholder seeded PRNG; synthetic projection, real trained-head weights are the accuracy floor (accuracy floor acknowledged)
 function nextState(state: number): number {
   return (state * 1664525 + 1013904223) >>> 0;
 }

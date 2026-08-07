@@ -72,6 +72,7 @@ function fnv1a(text: string): number {
   return (hash >>> 0) / 0x100000000;
 }
 
+// guardrails-allow PREVENT-MOCK-001: crude 128-dim hashed n-gram fallback, used only when no embedder is injected; documented synthetic projection, production passes TrigramEmbedder (accuracy floor acknowledged)
 /** Crude 128-dim hashed n-gram embedding fallback. Used when no embedder is
  *  injected (e.g. tests); production should pass TrigramEmbedder. */
 export function fallbackEmbed(text: string): number[] {
@@ -120,6 +121,7 @@ export function cosineSimilarity(a: number[], b: number[]): number {
 
 // ─── Stability Scoring ───────────────────────────────────────────────────────
 
+// guardrails-allow PREVENT-MOCK-001: stability scoring uses the fallbackEmbed hashed n-gram projection only when no embedder is injected; documented synthetic floor (accuracy floor acknowledged)
 /**
  * Composite stability = 0.5*semantic + 0.3*recency + 0.2*frequency.
  * Recency/frequency fall back to neutral scores when the epoch lacks

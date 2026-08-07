@@ -28,6 +28,8 @@ const SPRINTS_DIR = join(DOCS, "sprints");
 const PHASES_DIR = join(DOCS, "phases");
 const MAX_MD_LINES = 500;
 const KNOWN_MIGRATIONS = new Set(["M2", "M3", "M4", "M5", "M6", "M7", "MIG-DOWN-001"]);
+const CONFORMANCE_DIR = join(root, "conformance", "vector-cortex", "v2");
+const MANIFEST_PATH = join(CONFORMANCE_DIR, "manifest.json");
 const EXPECTED_SPRINTS = 68; // 45 prior + 15 deferred-audit (DASH×4 + ENC×6 + COS-FP×2 + REPO×1 + DOC×2) + ENC-0g honest-state + ENC-1a embedder API + ENC-1b ONNX runtime surface + ENC-2a install-guide spec + ENC-2a install-budget dashboard knob + ENC-2b native retest + ENC-2c lazy-download + DASH-MULTI-PI stacked graph
 const EXPECTED_PHASES = 16; // 11 prior + 5 new phase docs (ENC, DASH, COS-FP, REPO, DOC)
 
@@ -165,19 +167,63 @@ function checkMigrations() {
   }
 }
 
+/**
+ * Derive the fixture count + reserved-range closure from manifest.json rather
+ * than a hand-maintained literal (PREVENT-SPEC-DRIFT-001). The manifest is the
+ * single source of truth; the check fails if its dispositions contradict its
+ * own emitted fixture rows.
+ */
+function checkManifestFixtureCounts() {
+  if (!exists(MANIFEST_PATH)) {
+    fail(`manifest.json not found: ${relative(root, MANIFEST_PATH)}`);
+    return null;
+  }
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
+  } catch (e) {
+    fail(`manifest.json unparseable: ${e.message}`);
+    return null;
+  }
+  const fixtures = manifest.fixtures ?? [];
+  const dispositions = manifest.reservedRanges?.dispositions ?? {};
+  const emittedIds = new Set();
+  const dupeIds = [];
+  for (const f of fixtures) {
+    if (emittedIds.has(f.id)) dupeIds.push(f.id);
+    emittedIds.add(f.id);
+  }
+  if (dupeIds.length > 0) {
+    fail(`manifest.json has duplicate fixture IDs: ${[...new Set(dupeIds)].join(", ")}`);
+  }
+  for (const [id, disposition] of Object.entries(dispositions)) {
+    if (disposition === "emitted-ledger-fixture" && !emittedIds.has(id)) {
+      fail(`reservedRanges marks ${id} emitted-ledger-fixture but no fixture row exists`);
+    }
+    // Singular non-emitted dispositions (prose-id / reserved-unused) must not
+    // collide with an emitted row. ".." range strings are informational only.
+    if (disposition !== "emitted-ledger-fixture" && !id.includes("..") && emittedIds.has(id)) {
+      fail(`reservedRanges marks ${id} ${disposition} yet a fixture row exists (contradiction)`);
+    }
+  }
+  return { count: fixtures.length, fixtureIds: emittedIds };
+}
+
 checkLineCounts();
 checkLinks();
 checkCounts();
 checkFlags();
 checkTestCommands();
 checkMigrations();
+const manifestFixtures = checkManifestFixtureCounts();
 
 if (issues.length > 0) {
   console.error(`DOCS-CHECK: ${issues.length} issue(s):`);
   for (const i of issues) console.error(`  - ${i}`);
   process.exit(1);
 }
+const fixtureCount = manifestFixtures ? `${manifestFixtures.count} fixtures` : "fixtures N/A";
 console.log(
-  `✓ DOCS-CHECK: ${EXPECTED_SPRINTS} sprints / ${EXPECTED_PHASES} phases, links+flags+commands+migrations clean.`,
+  `✓ DOCS-CHECK: ${EXPECTED_SPRINTS} sprints / ${EXPECTED_PHASES} phases / ${fixtureCount}, links+flags+commands+migrations+manifest clean.`,
 );
 process.exit(0);

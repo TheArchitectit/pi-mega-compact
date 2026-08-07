@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 
 import { closeSelection, isFixedPoint, closeExactOnly } from "./closure.js";
 import type { DecodedShard } from "./assemble.js";
-import { validateAndAssemble } from "./validate.js";
+import { PLACEHOLDER_DIGEST, validateAndAssemble } from "./validate.js";
 import type {
   ClosureEdge,
   ClosureGraph,
@@ -339,7 +339,7 @@ export function materializeShards(
       range: n.span ?? span("s", 1n, 0, d.text.length),
       bytes: bytes(d.text),
       source: d.source,
-      digest: digestOverride ?? "0",
+      digest: digestOverride ?? PLACEHOLDER_DIGEST,
       protectedSpan: d.protected ?? false,
     });
   }

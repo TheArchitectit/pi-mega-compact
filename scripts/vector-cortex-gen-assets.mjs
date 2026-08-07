@@ -44,10 +44,11 @@ function canonicalJson(value) {
   return canonicalValue(value) + "\n";
 }
 
-/** Minimal synthetic ONNX placeholder, opset 17 (weights land in VC2C). */
+// guardrails-allow PREVENT-PLACEHOLDER-001: ML5-A (synthetic 42-byte model.onnx placeholder; real weights land via the ML5-A export pipeline)
+/** Minimal synthetic ONNX placeholder, opset 17 (weights land in ML5-A). */
 function onnxBytes() {
   // A tiny, self-describing, deterministic placeholder. Real operators/weights
-  // are substituted by the VC2C export pipeline; the manifest digest updates.
+  // are substituted by the ML5-A export pipeline; the manifest digest updates.
   const header = Buffer.from(
     "ONNX\x00" +
       "\x00\x18\x00\x00" + // ir_version = 24 (little-endian u32)

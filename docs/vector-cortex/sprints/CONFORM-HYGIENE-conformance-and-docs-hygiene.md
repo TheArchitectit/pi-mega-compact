@@ -7,20 +7,46 @@
 
 Close every conformance + docs gap raised by the 2026-08-05 stub/mock audit, and land the process scanners the audit's §9 recommends. This is **not a feature sprint** — it introduces no new runtime code path, no flag, no behavioral change to the encoder/recall/dashboard. It is pure closure: backfill or explicitly-document the missing conformance rows (Table 4), fix the two digest-skip sentinels (Table 2), register the two missing hard gates (Table 3), reconcile game-mode disposition (Table 6), add superseded-doc banners (Table 5-D), land the stub/mock scanners + PREVENT-STUB/PREVENT-MOCK/PREVENT-PLACEHOLDER/PREVENT-VERIFICATION-BYPASS guardrails (framework §3/§7, Table 9), and make docs-check compute fixture counts from the manifest, not literals (PREVENT-SPEC-DRIFT-001).
 
-Production ownership:
-- `conformance/vector-cortex/v2/manifest.json` (ADDITIVE fixture rows)
-- `conformance/vector-cortex/v2/migrations/MIG-DOWN-002.json` (NEW) and/or documented reserved-unused
-- `conformance/vector-cortex/v2/setup-dashboard/SETUP-CORTEX-014..019.json`, `SETUP-CORTEX-023..029.json` (NEW 13 IDs) and/or documented reserved-unused
-- `conformance/vector-cortex/v2/evaluation/EVAL-BUCKET-001.json`, `EVAL-ORDER-003.json`, `EVAL-REDACT-002.json` (NEW) and/or documented as prose-IDs
-- `src/vector-cortex/reconstruct/_acceptance-helpers.ts` (:342 — fix the `digestOverride ?? "0"` sentinel to align with the `validate.ts` producer)
-- `src/vector-cortex/platform/_cross-language-fixture.ts` (:72 — fix `commit: "0".repeat(40)` to a real commit hash or an explicit fixture marker, resolving the no-mock header contradiction)
-- `extensions/dashboard-server/setup-cortex-blockers.ts` (ADDITIVE — register HG-6 4-threads-mandatory and HG-7 model-card/dataset-manifest/calibration)
-- `docs/AGENT_GUARDRAILS.md` (version 1.3 → 1.4; add the PREVENT-STUB-001 / PREVENT-MOCK-001 / PREVENT-PLACEHOLDER-001 / PREVENT-VERIFICATION-BYPASS-001 rules table per framework §7)
-- `docs/game-mode-design.md` (superseded-banner if applicable per Table 6 disposition)
-- `scripts/stub-scan.mjs` (NEW scanner)
-- `scripts/mock-scan.mjs` (NEW scanner)
-- `scripts/vector-cortex-docs-check.mjs` (EXPECTED_SPRINTS bump + manifest-derived fixture count, killing PREVENT-SPEC-DRIFT-001)
-- `docs/vector-cortex/evidence/CONFORM-HYGIENE.md` (NEW)
+Production ownership: (amended per spec-staleness precedent — see deviation note below)
+- `conformance/vector-cortex/v2/manifest.json` (ADDITIVE fixture rows + reservedRanges dispositions)
+- `conformance/vector-cortex/v2/ledger/MIG-DOWN-002.json` (NEW — emitted ledger fixture)
+- `conformance/vector-cortex/v2/setup-dashboard/SETUP-CORTEX-001.json` `SETUP-CORTEX-002.json` `SETUP-CORTEX-003.json` `SETUP-CORTEX-005.json` `SETUP-CORTEX-006.json` `SETUP-CORTEX-007.json` `SETUP-CORTEX-008.json` `SETUP-CORTEX-009.json` `SETUP-CORTEX-020.json` (RE-HASHED — HG-6/HG-7 blocker_ids added to canonical 6-item set; 014..019 + 023..029 documented reserved-unused in manifest reservedRanges, not emitted as fixtures)
+- `src/vector-cortex/reconstruct/validate.ts` (PLACEHOLDER_DIGEST sentinel — task 2)
+- `src/vector-cortex/reconstruct/_acceptance-helpers.ts` (digestOverride ?? PLACEHOLDER_DIGEST alignment — task 2)
+- `src/vector-cortex/platform/_cross-language-fixture.ts` (commit fixture marker — task 2)
+- `src/vector-cortex/setup-cortex-blockers-compute.ts` (HG-6/HG-7 registration — task 3; canonical source, extensions/dashboard-server/setup-cortex-blockers.ts re-exports)
+- `extensions/dashboard-server/routes-setup-cortex.test.ts` (6-item blocker set assertion — task 3)
+- `src/vector-cortex/vc9a-acceptance.test.ts` (6-item blocker set assertion — task 3)
+- `docs/AGENT_GUARDRAILS.md` (version 1.3 → 1.4; four PREVENT rules table — task 4)
+- `.guardrails/prevention-rules/pattern-rules.json` (four PREVENT-* entries, enabled:false — task 4)
+- `.guardrails/prevention-rules/pattern-rules.schema.json` (rule_id pattern generalization — task 4)
+- `scripts/stub-scan.mjs` (NEW scanner — task 5)
+- `scripts/mock-scan.mjs` (NEW scanner — task 5)
+- `src/vector-cortex/encoder/runtime.ts` `src/vector-cortex/encoder/heads.ts` `src/vector-cortex/encoder/calibrate.ts` `src/vector-cortex/encoder/runtime-stub.ts` (guardrails-allow annotations — task 6)
+- `src/vector-cortex/prompt-dag/_acceptance-shuffle.ts` (guardrails-allow PREVENT-STUB-001: VC5A — task 6)
+- `src/vector-cortex/residual/fixture-payload.ts` (guardrails-allow PREVENT-STUB-001: VC4B — task 6)
+- `src/cache-stripe-impl.ts` `src/cache-stripe-score.ts` (guardrails-allow PREVENT-MOCK-001: hash-bag IS mode B — task 6)
+- `src/embedder.ts` (guardrails-allow PREVENT-MOCK-001: TrigramEmbedder mode-B default — task 6)
+- `extensions/mega-events/context-handler/afterCompact.ts` (guardrails-allow PREVENT-STUB-001: VC6C-IMPL — task 6)
+- `scripts/vector-cortex-gen-assets.mjs` (guardrails-allow PREVENT-PLACEHOLDER-001: ML5-A — task 6)
+- `package.json` (lint script wiring: stub-scan + mock-scan with --fail-on-unregistered — task 7)
+- `scripts/vector-cortex-docs-check.mjs` (EXPECTED_SPRINTS bump + manifest-derived fixture count — task 8)
+- `docs/game-mode-design.md` (superseded banner — task 10)
+- `docs/specs/game-mode-sprint-plan.md` (superseded banner — task 10)
+- `docs/vector-cortex/vc2-model-prep.md` (reference-only research-note banner — task 10)
+- `docs/vector-cortex/retros/PC-RETRO.md` (NEW — task 11)
+- `docs/vector-cortex/retros/VC9-RETRO.md` (NEW — task 11)
+- `docs/vector-cortex/evidence/CONFORM-HYGIENE.md` (NEW — task 12)
+
+**Deviation note (spec-staleness amendment, DASH-0B/0c precedent):** The original
+ownership listed only 13 of the 41 touched files. The amendment adds the 28 files
+the agent annotated with `// guardrails-allow` annotations (task 6 — the 8 existing
+stub sites span 13 source files, not the 4 named in the original spec), the
+pattern-rules JSON + schema (task 4's "also land in pattern-rules.json" clause),
+the 9 re-hashed SETUP-CORTEX fixtures (blocker_ids changed), the 2 test files
+updated for the 6-item blocker set, the 2 additional superseded-banner docs, the 2
+retro artifacts (task 11), and `package.json` (task 7 lint wiring). No file outside
+this amended set was touched. The deviation is documented in the evidence §6.
 
 Inputs: the 2026-08-05 audit (Tables 1–9), the framework doc `docs/development-framework/SELF_IMPROVING_DEVELOPMENT.md` (§3 scanners, §7 guardrails table, §6 rollout map), and the current v2 manifest. Outputs: a manifest/fixture/evidence tree that is internally consistent and reviewer-attestable, two gate scanners wired into CI, the two sentinels fixed, HG-6/HG-7 surfaced, and a reviewer-accepted CONFORM-HYGIENE evidence record.
 

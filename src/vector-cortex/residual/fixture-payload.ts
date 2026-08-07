@@ -27,6 +27,8 @@ export interface PayloadDescriptor {
 function lcgBytes(length: number, seed: number): Uint8Array {
   const out = new Uint8Array(length);
   let state = seed >>> 0;
+  // guardrails-allow PREVENT-STUB-001: VC4B (deterministic generative filler; permanent fixture determinism, not a runtime stub)
+  // guardrails-allow PREVENT-MOCK-001: VC4B deterministic synthetic payload bytes, fixture-only; same descriptor always yields identical bytes (accuracy floor acknowledged)
   for (let i = 0; i < length; i++) {
     state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
     out[i] = (state >>> 24) & 0xff;

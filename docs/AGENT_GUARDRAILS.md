@@ -1,7 +1,7 @@
 # Agent Guardrails & Safety Protocols
 
-**Version:** 1.3 (adapted for pi-mega-compact)
-**Last Updated:** 2026-07-13
+**Version:** 1.4 (adapted for pi-mega-compact)
+**Last Updated:** 2026-08-07
 **Applies To:** ALL AI agents, LLMs, and automated systems operating on this codebase
 
 ---
@@ -224,6 +224,15 @@ OUT OF SCOPE (DO NOT TOUCH):
 | PREVENT-PI-003 | error | Injecting compacted context as `role:"system"` (must use `before_agent_start` systemPrompt) |
 | PREVENT-PI-004 | critical | Network calls in extension (must stay local — no fetch/http to remote). EXCEPTION: the optional `/dashboard` localhost UI server, audited via inline `// guardrails-allow PREVENT-PI-004: <reason>` annotations (scanner requires a reason). |
 
+### PREVENT-STUB / PREVENT-MOCK rules (enforced by scripts/stub-scan.mjs + scripts/mock-scan.mjs)
+
+| Rule ID | Severity | Description |
+| --------- | ---------- | ------------- |
+| PREVENT-STUB-001 | error | Shipping a runtime stub/placeholder in src/ or extensions/ without a `guardrails-allow PREVENT-STUB-001: <closure sprint id>` referencing a real closure. Enforced by `scripts/stub-scan.mjs`. |
+| PREVENT-MOCK-001 | error | Presenting mock/fake/synthetic data (seeded PRNG, hash-as-embedding, hardcoded metric tables) as real measurements in a production path without a documented accuracy floor. Enforced by `scripts/mock-scan.mjs`. |
+| PREVENT-PLACEHOLDER-001 | error | Committing a bearer placeholder asset (e.g., a sub-100-byte `model.onnx`) that ships to clients without a Registered-placeholders entry carrying a `closure-sprint:`. Enforced by `stub-scan.mjs` + asset-manifest digest check. |
+| PREVENT-VERIFICATION-BYPASS-001 | critical | A sentinel (digest === "0", ?? "0", "0".repeat(40)) that silently disables a real verification check, unless explicitly marked. Enforced by `stub-scan.mjs`. |
+
 ### Verification gate (every sprint)
 
 Each Phases 2–7 sprint (S8–S15) exits only when:
@@ -246,7 +255,7 @@ Each Phases 2–7 sprint (S8–S15) exits only when:
 #### Core Guardrails
 
 - **This document** - Core safety protocols (MANDATORY)
-- [PREVENT-PI rules](../../.guardrails/prevention-rules/pattern-rules.json) - pi-specific prevention rules (v2.2.0, 32 rules)
+- [PREVENT-PI + PREVENT-STUB/MOCK rules](../../.guardrails/prevention-rules/pattern-rules.json) - pi-specific prevention rules (v2.3.1, 36 rules; PREVENT-STUB/MOCK/PLACEHOLDER/VERIFICATION-BYPASS registered here, enforced by scripts/stub-scan.mjs + scripts/mock-scan.mjs)
 - [.guardrails/prevention-rules/pattern-rules.schema.json](../../.guardrails/prevention-rules/pattern-rules.schema.json) - JSON Schema for pattern-rules.json (editor/CI validation)
 - [.guardrails/pre-work-check.md](../.guardrails/pre-work-check.md) - MANDATORY pre-work checklist
 - [.guardrails/failure-registry.jsonl](../.guardrails/failure-registry.jsonl) - Bug database (JSONL format)

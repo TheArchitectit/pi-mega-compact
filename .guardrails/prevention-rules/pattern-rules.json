@@ -1,7 +1,7 @@
 {
   "$schema": "./pattern-rules.schema.json",
   "description": "Pattern-based prevention rules for regression detection (added PREVENT-PI-* rules for TypeScript/pi extensions)",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "rules": [
     {
       "rule_id": "PREVENT-001",
@@ -468,6 +468,50 @@
       "severity": "critical",
       "file_glob": ["extensions/**/*.ts", "src/**/*.ts"],
       "suggestion": "Keep compaction + vector store on local disk; remove network calls. (Config may still read a URL, but runtime must not fetch.)"
+    },
+    {
+      "rule_id": "PREVENT-STUB-001",
+      "name": "Runtime stub / placeholder in production path",
+      "enabled": false,
+      "pattern": "(\"0\"\\.repeat\\(40\\)|\\?\\? \"0\"|digest\\s*===\\s*\"0\"|placeholder|stub for future|no-op in this synchronous build|reportRepairPlanned\\s*\\([^)]*backoffMs\\s*:\\s*0)",
+      "forbidden_context": "guardrails-allow PREVENT-STUB-001",
+      "message": "A runtime stub/placeholder in src/ or extensions/ must carry a // guardrails-allow PREVENT-STUB-001: <closure-sprint> annotation naming its closure sprint. Enforced by scripts/stub-scan.mjs (--fail-on-unregistered).",
+      "severity": "error",
+      "file_glob": ["src/**/*.ts", "extensions/**/*.ts"],
+      "suggestion": "Add a guardrails-allow PREVENT-STUB-001 annotation with the closure sprint id, or replace the stub."
+    },
+    {
+      "rule_id": "PREVENT-MOCK-001",
+      "name": "Mock / synthetic data in production path",
+      "enabled": false,
+      "pattern": "(Math\\.random\\(|mulberry32|\\bfnv1a\\b|fallbackEmbed|hash-as-embedding|hashed[- ]n-gram embedding|vec\\s*\\(\\s*Math\\.floor\\s*\\(\\s*fnv1a|scoreTable\\s*=)",
+      "forbidden_context": "guardrails-allow PREVENT-MOCK-001",
+      "message": "A mock/fake/synthetic value in a production src/ or extensions/ path must carry a // guardrails-allow PREVENT-MOCK-001: <reason — accuracy-floor acknowledged> annotation. Enforced by scripts/mock-scan.mjs (--fail-on-unregistered).",
+      "severity": "error",
+      "file_glob": ["src/**/*.ts", "extensions/**/*.ts"],
+      "suggestion": "Add a guardrails-allow PREVENT-MOCK-001 annotation acknowledging the accuracy floor, or replace the fake with real data."
+    },
+    {
+      "rule_id": "PREVENT-PLACEHOLDER-001",
+      "name": "Placeholder asset generated for production",
+      "enabled": false,
+      "pattern": "placeholder (ONNX|asset)|model\\.onnx.*placeholder|replaced by the (VC2C|ML5-A) export",
+      "forbidden_context": "guardrails-allow PREVENT-PLACEHOLDER-001",
+      "message": "A placeholder asset generated for production must carry a // guardrails-allow PREVENT-PLACEHOLDER-001: <closure-sprint> annotation naming its closure sprint and pipeline that substitutes real content.",
+      "severity": "error",
+      "file_glob": ["scripts/**/*.mjs", "src/**/*.ts", "extensions/**/*.ts"],
+      "suggestion": "Add a guardrails-allow PREVENT-PLACEHOLDER-001 annotation, or substitute the real asset."
+    },
+    {
+      "rule_id": "PREVENT-VERIFICATION-BYPASS-001",
+      "name": "Verification / digest-check bypass sentinel",
+      "enabled": false,
+      "pattern": "(digest\\s*===\\s*\"0\"|digestOverride\\s*\\?\\?\\s*\"0\"|skip.*digest.*verif|bypass.*per-shard)",
+      "forbidden_context": "PLACEHOLDER_DIGEST|guardrails-allow PREVENT-VERIFICATION-BYPASS-001",
+      "message": "A verification-skip sentinel (e.g. digest === \"0\") must be an explicit named marker (PLACEHOLDER_DIGEST) or carry a guardrails-allow PREVENT-VERIFICATION-BYPASS-001 annotation — never a silent implicit bypass.",
+      "severity": "critical",
+      "file_glob": ["src/**/*.ts", "extensions/**/*.ts"],
+      "suggestion": "Replace implicit \"0\" digest skips with the named PLACEHOLDER_DIGEST sentinel."
     }
   ]
 }

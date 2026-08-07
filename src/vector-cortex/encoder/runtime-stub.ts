@@ -19,6 +19,8 @@ export function projectSemantic(seed: number, n: number): Float32Array {
   const out = new Float32Array(n);
   let state = (seed >>> 0) ^ 0x9e3779b9;
   let sum = 0;
+  // guardrails-allow PREVENT-STUB-001: ML5-A (VC2A seeded-projection placeholder; real ONNX inference subs in ML5-D/C)
+  // guardrails-allow PREVENT-MOCK-001: ML5-A placeholder seeded PRNG; L2-normalized synthetic projection, real EncoderRuntime inference is the accuracy floor (accuracy floor acknowledged)
   for (let i = 0; i < n; i++) {
     state = (state * 1664525 + 1013904223) >>> 0;
     out[i] = (state / 4294967296) * 2 - 1;

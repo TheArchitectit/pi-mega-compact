@@ -69,8 +69,8 @@ const SETUP_IDS = [
   "SETUP-CORTEX-009",
 ] as const;
 
-/** The canonical open hard-gate blocker set (opset removal, HG-2 gone). */
-const CANONICAL_BLOCKERS = ["HG-1", "HG-3", "HG-4", "HG-5"] as const;
+/** The canonical open hard-gate blocker set (opset removal, HG-2 gone; HG-6/HG-7 added CONFORM-HYGIENE). */
+const CANONICAL_BLOCKERS = ["HG-1", "HG-3", "HG-4", "HG-5", "HG-6", "HG-7"] as const;
 
 interface SetupCortexFixture {
   id: string;
@@ -139,7 +139,7 @@ describe("SETUP-CORTEX fixture envelopes", () => {
     }
   });
 
-  test("canonical blocker set is HG-1, HG-3, HG-4, HG-5 (opset HG-2 removed)", () => {
+  test("canonical blocker set is HG-1, HG-3, HG-4, HG-5, HG-6, HG-7 (opset HG-2 removed)", () => {
     const seen = new Set<string>();
     for (const id of SETUP_IDS) {
       const fx = readFixture(id);

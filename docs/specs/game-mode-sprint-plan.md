@@ -1,5 +1,10 @@
 # Game Mode + Theme System — QA Review & Sprint Plan
 
+> **STATUS: REFERENCE-ONLY (superseded).** Part of the un-merged `game-mode`
+> design family (see the banner on `docs/game-mode-design.md`); never shipped as
+> a phase. Scoped out of v1 by the design's §10 future list. Historical plan
+> only — not current source-of-truth.
+
 - **Branch:** `game-mode`
 - **Spec:** [docs/game-mode-design.md](../game-mode-design.md) (v0.2)
 - **Status:** QA-reviewed + sprint-plan ready (no code yet)
