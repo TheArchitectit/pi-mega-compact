@@ -8,7 +8,6 @@
 import { readFile } from 'node:fs/promises';
 
 const ROOT = new URL('..', import.meta.url);
-const read = (p) => readFile(new URL(p, ROOT), 'utf8');
 
 let failures = 0;
 const fail = (msg) => {
@@ -16,6 +15,18 @@ const fail = (msg) => {
   process.stderr.write(`FAIL: ${msg}\n`);
 };
 const ok = () => process.stderr.write('.\n');
+
+// Read a tracked repo file. A missing/renamed file is a loud, actionable failure
+// (reported via fail(), counted, non-zero exit) rather than a raw ENOENT crash.
+// Returns null on error so callers skip content checks for the missing file.
+const read = async (p) => {
+  try {
+    return await readFile(new URL(p, ROOT), 'utf8');
+  } catch (err) {
+    fail(`${p}: file not found — was it renamed or deleted? (${err.code ?? 'read error'})`);
+    return null;
+  }
+};
 
 // (a) evidence stamps — file -> [shipped version, impl short-SHA]
 const STAMPS = {
@@ -55,6 +66,7 @@ async function checkEvidenceStamps() {
   process.stderr.write('(a) evidence stamps ...');
   for (const [file, [version, sha]] of Object.entries(STAMPS)) {
     const body = await read(file);
+    if (body === null) continue; // missing-file failure already reported by read()
     const stamp = `PUBLISHED as ${version}`;
     if (!body.includes(stamp)) {
       fail(`${file}: missing stamp "${stamp}"`);
@@ -76,6 +88,7 @@ async function checkSpecHeaders() {
   };
   for (const [file, version] of Object.entries(PC)) {
     const body = await read(file);
+    if (body === null) continue; // missing-file failure already reported by read()
     const statusLine = body.split('\n').find((l) => l.startsWith('**Status:**'));
     if (!statusLine || !statusLine.startsWith('**Status:** shipped')) {
       fail(`${file}: Status line is not "**Status:** shipped" (found: ${JSON.stringify(statusLine ?? 'no Status line')})`);
@@ -91,10 +104,10 @@ async function checkSpecHeaders() {
 async function checkPlanV2() {
   process.stderr.write('(c) PLAN_V2 stale markers ...');
   const planv2 = await read('docs/PROMPTCACHE_PLAN_V2.md');
-  if (planv2.includes('**Status**: Draft')) {
+  if (planv2 !== null && planv2.includes('**Status**: Draft')) {
     fail('docs/PROMPTCACHE_PLAN_V2.md: still contains stale header "**Status**: Draft"');
   }
-  if (planv2.includes('Phase 3 is opt-in')) {
+  if (planv2 !== null && planv2.includes('Phase 3 is opt-in')) {
     fail('docs/PROMPTCACHE_PLAN_V2.md: still contains stale "Phase 3 is opt-in"');
   }
 
@@ -116,8 +129,9 @@ async function checkNoStaleDefaultOffPairing() {
   ];
   const hits = [];
   for (const file of files) {
-    const lines = (await read(file)).split('\n');
-    lines.forEach((line, i) => {
+    const content = await read(file);
+    if (content === null) continue; // missing-file failure already reported by read()
+    content.split('\n').forEach((line, i) => {
       const off = /default OFF/i.test(line);
       const flags = /message separation|cache striping/i.test(line);
       if (off && flags) hits.push([file, `L${i + 1}: ${line.trim()}`]);
@@ -128,7 +142,9 @@ async function checkNoStaleDefaultOffPairing() {
 
 async function checkReadme() {
   process.stderr.write('(d) README default-ON ...');
-  const lines = (await read('README.md')).split('\n');
+  const content = await read('README.md');
+  if (content === null) return; // missing-file failure already reported by read()
+  const lines = content.split('\n');
   const target = lines.find((l) => l.includes('message separation + cache striping'));
   if (!target) {
     fail('README.md: no line mentions "message separation + cache striping"');
@@ -145,7 +161,9 @@ async function checkReadme() {
 
 async function checkAdoption() {
   process.stderr.write('(e) ADOPTION rows default ON ...');
-  const lines = (await read('docs/ADOPTION.md')).split('\n');
+  const content = await read('docs/ADOPTION.md');
+  if (content === null) return; // missing-file failure already reported by read()
+  const lines = content.split('\n');
   const row = (flag) => {
     const line = lines.find((l) => l.includes(`\`${flag}\``) && l.includes('|'));
     if (!line) return { found: false, line: '' };

@@ -13,7 +13,7 @@ Land one mechanical reconciliation pass over stale documentation on the shipped 
 
 Inputs: the shipped tree on `master` (v0.20.42), git history (tags for ship-version attribution), `extensions/mega-config.ts` default reads, and the current `docs/**` text. Outputs: the reconciled evidence stamps, the three spec headers, the refreshed PLAN_V2/README/ADOPTION wording, and a single-purpose verifier `scripts/doc-drift-check.mjs`.
 
-Production ownership: — (exact file list, scope-check is satisfied by this exact set):
+Production ownership: — (exact file list, scope-check is satisfied by this exact set)
 - `docs/vector-cortex/evidence/VC9A.md` — append pub-stamp (impl `ab1e223`, shipped **v0.20.27**)
 - `docs/vector-cortex/evidence/VC9B.md` — append pub-stamp (impl `1063ee8`, shipped **v0.20.28**)
 - `docs/vector-cortex/evidence/VC9C.md` — append pub-stamp (impl `bc64af4`, shipped **v0.20.28**)
