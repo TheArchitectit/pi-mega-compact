@@ -58,7 +58,7 @@ Status: **implementer-complete** (both Sonnet workers landed; controller read ev
 - [x] `node --test dist/vector-cortex/enc1b-acceptance.test.js` (legacy) → **10/0**
 - [x] `MEGACOMPACT_ENC_1B=0 node --test dist/src/vector-cortex/enc1b-acceptance.test.js` → **10/0** (flag-off same-pass, pin numbers assert no writer activity)
 - [x] `MEGACOMPACT_ENC_1B=0 node --test dist/vector-cortex/enc1b-acceptance.test.js` → **10/0** (flag-off dual-dist)
-- [x] `node --test dist/extensions/dashboard-server/routes-setup.test.js` → **16/0** as the sole target **pre-split** (the ENC-1b describes were inline then). Post-split, ran both files together: routes-setup.test.ts holds the ENC-1a block + status/detect suites; routes-setup-enc1b.test.ts carries the ENC-1b round-trip + flag-off + combined-payload describes. Combined suites 5.
+- [x] Route suites, post-split state (HEAD): `node --test dist/extensions/dashboard-server/routes-setup.test.js` → **7/0** (status/detect + ENC-1a round-trip, unchanged from the ENC-1a era); `node --test dist/extensions/dashboard-server/routes-setup-enc1b.test.js` → **9/0** (6 ENC-1b round-trip/flag-off + 3 combined-payload defect-pinning tests); a joint run `node --test <both files>` reports **16/0, suites 5**. Pre-split, when the ENC-1b describes were inline in routes-setup.test.ts, the joint count of 16 ran as a single-file target.
 - [x] `npm test` → **3948 passed, 0 failed across 394 files**
 - [x] `npm run lint` → clean (`tsc --noEmit` + guardrails-scan + semantic-scan)
 - [x] `python3 scripts/regression_check.py --all` → **0 blocking** (7 dev-only/moderate npm audit warnings unchanged: undici, pi-coding-agent, hono node-server, mcp sdk, openclaw-fs-safe, openclaw, tar)
