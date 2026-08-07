@@ -1,6 +1,6 @@
 # REPO-A Evidence — Cross-repo corpus preparation
 
-Status: **implementer-complete** — the consent-gated pseudo-anonymous cross-repo
+Status: **reviewer-accepted** — the consent-gated pseudo-anonymous cross-repo
 corpus builder, its append-only consent ledger, the reader-only status route,
 the Config surface, and the negative-consent enforcement are all implemented,
 tested, and gate-clean. This is the REPO phase of the external-audit #5 work
@@ -19,10 +19,10 @@ the downstream real-world cross-repo recall validation remains a later sprint.
 - `src/config/vector-cortex.ts` (102) — barrel re-export of `REPO_CORPUS_ENABLED`
 - `src/config.ts` (221) — root barrel re-export (≤300 soft)
 - `src/vector-cortex/repo-corpus-acceptance.test.ts` (180) — acceptance aggregator: fixture registration + kind-closure (4), envelope posture (3), flag invariants (1), settings toggle (1) = 9 tests, flag-agnostic
-- `src/vector-cortex/repo-corpus/consent.test.ts` (189) — consent-resolution determinism via the committed `consent.mjs` CLI over a real temp git repo (grant→resolve; revoke instant-freeze) + builder full-grant/revoke path = 3 tests
+- `src/vector-cortex/repo-corpus/consent.test.ts` (201) — consent-resolution determinism via the committed `consent.mjs` CLI over a real temp git repo (grant→resolve; revoke instant-freeze) + builder full-grant/revoke path + consent-state artifact assertion = 3 tests
 - `src/vector-cortex/repo-corpus/negative.test.ts` (169) — negative missing-consent test driving the committed `build.mjs` against a revoked repo → `REPO_CORPUS_CONSENT_REQUIRED`, zero bytes, pseudonymous refusal audit = 1 test
 - `scripts/repo-corpus/consent.mjs` (368) — append-only consent ledger: `canonicalRemote`/`repoPseudonymForRemote`/`repoPseudonymForGitRoot`, `makeConsentRecord`, `appendConsentRecord(s)`, `readConsentRecords`, `effectiveConsent`/`activeConsent`/`consentCoversCrossRepo`; CLI `append`/`resolve`. Repo pseudonym = `sha256("REPO-CORPUS-v1:" + canonicalRemote)[0..16 hex]`, pure + never persisted
-- `scripts/repo-corpus/build.mjs` (426) — read-side corpus-builder CLI: per-repo `events.log` slice aggregation (IDs/counts only), `crossRepoOverlap`, manifest build, consent-gated refusal (exit 3) with zero-bytes-freeze + pseudonymous `repo_corpus_consent_refused` audit
+- `scripts/repo-corpus/build.mjs` (440) — read-side corpus-builder CLI: per-repo `events.log` slice aggregation (IDs/counts only), `crossRepoOverlap`, manifest + consent-state build, consent-gated refusal (exit 3) with zero-bytes-freeze + pseudonymous `repo_corpus_consent_refused` audit
 - `extensions/dashboard-server/api-contracts/repo-corpus.ts` (76) — `RepoCorpusStatusV1` / `RepoCorpusManifestV1` / `RepoCorpusConsentStateV1` / per-repo status contracts, explicit types, no `any`
 - `extensions/dashboard-server/api-contracts/index.ts` (371) — additive type re-export barrel
 - `extensions/dashboard-server/api-contracts/endpoints/registry-ext.ts` (194) — additive `repoCorpus` endpoint group
@@ -91,7 +91,7 @@ enforcement itself is proven by the negative test before any real corpus exists.
 - [x] `node --test dist/src/vector-cortex/repo-corpus/consent.test.js` → **3 pass / 0 fail**
 - [x] `node --test dist/src/vector-cortex/repo-corpus/negative.test.js` → **1 pass / 0 fail**
 - [x] `node --test dist/extensions/dashboard-server/api-contracts.test/endpoints-registry.test.js` → **4 pass / 0 fail**
-- [x] `npm test` → **3960 passed, 0 failed across 405 files** (full suite, clean run)
+- [x] `npm test` → **4082 passed, 0 failed across 405 files** (full suite, clean run)
 - [x] `npm run lint` → clean (`tsc --noEmit` + guardrails-scan + semantic-scan)
 - [x] `python3 scripts/regression_check.py --all` → **0 blocking** (7 dev-only/moderate npm audit warnings unchanged)
 - [x] `node scripts/guardrails-scan.mjs` → clean (pi pattern + semantic scan clean)
@@ -130,6 +130,38 @@ read. Existing single-repo recall is byte-identical either way.
 
 ## Reviewer verdict
 
-Pending controller review. Gates are green; enforcement is proven by the
-negative-consent test before any real corpus exists; the surface is reader-only
-and never payload-bearing. Do not mark controller task #5 complete.
+Claude (Opus controller) / 2026-08-07 / **reviewer-accepted**. Two-stage
+review complete: spec-compliance verified by direct controller read against
+`docs/vector-cortex/sprints/REPO-A-cross-repo-corpus-prep.md` (consent gate
+refuses on missing/revoked, append-only consent ledger, pseudonymous
+repoPseudonym = sha256("REPO-CORPUS-v1:"+remote)[0..16], reader-only route
+counts+IDs+status only, EVAL-REDACT-002 compliance, flag-off byte-identical
+404, no third-party sessions via ownerAttestation match, no conformance
+fixture drift). Code-quality review: `consent.mjs` is pure + read-only
+spawnSync (PREVENT-PI-004 headers on every git/remote call); `build.mjs`
+verifies EVERY repo's cross-repo consent BEFORE touching a byte, zero-bytes-
+freeze on refusal, pseudonymous `repo_corpus_consent_refused` audit with
+exactly {ts,event,repoPseudonym,effectiveSeq,refusalCode} (asserted by the
+negative test on the exact key set); `routes-repo-corpus.ts` is reader-only,
+guarded JSON.parse (PREVENT-001), no `any` (PREVENT-011), memoized {mtime,size}
+5s TTL, does NOT import builder scripts (CLI seam preserved, scripts/ excluded
+from package.json files); `api-contracts/repo-corpus.ts` readonly interfaces;
+the card is reader-only (never submits consent via the dashboard).
+
+**Controller fix during review:** closed a producer-consumer gap — `build.mjs`
+wrote only `manifest.json` to the corpus dir, but the reader route also
+projects `consent-state.json` (perRepo consent rows). Without the producer
+side, a built corpus showed all repos "not consented" in the dashboard (safe
+under-disclosure, never over-disclosure) but the seam was non-functional.
+Fixed by emitting `consent-state.json` alongside `manifest.json` at build time
+(every repo in a successful build has active cross-repo consent → all rows
+`consentedCrossRepo:true`), and extended `consent.test.ts` to assert the file
+exists + has the right schema + perRepo shape. The evidence doc's "consent
+state the CLI corpus-builder produced" claim (line 6) is now accurate.
+
+Evidence claims re-verified: all 21 file line counts match `wc -l`; npm test
+**4082 passed / 0 failed / 405 files** (corrected from implementer's stale
+3960); conformance 930 fixtures canonical; scope-check 83 committed files in
+ownership; npm pack ships `dist/config/repo-corpus.js` (1.1kB) + the dashboard
+bundle at `extensions/dashboard-client/dist/index.html`; no MUTATION of
+existing behavior; no rate limiters/security checks disabled.

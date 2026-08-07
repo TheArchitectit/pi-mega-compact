@@ -14,7 +14,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -172,6 +172,18 @@ describe("REPO-A consent resolution (real consent.mjs)", () => {
     let r1 = runNode(BUILD, ["--manifest", reqPath, "--corpus-out", out, "--audit", join(dir, "audit1.log")]);
     assert.equal(r1.code, 0, `full-grant build should succeed: ${r1.stdout}`);
     assert.ok(existsSync(join(out, "manifest.json")), "manifest written on full grant");
+    // The builder also emits the consent-state the reader route projects.
+    const csPath = join(out, "consent-state.json");
+    assert.ok(existsSync(csPath), "consent-state written on full grant");
+    const cs = JSON.parse(readFileSync(csPath, "utf8")) as {
+      schema: string;
+      perRepo: { repoPseudonym: string; consentedCrossRepo: boolean }[];
+    };
+    assert.equal(cs.schema, "repo-corpus-consent-state-v1");
+    assert.equal(cs.perRepo.length, 2);
+    const csByPseud = new Map(cs.perRepo.map((r) => [r.repoPseudonym, r]));
+    assert.equal(csByPseud.get(pA)!.consentedCrossRepo, true);
+    assert.equal(csByPseud.get(pB)!.consentedCrossRepo, true);
 
     // Revoke repo B → whole build refuses, zero bytes written.
     const revokeB = { ...grantB, consentId: "r-b", action: "revoke", sourceEventId: "r-b", effectiveSeq: 9000, ts: 9000 };

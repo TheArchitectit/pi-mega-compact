@@ -362,12 +362,26 @@ export function buildCorpus(request, { corpusOut, auditPath, effectiveSeq }) {
     effectiveSeq: effectiveSeqNum,
   });
 
-  // Phase 3 — write the corpus out dir (single artifact file).
+  // Phase 3 — write the corpus out dir. Two pseudonymous artifacts: the manifest
+  // (repos/overlaps/counts/digests) + the consent-state (perRepo consent rows the
+  // reader route projects). Both are content-free (pseudonyms + booleans only).
+  const consentState = {
+    schema: "repo-corpus-consent-state-v1",
+    perRepo: repoSlices.map((s) => ({
+      repoPseudonym: s.pseud,
+      consentedCrossRepo: true,
+    })),
+  };
   emptyCorpusDir(corpusOut);
   mkdirSync(corpusOut, { recursive: true });
   writeFileSync(
     join(corpusOut, "manifest.json"),
     `${JSON.stringify(manifest, null, 2)}\n`,
+    "utf8",
+  );
+  writeFileSync(
+    join(corpusOut, "consent-state.json"),
+    `${JSON.stringify(consentState, null, 2)}\n`,
     "utf8",
   );
   return { ok: true, code: "ok", manifest };
