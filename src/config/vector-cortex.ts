@@ -64,6 +64,8 @@ export { ENC_0F_ENABLED } from "./vector-cortex-enc0f.js";
 export { ENC_0G_ENABLED } from "./vector-cortex-enc0g.js";
 // COS-FP-A synthetic FP harness flag extracted to vector-cortex-cosfp.ts.
 export { COSINE_FP_BENCH_ENABLED } from "./vector-cortex-cosfp.js";
+// COS-FP-R real-corpus FP validation flag extracted to vector-cortex-cosfp-real.ts.
+export { COSINE_FP_REAL_ENABLED } from "./vector-cortex-cosfp-real.js";
 export { ENC_1A_ENABLED } from "./vector-cortex-enc1a.js";
 export {
   ENC_1B_ENABLED,
