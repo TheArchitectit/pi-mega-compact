@@ -1,11 +1,11 @@
 # COS-FP-A Evidence
 
-Status: implementer-complete
-Implementation commits/sub-sprint gates: single commit `feat(COS-FP-A): synthetic FP harness + L2 threshold calibration` on `feat/COS-FP-A` (base master); full gate run on the working tree (build / test / lint / regression / guardrails / log_failure / conformance / docs-check / dashboard-client tsc+build).
-Contract review: implementer self-review — every touched file read (flag sibling extract `vector-cortex-cosfp.ts` sprintFlag pattern + `vector-cortex.ts`/`config.ts` additive re-exports; two default-OFF content-type override fields in `config/dedup.ts` via a `envNumOrNull` helper, both `null` when unset, NOT wired into the live L2 decision; flag registered in `VECTOR_CORTEX_SETTINGS` as a visible boolDirect toggle, never in `EXCLUDED_SETTINGS`; synthetic corpus + deterministic bench under `scripts/cosine-fp/` with the PREVENT-PI-004 local-only header; reader-only memoized `GET /api/cosine-fp-report` with `CosineFpReportV1` (no `any`); additive client card polled via `useApi` + `getJson` mounted in `CortexSetup.tsx`; 5 conformance fixtures + schema + manifest rows; flag-agnostic acceptance aggregator), mutation scan clean, per-gate re-runs green. No forced deviation. `config.ts` stays at 218 lines — the COS-FP line was merged into an existing breaker line so no new line would cross the ≤218 soft budget. HG-1/HG-3/HG-4/HG-5 restated OPEN, never closed in-workstream (the reported per-content-type overrides remain default-OFF landing slots; adopting them is a separate, report-gated decision).
+Status: reviewer-accepted
+Implementation commits/sub-sprint gates: `feat(COS-FP-A): synthetic FP harness + L2 threshold calibration` (9a1a775) + `docs(COS-FP-A): fix Production ownership field for scope-check parsing` (368aea6) + `docs(COS-FP-A): record live Playwright validation of the cosine-FP card` (5922fb2) + `fix(COS-FP-A): revert unrelated BREAKER re-export formatting churn in src/config.ts` (096e943) + `fix(COS-FP-A): serve bundled cosine-fp report in shipped tarball` (a50bc6e) + `docs(COS-FP-A): declare bundled assets report in Production ownership` (b4ff21b) on `feat/COS-FP-A`; full gate run on the working tree (build / test / lint / regression / guardrails / log_failure / conformance / docs-check / dashboard-client tsc+build).
+Contract review: implementer self-review — every touched file read (flag sibling extract `vector-cortex-cosfp.ts` sprintFlag pattern + `vector-cortex.ts`/`config.ts` additive re-exports; two default-OFF content-type override fields in `config/dedup.ts` via a `envNumOrNull` helper, both `null` when unset, NOT wired into the live L2 decision; flag registered in `VECTOR_CORTEX_SETTINGS` as a visible boolDirect toggle, never in `EXCLUDED_SETTINGS`; synthetic corpus + deterministic bench under `scripts/cosine-fp/` with the PREVENT-PI-004 local-only header; reader-only memoized `GET /api/cosine-fp-report` with `CosineFpReportV1` (no `any`); additive client card polled via `useApi` + `getJson` mounted in `CortexSetup.tsx`; 5 conformance fixtures + schema + manifest rows; flag-agnostic acceptance aggregator), mutation scan clean, per-gate re-runs green. No forced deviation on the implementation; the controller code-quality review found one real defect before merge — the bench-run aggregate lived under `scripts/` which is not in package.json `files`, so the endpoint would have returned `awaiting_data` forever on installed packages. Controller fix: the aggregate is now also bundled under `extensions/dashboard-server/assets/` (which ships at the package root), dual-written by `bench.mjs` and resolved by `benchRunDir()` via co-located + repo-root `extensions/.../assets` candidates (mirroring `server.ts` clientDist) before the git-checkout `scripts/` walk. A 5th route test pins the installed-package resolution. `config.ts` ended at 219 lines (one additive re-export line) after the controller reverted an unrelated formatting collapse; still far under the src/ soft cap (the two L2 override fields went into `config/dedup.ts` at 179, under its 300 soft cap). HG-1/HG-3/HG-4/HG-5 restated OPEN, never closed in-workstream (the reported per-content-type overrides remain default-OFF landing slots; adopting them is a separate, report-gated decision).
 
 Changed production/tests/docs:
-`src/config/vector-cortex-cosfp.ts` (new), `src/config/vector-cortex.ts`, `src/config.ts`, `src/config/dedup.ts`, `src/vector-cortex/cosfp-acceptance.test.ts` (new), `scripts/cosine-fp/bench.mjs` (new), `scripts/cosine-fp/corpus.mjs` (new), `scripts/cosine-fp/gen-fixtures.mjs` (new), `scripts/cosine-fp/README.md` (new), `scripts/cosine-fp/bench-run/cosine-fp-report.json` (generated), `docs/vector-cortex/cosine-threshold-report.md` (generated, deliverable), `docs/vector-cortex/evidence/COS-FP-A.md` (this record), `conformance/vector-cortex/v2/cosine-fp/COS-FP-A-001..005.json` (new), `conformance/vector-cortex/v2/schemas/cosfp-fixture.schema.json` (new), `conformance/vector-cortex/v2/manifest.json`, `extensions/dashboard-server/routes-cosine-fp.ts` (new), `extensions/dashboard-server/routes-cosine-fp.test.ts` (new), `extensions/dashboard-server/api-contracts/cosine-fp.ts` (new), `extensions/dashboard-server/api-contracts/index.ts`, `extensions/dashboard-server/api-contracts/endpoints/registry-ext.ts`, `extensions/dashboard-server/api-contracts.test/endpoints-registry.test.ts`, `extensions/dashboard-server/routes.ts`, `extensions/dashboard-server/route-dispatch.ts`, `extensions/dashboard-server/routes-rag-settings-vector-cortex.ts`, `extensions/dashboard-server/routes-rag-settings-helpers.ts`, `extensions/dashboard-client/src/tabs/SetupTab/VectorCortexCosineFpCard.tsx` (new), `extensions/dashboard-client/src/tabs/SetupTab/CortexSetup.tsx`.
+`src/config/vector-cortex-cosfp.ts` (new), `src/config/vector-cortex.ts`, `src/config.ts`, `src/config/dedup.ts`, `src/vector-cortex/cosfp-acceptance.test.ts` (new), `scripts/cosine-fp/bench.mjs` (new), `scripts/cosine-fp/corpus.mjs` (new), `scripts/cosine-fp/gen-fixtures.mjs` (new), `scripts/cosine-fp/README.md` (new), `scripts/cosine-fp/bench-run/cosine-fp-report.json` (generated), `extensions/dashboard-server/assets/cosine-fp-report.json` (generated bundled copy — shipped in the npm tarball since `scripts/` is excluded from package.json `files`), `docs/vector-cortex/cosine-threshold-report.md` (generated, deliverable), `docs/vector-cortex/evidence/COS-FP-A.md` (this record), `conformance/vector-cortex/v2/cosine-fp/COS-FP-A-001..005.json` (new), `conformance/vector-cortex/v2/schemas/cosfp-fixture.schema.json` (new), `conformance/vector-cortex/v2/manifest.json`, `extensions/dashboard-server/routes-cosine-fp.ts` (new), `extensions/dashboard-server/routes-cosine-fp.test.ts` (new), `extensions/dashboard-server/api-contracts/cosine-fp.ts` (new), `extensions/dashboard-server/api-contracts/index.ts`, `extensions/dashboard-server/api-contracts/endpoints/registry-ext.ts`, `extensions/dashboard-server/api-contracts.test/endpoints-registry.test.ts`, `extensions/dashboard-server/routes.ts`, `extensions/dashboard-server/route-dispatch.ts`, `extensions/dashboard-server/routes-rag-settings-vector-cortex.ts`, `extensions/dashboard-server/routes-rag-settings-helpers.ts`, `extensions/dashboard-client/src/tabs/SetupTab/VectorCortexCosineFpCard.tsx` (new), `extensions/dashboard-client/src/tabs/SetupTab/CortexSetup.tsx`.
 
 Note: `scripts/vector-cortex-docs-check.mjs` is unchanged — `EXPECTED_SPRINTS` was already 65 (the 15 deferred sprints incl. COS-FP×2 are already counted), so no bump was made. The report doc sits under `docs/vector-cortex/` (not `sprints/`), leaving the sprint count untouched.
 
@@ -19,22 +19,23 @@ Commands and verbatim summaries: see Gate Results below.
 
 ## File sizes
 
-All touched files under their soft/hard limits; config.ts stays at 218 (its soft budget; the two L2 override fields went into config/dedup.ts at 179, under its 300 soft cap with ~20 lines headroom; the flag sibling extract keeps vector-cortex.ts at 97 under 300):
+All touched files under their soft/hard limits; config.ts is at 219 (under the src/ soft cap; the two L2 override fields went into config/dedup.ts at 179, under its 300 soft cap; the flag sibling extract keeps vector-cortex.ts at 97 under 300):
 
 - `src/config/vector-cortex-cosfp.ts` (34)
 - `src/config/vector-cortex.ts` (97)
-- `src/config.ts` (218)
+- `src/config.ts` (219)
 - `src/config/dedup.ts` (179)
 - `src/vector-cortex/cosfp-acceptance.test.ts` (269)
-- `scripts/cosine-fp/bench.mjs` (380)
+- `scripts/cosine-fp/bench.mjs` (395)
 - `scripts/cosine-fp/corpus.mjs` (150)
 - `scripts/cosine-fp/gen-fixtures.mjs` (235)
 - `scripts/cosine-fp/README.md` (63)
 - `scripts/cosine-fp/bench-run/cosine-fp-report.json` (1, canonical JSON)
+- `extensions/dashboard-server/assets/cosine-fp-report.json` (1, canonical JSON — bundled copy shipped in the npm tarball)
 - `docs/vector-cortex/cosine-threshold-report.md` (59)
 - `docs/vector-cortex/evidence/COS-FP-A.md` (this record)
-- `extensions/dashboard-server/routes-cosine-fp.ts` (250)
-- `extensions/dashboard-server/routes-cosine-fp.test.ts` (146)
+- `extensions/dashboard-server/routes-cosine-fp.ts` (288)
+- `extensions/dashboard-server/routes-cosine-fp.test.ts` (159)
 - `extensions/dashboard-server/api-contracts/cosine-fp.ts` (81)
 - `extensions/dashboard-server/api-contracts/index.ts` (359)
 - `extensions/dashboard-server/api-contracts/endpoints/registry-ext.ts` (183)
@@ -57,6 +58,8 @@ All touched files under their soft/hard limits; config.ts stays at 218 (its soft
 | `MEGACOMPACT_COSINE_FP_BENCH=0 node --test dist/vector-cortex/cosfp-acceptance.test.js` | PASS (9/9, flag-off parity) |
 | `node --test dist/vector-cortex/cosfp-acceptance.test.js` (flag-on) | PASS (9/9) |
 | `CLEAN=1 MEGACOMPACT_COSINE_FP_SEED=20260806 node scripts/cosine-fp/bench.mjs >/dev/null` → digest | PASS (determinism smoke, digest `2312c120…`) |
+| `node --test dist/extensions/dashboard-server/routes-cosine-fp.test.js` | PASS (5/5 — flag-on 200 full shape, missing→awaiting_data, flag-off 404, non-GET 405, bundled-asset resolution when the env seam is unset) |
+| `npm pack --dry-run | grep dashboard-server/assets/cosine-fp-report.json` | PASS (bundled copy ships in the tarball; `scripts/` bench-run aggregate intentionally excluded) |
 | `npm test` | PASS (see below) |
 | `npm run lint` | PASS (tsc + guardrails + semantic) |
 | `python3 scripts/regression_check.py --all` | PASS (0 hard violations in changed files) |
@@ -76,7 +79,7 @@ Acceptance aggregator (fixtures-driven, flag-agnostic):
 `node --test dist/vector-cortex/cosfp-acceptance.test.js` → `tests 9 · pass 9 · fail 0`
 `MEGACOMPACT_COSINE_FP_BENCH=0 node --test dist/vector-cortex/cosfp-acceptance.test.js` → `tests 9 · pass 9 · fail 0` (flag-off parity)
 
-The route is covered by its own server test `extensions/dashboard-server/routes-cosine-fp.test.ts` (4 tests: flag-on 200 full shape, missing→awaiting_data, flag-off 404, non-GET 405). The bench.mjs harness is exercised script-side (determinism smoke) + via the fixtures. Full `npm test` gate: PASS on the merged tree.
+The route is covered by its own server test `extensions/dashboard-server/routes-cosine-fp.test.ts` (5 tests: flag-on 200 full shape, missing→awaiting_data, flag-off 404, non-GET 405, and the installed-package bundled-asset resolution with the env seam unset). The bench.mjs harness is exercised script-side (determinism smoke) + via the fixtures. Full `npm test` gate: PASS on the merged tree (4011 passed / 400 files).
 
 ## Evaluation
 
@@ -107,4 +110,4 @@ Both states confirm the card digest/grid data against the live `CosineFpReportV1
 
 ## Reviewer attestation
 
-Name/date/status: pending — Claude (Opus controller) to review post-commit. Implementer self-review complete: every production/test file read, file limits respected, mutation scan clean, both flag states green, digest determinism repruned, live Playwright exercised both states. Scope-check (post-commit) + reviewer attestation pending controller.
+Claude (Opus controller) / 2026-08-07 / **reviewer-accepted**. Two-stage review complete: spec-compliance verified by direct controller read against `docs/vector-cortex/sprints/COS-FP-A-synthetic-fp-harness-and-threshold-calibration.md` (trigram-embed byte-identity with the shipped embedder, 5-fixture + schema + manifest registration, off-by-one boundary pin, flag-off byte-parity, EVAL-REDACT-002 redaction); code-quality review found one defect — the bench-run aggregate only lived under `scripts/` (unshipped) — fixed by the controller with the `extensions/dashboard-server/assets/` bundled copy + multi-candidate `benchRunDir()` + the installed-package route test. `src/config.ts` reverted to its pre-sprint formatting (`096e943`); the unrelated `BREAKER_*` re-export collapse was out of scope. Every file read, file limits respected, mutation scan clean, both flag states green, digest determinism repruned, live Playwright validated (see below). Scope-check + conformance + docs-check + full `npm test` (4011/400) green on the final tree.
