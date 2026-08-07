@@ -697,6 +697,109 @@ const demotionFixtures = [
   },
 ];
 
+// ── ENC-0f: encoder-budget fixtures ───────────────────────────────────────────
+// Real-asset qualification gate: p95 ≤ 40 ms @ 512/4 threads + marginal RSS ≤
+// 150 MiB (ENCODER_RSS_BUDGET_BYTES, baseline-subtracted) + determinism
+// (distinct_digests == 1) + opset-21 handshake. On pass the gate emits a
+// QualificationV1 record that flips runtime to qualified mode A; on any failure
+// the asset stays demoted to mode B. Flag-off = no gate, no record, byte-identical.
+const BUDG_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema#",
+  title: "ENC-0f encoder-budget fixture envelope",
+  type: "object",
+  description:
+    "Common structure every ENC-0f encoder-budget fixture validates against. `kind` names the qualification/latency/rss/determinism/flag-off branch exercised; `setup` carries the bench input + flag_off override for the gate harness; `expected_outcome` is ok or error; `expected_result` pins the fields the qualification gate must assert (verdict, reasons, p95Ms, rssMib, opset, record_written, events).",
+  required: ["id", "producer", "assertion", "kind", "setup", "expected_outcome", "expected_result"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: {
+      type: "string",
+      enum: [
+        "fully-passing",
+        "p95-breach",
+        "rss-breach",
+        "determinism-opset",
+        "determinism-fail",
+        "flag-off",
+      ],
+    },
+    setup: {
+      type: "object",
+      properties: {
+        p95_ms: { type: "number" },
+        rss_marginal_mib: { type: "number" },
+        deterministic: { type: "boolean" },
+        distinct_digests: { type: "integer" },
+        opset: { type: "integer" },
+        flag_off: { type: "boolean" },
+        gates_all: { type: "boolean" },
+        runs: { type: "integer" },
+      },
+    },
+    expected_outcome: { type: "string", enum: ["ok", "error"] },
+    expected_result: { type: "object" },
+  },
+};
+
+const budgetFixtures = [
+  {
+    id: "ENC-BUDG-001",
+    assertion:
+      "fully-passing bench: p95 25ms ≤ 40, marginal RSS 145 MiB ≤ 150, deterministic, opset 21 -> qualified mode A",
+    kind: "fully-passing",
+    setup: { p95_ms: 25, rss_marginal_mib: 145, deterministic: true, distinct_digests: 1, opset: 21, gates_all: true, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { verdict: "qualified", reasons: [], p95Ms: 25, rssMib: 145, opset: 21, record_written: true, events: ["vector_cortex_encoder_qualified"] },
+  },
+  {
+    id: "ENC-BUDG-002",
+    assertion:
+      "p95 75.4ms > 40 (vc2-model-prep measured WASM failure) -> failed (latency), mode B stays",
+    kind: "p95-breach",
+    setup: { p95_ms: 75.4, rss_marginal_mib: 120, deterministic: true, distinct_digests: 1, opset: 21, gates_all: true, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { verdict: "failed", reasons: ["latency"], p95Ms: 75.4, rssMib: 120, opset: 21, record_written: true, events: ["vector_cortex_encoder_qualification_failed"] },
+  },
+  {
+    id: "ENC-BUDG-003",
+    assertion:
+      "marginal RSS 241 MiB > 150 (vc2-model-prep measured) -> failed (rss), mode B stays",
+    kind: "rss-breach",
+    setup: { p95_ms: 22, rss_marginal_mib: 241, deterministic: true, distinct_digests: 1, opset: 21, gates_all: true, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { verdict: "failed", reasons: ["rss"], p95Ms: 22, rssMib: 241, opset: 21, record_written: true, events: ["vector_cortex_encoder_qualification_failed"] },
+  },
+  {
+    id: "ENC-BUDG-004",
+    assertion:
+      "determinism + opset: three-run identical digest (maxAbsDelta 0), opset 21 -> qualified",
+    kind: "determinism-opset",
+    setup: { p95_ms: 30, rss_marginal_mib: 100, deterministic: true, distinct_digests: 1, opset: 21, gates_all: true, runs: 3 },
+    expected_outcome: "ok",
+    expected_result: { verdict: "qualified", reasons: [], p95Ms: 30, rssMib: 100, opset: 21, maxAbsDelta: 0, record_written: true, events: ["vector_cortex_encoder_qualified"] },
+  },
+  {
+    id: "ENC-BUDG-005",
+    assertion:
+      "distinct_digests 2 -> failed (determinism), mode B stays",
+    kind: "determinism-fail",
+    setup: { p95_ms: 28, rss_marginal_mib: 90, deterministic: false, distinct_digests: 2, opset: 21, gates_all: true, runs: 3 },
+    expected_outcome: "ok",
+    expected_result: { verdict: "failed", reasons: ["determinism"], p95Ms: 28, rssMib: 90, opset: 21, record_written: true, events: ["vector_cortex_encoder_qualification_failed"] },
+  },
+  {
+    id: "ENC-BUDG-006",
+    assertion:
+      "flag-off -> no QualificationV1 written, no events, byte-identical predecessor",
+    kind: "flag-off",
+    setup: { flag_off: true, p95_ms: 25, rss_marginal_mib: 145, deterministic: true, distinct_digests: 1, opset: 21, gates_all: true, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { verdict: null, record_written: false, events: [] },
+  },
+];
+
 // ── Main (mirrors the VC9 setup generator coordinate with manifest.json) ─────
 export function writeAll() {
   mkdirSync(ENC_DIR, { recursive: true });
@@ -880,6 +983,41 @@ export function writeAll() {
     });
   }
 
+  // The ENC-BUDG schema row.
+  const budgSchemaBytes = Buffer.from(canonicalJson(BUDG_SCHEMA), "utf8");
+  const budgSchemaRel = "schemas/encoder-budget-fixture.schema.json";
+  writeFileSync(join(V2, budgSchemaRel), budgSchemaBytes);
+  rows.push({
+    id: "encoder-budget-fixture",
+    path: budgSchemaRel,
+    sha256: sha256Hex(budgSchemaBytes),
+    schema: budgSchemaRel,
+    algorithm: "json-schema",
+    producer,
+    expected: "schema",
+    license: "synthetic",
+  });
+
+  // The 6 ENC-BUDG fixture rows + on-disk files.
+  const budgDir = join(V2, "encoder-budget");
+  mkdirSync(budgDir, { recursive: true });
+  for (const fx of budgetFixtures) {
+    const obj = { ...fx, schema: budgSchemaRel, producer };
+    const bytes = Buffer.from(canonicalJson(obj), "utf8");
+    const rel = `encoder-budget/${fx.id}.json`;
+    writeFileSync(join(V2, rel), bytes);
+    rows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: budgSchemaRel,
+      algorithm: "encoder-budget",
+      producer,
+      expected: fx.expected_outcome,
+      license: "synthetic",
+    });
+  }
+
   // Merge into the existing manifest (id-dedupe so re-runs are idempotent) and
   // re-sort the whole fixtures array by id.
   const existing = manifest.fixtures.filter((r) => !rows.some((n) => n.id === r.id));
@@ -911,6 +1049,9 @@ export function writeAll() {
   setCsv("domain", "encoder-demotion");
   setCsv("schemaVersion", "encoder-demotion-fixture");
   setOwnerCsv("owner", "ENC-0e");
+  setCsv("domain", "encoder-budget");
+  setCsv("schemaVersion", "encoder-budget-fixture");
+  setOwnerCsv("owner", "ENC-0f");
 
   writeFileSync(manifestPath, Buffer.from(canonicalJson(manifest), "utf8"));
 
@@ -920,8 +1061,9 @@ export function writeAll() {
       trunkFixtures.length +
       headsFixtures.length +
       promotionFixtures.length +
-      demotionFixtures.length,
-    schemaCount: 5,
+      demotionFixtures.length +
+      budgetFixtures.length,
+    schemaCount: 6,
   };
 }
 

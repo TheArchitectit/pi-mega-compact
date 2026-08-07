@@ -7,7 +7,7 @@
  *   - p95 latency  <= 40 ms at 512 tokens on 4 threads (intraOpNumThreads: 4)
  *   - steady-state MARGINAL RSS over the process baseline <= 150 MiB, sampled
  *     post-GC at steady state across the ~1M-token corpus
- *   - opset-17 handshake — reads the committed manifest's declared opset
+ *   - opset-21 handshake — reads the committed manifest's declared opset
  *   - determinism — SHA-256 of the embedding output identical across 3 runs,
  *     maxAbsDelta = 0
  *
@@ -16,9 +16,11 @@
  * lazily import()ed and the harness DEGRADES GRACEFULLY with a structured
  * BenchResultV1 (gates.all:false + error note) when the package is absent — the
  * benches are on-demand developer tooling and ML5-C makes the WASM-vs-native
- * decision. A trained asset is pending ML5-C; the handshake reads whatever
- * `assets/vector-cortex/encoder-v1/manifest.json` (42-byte placeholder's
- * declared opset 17) exists at run time.
+ * decision. The handshake reads whatever
+ * `assets/vector-cortex/encoder-v1/manifest.json` (the ENC-0d-promoted real
+ * asset's declared opset 21) exists at run time; the additive `--asset <path>`
+ * flag points the bench at a real trained ONNX without removing the existing
+ * WASM/native selection.
  *
  * Privacy (EVAL-REDACT-002): emits aggregate measurements + a digest only —
  * never chunk/message content. Zero network (PREVENT-PI-004).
@@ -34,6 +36,7 @@
  * Usage:
  *   node --expose-gc scripts/ml5/bench-onnx-prod.mjs \
  *     [--corpus=<bench-corpus.jsonl>] [--tokens=512] [--threads=4] [--iters=200]
+ *     [--asset=<path>]
  */
 
 import { readFileSync, existsSync } from "node:fs";
@@ -48,11 +51,17 @@ const ROOT = join(scriptDir, "..", "..");
 const LATENCY_BUDGET_MS = 40;
 const RSS_BUDGET_MIB = 150;
 const DETERMINISM_RUNS = 3;
-const ENCODER_OPSET = 17;
+// ENC-0a re-baseline: the shipped trained asset (opset 21, BAAI/bge-small-en-v1.5)
+// — see src/vector-cortex/encoder/types.ts ENCODER_OPSET.
+const ENCODER_OPSET = 21;
 
 function arg(name, dflt) {
-  const idx = process.argv.findIndex((a) => a.startsWith(`--${name}=`));
-  return idx === -1 ? dflt : process.argv[idx].slice(name.length + 3);
+  const argv = process.argv;
+  for (let i = 2; i < argv.length; i++) {
+    if (argv[i] === `--${name}`) return argv[i + 1] ?? dflt;
+    if (argv[i].startsWith(`--${name}=`)) return argv[i].slice(name.length + 3);
+  }
+  return dflt;
 }
 
 function percentile(sorted, p) {
@@ -120,9 +129,10 @@ async function loadCorpusTokens() {
 }
 
 async function runQualification(ort, encoderNative, threads, tokens) {
-  // Model asset: the committed encoder-v1 placeholder path. With a real trained
-  // asset pending ML5-C, prefer whatever model.onnx exists at run time.
-  const modelPath = join(ROOT, "assets", "vector-cortex", "encoder-v1", "model.onnx");
+  // Model asset: the ENC-0d-promoted shipped model.onnx by default; an explicit
+  // `--asset <path>` overrides it (the ENC-0f gate qualifies the real file).
+  const defaultModel = join(ROOT, "assets", "vector-cortex", "encoder-v1", "model.onnx");
+  const modelPath = arg("asset", defaultModel);
 
   const rssBaseline = mib(process.memoryUsage().rss);
   const session = await ort.InferenceSession.create(modelPath, {

@@ -60,6 +60,7 @@ export { ENC_0B_ENABLED } from "./vector-cortex-enc0b.js";
 export { ENC_0C_ENABLED } from "./vector-cortex-enc0c.js";
 export { ENC_0D_ENABLED } from "./vector-cortex-enc0d.js";
 export { ENC_0E_ENABLED } from "./vector-cortex-enc0e.js";
+export { ENC_0F_ENABLED } from "./vector-cortex-enc0f.js";
 // Breaker constants (TRIAD_RESILIENCE.md §breaker) extracted to vector-cortex-breakers.ts.
 export {
   BREAKER_WINDOW_MS,

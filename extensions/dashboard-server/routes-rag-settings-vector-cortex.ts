@@ -282,5 +282,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"ENC-0e darwin-x64 explicit demotion: on an Intel Mac the runtime demotes to WASM (no native binary upstream); this surfaces a deterministic reason on the runtime-selection event and the Setup Cortex blockers card so an operator sees why mode A is unreachable. OFF = no demotion reason on the event and no Setup card row (the ML5-C WASM demotion itself remains the default, byte-identical predecessor).",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_ENC_0F",
+			"ENC-0f p95 + marginal-RSS Qualification Gate",
+			"ENC-0f p95 + marginal-RSS qualification gate (real trained asset → mode A): runs the ENC-0d-promoted trained asset through the bench under --expose-gc, asserts p95 ≤ 40 ms @ 512/4 threads, marginal RSS ≤ 150 MiB (baseline-subtracted), determinism, and opset-21; on pass emits QualificationV1 + flips runtime to qualified mode A, on failure asset stays demoted to mode B. OFF = no qualification gate runs, no QualificationV1 written, runtime keeps serving the ENC-0d survivor (byte-identical predecessor).",
+			true,
+		),
 	],
 };
