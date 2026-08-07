@@ -11,7 +11,7 @@ The sweep scope is `src/vector-cortex/` (esp. `encoder/`), `extensions/**`, and 
 
 Inputs: the shipped tree on `master` (v0.20.42), git tags (shipped-status authority), the DASH/ENC workstream specs, and the current comment text. Outputs: `docs/vector-cortex/placeholder-audit-report.md` (new) plus zero-or-more comment-only edits on files whose referenced sprint has shipped and which the audit classifies as (a).
 
-Production ownership (exact file list — scope-check is satisfied by this exact set):
+Production ownership: (exact file list — scope-check is satisfied by this exact set)
 - `docs/vector-cortex/placeholder-audit-report.md` (NEW — the single audit report)
 - Zero or more **comment-only** edits on the audit's (a)-classified files (expected **empty/near-empty** — see the disposition table below: every named placeholder claim routes to a DASH or ENC handoff). The audit report names the exact (a) files; if none, DOC edits only the report.
 - `docs/vector-cortex/sprints/DOC-0b-placeholder-scan-and-deferred-gate.md` (this spec)
