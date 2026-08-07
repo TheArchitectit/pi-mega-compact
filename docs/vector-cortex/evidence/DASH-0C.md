@@ -1,6 +1,6 @@
 # DASH-0C Evidence — Merge Cache+Metrics and combine the Admin surface
 
-Status: **implementer-complete** — the second execution sprint of the DASH plan.
+Status: **reviewer-accepted** — the second execution sprint of the DASH plan.
 Two delegate-shell merges: (1) the Cache surface absorbs MetricsTab as a
 `Performance` section via `CacheTab/MetricsCards.tsx` (label "Cache+Performance");
 (2) MaintenanceTab + ConfigTab combine under a new `tabs/AdminTab.tsx`
@@ -206,4 +206,8 @@ exceptions):
   the tree; must agree.
 - `node scripts/log_failure.py --list` — done (see Test outcomes); no new failures.
 
-Pending controller review.
+Reviewer-accepted by controller (2026-08-07). Gates are green. Spec amended
+to include tabs/index.ts + tabs/registry.ts in Production ownership (the
+spec's task 6 explicitly requires additive registry/barrel changes but
+omitted them from the file list — same pattern as DASH-0B). All 16 sprint
+files verified against the amended Production ownership field.
