@@ -146,6 +146,7 @@ Steps 1–8 repeat per sprint until all nine ship.
 | REPO-A | `feat/REPO-A` | `81707f3` | v0.20.57 |
 | DASH-0a | `feat/DASH-0a` | `4ad43b3` | v0.20.58 |
 | DASH-0b | `feat/DASH-0b` | `3051cba` | v0.20.59 |
+| DASH-0c | `feat/DASH-0c` | `697378a` | v0.20.60 |
 
 ## Exit evidence for the program
 
