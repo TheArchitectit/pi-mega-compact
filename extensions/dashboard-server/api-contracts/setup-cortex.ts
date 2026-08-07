@@ -63,6 +63,17 @@ export interface SetupCortexStatusResponse {
   readonly updatedAt: string;
   /** Shared status derivation (deriveVcStatus). */
   readonly status: VcStatus;
+  /**
+   * ENC-0e: darwin-x64 explicit demotion disposition. Present (additively) ONLY
+   * on an Intel-Mac host where the runtime demoted to WASM under
+   * `MEGACOMPACT_ENC_0E`; omitted on every non-darwin-x64 host and on flag-off,
+   * so the non-darwin payload stays byte-compatible. `reason` is the canonical
+   * ENC-0e demotion reason string.
+   */
+  readonly darwinX64?: {
+    readonly demoted: boolean;
+    readonly reason?: string;
+  };
 }
 
 // ─── VC9B action drivers ────────────────────────────────────────────────────

@@ -25,12 +25,39 @@ import type { EncoderPlatform } from "./types.js";
 /** Backend demotion disposition for a platform row. */
 export type BackendDemotion = "none" | "wasm" | "modeB";
 
-/** One platform row: the concrete runtime + install size + demotion disposition. */
+/**
+ * One platform row: the concrete runtime + install size + demotion disposition.
+ *
+ * `demotionReason` is the ENC-0e canonical reason string for a demoted platform
+ * (single source of truth — no literals scattered in routes or the event writer).
+ */
 export interface EncoderPlatformRow {
   readonly runtime: string;
   readonly installMiB: number;
   readonly demotion: BackendDemotion;
+  readonly demotionReason?: string;
 }
+
+/**
+ * The ENC-0e canonical darwin-x64 demotion reason (HG-4 / ENC-0e).
+ *
+ * macOS Intel has no native onnxruntime-node binary upstream (arm64-only; a
+ * darwin-x64 transform-class package ships only WASM), so the runtime demotes
+ * to mode-B WASM. This is the SINGLE canonical string — consumed by
+ * runtime-select.ts (the runtime-selection event) and the Setup Cortex blockers
+ * card. No string literal for this reason survives anywhere else.
+ */
+export const DARWIN_X64_DEMOTION_REASON =
+  "darwin-x64: no native binary upstream (arm64-only); mode-B WASM per HG-4";
+
+/**
+ * Deterministic sentinel used when a darwin-x64 platform-matrix row is missing
+ * the `demotionReason` string (unique-failure injection per the ENC-0e spec):
+ * the selection must still choose mode-B WASM, never throw, and never fabricate
+ * a native claim — the reason just falls back to this sentinel.
+ */
+export const DARWIN_X64_DEMOTION_REASON_SENTINEL =
+  "darwin-x64: demoted to WASM (reason unavailable in platform matrix)";
 
 /**
  * EncoderBackendDecisionV1 — the locked learned-encoder runtime-backend decision.

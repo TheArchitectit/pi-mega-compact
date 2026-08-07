@@ -276,5 +276,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"ENC-0d promotion gate over real trained assets: accepts a {color} real candidate manifest (the ENC-0c trained head weights + the ENC-0b trunk), digest-verifies every staged byte, and atomically swaps the shipped manifest to a green candidate with rollback-to-previous on qualification failure. OFF = accepts no candidate, swaps nothing, emits nothing, shipped manifest stays at the ENC-0c survivor.",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_ENC_0E",
+			"ENC-0e darwin-x64 Demotion Reason",
+			"ENC-0e darwin-x64 explicit demotion: on an Intel Mac the runtime demotes to WASM (no native binary upstream); this surfaces a deterministic reason on the runtime-selection event and the Setup Cortex blockers card so an operator sees why mode A is unreachable. OFF = no demotion reason on the event and no Setup card row (the ML5-C WASM demotion itself remains the default, byte-identical predecessor).",
+			true,
+		),
 	],
 };

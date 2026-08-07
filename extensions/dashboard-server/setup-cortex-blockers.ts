@@ -55,7 +55,8 @@ export const SETUP_CORTEX_BLOCKERS: readonly SetupCortexBlockerV1[] = [
     severity: "high",
     status: "open",
     resolution:
-      "Intel-Mac mode-A users demote to the WASM path (if HG-3 resolves that way) or mode B.",
+      "Intel-Mac mode-A users demote to the WASM path (if HG-3 resolves that way) or mode B. " +
+      "darwin-x64: no native binary upstream (arm64-only); mode-B WASM per HG-4.",
   },
   {
     id: "HG-5",

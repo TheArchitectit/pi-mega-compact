@@ -25,8 +25,9 @@ import { readFileSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RouteContext } from "./routes-core.js";
-import { VC9A_ENABLED } from "../../src/config.js";
+import { VC9A_ENABLED, ENC_0E_ENABLED } from "../../src/config.js";
 import { readEncoderManifest, verifyEncoderAsset, detectPlatform } from "../../src/vector-cortex/encoder/asset.js";
+import { selectRuntimeBackend } from "../../src/vector-cortex/encoder/runtime-select.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
 import { deriveVcStatus } from "./vc-status.js";
 import { SETUP_CORTEX_BLOCKERS } from "./setup-cortex-blockers.js";
@@ -147,6 +148,12 @@ export function handleSetupCortexStatus(
   const facts = enabled ? setupCortexFacts() : null;
   const blocks: BlockerV1[] = enabled ? [...SETUP_CORTEX_BLOCKERS] : [];
 
+  // ENC-0e: surface the darwin-x64 demotion reason additively (reader-only GET,
+  // no new route). The platform is read locally; the selection is pure. On a
+  // non-darwin-x64 host or flag-off this is null and the field is omitted —
+  // byte-compatible payload.
+  const darwinX64 = enabled ? darwinX64StatusBlock() : null;
+
   const body: SetupCortexStatusResponse = {
     enabled,
     flag: "MEGACOMPACT_VC9A",
@@ -161,7 +168,34 @@ export function handleSetupCortexStatus(
       : { assetDigestPrefix: null, mode: "C" },
     updatedAt: new Date().toISOString(),
     status: deriveVcStatus({ enabled, hasData: !!facts && facts.verdict !== "unavailable", structuralOnly: true }),
+    ...(darwinX64 !== null ? { darwinX64 } : {}),
   };
+
   sendJson(res, 200, body);
   return true;
+}
+
+/**
+ * ENC-0e helper: the darwin-x64 demotion block for the setup-cortex status
+ * response. Exported for direct unit assertion without a live HTTP round-trip —
+ * returns null on any non-darwin-x64 platform or flag-off (so the additive
+ * contract field is omitted from the payload, byte-compatible). The demotion
+ * reason flows from the pure `selectRuntimeBackend` selection, never a literal
+ * in the route.
+ */
+export function darwinX64StatusBlock(): {
+  demoted: boolean;
+  reason: string | undefined;
+} | null {
+  const platform = detectPlatform();
+  if (platform !== "darwin-x64" || !ENC_0E_ENABLED()) return null;
+  const chosen = selectRuntimeBackend({
+    platform,
+    benchRecord: null,
+    nativeOptIn: process.env.MEGACOMPACT_ENCODER_NATIVE === "1",
+  });
+  return {
+    demoted: chosen.backend === "wasm",
+    reason: chosen.demotionReason ?? undefined,
+  };
 }

@@ -42,6 +42,7 @@ export default function CortexSetup(): React.ReactElement {
 			<CortexBlockersCard
 				blockers={state.data?.blockers ?? []}
 				highlight={highlight}
+				darwinX64={state.data?.darwinX64}
 			/>
 			<CortexActionsCard
 				data={state.data}

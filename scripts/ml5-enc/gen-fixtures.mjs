@@ -592,6 +592,111 @@ const promotionFixtures = [
   },
 ];
 
+// ── ENC-0e: encoder-demotion fixtures ────────────────────────────────────────
+// darwin-x64 explicit demotion reason (HG-4): on an Intel Mac the runtime
+// demotes to mode-B WASM (no native binary upstream); ENC-0e surfaces a
+// deterministic demotionReason on the runtime-selection event and the Setup
+// Cortex blockers card. Fixtures pin the darwin-demoted / non-darwin-control /
+// flag-off-event / flag-off-card / card-renders-reason / contract-additive set.
+const DEMO_REASON = "darwin-x64: no native binary upstream (arm64-only); mode-B WASM per HG-4";
+const DEMO_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema#",
+  title: "ENC-0e encoder-demotion fixture envelope",
+  type: "object",
+  description:
+    "Common structure every ENC-0e encoder-demotion fixture validates against. `kind` names the demotion/control/flag-off/card/contract branch exercised; `setup` carries {platform, flag_off, card_payload, contract_additive}; `expected_outcome` is ok or error; `expected_result` pins the fields the sprint asserts (backend, demotionReason on the event, absence of demotionReason on the event/card, demoted, reason, card_demotion_row).",
+  required: ["id", "producer", "assertion", "kind", "setup", "expected_outcome", "expected_result"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: {
+      type: "string",
+      enum: [
+        "darwin-demoted",
+        "non-darwin-control",
+        "flag-off-event",
+        "flag-off-card",
+        "card-renders-reason",
+        "contract-additive",
+      ],
+    },
+    setup: {
+      type: "object",
+      properties: {
+        platform: { type: "string" },
+        flag_off: { type: "boolean" },
+        card_payload: { type: "boolean" },
+        contract_additive: { type: "boolean" },
+        runs: { type: "integer" },
+      },
+    },
+    expected_outcome: { type: "string", enum: ["ok", "error"] },
+    expected_result: { type: "object" },
+  },
+};
+
+const demotionFixtures = [
+  {
+    id: "ENC-DEMO-001",
+    assertion:
+      "platform darwin-x64 -> backend wasm + concrete demotionReason on the event",
+    kind: "darwin-demoted",
+    setup: { platform: "darwin-x64", runs: 1 },
+    expected_outcome: "ok",
+    expected_result: {
+      backend: "wasm",
+      demotionReason: DEMO_REASON,
+      event: "vector_cortex_runtime_selected",
+    },
+  },
+  {
+    id: "ENC-DEMO-002",
+    assertion:
+      "linux-x64/darwin-arm64 -> no demotionReason, existing WASM/native rule unchanged",
+    kind: "non-darwin-control",
+    setup: { platform: "linux-x64", runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { backend: "native", demotionReason: null },
+  },
+  {
+    id: "ENC-DEMO-003",
+    assertion:
+      "flag-off -> event carries no demotionReason (byte-identical predecessor)",
+    kind: "flag-off-event",
+    setup: { platform: "darwin-x64", flag_off: true, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { backend: "wasm", demotionReason: null },
+  },
+  {
+    id: "ENC-DEMO-004",
+    assertion:
+      "flag-off -> /api/setup-cortex-status has no darwinX64 reason; card unchanged",
+    kind: "flag-off-card",
+    setup: { platform: "darwin-x64", flag_off: true, card_payload: false, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { darwinX64_absent: true, card_demotion_row: false },
+  },
+  {
+    id: "ENC-DEMO-005",
+    assertion:
+      "status payload darwinX64:{demoted:true,reason} renders the diagnosed blocker row",
+    kind: "card-renders-reason",
+    setup: { platform: "darwin-x64", card_payload: true, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { demoted: true, card_demotion_row: true },
+  },
+  {
+    id: "ENC-DEMO-006",
+    assertion:
+      "contract field is additive — non-darwin hosts omit darwinX64, still validate",
+    kind: "contract-additive",
+    setup: { platform: "linux-x64", contract_additive: true, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { darwinX64_absent: true, contract_validates: true },
+  },
+];
+
 // ── Main (mirrors the VC9 setup generator coordinate with manifest.json) ─────
 export function writeAll() {
   mkdirSync(ENC_DIR, { recursive: true });
@@ -740,6 +845,41 @@ export function writeAll() {
     });
   }
 
+  // The ENC-DEMO schema row.
+  const demoSchemaBytes = Buffer.from(canonicalJson(DEMO_SCHEMA), "utf8");
+  const demoSchemaRel = "schemas/encoder-demotion-fixture.schema.json";
+  writeFileSync(join(V2, demoSchemaRel), demoSchemaBytes);
+  rows.push({
+    id: "encoder-demotion-fixture",
+    path: demoSchemaRel,
+    sha256: sha256Hex(demoSchemaBytes),
+    schema: demoSchemaRel,
+    algorithm: "json-schema",
+    producer,
+    expected: "schema",
+    license: "synthetic",
+  });
+
+  // The 6 ENC-DEMO fixture rows + on-disk files.
+  const demoDir = join(V2, "encoder-demotion");
+  mkdirSync(demoDir, { recursive: true });
+  for (const fx of demotionFixtures) {
+    const obj = { ...fx, schema: demoSchemaRel, producer };
+    const bytes = Buffer.from(canonicalJson(obj), "utf8");
+    const rel = `encoder-demotion/${fx.id}.json`;
+    writeFileSync(join(V2, rel), bytes);
+    rows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: demoSchemaRel,
+      algorithm: "encoder-demotion",
+      producer,
+      expected: fx.expected_outcome,
+      license: "synthetic",
+    });
+  }
+
   // Merge into the existing manifest (id-dedupe so re-runs are idempotent) and
   // re-sort the whole fixtures array by id.
   const existing = manifest.fixtures.filter((r) => !rows.some((n) => n.id === r.id));
@@ -768,12 +908,20 @@ export function writeAll() {
   setCsv("domain", "encoder-promotion");
   setCsv("schemaVersion", "encoder-promotion-fixture");
   setOwnerCsv("owner", "ENC-0d");
+  setCsv("domain", "encoder-demotion");
+  setCsv("schemaVersion", "encoder-demotion-fixture");
+  setOwnerCsv("owner", "ENC-0e");
 
   writeFileSync(manifestPath, Buffer.from(canonicalJson(manifest), "utf8"));
 
   return {
-    fixtureCount: fixtures.length + trunkFixtures.length + headsFixtures.length + promotionFixtures.length,
-    schemaCount: 4,
+    fixtureCount:
+      fixtures.length +
+      trunkFixtures.length +
+      headsFixtures.length +
+      promotionFixtures.length +
+      demotionFixtures.length,
+    schemaCount: 5,
   };
 }
 

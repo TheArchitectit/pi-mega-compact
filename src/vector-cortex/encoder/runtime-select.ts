@@ -24,7 +24,12 @@ import {
   type EncoderPlatform,
 } from "./types.js";
 import type { BenchResultV1 } from "./bench-export.js";
-import { ML5C_ENABLED } from "../../config/vector-cortex.js";
+import { ML5C_ENABLED, ENC_0E_ENABLED } from "../../config/vector-cortex.js";
+import type { EncoderPlatformRow } from "./decision.js";
+import {
+  DARWIN_X64_DEMOTION_REASON,
+  DARWIN_X64_DEMOTION_REASON_SENTINEL,
+} from "./decision.js";
 
 /** The chosen runtime backend name as it appears on the seller event. */
 export type RuntimeBackendChoice = "wasm" | "native" | "modeB";
@@ -56,6 +61,12 @@ export interface RuntimeSelectionResult {
   readonly platform: string;
   /** Short human-readable rationale for the choice (record on the event). */
   readonly rationale: string;
+  /**
+   * ENC-0e explicit demotion reason (non-null ONLY on a demoted platform under
+   * `MEGACOMPACT_ENC_0E`). Null on every other platform and on flag-off, so the
+   * flag-off selection is byte-identical to the ENC-0d predecessor.
+   */
+  readonly demotionReason: string | null;
 }
 
 /** The 80 MiB install budget in bytes (the HG-3 ceiling, unamended). */
@@ -99,6 +110,7 @@ export function selectRuntimeBackend(input: RuntimeSelectionInput): RuntimeSelec
       p95Ms: null,
       platform: input.platform,
       rationale: "flag-off: byte-identical mode-B trigram (no selection)",
+      demotionReason: null,
     };
   }
 
@@ -110,6 +122,12 @@ export function selectRuntimeBackend(input: RuntimeSelectionInput): RuntimeSelec
       p95Ms: null,
       platform: input.platform,
       rationale: "darwin-x64 demoted to WASM per HG-4 (never native on this platform)",
+      // ENC-0e: the reason is the single canonical string from the ENC-0a
+      // platform matrix (decision.ts). Under flag-off the reason is stripped
+      // (null), keeping the flag-off selection byte-identical to the ENC-0d
+      // predecessor. If the matrix row ever lacks the reason, fall back to a
+      // deterministic sentinel — never throw, never fabricate a native claim.
+      demotionReason: ENC_0E_ENABLED() ? darwinX64DemotionReason(undefined) : null,
     };
   }
 
@@ -127,6 +145,7 @@ export function selectRuntimeBackend(input: RuntimeSelectionInput): RuntimeSelec
       p95Ms: input.benchRecord?.p95Ms ?? null,
       platform: input.platform,
       rationale: `native opt-in (MEGACOMPACT_ENCODER_NATIVE=1); shipped ${shippedMib} MiB across 5 platforms → budget amended to ${shippedMib} MiB`,
+      demotionReason: null,
     };
   }
 
@@ -142,6 +161,7 @@ export function selectRuntimeBackend(input: RuntimeSelectionInput): RuntimeSelec
       p95Ms: input.benchRecord?.p95Ms ?? null,
       platform: input.platform,
       rationale: `no qualifying bench record — native fallback with budget amendment (${shippedMib} MiB shipped, HG-3 amendment recorded)`,
+      demotionReason: null,
     };
   }
 
@@ -154,6 +174,7 @@ export function selectRuntimeBackend(input: RuntimeSelectionInput): RuntimeSelec
       p95Ms: input.benchRecord.p95Ms,
       platform: input.platform,
       rationale: `WASM qualifies: p95 ${input.benchRecord.p95Ms}ms <= ${ENCODER_LATENCY_P95_MS}ms`,
+      demotionReason: null,
     };
   }
 
@@ -163,5 +184,29 @@ export function selectRuntimeBackend(input: RuntimeSelectionInput): RuntimeSelec
     p95Ms: input.benchRecord.p95Ms,
     platform: input.platform,
     rationale: `native required: p95 ${input.benchRecord.p95Ms}ms > ${ENCODER_LATENCY_P95_MS}ms on WASM`,
+    demotionReason: null,
   };
+}
+
+/**
+ * ENC-0e — resolve the canonical darwin-x64 demotion reason (pure).
+ *
+ * `provider` is the ENC-0a platform-matrix row for darwin-x64 if the caller has
+ * one (the resolver owns a concrete matrix; runtime-select normally passes
+ * none and falls back to the canonical constant). Resolution order:
+ *   1. the provider row's `demotionReason` (single canonical source);
+ *   2. the canonical DARWIN_X64_DEMOTION_REASON constant;
+ *   3. the deterministic SENTINEL when a row EXISTS but lacks the reason
+ *      (unique-failure injection per ENC-0e) — never a throw, never a
+ *      fabricated native claim.
+ * Kept pure so tests inject the platform seam with no real Mac.
+ */
+export function darwinX64DemotionReason(provider: EncoderPlatformRow | undefined): string {
+  if (provider) {
+    if (provider.demotionReason && provider.demotionReason.length > 0) {
+      return provider.demotionReason;
+    }
+    return DARWIN_X64_DEMOTION_REASON_SENTINEL;
+  }
+  return DARWIN_X64_DEMOTION_REASON;
 }

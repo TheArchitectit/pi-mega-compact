@@ -255,13 +255,13 @@ describe("ML5-C seller event shape (EVAL-REDACT-002 aggregate-only)", () => {
       benchRecord: null,
       nativeOptIn: true,
     });
-    const allowed = new Set(["backend", "budgetOk", "p95Ms", "platform", "rationale"]);
+    const allowed = new Set(["backend", "budgetOk", "p95Ms", "platform", "rationale", "demotionReason"]);
     const leaked = Object.keys(r).filter((k) => !allowed.has(k));
     assert.deepEqual(leaked, [], "result exposes only aggregate fields");
 
     // The emitted event pins these four fields (per the ML5-C spec §Vector Cortex
     // events emission).
-    const pinned = ["backend", "p95Ms", "budgetOk", "platform"] as const;
+    const pinned = ["backend", "p95Ms", "budgetOk", "platform", "demotionReason"] as const;
     for (const k of pinned) {
       assert.ok(Object.hasOwn(r, k), `event carries ${k}`);
     }

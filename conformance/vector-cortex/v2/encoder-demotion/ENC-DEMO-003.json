@@ -1,0 +1,1 @@
+{"assertion":"flag-off -> event carries no demotionReason (byte-identical predecessor)","expected_outcome":"ok","expected_result":{"backend":"wasm","demotionReason":null},"id":"ENC-DEMO-003","kind":"flag-off-event","producer":"ml5-enc/gen-fixtures.mjs","schema":"schemas/encoder-demotion-fixture.schema.json","setup":{"flag_off":true,"platform":"darwin-x64","runs":1}}
