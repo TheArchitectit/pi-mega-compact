@@ -181,13 +181,14 @@ stamped post-review.
 - [x] `cd extensions/dashboard-client && npm run typecheck && npm run build` →
       clean (no client source changed — typecheck-only gate)
 - [x] `git diff --check` → clean
-- [ ] `node scripts/vector-cortex-scope-check.mjs ENC-0g <COMMIT_SHA>` → stamped
-      at commit sha below
-- [ ] `node scripts/vector-cortex-evidence-check.mjs ENC-0g` → stamped at commit
-      sha below
+- [x] `node scripts/vector-cortex-scope-check.mjs ENC-0g 948e90d` → **all 26
+      committed files inside Production ownership** (ownership block amended in
+      ed3529a for the fix-up extraction + split sibling + qualification reader)
+- [x] `node scripts/vector-cortex-evidence-check.mjs ENC-0g` → **0 mismatches,
+      0 warnings** (flag suite count historical-vs-HEAD note only)
 
-Commit: `<stamped below>` — scope-check + evidence-check at that sha recorded
-in the commit message.
+Implementation commit: **948e90d**; ownership amendment commit: **ed3529a**;
+deployed as **v0.20.49** via `./scripts/deploy.sh 0.20.49` (recorded below).
 
 ### Controller review fixes (applied pre-acceptance)
 
