@@ -36,7 +36,7 @@ export interface OrtWasmModule {
       opts: { executionProviders: string[]; intraOpNumThreads: number },
     ): Promise<{
       run(
-        feeds: Record<string, Float32Array>,
+        feeds: Record<string, { data: BigInt64Array; dims: number[]; type: string }>,
         outputNames: string[],
       ): Promise<Record<string, { data: Float32Array }>>;
     }>;
@@ -51,8 +51,8 @@ export interface WasmSession {
   readonly semanticWidth: number;
   /** The per-asset token capacity cap (normative <= 512). */
   readonly maxTokens: number;
-  /** Run one inference over already shape-checked input tokens. */
-  infer(inputIds: Float32Array): Promise<Float32Array>;
+  /** Run one inference over shape-checked token IDs (int64 input_ids). */
+  infer(tokens: number[]): Promise<Float32Array>;
 }
 
 /** True if `onnxruntime-web` resolves on this host (loading is best-effort).
@@ -94,10 +94,23 @@ export async function createWasmSession(
       opset: ENCODER_OPSET,
       semanticWidth: ENCODER_SEMANTIC_WIDTH,
       maxTokens,
-      async infer(inputIds: Float32Array): Promise<Float32Array> {
-        const feeds = { input_ids: inputIds };
-        const results = await session.run(feeds, ["embedding"]);
-        const out = results["embedding"];
+      async infer(tokens: number[]): Promise<Float32Array> {
+        const n = tokens.length;
+        const inputIds = new BigInt64Array(n);
+        const attentionMask = new BigInt64Array(n);
+        const tokenTypeIds = new BigInt64Array(n);
+        for (let i = 0; i < n; i++) {
+          inputIds[i] = BigInt(tokens[i]!);
+          attentionMask[i] = 1n;
+          tokenTypeIds[i] = 0n;
+        }
+        const feeds = {
+          input_ids: { data: inputIds, dims: [1, n], type: "int64" },
+          attention_mask: { data: attentionMask, dims: [1, n], type: "int64" },
+          token_type_ids: { data: tokenTypeIds, dims: [1, n], type: "int64" },
+        };
+        const results = await session.run(feeds, ["sentence_embedding"]);
+        const out = results["sentence_embedding"];
         if (!out || !(out.data instanceof Float32Array)) {
           return new Float32Array(ENCODER_SEMANTIC_WIDTH);
         }

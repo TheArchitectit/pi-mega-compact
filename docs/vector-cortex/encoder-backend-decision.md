@@ -10,7 +10,7 @@ This is the durable decision record for the real learned encoder front-end choic
 
 Rationale — the shipped byte-count for the WASM path is the only one that fits the 80 MiB asset/install cap:
 
-- **transformers.js WASM shell** ≈ **9.5 MiB**; with the bge-small int8 ONNX asset ≈ **23 MiB** ⇒ **fits the 80 MiB budget** with no per-platform native split.
+- **transformers.js WASM shell** ≈ **15.4 MiB**; with the bge-small int8 ONNX asset ≈ **33.8 MiB** ⇒ **~49 MiB total, fits the 80 MiB budget** with no per-platform native split.
 - **onnxruntime-node native** ≈ **258 MiB** total install vs the 80 MiB cap ([MODEL_ASSET](MODEL_ASSET.md) §Qualification) ⇒ **FAIL** unless a per-platform `optionalDependencies` split (recorded as the native-amended fallback; see §6).
 
 ## 2. Decision record (encoder-backend-decision-v1)
@@ -24,23 +24,23 @@ The canonical JSON produced by the resolver (bench-qualified branch, ENC-DEC-001
   "budgetOk": true,
   "opset": 21,
   "platformMatrix": {
-    "linux-x64":    { "runtime": "onnxruntime-web", "installMiB": 33, "demotion": "none" },
-    "linux-arm64":  { "runtime": "onnxruntime-web", "installMiB": 33, "demotion": "none" },
-    "darwin-x64":   { "runtime": "onnxruntime-web", "installMiB": 33, "demotion": "wasm" },
-    "darwin-arm64": { "runtime": "onnxruntime-web", "installMiB": 33, "demotion": "none" },
-    "win32-x64":    { "runtime": "onnxruntime-web", "installMiB": 33, "demotion": "none" }
+    "linux-x64":    { "runtime": "onnxruntime-web", "installMiB": 49, "demotion": "none" },
+    "linux-arm64":  { "runtime": "onnxruntime-web", "installMiB": 49, "demotion": "none" },
+    "darwin-x64":   { "runtime": "onnxruntime-web", "installMiB": 49, "demotion": "wasm" },
+    "darwin-arm64": { "runtime": "onnxruntime-web", "installMiB": 49, "demotion": "none" },
+    "win32-x64":    { "runtime": "onnxruntime-web", "installMiB": 49, "demotion": "none" }
   },
   "license": { "spdx": "MIT", "redistribution": true },
   "artifacts": {
     "model": {
       "path": "model.onnx",
-      "bytes": 24117248,
-      "sha256": "01cbed8b0b301609542ff8c392c3e7d927b0d848ac53a768dfffd33bfe6005ff"
+      "bytes": 33793354,
+      "sha256": "913a643a697a53fe88476395682995d5647c14f51321d344e69abcc3c4e854a2"
     },
     "tokenizer": {
       "path": "tokenizer.json",
-      "bytes": 50000,
-      "sha256": "ada18e5c4dfcb5c369c05f4ffc10bc40298ce707e78f16135c6d33019f6db8cd"
+      "bytes": 535343,
+      "sha256": "ea77de727ef7fd34d177b83b4b1f1d3bb8884c95c90b6554a0adb0b3b65350a9"
     }
   },
   "p95Ms": null,
@@ -52,17 +52,17 @@ The canonical JSON produced by the resolver (bench-qualified branch, ENC-DEC-001
 
 Notes:
 - `p95Ms: null` and the `blockedBy` reason reflect the **degraded-baseline** run (ENC-DEC-006): the bge-small int8 asset was **not actually benchmarked under transformers.js on this implementation machine** — the p95 evidence gap ENC-0a was meant to close is recorded as a blocker, and the decision still resolves deterministically from the recorded `vc2-model-prep` table rather than blocking on an absent measurement.
-- `artifacts.model.bytes = 24117248` = 23 MiB int8; the digests are the pinned record the supply-chain guard enforces (§7).
+- `artifacts.model.bytes = 33793354` = ~32.2 MiB int8 merged single-file; the digests are the pinned record the supply-chain guard enforces (§7). **Artifacts corrected by ENC-0b** from placeholder values (24,117,248 / `01cbed8b...`) to real pinned digests (33,793,354 / `913a643a...`). `installMiB` updated from 33 to 49 (15.4 MiB WASM shell + 33.8 MiB model).
 
 ## 3. Per-platform install matrix
 
 | Platform | Runtime | installMiB | demotion | Notes |
 | --- | --- | --- | --- | --- |
-| `linux-x64` | onnxruntime-web | 33 | none | primary qualification target |
-| `linux-arm64` | onnxruntime-web | 33 | none | |
-| `darwin-x64` | onnxruntime-web | 33 | **wasm** | Intel Mac: **no native binary** upstream (arm64-only) ⇒ demotion per HG-4; **action ships in ENC-0e** |
-| `darwin-arm64` | onnxruntime-web | 33 | none | Apple Silicon native WASM path |
-| `win32-x64` | onnxruntime-web | 33 | none | |
+| `linux-x64` | onnxruntime-web | 49 | none | primary qualification target |
+| `linux-arm64` | onnxruntime-web | 49 | none | |
+| `darwin-x64` | onnxruntime-web | 49 | **wasm** | Intel Mac: **no native binary** upstream (arm64-only) ⇒ demotion per HG-4; **action ships in ENC-0e** |
+| `darwin-arm64` | onnxruntime-web | 49 | none | Apple Silicon native WASM path |
+| `win32-x64` | onnxruntime-web | 49 | none | |
 
 Every `EncoderPlatform` (`"linux-x64" | "linux-arm64" | "darwin-x64" | "darwin-arm64" | "win32-x64"`) resolves to a concrete runtime + installMiB + demotion triple. `darwin-x64` records `demotion: "wasm"` — ENC-0a records the row, ENC-0e ships the darwin-x64 demotion action.
 
@@ -75,19 +75,19 @@ Every `EncoderPlatform` (`"linux-x64" | "linux-arm64" | "darwin-x64" | "darwin-a
 
 ## 5. License verdict & pinning
 
-- **Model:** BAAI/bge-small-en-v1.5 — **MIT**, `redistribution: true`. 33.4M params, ~23 MiB int8 ONNX.
+- **Model:** BAAI/bge-small-en-v1.5 — **MIT**, `redistribution: true`. 33.4M params, ~32.2 MiB int8 ONNX (merged single-file).
 - **Runtime:** transformers.js v4.2.0 + onnxruntime-web (Apache-2.0 / MIT surface) as previously audited in vc2-model-prep.
-- **Pinned digests (authoritative for the supply-chain guard):**
-  - model `01cbed8b0b301609542ff8c392c3e7d927b0d848ac53a768dfffd33bfe6005ff`
-  - tokenizer `ada18e5c4dfcb5c369c05f4ffc10bc40298ce707e78f16135c6d33019f6db8cd`
+- **Pinned digests (authoritative for the supply-chain guard, corrected by ENC-0b):**
+  - model `913a643a697a53fe88476395682995d5647c14f51321d344e69abcc3c4e854a2`
+  - tokenizer `ea77de727ef7fd34d177b83b4b1f1d3bb8884c95c90b6554a0adb0b3b65350a9`
   - The resolver treats these as authoritative: any bench input whose sha256 **mismatches** is rejected (supply-chain guard, ENC-DEC-005).
 
 ## 6. Budget disposition
 
 | Path | installMiB | vs 80 MiB cap | budgetOk |
 | --- | --- | --- | --- |
-| transformers.js WASM shell | 9.5 | fits | ✅ |
-| + bge-small int8 ONNX | ≈ 23 total | fits | ✅ |
+| transformers.js WASM shell | 15.4 | fits | ✅ |
+| + bge-small int8 ONNX | ≈ 49 total | fits | ✅ |
 | onnxruntime-node native | 258 | **exceeds** | ❌ |
 
 **budgetOk: true** for the WASM path. The native amendment (Option N, `backend: "native"`, `budgetOk: false`) is recorded as ENC-DEC-002: if a future measurement showed p95 > 40 ms or bytes > 80 MiB, the resolver would select native with an explicit budget amendment rather than silently shipping the bloated option.

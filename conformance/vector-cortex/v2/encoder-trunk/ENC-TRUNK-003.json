@@ -1,0 +1,1 @@
+{"assertion":"digest mutation: one-byte model.onnx change triggers ENC_DIGEST_MISMATCH -> mode B (LCG fallback)","expected_outcome":"error","expected_result":{"mode":"B"},"id":"ENC-TRUNK-003","kind":"digest-mutation","producer":"ml5-enc/gen-fixtures.mjs","schema":"schemas/encoder-trunk-fixture.schema.json","setup":{"model_bytes_mutated":true}}

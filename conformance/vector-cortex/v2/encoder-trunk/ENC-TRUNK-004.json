@@ -1,0 +1,1 @@
+{"assertion":"opset mismatch: manifest opset != 21 triggers ENC_OPSET_INVALID -> mode B (LCG fallback)","expected_outcome":"error","expected_result":{"mode":"B","opset":17},"id":"ENC-TRUNK-004","kind":"opset-mismatch","producer":"ml5-enc/gen-fixtures.mjs","schema":"schemas/encoder-trunk-fixture.schema.json","setup":{"opset_override":17}}

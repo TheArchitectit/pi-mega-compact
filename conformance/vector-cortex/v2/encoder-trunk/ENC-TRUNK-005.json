@@ -1,0 +1,1 @@
+{"assertion":"determinism: identical embedding output across 3 runs (maxAbsDelta 0)","expected_outcome":"ok","expected_result":{"backend":"wasm","maxAbsDelta":0,"mode":"A"},"id":"ENC-TRUNK-005","kind":"determinism","producer":"ml5-enc/gen-fixtures.mjs","schema":"schemas/encoder-trunk-fixture.schema.json","setup":{"runs":3}}

@@ -86,6 +86,7 @@ import { selectRuntimeBackend } from "./runtime-select.js";
 import { emitRuntimeSelected } from "./runtime-emit.js";
 import { projectSemantic, seedFromBytes } from "./runtime-stub.js";
 import { STATE_DIR_DEFAULT } from "../../config.js";
+import { tryBuildOnnx, type OnnxDispatchState, NO_ONNX } from "./encoder-onnx-dispatch.js";
 
 /** Bytes a single encoder-owned projection buffer commits to the marginal
  *  footprint (Float32Array, 4 bytes per element). */
@@ -136,9 +137,16 @@ function normalizePlatform(p: EncoderPlatform | null): EncoderPlatform | "unsupp
   return p === null ? "unsupported" : p;
 }
 
+/** The concrete runtime returned by createEncoderRuntime — the base
+ *  EncoderRuntime interface plus the ENC-0b ONNX dispatch state. */
+export type EncoderRuntimeHandle = EncoderRuntime & {
+  /** ENC-0b: the ONNX dispatch state (null when ENC_0B is off or not built). */
+  readonly onnxState: OnnxDispatchState;
+};
+
 export function createEncoderRuntime(
   options: CreateEncoderRuntimeOptions = {},
-): EncoderRuntime {
+): EncoderRuntimeHandle {
   const reporter = options.reporter ?? createEncoderReporter();
   const host = mergeHost(options.host);
   const forced = options.forcedMode;
@@ -152,6 +160,7 @@ export function createEncoderRuntime(
   let verified = false;
   let maxTokens = ENCODER_MAX_TOKENS;
   let selfAllocated = 0;
+  let onnxState: OnnxDispatchState = NO_ONNX;
 
   const footprint = (): number => selfAllocated + host.allocatedBytes();
 
@@ -161,11 +170,13 @@ export function createEncoderRuntime(
     reporter.runtimeDemoted({ reason: code, mode: rmode, platform: plat()?.toString() ?? "unsupported" });
   };
 
-  const runtime: EncoderRuntime = {
+  const runtime: EncoderRuntimeHandle = {
     schema: "encoder-runtime-v1",
-    // Live getter so `mode` always reflects the latest load/demote outcome.
     get mode(): EncoderMode {
       return mode;
+    },
+    get onnxState(): OnnxDispatchState {
+      return onnxState;
     },
     load(assetDir: string): EncoderLoadResult {
       if (rolledBack) {
@@ -225,6 +236,14 @@ export function createEncoderRuntime(
         emitRuntimeSelected(host.stateDir ?? STATE_DIR_DEFAULT, chosen);
       }
 
+      // ENC-0b: fire-and-forget ONNX session build (async, non-blocking).
+      // The sync load() contract is preserved; the session build settles
+      // asynchronously and is consumed by verifyOnnxSession for tests +
+      // future async-heavy router integration (ENC-0c).
+      if (manifest) {
+        onnxState = tryBuildOnnx(assetDir, manifest, reporter, footprint());
+      }
+
       return {
         ok: true,
         mode: "A",
@@ -262,14 +281,13 @@ export function createEncoderRuntime(
         };
       }
       const start = host.nowMs();
-      // ML5-C: the LCG placeholder STILL drives infer by default (the trained
-      // asset behind runtime-wasm.ts/runtime-native.ts is not yet the
-      // source-of-truth on master; only the runtime-selection event seam was
-      // added this sprint).
+      // ENC-0b builds the real ONNX session during load() (fire-and-forget);
+      // infer() continues serving the LCG placeholder until the router is
+      // wired for async inference (ENC-0c). The session is verified by tests
+      // via the runtime's verifySession() method.
       const semantic = projectSemantic(seedFromBytes(embeddedBytes) ^ n, ENCODER_SEMANTIC_WIDTH);
       selfAllocated = SEMANTIC_BUFFER_BYTES;
-      const latencyMs = host.nowMs() - start;
-      return { ok: true, semantic, rssBytes: footprint(), latencyMs, shapeError: null };
+      return { ok: true, semantic, rssBytes: footprint(), latencyMs: host.nowMs() - start, shapeError: null };
     },
   };
   return runtime;

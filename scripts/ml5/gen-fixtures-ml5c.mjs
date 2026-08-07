@@ -77,9 +77,9 @@ const fixtures = [
     id: "ML5-RUNTIME-003",
     kind: "runtime-choice",
     flag: "MEGACOMPACT_ML5_C",
-    opset: 17,
+    opset: 21,
     handshake: "ok",
-    assertion: "opset 17 session handshake: the selected session's opset_import declares 17 and the handshake records OK",
+    assertion: "opset 21 session handshake: the selected session's opset_import declares 21 and the handshake records OK (ENC-0a re-baselined from 17 to 21)",
   },
   {
     id: "ML5-RUNTIME-004",

@@ -267,7 +267,6 @@ export const VC8A_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC8A");
  */
 export const VC8B_ENABLED = (): boolean => sprintFlag("MEGACOMPACT_VC8B");
 
-// VC8C extracted to vector-cortex-vc8c.ts; re-exported so existing imports keep resolving.
 export { VC8C_ENABLED } from "./vector-cortex-vc8c.js";
 export { VC9A_ENABLED } from "./vector-cortex-vc9a.js";
 export { VC9B_ENABLED } from "./vector-cortex-vc9b.js";
@@ -281,6 +280,7 @@ export { ML5D_ENABLED } from "./vector-cortex-ml5d.js";
 export { ML5E_ENABLED } from "./vector-cortex-ml5e.js";
 export { DEDUP_ATTR_ENABLED } from "./vector-cortex-dedup-attr.js";
 export { ENC_0A_ENABLED } from "./vector-cortex-enc0a.js";
+export { ENC_0B_ENABLED } from "./vector-cortex-enc0b.js";
 
 // Breaker constants (TRIAD_RESILIENCE.md §breaker) extracted to vector-cortex-breakers.ts.
 export {

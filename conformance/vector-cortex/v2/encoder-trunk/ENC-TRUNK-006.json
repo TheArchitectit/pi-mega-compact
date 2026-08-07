@@ -1,0 +1,1 @@
+{"assertion":"model-card version: modelVersion is \"encoder-v1\" (not \"-placeholder\")","expected_outcome":"ok","expected_result":{"modelVersion":"encoder-v1"},"id":"ENC-TRUNK-006","kind":"model-card-version","producer":"ml5-enc/gen-fixtures.mjs","schema":"schemas/encoder-trunk-fixture.schema.json","setup":{}}

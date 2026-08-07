@@ -258,5 +258,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"ENC-0a learned-encoder backend-decision lock: records the transformers.js/WASM vs onnxruntime-node choice, per-platform install matrix, opset-21 baseline and pinned digests in docs/vector-cortex/encoder-backend-decision.md. OFF = no decision record written / no resolver runs, mode B trigram byte-identical predecessor.",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_ENC_0B",
+			"ENC-0b Real Trunk Fetch & Gated Path",
+			"ENC-0b real ONNX trunk fetch + gated inference: replaces the LCG placeholder with the real bge-small int8 model through an ONNX InferenceSession (onnxruntime-web WASM). OFF = LCG placeholder serves byte-identical predecessor output, no ONNX session built.",
+			true,
+		),
 	],
 };

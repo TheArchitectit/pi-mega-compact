@@ -1,0 +1,1 @@
+{"assertion":"flag-off parity: MEGACOMPACT_ENC_0B=0 LCG output is byte-identical to pre-sprint mode-B serving","expected_outcome":"ok","expected_result":{"backend":"wasm","mode":"B","modelVersion":"encoder-v1"},"id":"ENC-TRUNK-002","kind":"flag-off-parity","producer":"ml5-enc/gen-fixtures.mjs","schema":"schemas/encoder-trunk-fixture.schema.json","setup":{"runs":1}}

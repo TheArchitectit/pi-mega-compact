@@ -122,3 +122,13 @@ export const ENC2C_IDS: readonly string[] = [
   "ENC-019",
   "ENC-020",
 ];
+
+/** The 6 registered ENC-0b conformance IDs (encoder-trunk fixtures). */
+export const ENC_0B_IDS: readonly string[] = [
+  "ENC-TRUNK-001",
+  "ENC-TRUNK-002",
+  "ENC-TRUNK-003",
+  "ENC-TRUNK-004",
+  "ENC-TRUNK-005",
+  "ENC-TRUNK-006",
+];

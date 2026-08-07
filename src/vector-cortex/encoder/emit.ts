@@ -17,16 +17,19 @@ import { VC2A_ENABLED } from "../../config/vector-cortex.js";
 
 export type EncoderEmit = (event: string, fields: Record<string, unknown>) => void;
 
-/** The two-event reporter surface consumed by the runtime seams. */
+/** The reporter surface consumed by the runtime + ONNX seams. */
 export interface EncoderReporter {
   readonly assetVerified: (fields: Record<string, unknown>) => void;
   readonly runtimeDemoted: (fields: Record<string, unknown>) => void;
+  /** ENC-0b: fires when a real ONNX InferenceSession is successfully created. */
+  readonly onnxSessionLoaded: (fields: Record<string, unknown>) => void;
 }
 
 /** A flag-gated no-op reporter (zero emissions, default when none injected). */
 export const NOOP_ENCODER_REPORTER: EncoderReporter = {
   assetVerified: () => {},
   runtimeDemoted: () => {},
+  onnxSessionLoaded: () => {},
 };
 
 /**
@@ -47,5 +50,6 @@ export function createEncoderReporter(emit?: EncoderEmit): EncoderReporter {
   return {
     assetVerified: (fields) => fire("vector_cortex_encoder_asset_verified", fields),
     runtimeDemoted: (fields) => fire("vector_cortex_encoder_runtime_demoted", fields),
+    onnxSessionLoaded: (fields) => fire("vector_cortex_encoder_onnx_loaded", fields),
   };
 }

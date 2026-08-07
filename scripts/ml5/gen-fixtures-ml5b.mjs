@@ -19,7 +19,7 @@
  *   - 001: p95 latency pass/fail at 512 tokens on 4 threads (<= 40 ms).
  *   - 002: steady-state marginal RSS pass/fail over the process baseline
  *     (<= 150 MiB, baseline-subtracted).
- *   - 003: opset-17 handshake assertion (opset_import declares 17, ok).
+ *   - 003: opset-21 handshake assertion (opset_import declares 21, ok; ENC-0a re-baselined).
  *   - 004: determinism + end-to-end integration pin (3 runs, 1 distinct digest,
  *     4 events written, corpus->bench->events->BenchResultV1).
  *
@@ -89,11 +89,11 @@ const fixtures = [
   },
   {
     id: "ML5-BENCH-003",
-    assertion: "opset-17 handshake assertion (the loaded model's opset_import declares 17, handshake ok)",
+    assertion: "opset-21 handshake assertion (the loaded model's opset_import declares 21, handshake ok; ENC-0a re-baselined from 17)",
     kind: "bench-heads",
     flag: "MEGACOMPACT_ML5_B",
     gate: "opset",
-    opset: 17,
+    opset: 21,
     handshake: "ok",
   },
   {

@@ -288,6 +288,7 @@ export {
   EVALUATION_THRESHOLDS,
   ENC_QUALIFICATION_FAIL,
   ENC2C_IDS,
+  ENC_0B_IDS,
   type EncoderHeldOutMetrics,
   type CalibrationV1,
   type QualifiedEncoderV1,

@@ -65,11 +65,13 @@ export const named = [
     { scenario: "one-failed-causal-head" },
     { ok: false, code: "ENC_QUALIFICATION_THRESHOLD_FAILED", mode: "B" },
   ),
-  // ENC-PACK-003 — clean package listing contains the manifest and ONNX under 35MiB.
+  // ENC-PACK-003 — clean package listing contains the manifest and ONNX under
+  // 80 MiB (real bge-small-en-v1.5 opset-21 model staged by ENC-0b: ~34 MB
+  // model + ~0.5 MB tokenizer + ~15 MB WASM runtime + existing sources).
   encFixture(
     "ENC-PACK-003",
-    "clean package listing contains the qualification manifest and ONNX under 35MiB",
+    "clean package listing contains the qualification manifest and ONNX under 80MiB (real bge-small-en-v1.5 opset-21 model staged)",
     { scenario: "package-listing" },
-    { ok: true, budgetBytes: 35 * 1024 * 1024 },
+    { ok: true, budgetBytes: 80 * 1024 * 1024 },
   ),
 ];

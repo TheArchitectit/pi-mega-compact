@@ -220,6 +220,130 @@ const ENC_SCHEMA = {
   },
 };
 
+// ── ENC-0b: encoder-trunk fixtures ───────────────────────────────────────────
+// Real bge-small-en-v1.5 ONNX digests (pinned in assets/.../manifest.json)
+const TRUNK_MODEL_SHA = "913a643a697a53fe88476395682995d5647c14f51321d344e69abcc3c4e854a2";
+const TRUNK_TOKENIZER_SHA = "ea77de727ef7fd34d177b83b4b1f1d3bb8884c95c90b6554a0adb0b3b65350a9";
+const TRUNK_MODEL_BYTES = 33793354;
+const TRUNK_TOKENIZER_BYTES = 535343;
+
+const TRUNK_SCHEMA = {
+  $schema: "https://json-schema.org/draft-07/schema#",
+  title: "ENC-0b encoder-trunk fixture envelope",
+  type: "object",
+  description:
+    "Common structure every ENC-0b encoder-trunk fixture validates against. `kind` names the inference/mutation branch exercised; `setup` carries asset overrides for the test harness; `expected_outcome` is ok or error; `expected_result` pins the fields the runtime must assert (digest, mode, opset, version, delta).",
+  required: [
+    "id",
+    "producer",
+    "assertion",
+    "kind",
+    "setup",
+    "expected_outcome",
+    "expected_result",
+  ],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: {
+      type: "string",
+      enum: [
+        "onnx-session",
+        "flag-off-parity",
+        "digest-mutation",
+        "opset-mismatch",
+        "determinism",
+        "model-card-version",
+      ],
+    },
+    setup: {
+      type: "object",
+      properties: {
+        manifest_override: { type: "object" },
+        model_bytes_mutated: { type: "boolean" },
+        opset_override: { type: "integer" },
+        runs: { type: "integer" },
+      },
+    },
+    expected_outcome: { type: "string", enum: ["ok", "error"] },
+    expected_result: {
+      type: "object",
+      properties: {
+        backend: { type: "string" },
+        maxAbsDelta: { type: "number" },
+        mode: { type: "string" },
+        modelVersion: { type: "string" },
+        opset: { type: "integer" },
+        sha256: { type: "string" },
+      },
+    },
+  },
+};
+
+const trunkFixtures = [
+  {
+    id: "ENC-TRUNK-001",
+    assertion:
+      "real ONNX session builds with the staged asset: digest matches, opset 21, model-card-v1 present",
+    kind: "onnx-session",
+    setup: {},
+    expected_outcome: "ok",
+    expected_result: {
+      backend: "wasm",
+      mode: "A",
+      modelVersion: "encoder-v1",
+      opset: 21,
+      sha256: TRUNK_MODEL_SHA,
+    },
+  },
+  {
+    id: "ENC-TRUNK-002",
+    assertion:
+      "flag-off parity: MEGACOMPACT_ENC_0B=0 LCG output is byte-identical to pre-sprint mode-B serving",
+    kind: "flag-off-parity",
+    setup: { runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { backend: "wasm", mode: "B", modelVersion: "encoder-v1" },
+  },
+  {
+    id: "ENC-TRUNK-003",
+    assertion:
+      "digest mutation: one-byte model.onnx change triggers ENC_DIGEST_MISMATCH -> mode B (LCG fallback)",
+    kind: "digest-mutation",
+    setup: { model_bytes_mutated: true },
+    expected_outcome: "error",
+    expected_result: { mode: "B" },
+  },
+  {
+    id: "ENC-TRUNK-004",
+    assertion:
+      "opset mismatch: manifest opset != 21 triggers ENC_OPSET_INVALID -> mode B (LCG fallback)",
+    kind: "opset-mismatch",
+    setup: { opset_override: 17 },
+    expected_outcome: "error",
+    expected_result: { mode: "B", opset: 17 },
+  },
+  {
+    id: "ENC-TRUNK-005",
+    assertion:
+      "determinism: identical embedding output across 3 runs (maxAbsDelta 0)",
+    kind: "determinism",
+    setup: { runs: 3 },
+    expected_outcome: "ok",
+    expected_result: { backend: "wasm", maxAbsDelta: 0, mode: "A" },
+  },
+  {
+    id: "ENC-TRUNK-006",
+    assertion:
+      'model-card version: modelVersion is "encoder-v1" (not "-placeholder")',
+    kind: "model-card-version",
+    setup: {},
+    expected_outcome: "ok",
+    expected_result: { modelVersion: "encoder-v1" },
+  },
+];
+
 // ── Main (mirrors the VC9 setup generator coordinate with manifest.json) ─────
 export function writeAll() {
   mkdirSync(ENC_DIR, { recursive: true });
@@ -230,7 +354,7 @@ export function writeAll() {
 
   const rows = [];
 
-  // The schema row.
+  // The ENC-DEC schema row.
   const schemaBytes = Buffer.from(canonicalJson(ENC_SCHEMA), "utf8");
   const schemaRel = "schemas/encoder-decision-fixture.schema.json";
   writeFileSync(join(V2, schemaRel), schemaBytes);
@@ -245,7 +369,7 @@ export function writeAll() {
     license: "synthetic",
   });
 
-  // The 6 fixture rows + on-disk files.
+  // The 6 ENC-DEC fixture rows + on-disk files.
   for (const fx of fixtures) {
     const obj = { ...fx, schema: schemaRel, producer };
     const bytes = Buffer.from(canonicalJson(obj), "utf8");
@@ -257,6 +381,41 @@ export function writeAll() {
       sha256: sha256Hex(bytes),
       schema: schemaRel,
       algorithm: "encoder-decision",
+      producer,
+      expected: fx.expected_outcome,
+      license: "synthetic",
+    });
+  }
+
+  // The ENC-TRUNK schema row.
+  const trunkSchemaBytes = Buffer.from(canonicalJson(TRUNK_SCHEMA), "utf8");
+  const trunkSchemaRel = "schemas/encoder-trunk-fixture.schema.json";
+  writeFileSync(join(V2, trunkSchemaRel), trunkSchemaBytes);
+  rows.push({
+    id: "encoder-trunk-fixture",
+    path: trunkSchemaRel,
+    sha256: sha256Hex(trunkSchemaBytes),
+    schema: trunkSchemaRel,
+    algorithm: "json-schema",
+    producer,
+    expected: "schema",
+    license: "synthetic",
+  });
+
+  // The 6 ENC-TRUNK fixture rows + on-disk files.
+  const trunkDir = join(V2, "encoder-trunk");
+  mkdirSync(trunkDir, { recursive: true });
+  for (const fx of trunkFixtures) {
+    const obj = { ...fx, schema: trunkSchemaRel, producer };
+    const bytes = Buffer.from(canonicalJson(obj), "utf8");
+    const rel = `encoder-trunk/${fx.id}.json`;
+    writeFileSync(join(V2, rel), bytes);
+    rows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: trunkSchemaRel,
+      algorithm: "encoder-trunk",
       producer,
       expected: fx.expected_outcome,
       license: "synthetic",
@@ -282,10 +441,13 @@ export function writeAll() {
   setCsv("domain", "encoder-decision");
   setCsv("schemaVersion", "encoder-decision-fixture");
   setOwnerCsv("owner", "ENC-0a");
+  setCsv("domain", "encoder-trunk");
+  setCsv("schemaVersion", "encoder-trunk-fixture");
+  setOwnerCsv("owner", "ENC-0b");
 
   writeFileSync(manifestPath, Buffer.from(canonicalJson(manifest), "utf8"));
 
-  return { fixtureCount: fixtures.length, schemaCount: 1 };
+  return { fixtureCount: fixtures.length + trunkFixtures.length, schemaCount: 2 };
 }
 
 if (process.argv[1] && process.argv[1].endsWith("gen-fixtures.mjs")) {
