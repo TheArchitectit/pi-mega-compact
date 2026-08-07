@@ -42,13 +42,13 @@ Sprint acceptance aggregator (must exist after implementation): `src/vector-cort
 
 ```bash
 npm run build
-node --test dist/vector-cortex/enc0d-acceptance.test.js
+node --test dist/src/vector-cortex/enc0d-acceptance.test.js
 ```
 
 Expected assertions: all `ENC-PROMO-001..006` rows registered with algorithm `encoder-promotion` against the `encoder-promotion` schema, expected `ok`; aggregator flag-agnostic. Gate unit assertions: swap is temp-write-then-rename (never in-place partial); the append-only manifest grows on promote, never overwrites; the authority stack keeps the prior digest; every event is a JSON line `{ts,event}` on the monitoring events.log. Unique failure injection: a candidate that is green on heads but has a one-byte-truncated `model.onnx` forced `sha256` mismatch — the gate must refuse the swap AND leave the prior manifest byte-identical (a mutated shipped manifest is a gate failure, not a silent partial swap). Exact flag-off comparison command:
 
 ```bash
-MEGACOMPACT_ENC_0D=0 node --test dist/vector-cortex/enc0d-acceptance.test.js
+MEGACOMPACT_ENC_0D=0 node --test dist/src/vector-cortex/enc0d-acceptance.test.js
 ```
 
 the aggregator is flag-agnostic. Acceptance: no payload leakage — promotion events carry digests/colors/verdicts only, never message content (EVAL-REDACT-002); zero network (the gate reads/writes local files only, PREVENT-PI-004). Apply [EVALUATION](../EVALUATION.md) annotation/power rules; hard causal/tool/anchor/exact failures are zero-tolerance.
@@ -63,8 +63,8 @@ Run exact project gates:
 
 ```bash
 npm run build
-node --test dist/vector-cortex/enc0d-acceptance.test.js
-MEGACOMPACT_ENC_0D=0 node --test dist/vector-cortex/enc0d-acceptance.test.js
+node --test dist/src/vector-cortex/enc0d-acceptance.test.js
+MEGACOMPACT_ENC_0D=0 node --test dist/src/vector-cortex/enc0d-acceptance.test.js
 npm test
 npm run lint
 python3 scripts/regression_check.py --all

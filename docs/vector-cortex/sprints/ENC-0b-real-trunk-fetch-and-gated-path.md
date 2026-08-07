@@ -44,13 +44,13 @@ Sprint acceptance aggregator (must exist after implementation): `src/vector-cort
 
 ```bash
 npm run build
-node --test dist/vector-cortex/enc0b-acceptance.test.js
+node --test dist/src/vector-cortex/enc0b-acceptance.test.js
 ```
 
 Expected assertions: all `ENC-TRUNK-001..006` rows registered with algorithm `encoder-trunk` against the `encoder-trunk` schema, expected `ok`; aggregator flag-agnostic. Runtime unit assertions: onnx.ts never throws and returns a typed failure code on absent asset / mutation / opset mismatch / RSS breach; dispatch under flag-on routes to the real session, flag-off to the LCG stub; `vector_cortex_encoder_onnx_loaded` emitted only on real-session success. Unique failure injection: a one-byte mutation of the staged `model.onnx` forces `ENC_DIGEST_MISMATCH`, the runtime demotes to mode B, and the load path never retries a fetch (a test-level network probe asserts zero network attempted). Exact flag-off comparison command:
 
 ```bash
-MEGACOMPACT_ENC_0B=0 node --test dist/vector-cortex/enc0b-acceptance.test.js
+MEGACOMPACT_ENC_0B=0 node --test dist/src/vector-cortex/enc0b-acceptance.test.js
 ```
 
 the aggregator is flag-agnostic and its predecessor golden bytes must match exactly. Acceptance: no payload leakage (the runtime returns embedding vectors + events carry digest prefixes only, never message content — EVAL-REDACT-002); zero network at runtime (PREVENT-PI-004 — the fetch script is release-time developer tooling, never imported by `src/`); determinism within `1e-6` over repeats. Apply [EVALUATION](../EVALUATION.md) annotation/power rules; hard causal/tool/anchor/exact failures are zero-tolerance.
@@ -65,8 +65,8 @@ Run exact project gates:
 
 ```bash
 npm run build
-node --test dist/vector-cortex/enc0b-acceptance.test.js
-MEGACOMPACT_ENC_0B=0 node --test dist/vector-cortex/enc0b-acceptance.test.js
+node --test dist/src/vector-cortex/enc0b-acceptance.test.js
+MEGACOMPACT_ENC_0B=0 node --test dist/src/vector-cortex/enc0b-acceptance.test.js
 npm test
 npm run lint
 python3 scripts/regression_check.py --all

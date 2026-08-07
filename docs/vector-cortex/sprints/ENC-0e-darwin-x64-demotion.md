@@ -44,13 +44,13 @@ Sprint acceptance aggregator (must exist after implementation): `src/vector-cort
 
 ```bash
 npm run build
-node --test dist/vector-cortex/enc0e-acceptance.test.js
+node --test dist/src/vector-cortex/enc0e-acceptance.test.js
 ```
 
 Expected assertions: all `ENC-DEMO-001..006` registered with algorithm `encoder-demotion` against the `encoder-demotion` schema, expected `ok`; aggregator flag-agnostic. Runtime-select unit assertions (platform-injected, no real Mac): darwin-x64 yields `backend:"wasm"` + reason; the function stays pure (same inputs → same output across calls); flag-off strips the reason. Route/contract assertions: `GET /api/setup-cortex-status` carries `darwinX64` only on the demoted platform; READER-ONLY GET capability; non-GET → 405; contract field validates with no `any`. Client: the `CortexBlockersCard` renders the reason; `cd extensions/dashboard-client && npm run typecheck && npm run build` passes. Unique failure injection: an injected `platform:"darwin-x64"` with an ENC-0a matrix row missing the `demotionReason` string → the selection must still choose mode-B WASM but the reason falls back to a deterministic sentinel (never a throw, never a fabricated native claim). Exact flag-off comparison command:
 
 ```bash
-MEGACOMPACT_ENC_0E=0 node --test dist/vector-cortex/enc0e-acceptance.test.js
+MEGACOMPACT_ENC_0E=0 node --test dist/src/vector-cortex/enc0e-acceptance.test.js
 ```
 
 the aggregator is flag-agnostic. Acceptance: no payload leakage — the event + card carry platform/reason/backend only, never message content (EVAL-REDACT-002); zero network (local selection + loopback dashboard, PREVENT-PI-004). Apply [EVALUATION](../EVALUATION.md) annotation/power rules; hard causal/tool/anchor/exact failures are zero-tolerance.
@@ -65,8 +65,8 @@ Run exact project gates:
 
 ```bash
 npm run build
-node --test dist/vector-cortex/enc0e-acceptance.test.js
-MEGACOMPACT_ENC_0E=0 node --test dist/vector-cortex/enc0e-acceptance.test.js
+node --test dist/src/vector-cortex/enc0e-acceptance.test.js
+MEGACOMPACT_ENC_0E=0 node --test dist/src/vector-cortex/enc0e-acceptance.test.js
 npm test
 npm run lint
 python3 scripts/regression_check.py --all

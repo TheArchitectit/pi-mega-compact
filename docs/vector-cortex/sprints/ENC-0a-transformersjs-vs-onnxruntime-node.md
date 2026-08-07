@@ -47,13 +47,13 @@ Sprint acceptance aggregator (must exist after implementation): `src/vector-cort
 
 ```bash
 npm run build
-node --test dist/vector-cortex/enc0a-acceptance.test.js
+node --test dist/src/vector-cortex/enc0a-acceptance.test.js
 ```
 
 Expected assertions: all `ENC-DEC-001..006` rows registered with algorithm `encoder-decision` against the `encoder-decision` schema, expected `ok`; aggregator flag-agnostic (passes with `MEGACOMPACT_ENC_0A` on and off). Resolver unit assertions: decision rule branches per the pre-registered rule; matrix completeness (every `EncoderPlatform` resolves, incl. darwin-x64 → `demotion:"wasm"`); opset exactly 21; artifact digests match the pinned record; absorb-6 flag-off writes no decision file. Exact flag-off comparison command:
 
 ```bash
-MEGACOMPACT_ENC_0A=0 node --test dist/vector-cortex/enc0a-acceptance.test.js
+MEGACOMPACT_ENC_0A=0 node --test dist/src/vector-cortex/enc0a-acceptance.test.js
 ```
 
 the aggregator is flag-agnostic. Acceptance: no payload leakage — the decision carries digests/sizes/license/verdicts only, never message content (EVAL-REDACT-002); the resolver and the bench are zero-network local computation (PREVENT-PI-004 green). Apply [EVALUATION](../EVALUATION.md) annotation/power rules; hard causal/tool/anchor/exact failures are zero-tolerance.
@@ -68,8 +68,8 @@ Run exact project gates:
 
 ```bash
 npm run build
-node --test dist/vector-cortex/enc0a-acceptance.test.js
-MEGACOMPACT_ENC_0A=0 node --test dist/vector-cortex/enc0a-acceptance.test.js
+node --test dist/src/vector-cortex/enc0a-acceptance.test.js
+MEGACOMPACT_ENC_0A=0 node --test dist/src/vector-cortex/enc0a-acceptance.test.js
 npm test
 npm run lint
 python3 scripts/regression_check.py --all

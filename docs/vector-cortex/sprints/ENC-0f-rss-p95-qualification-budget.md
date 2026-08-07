@@ -39,13 +39,13 @@ Sprint acceptance aggregator (must exist after implementation): `src/vector-cort
 
 ```bash
 npm run build
-node --test dist/vector-cortex/enc0f-acceptance.test.js
+node --test dist/src/vector-cortex/enc0f-acceptance.test.js
 ```
 
 Expected assertions: all `ENC-BUDG-001..006` registered with algorithm `encoder-budget` against the `encoder-budget` schema, expected `ok`; aggregator flag-agnostic. qualify.ts unit assertions (pure-fn): the verdict matrix over synthetic BenchResultV1 inputs (latency/rss/determinism/opset each independently failing flips the verdict); thresholds sourced from `ENCODER_LATENCY_P95_MS` + `ENCODER_RSS_BUDGET_BYTES` (no magic numbers); `schema:"qualification-v1"` with `reasons:[]` when passed. Unique failure injection: a bench with `gates.all:false` AND a fabricated sub-40ms p95 must STILL fail qualification (a gated-off bench can never be swept into mode A by its p95 alone). Exact flag-off comparison command:
 
 ```bash
-MEGACOMPACT_ENC_0F=0 node --test dist/vector-cortex/enc0f-acceptance.test.js
+MEGACOMPACT_ENC_0F=0 node --test dist/src/vector-cortex/enc0f-acceptance.test.js
 ```
 
 the aggregator is flag-agnostic. Acceptance: no payload leakage — the qualification record carries verdict/thresholds/platform/measurements only, never message content (EVAL-REDACT-002); zero network (the bench + gate are local computation, PREVENT-PI-004). Apply [EVALUATION](../EVALUATION.md) annotation/power rules; hard causal/tool/anchor/exact failures are zero-tolerance.
@@ -60,8 +60,8 @@ Run exact project gates:
 
 ```bash
 npm run build
-node --test dist/vector-cortex/enc0f-acceptance.test.js
-MEGACOMPACT_ENC_0F=0 node --test dist/vector-cortex/enc0f-acceptance.test.js
+node --test dist/src/vector-cortex/enc0f-acceptance.test.js
+MEGACOMPACT_ENC_0F=0 node --test dist/src/vector-cortex/enc0f-acceptance.test.js
 npm test
 npm run lint
 python3 scripts/regression_check.py --all

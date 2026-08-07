@@ -50,13 +50,13 @@ Sprint acceptance aggregator (must exist after implementation): `src/vector-cort
 
 ```bash
 npm run build
-node --test dist/vector-cortex/enc0c-acceptance.test.js
+node --test dist/src/vector-cortex/enc0c-acceptance.test.js
 ```
 
 Expected assertions: all `ENC-HEADS-001..006` registered with algorithm `encoder-heads-real` against the `encoder-heads-real` schema, expected `ok`; aggregator flag-agnostic. Head unit assertions: each head's output dimension matches `ENCODER_HEAD_DIM_ORDER` (384/128/128/64/32); non-constant across a synthetic pair; candidate rejection on wrong dim / non-finite / digest mismatch; semantic head is L2-normalized float32 (MODEL_ASSET norm); flag-off bytes match the survivor. Unique failure injection: a candidate whose `contradiction-128` weight matrix is all-NaN is rejected loud and the runtime serves the survivor — never a half-initialized head. Exact flag-off comparison command:
 
 ```bash
-MEGACOMPACT_ENC_0C=0 node --test dist/vector-cortex/enc0c-acceptance.test.js
+MEGACOMPACT_ENC_0C=0 node --test dist/src/vector-cortex/enc0c-acceptance.test.js
 ```
 
 the aggregator is flag-agnostic. Acceptance: **zero real user bytes in training** — the corpus manifest lists only synthetic sources, and a scan asserts no `stateDir` ledger path appears in any training input (SECURITY_PRIVACY §fixtures-synthetic); training is developer tooling with no runtime path (PREVENT-PI-004, local-only). Apply [EVALUATION](../EVALUATION.md) annotation/power rules; hard causal/tool/anchor/exact failures are zero-tolerance.
@@ -71,8 +71,8 @@ Run exact project gates:
 
 ```bash
 npm run build
-node --test dist/vector-cortex/enc0c-acceptance.test.js
-MEGACOMPACT_ENC_0C=0 node --test dist/vector-cortex/enc0c-acceptance.test.js
+node --test dist/src/vector-cortex/enc0c-acceptance.test.js
+MEGACOMPACT_ENC_0C=0 node --test dist/src/vector-cortex/enc0c-acceptance.test.js
 npm test
 npm run lint
 python3 scripts/regression_check.py --all
