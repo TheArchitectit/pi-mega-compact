@@ -66,6 +66,9 @@ export { ENC_0G_ENABLED } from "./vector-cortex-enc0g.js";
 export { COSINE_FP_BENCH_ENABLED } from "./vector-cortex-cosfp.js";
 // COS-FP-R real-corpus FP validation flag extracted to vector-cortex-cosfp-real.ts.
 export { COSINE_FP_REAL_ENABLED } from "./vector-cortex-cosfp-real.js";
+// REPO-A cross-repo corpus prep flag extracted to repo-corpus.ts (no vector-cortex
+// prefix per spec); re-exported so root src/config.ts barrel resolves unchanged.
+export { REPO_CORPUS_ENABLED } from "./repo-corpus.js";
 export { ENC_1A_ENABLED } from "./vector-cortex-enc1a.js";
 export {
   ENC_1B_ENABLED,

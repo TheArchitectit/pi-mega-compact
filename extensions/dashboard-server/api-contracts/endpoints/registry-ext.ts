@@ -32,6 +32,7 @@ import type {
 } from "../cortex-improve.js";
 import type { DedupTierAttributionResponse } from "../dedup-attribution.js";
 import type { CosineFpReportV1 } from "../cosine-fp.js";
+import type { RepoCorpusStatusV1 } from "../repo-corpus.js";
 
 /** Additive endpoint entries spread into the ENDPOINTS registry. */
 export const EXTRA_ENDPOINTS = {
@@ -180,4 +181,14 @@ export const EXTRA_ENDPOINTS = {
 		description:
 			"Reader-only cosine-FP report (COS-FP-A): the last written synthetic bench aggregate — grid summary, per-content-type FP/FN/F1, recommended default, report digest. Counts + fractions + digests only, never template text. Missing report → awaiting_data; flag-off returns 404.",
 	} as const satisfies EndpointDef<"GET", undefined, CosineFpReportV1>,
+
+	// ─── REPO-A cross-repo corpus ──────────────────────────────────────
+
+	/** GET /api/repo-corpus — reader-only pseudonymous corpus status. */
+	repoCorpus: {
+		method: "GET",
+		path: "/api/repo-corpus",
+		description:
+			"Reader-only cross-repo corpus status (REPO-A): which pseudonymous repos/sessions are in the consented corpus, cross-repo overlap descriptors, and per-repo active-consent state. Counts + IDs + status only — never payload content. Flag-off returns 404; absent corpus returns awaiting_data.",
+	} as const satisfies EndpointDef<"GET", undefined, RepoCorpusStatusV1>,
 } as const;
