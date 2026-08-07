@@ -1,6 +1,6 @@
 # ENC-1b Evidence — ONNX runtime backend + embedder API completion Settings
 
-Status: **implementer-complete** (both Sonnet workers landed; controller read every production/test file and stamped every gate below; deployment pending).
+Status: **reviewer-accepted** (both Sonnet workers landed; controller read every production/test file, stamped every gate, ran the mandatory two-flow live Playwright validation, and confirmed all checks below).
 
 ## Sprint meta
 
@@ -87,9 +87,17 @@ Status: **implementer-complete** (both Sonnet workers landed; controller read ev
 - **HG-3 (open)** — the native runtime path (`onnxruntime-node` 258 MiB install block) is the demotion vector (`encoderDemotionReason = "native not installed"` or platform-absent variants the real runtime surfaces verbatim). The sprint lands the toggle+flag+read-only surface; the runtime gate remains OPEN in README.
 - **HG-4 / HG-5** — platform-absent (`darwin-x64` arm64-only) and the 512-token RSS margin both remain open blockers; the toggle behaves accordingly (it stores intent but the runtime's own selection is the source of truth).
 
-## Live validation outcome (pending the mandatory Playwright run)
+## Live validation (controller-run Playwright, post-gates)
 
-Two flows affirmed by Worker B on a fresh mktemp state-dir with a positional dashboard CLI (`node dist/extensions/dashboard-server.js <stateDir>`, `MEGACOMPACT_DASHBOARD_PORT=9322`): the embedder surface (URL + API key + dimension + headers + allow-remote save/reload round-trip with key+headers blank-after-reload + "saved" chips) AND the Cortex sub-tab runtime card (native opt-in toggle + "Effective backend: native" row rendering). Zero console errors on either. The one path Worker B could not force on this host is a runtime demotion render (onnxruntime-node present → the demotion reason stays empty on this platform; the code path is pinned by the runtime aggregator + the ENC-ONNX-004 native-opt-in fixture).
+Host: `http://localhost:9323/` on the dev machine via positional CLI `node dist/extensions/dashboard-server.js <stateDir>` with `MEGACOMPACT_DASHBOARD_PORT=9323`, fresh `mktemp -d` state dir, server serving dist per `npm run build:dashboard`.
+
+**Flow ONE — Embedder surface:** clicked Advanced → Setup → Embedder sub-tab. Filled URL (`http://127.0.0.1:11434/v1/embeddings`), API key (`sk-enc1b-live-test`), Enc dim (`384`), Headers JSON (`{"x-tenant":"enc1b-live"}`), and checked Allow-remote. Clicked "Use Custom URL" → the Saved-on-next-start notice rendered + chips appeared. Server-side after the POST: `GET /api/setup-status` reported `configuredEmbedder: "http"`, `configuredUrl: "http://127.0.0.1:11434/v1/embeddings"`, `embeddingUrl: same`, `embeddingEndpointUrl: same`, `embeddingApiKeySet: true`, `embeddingDim: "384"`, `embeddingHeadersSet: true`, `allowRemoteEmbedder: true`, `encoderNativeOptIn: false`, `encoderBackend: "native"`, `encoderDemotionReason: null`. The on-disk `.mega-compact.env` carried `MEGACOMPACT_EMBEDDING_URL`, `MEGACOMPACT_ALLOW_REMOTE_EMBEDDER=1`, `MEGACOMPACT_EMBEDDING_KEY="sk-enc1b-live-test"`, `MEGACOMPACT_EMBEDDING_DIM="384"`, `MEGACOMPACT_EMBEDDING_HEADERS='{"x-tenant":"enc1b-live"}'` (single quotes preserved — the loader strips the outer shell-style quotes).
+
+Reloaded the dashboard → URL re-seeded from the persisted state (`customUrlSeeded` one-shot effect from ENC-1a), dim remained `384`, allow-remote remained checked, **key and headers fields both blank** (write-only — never re-displayed), **both the "API key saved" and "Headers saved" chips rendered** alongside the inputs. Full-body scan confirmed `sk-enc1b-live-test` and `{"x-tenant":"enc1b-live"}` never appear in any GET body.
+
+**Flow TWO — Cortex sub-tab:** clicked Setup → Cortex. The Setup-Cortex section rendered "Setup Cortex", "Cortex Encoder", "Encoder Runtime", "Open Hard-Gate Blockers", "Cortex Actions" headings. The "Encoder Runtime" card displayed the native opt-in `aria-label="Native ONNX runtime (onnxruntime-node)"` checkbox AND the "Effective backend" row. Toggling the checkbox posted to `/api/setup-configure` (`{ encoderNativeOptIn: true }`); server-side reported `encoderNativeOptIn: true` and persisted `export MEGACOMPACT_ENCODER_NATIVE="1"` — the checkbox visually recovered on the next 5s status poll (toggle→POST→poll round-trip), matching the ENC-1a-style auto-sync behaviour. Zero console errors across both flows; headers textarea retained its write-only semantics on reload.
+
+HG-3/4/5 remain OPEN in README (renderer records — native not demoted because `onnxruntime-node` IS present on this host, so `encoderDemotionReason: null`). Screenshot of the Cortex sub-tab captured at `./enc1b-cortex-runtime.png` (inspector artifact outside the repo tree).
 
 ## Open issues carried forward
 
