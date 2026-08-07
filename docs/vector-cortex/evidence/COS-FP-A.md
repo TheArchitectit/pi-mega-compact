@@ -94,9 +94,17 @@ Synthetic-corpus-only (EVAL-REDACT-002): the harness never reads, embeds, or shi
 
 - **Recommended default 0.815 < shipped 0.85 is NOT adopted this sprint.** The harness is a recommendation-only deliverable; the report records 0.815 as the synthetic F1-optimal point under the FP budget, but the shipped `L2_COSINE` stays 0.85. This is the intended bootstrap gate — adoption is a COS-FP follow-up gated on the report + real-corpus validation (COS-FP-R). The per-content-type overrides stay default-OFF landing slots.
 - **Synthetic-only evidence.** The 0.815 recommendation is against template-generated synthetic near-dups, not real donated sessions; real-corpus validation is the sibling COS-FP-R sprint. Until then the recommendation is advisory.
-- **Live Playwright validation pending a reachable dashboard host** — the flag-on card render + flag-off byte-identity needs a live localhost:9320 host; if none is reachable the sprint is implementer-complete until the controller provides one (see spec Live Playwright section).
 - **Fixtures/owner seam in `vector-cortex-gen-fixtures.mjs`:** the main regeneration script does not yet know about the `cosine-fp/` seam (same latent risk carried by VC9A/B/C and dedup-attr siblings); a full regeneration by that script would drop these until it is taught about the seam. Cross-cutting reconciliation for the controller, not a COS-FP-A gate failure.
+
+## Live Playwright validation
+
+Launched my freshly-built dashboard server on loopback (the public localhost:9320 is occupied by another project's outdated runner bundle, so I served my COS-FP-A bundle directly):
+
+- **Flag-on (`127.0.0.1:9325`):** `GET /api/cosine-fp-report` returns `200` with `status:"live"`, `benchStatus:"ok"`, `seed:20260806`, grid 0.8→0.98 (37 points), `recommendedDefault:0.815`, overrides `{code:0.915, prose:0.95, mixed:0.955}`, digest `2312c120…`. Playwright → Setup → Cortex renders the `VectorCortexCosineFpCard`: "Recommended default: 0.815 (shipped 0.85)", "Overrides: CODE 0.915 · PROSE 0.95 · MIXED 0.955", "Grid: 0.8 → 0.98 (37 points)", "Report digest: 2312c120c43c75ff…" — **zero console errors**.
+- **Flag-off (`127.0.0.1:9326`, `MEGACOMPACT_COSINE_FP_BENCH=0`):** `GET /api/cosine-fp-report` returns **404**; the card renders "Cosine FP synthetic bench: disabled (MEGACOMPACT_COSINE_FP_BENCH=0)" per `deriveVcStatus`. The two browser 404 network-log entries are the expected flag-off fetch, swallowed by the card's disabled state — no uncaught exception.
+
+Both states confirm the card digest/grid data against the live `CosineFpReportV1` shape.
 
 ## Reviewer attestation
 
-Name/date/status: pending — Claude (Opus controller) to review post-commit. Implementer self-review complete: every production/test file read, file limits respected, mutation scan clean, both flag states green, digest determinism repruned. Live Playwright + scope/evidence gate-run (post-commit) pending controller.
+Name/date/status: pending — Claude (Opus controller) to review post-commit. Implementer self-review complete: every production/test file read, file limits respected, mutation scan clean, both flag states green, digest determinism repruned, live Playwright exercised both states. Scope-check (post-commit) + reviewer attestation pending controller.
