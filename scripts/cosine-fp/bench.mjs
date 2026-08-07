@@ -291,15 +291,30 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const BENCH_RUN_DIR = join(ROOT, "scripts", "cosine-fp", "bench-run");
 const AGGREGATE_PATH = join(BENCH_RUN_DIR, "cosine-fp-report.json");
 const REPORT_PATH = join(ROOT, "docs", "vector-cortex", "cosine-threshold-report.md");
+// The bundled copy that ships in the npm tarball so GET /api/cosine-fp-report
+// serves the recommendation on an installed package (PREVENT-DIST-001). Write it
+// alongside the bench-run copy so the two stay in lock-step on regeneration.
+const BUNDLED_PATH = join(
+  ROOT,
+  "extensions",
+  "dashboard-server",
+  "assets",
+  "cosine-fp-report.json",
+);
 
 function flagEnabled() {
   return !(FLAG === "0" || FLAG === "false");
 }
 
-/** Persist the aggregate JSON (canonical) + the markdown eval report. */
+/** Persist the aggregate JSON (canonical) + the markdown eval report. Writes the
+ *  bundled asset copy too so the dashboard endpoint serves it on installed
+ *  packages (the scripts/bench-run copy is a git-checkout-only dev artifact). */
 export function writeReport(report) {
   mkdirSync(BENCH_RUN_DIR, { recursive: true });
-  writeFileSync(AGGREGATE_PATH, canonicalJson(report) + "\n", "utf8");
+  const aggregate = canonicalJson(report) + "\n";
+  writeFileSync(AGGREGATE_PATH, aggregate, "utf8");
+  mkdirSync(dirname(BUNDLED_PATH), { recursive: true });
+  writeFileSync(BUNDLED_PATH, aggregate, "utf8");
   mkdirSync(dirname(REPORT_PATH), { recursive: true });
   writeFileSync(REPORT_PATH, renderMarkdown(report), "utf8");
 }

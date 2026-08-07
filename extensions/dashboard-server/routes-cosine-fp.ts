@@ -32,6 +32,7 @@ import type {
 } from "./api-contracts/cosine-fp.js";
 
 const MEMO_TTL_MS = 5000; // ≤5s per file state
+const REPORT_FILENAME = "cosine-fp-report.json";
 
 interface MemoEntry {
   key: string;
@@ -42,15 +43,52 @@ interface MemoEntry {
 let memo: MemoEntry | null = null;
 
 /**
- * Resolve the bench-run dir (scripts/cosine-fp/bench-run/) by walking up to the
- * repo root. The test seam MEGACOMPACT_COSINE_FP_BENCH_RUN_DIR (read lazily so a
- * test can set it post-import) overrides the location so route tests can point
- * at a temp dir without touching the repo.
+ * Resolve the dir containing the cosine-fp-report.json aggregate. Two locations
+ * are probed in order:
+ *
+ *  1. The bundled asset `extensions/dashboard-server/assets/cosine-fp-report.json`.
+ *     This is the PRODUCTION path: the `extensions/` source tree ships at the
+ *     npm package root, so `/api/cosine-fp-report` serves the recommendation on
+ *     an installed package (PREVENT-DIST-001). tsc does NOT copy `.json` assets
+ *     into `dist/`, so the compiled module probes both the co-located
+ *     `assets/` (source tree) and the repo-root `extensions/.../assets/`
+ *     (reached from `dist/extensions/dashboard-server/`). Without the bundled
+ *     asset the endpoint would always return `awaiting_data` on devices,
+ *     because `scripts/` (the bench-run path) is NOT shipped.
+ *
+ *  2. The git-checkout bench-run dir (`scripts/cosine-fp/bench-run/`) for dev
+ *     use, walked up to from this module — this is where `bench.mjs` writes the
+ *     report.
+ *
+ * The test seam MEGACOMPACT_COSINE_FP_BENCH_RUN_DIR (read lazily so a test can
+ * set it post-import) overrides BOTH so route tests can point at a temp dir
+ * without touching the repo or the bundled asset.
  */
 export function benchRunDir(): string | null {
   const testRunDir = process.env.MEGACOMPACT_COSINE_FP_BENCH_RUN_DIR;
   if (testRunDir) return testRunDir;
-  let dir = dirname(fileURLToPath(import.meta.url));
+  const here = dirname(fileURLToPath(import.meta.url));
+  // 1. Bundled asset candidates — the PRODUCTION path (PREVENT-DIST-001). tsc
+  //    does NOT copy `.json` assets into dist/, and the `extensions/` source
+  //    tree ships at the package root next to `dist/`. Probe both relative to
+  //    this module's location (mirrors server.ts clientDist candidates):
+  //      here = extensions/dashboard-server        (source tree, dev run)
+  //      here = dist/extensions/dashboard-server   (compiled, published)
+  const bundledCandidates = [
+    join(here, "assets"), // source tree / co-located
+    join(here, "..", "..", "..", "extensions", "dashboard-server", "assets"), // repo-root source from compiled dist/
+  ];
+  for (const bundled of bundledCandidates) {
+    try {
+      // guardrails-allow PREVENT-PI-004: local bundled report stat (loopback)
+      statSync(join(bundled, REPORT_FILENAME));
+      return bundled;
+    } catch {
+      /* try next candidate, then fall through to git-checkout walk */
+    }
+  }
+  // 2. Git-checkout bench-run dir — dev path only.
+  let dir = here;
   const rel = join("scripts", "cosine-fp", "bench-run");
   for (let i = 0; i < 8; i++) {
     const candidate = join(dir, rel);

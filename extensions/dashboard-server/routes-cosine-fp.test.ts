@@ -18,7 +18,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
-import { handleCosineFpReport } from "./routes-cosine-fp.js";
+import { handleCosineFpReport, benchRunDir } from "./routes-cosine-fp.js";
 import type { CosineFpReportV1 } from "./api-contracts/cosine-fp.js";
 
 /** Repo-root bench-run aggregate (committed by gen-fixtures/bench). */
@@ -142,5 +142,18 @@ describe("routes-cosine-fp", () => {
     const capture = freshRun(dir, "/api/cosine-fp-report", "POST");
     assert.equal(capture.status, 405);
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  // Production path: the bundled asset at extensions/dashboard-server/assets/
+  // is what ships in the npm tarball. Assert benchRunDir() resolves it when the
+  // env seam is UNSET, so a silent tarball-packaging regression is caught here.
+  test("bundled asset resolves when env seam is unset (installed-package path)", () => {
+    delete process.env.MEGACOMPACT_COSINE_FP_BENCH_RUN_DIR;
+    const runDir = benchRunDir();
+    assert.ok(runDir !== null, "benchRunDir() should resolve");
+    assert.ok(
+      runDir.endsWith(join("assets")),
+      `bundled-asset path expected, got ${runDir}`,
+    );
   });
 });
