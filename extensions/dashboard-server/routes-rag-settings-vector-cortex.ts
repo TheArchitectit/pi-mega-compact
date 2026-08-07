@@ -318,5 +318,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"Synthetic FP harness + L2 cosine threshold calibration (COS-FP-A): drives the deterministic synthetic-corpus grid sweep (scripts/cosine-fp/bench.mjs) that measures L2 cosine false-positive rates and emits a recommended default, and serves the reader-only GET /api/cosine-fp-report. Synthetic-corpus-only — never reads real session/ledger bytes. OFF = bench inert, endpoint 404s, no report write, L2_COSINE plain MEGACOMPACT_L2_THRESHOLD (byte-identical predecessor).",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_COSINE_FP_REAL",
+			"COS-FP-R Real-Corpus Validation",
+			"Real-corpus L2 cosine FP validation (COS-FP-R): runs the real-corpus grid sweep (scripts/cosine-fp/real-bench.mjs) against donated, consent-approved sessions only (SECURITY_PRIVACY Lifecycle/Consent), scoring FP/FN with Wilson intervals + session-grouped bootstrap, and appends CI-backed per-content-type recommendations to the cosine-threshold report. Runs only when a valid consented corpus exists; absent corpus = no_corpus (normative pre-donation state, nothing written). OFF = script inert, nothing executes, no writes (byte-identical predecessor).",
+			true,
+		),
 	],
 };

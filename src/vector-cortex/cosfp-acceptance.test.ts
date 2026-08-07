@@ -25,7 +25,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { COSINE_FP_BENCH_ENABLED } from "../config/vector-cortex.js";
+import { COSINE_FP_BENCH_ENABLED, COSINE_FP_REAL_ENABLED } from "../config/vector-cortex.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -265,5 +265,14 @@ describe("COS-FP-A harness contract (local re-implementation of pinned helpers)"
     // gating is exercised by the fixture matrix (005) + the dashboard-client
     // typecheck+build + the CLEAN=1 determinism smoke of bench.mjs.
     assert.equal(typeof COSINE_FP_BENCH_ENABLED(), "boolean");
+  });
+
+  test("COSINE_FP_REAL_ENABLED is exported as a live boolean regardless of env state", () => {
+    // COS-FP-R owns no conformance fixtures (real corpus only), so the
+    // aggregator asserts the flag registration here: the exported function
+    // returns a live boolean in BOTH flag states. The real-corpus runtime
+    // gating (no_corpus / inert) is exercised by real-bench.mjs + its
+    // write-time test file, not by fixtures.
+    assert.equal(typeof COSINE_FP_REAL_ENABLED(), "boolean");
   });
 });
