@@ -28,6 +28,10 @@ export default function EmbedderSetup(): React.ReactElement {
 	const [configResult, setConfigResult] = useState<SetupConfigureResponse | null>(null);
 	const [configError, setConfigError] = useState<string | null>(null);
 	const [customUrl, setCustomUrl] = useState("");
+	// True once the URL field has been seeded from the persisted endpoint URL —
+	// seeding runs only on the first status load that carries the field so the
+	// user's in-flight edits are never clobbered by a poll refresh.
+	const [customUrlSeeded, setCustomUrlSeeded] = useState(false);
 
 	const loadStatus = useCallback(() => {
 		fetchSetupStatus()
@@ -71,6 +75,17 @@ export default function EmbedderSetup(): React.ReactElement {
 	useEffect(() => {
 		loadStatus();
 	}, [loadStatus]);
+
+	// Seed the custom-endpoint URL field once from the persisted
+	// `embeddingEndpointUrl` (ENC-1a). Later poll refreshes do NOT re-seed —
+	// only the first load, so typed edits survive the 5s status poll.
+	useEffect(() => {
+		if (customUrlSeeded) return;
+		if (status && typeof status.embeddingEndpointUrl === "string" && status.embeddingEndpointUrl.length > 0) {
+			setCustomUrl(status.embeddingEndpointUrl);
+			setCustomUrlSeeded(true);
+		}
+	}, [status, customUrlSeeded]);
 
 	// Poll status every 5s — the same cadence the Setup Cortex sub-tab uses
 	// (see useSetupCortexPoll) so the embedder + cortex sub-tabs share one poll
@@ -324,6 +339,7 @@ export default function EmbedderSetup(): React.ReactElement {
 				applyEmbedder={applyEmbedder}
 				configuring={configuring}
 				inputEnabled={status !== null && "embeddingApiKeySet" in status}
+				apiKeySet={status?.embeddingApiKeySet === true}
 				configureResult={configResult}
 				configureError={configError}
 			/>

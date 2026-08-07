@@ -29,6 +29,8 @@ interface CustomEndpointSectionProps {
 	configuring: string | null;
 	/** ENC-1a surface active — true when the new setup-status fields are present. */
 	inputEnabled: boolean;
+	/** Server-reported "key is set" marker (the key itself is never returned). */
+	apiKeySet: boolean;
 	configureResult: SetupConfigureResponse | null;
 	configureError: string | null;
 }
@@ -39,6 +41,7 @@ export default function CustomEndpointSection({
 	applyEmbedder,
 	configuring,
 	inputEnabled,
+	apiKeySet,
 	configureResult,
 	configureError,
 }: CustomEndpointSectionProps): React.ReactElement {
@@ -92,6 +95,19 @@ export default function CustomEndpointSection({
 							fontFamily: "monospace",
 						}}
 					/>
+				)}
+				{inputEnabled && apiKeySet && (
+					<span
+						style={{
+							fontSize: "0.75rem",
+							color: "#81c784",
+							border: "1px solid #2a4e2a",
+							borderRadius: "4px",
+							padding: "0.15rem 0.45rem",
+						}}
+					>
+						API key saved
+					</span>
 				)}
 				<button
 					style={{ ...styles.button, opacity: customUrl ? 1 : 0.4 }}

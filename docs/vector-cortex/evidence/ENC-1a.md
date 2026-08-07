@@ -165,8 +165,8 @@ Worker B (dashboard client):
 
 Implementation commit: **e868f67**; ownership amendment commit: **b992277**;
 deployed as **v0.20.50** via `./scripts/deploy.sh 0.20.50` (recorded below).
-Spec §83 LIVE Playwright gates ENC-1a — pauses at reviewer-accepted until a
-live host reaches v0.20.50.
+Controller live-validation fix commit (post-deploy, evidence-driven): **TBD
+— to be stamped after the live-flow commit lands**.
 
 ### Controller review fixes / scope confirmations
 
@@ -223,8 +223,61 @@ hides the UI).
 
 ## Live Playwright validation (controller — post-deploy)
 
-Must be exercised live after `pi update --extensions`: Setup → Embedder →
-Custom Endpoint, enter a test URL + test key, click save, reload, assert the
-URL field re-renders the persisted value, the key field stays blank, and the
-`apiKeySet:true` state is reflected on the card. Zero console errors. Pauses
-at reviewer-accepted until a live host reaches v0.20.50.
+Host: `http://localhost:9321/` on the dev machine, server `node dist/extensions/dashboard-server.js --port 9321 --state-dir …`, `/api/version → 0.20.50`.
+
+Spec §83 mandatory flow — exercised 2026-08-06:
+
+1. Setup → Embedder → Custom Endpoint; the API-key password input was present
+   (flag on, `inputEnabled`).
+2. Save (`Use Custom URL`) wrote the pair via `POST /api/setup-configure`;
+   card rendered the "Saved; takes effect on next session start" notice. Zero
+   console errors (browser console log had no new error-level entries).
+3. Reload → the URL field **did not** re-render the persisted value and no
+   `apiKeySet:true` state was visible on the card. Root-caused to
+   `EmbedderSetup.tsx` never seeding `customUrl` from
+   `status.embeddingEndpointUrl` and `CustomEndpointSection.tsx` carrying no
+   visible "key is set" affordance — both against the spec's mandatory live
+   flow wording. Fixed post-deploy on the controller's review pass:
+   - `EmbedderSetup.tsx` gained a one-shot seeding effect
+     (`customUrlSeeded`) so on first status load the URL renders the persisted
+     `embeddingEndpointUrl`, without clobbering in-flight edits by the 5s poll.
+   - `CustomEndpointSection.tsx` gained an `apiKeySet` prop rendering an
+     "API key saved" chip next to the inputs when the server reports the
+     boolean — visible `apiKeySet:true` state without ever echoing the key.
+4. Re-run after fix: reload → URL field re-renders
+   `http://127.0.0.1:11434/v1/embeddings`, key field stays blank (redaction
+   round-trip), and the "API key saved" chip is visible. Server-side
+   round-trip via `/api/setup-status`: `embeddingEndpointUrl =
+   "http://127.0.0.1:11434/v1/embeddings"`, `embeddingApiKeySet: true`, and
+   the full GET body substring scan for `sk-local-test` returns absent.
+   File-write confirm: the per-server state-dir env file carries both lines
+   verbatim.
+
+Live-flow gates after the fix (run 2026-08-06):
+
+- [x] `npm run build` → clean.
+- [x] `node --test dist/src/vector-cortex/enc1a-acceptance.test.js` → **8/0**;
+      flag-off **8/0**; legacy dual-dist **8/0**.
+- [x] `node --test dist/extensions/dashboard-server/routes-setup.test.js` → **7/0**.
+- [x] `npm test` → **3873 passed, 0 failed across 391 files**.
+- [x] `npm run lint` → tsc + guardrails-scan + semantic-scan clean.
+- [x] `python3 scripts/regression_check.py --all` → **0 blocking**.
+- [x] `python3 scripts/regression_check.py --soft-as-hard --pre-commit
+      --soft-as-hard-base v0.20.49` → **no ENC-1a-introduced violations**; all
+      flagged files pre-date v0.20.49 and none are touched by this fix.
+- [x] `node scripts/guardrails-scan.mjs` → clean.
+- [x] `node scripts/vector-cortex-conformance.mjs --check` → **907 fixtures
+      canonical**.
+- [x] `node scripts/vector-cortex-docs-check.mjs` → **63 sprints clean**.
+- [x] `cd extensions/dashboard-client && npm run typecheck && npm run build` →
+      both clean (SetupTab chunk 44.32 kB).
+- [x] Zero console errors across the fill → save → reload flow.
+
+**Note on the state-dir side effect**: the dev host's `--port` argv layout
+caused the server to mis-derive its state dir into a literal `./--port/`
+subdirectory (cwd-pollution bug; ENC-1a write+read round-trip unaffected —
+the same mis-derived path was used on both sides). Tracked as a pending
+dashboard-server fix; does not affect ENC-1a's conformance.
+
+Stamped controller-deployed v0.20.50 plus the live-flow fix commit (sha
+recorded below once landed).
