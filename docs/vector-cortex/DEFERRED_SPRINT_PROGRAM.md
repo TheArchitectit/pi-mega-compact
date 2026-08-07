@@ -136,6 +136,12 @@ For each sprint, in order:
 
 Steps 1–8 repeat per sprint until all nine ship.
 
+## Landed sprints
+
+| Sprint | Branch | Merge SHA | Published |
+|--------|--------|-----------|-----------|
+| DOC-0a | `feat/DOC-0a` | `692c78a` | v0.20.54 |
+
 ## Exit evidence for the program
 
 The program is complete when all nine sprints above are merged to `master`
