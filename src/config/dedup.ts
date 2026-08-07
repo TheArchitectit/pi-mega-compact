@@ -28,6 +28,15 @@ function envNum(name: string, def: number): number {
   return Number.isFinite(n) ? n : def;
 }
 
+/** COS-FP-A: numeric env var that is `null` when unset ("off") — a dormant
+ *  override whose absence must mean "no behavior change". */
+function envNumOrNull(name: string): number | null {
+  const v = process.env[name];
+  if (v === undefined || v === "off" || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 /** S42B: parse a comma-separated numeric env var (e.g. "1.0,0.9,0.8"). */
 function envNumArray(name: string, def: number[]): number[] {
   const v = process.env[name];
@@ -50,6 +59,12 @@ export interface DedupConfigShape {
   MINILM_EMBEDDER: boolean;
   // Thresholds.
   L2_COSINE: number; // semantic dedup firing point
+  /** COS-FP-A: optional per-content-type L2 override — null when unset (the
+   *  top-level L2_COSINE remains the single runtime firing point; these are a
+   *  default-OFF landing slot for the compliance report's recommendation, NOT
+   *  wired into the live L2 decision this sprint). */
+  L2_COSINE_CODE: number | null;
+  L2_COSINE_PROSE: number | null;
   L1_JACCARD: number; // MinHash/LSH near-dup verification
   DEDUP_SIM: number; // legacy content-similarity fallback
   MMR_LAMBDA: number; // retrieval diversity
@@ -105,6 +120,8 @@ export function loadDedupConfig(): DedupConfigShape {
     MARK_ONLY_L2: envBool("MEGACOMPACT_MARK_ONLY_L2", false),
     MINILM_EMBEDDER: envBool("MEGACOMPACT_MINILM", false),
     L2_COSINE: envNum("MEGACOMPACT_L2_THRESHOLD", 0.85),
+    L2_COSINE_CODE: envNumOrNull("MEGACOMPACT_L2_THRESHOLD_CODE"),
+    L2_COSINE_PROSE: envNumOrNull("MEGACOMPACT_L2_THRESHOLD_PROSE"),
     L1_JACCARD: envNum("MEGACOMPACT_L1_JACCARD", 0.8),
     DEDUP_SIM: envNum("MEGACOMPACT_DEDUP_SIM", 0.9),
     MMR_LAMBDA: envNum("MEGACOMPACT_MMR_LAMBDA", 0.5),

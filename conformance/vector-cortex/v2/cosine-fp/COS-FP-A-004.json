@@ -1,0 +1,1 @@
+{"assertion":"off-by-one threshold boundary — a pair at cosine 0.8995 is passed at threshold 0.900 and deduped at 0.899 (exact < vs >= semantics), never both","boundary":{"hi":0.9,"lo":0.899},"id":"COS-FP-A-004","kind":"cosfp","producer":"scripts/cosine-fp/gen-fixtures.mjs","schema":"schemas/cosfp-fixture.schema.json","strict_straddle":true}

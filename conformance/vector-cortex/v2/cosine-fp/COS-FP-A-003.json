@@ -1,0 +1,1 @@
+{"assertion":"no-fabrication fallback — a collapsed/empty corpus reports an explicit status no_data and never fabricates a threshold or fakes FP=0","fabricated_fp":false,"fabricated_threshold":false,"id":"COS-FP-A-003","kind":"cosfp","no_data":"explicit","producer":"scripts/cosine-fp/gen-fixtures.mjs","schema":"schemas/cosfp-fixture.schema.json","status":"no_data"}
