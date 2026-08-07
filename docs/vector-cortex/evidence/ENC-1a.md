@@ -165,8 +165,9 @@ Worker B (dashboard client):
 
 Implementation commit: **e868f67**; ownership amendment commit: **b992277**;
 deployed as **v0.20.50** via `./scripts/deploy.sh 0.20.50` (recorded below).
-Controller live-validation fix commit (post-deploy, evidence-driven): **TBD
-— to be stamped after the live-flow commit lands**.
+Controller live-validation fix commit (post-deploy, evidence-driven):
+**a5f8447** (the client-side seeding + chip; the post-fix gates below re-ran
+against that sha).
 
 ### Controller review fixes / scope confirmations
 
