@@ -141,6 +141,7 @@ Steps 1–8 repeat per sprint until all nine ship.
 | Sprint | Branch | Merge SHA | Published |
 |--------|--------|-----------|-----------|
 | DOC-0a | `feat/DOC-0a` | `692c78a` | v0.20.54 |
+| COS-FP-A | `feat/COS-FP-A` | `87cc6d4` | v0.20.55 |
 
 ## Exit evidence for the program
 
