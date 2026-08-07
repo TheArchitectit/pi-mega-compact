@@ -1,11 +1,14 @@
 # ENC-0b Evidence
 
-Status: **implementer-complete** — real ONNX trunk fetch + gated inference. The
-placeholder encoder-v1 asset (LCG projection stub) is replaced with the real
-bge-small-en-v1.5 ONNX model (opset 21, int8 quantized, 33.4M params). The
-manifest, model-card, fetch script, verify script, conformance schema, and 6
-ENC-TRUNK fixtures are all written. The runtime decision record is corrected
-with real artifact digests and sizes.
+Status: **reviewer-accepted** (controller attestation complete — all gates
+green). Commits: `28f1fd8` (sprint impl), `70ce3cc` (Production ownership scope
+expansion for delegate-splits + opset-21 re-baseline), `9abe4aa` (this-file
+spec entry). The placeholder encoder-v1 asset (LCG projection stub) is
+replaced with the real bge-small-en-v1.5 ONNX model (opset 21, int8 quantized,
+33.4M params, 33885766 bytes digested as `913a643a…` over the merged
+single-file). The manifest, model-card, fetch script, verify script, conformance
+schema, and 6 ENC-TRUNK fixtures are all written. The runtime decision record
+is corrected with real artifact digests and sizes.
 
 ## Goal recap
 
