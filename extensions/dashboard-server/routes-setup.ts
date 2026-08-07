@@ -14,6 +14,7 @@ import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
 import { VC9D_ENABLED } from "../../src/config.js";
+import { enc1aStatusFields, writeEnc1aEnv, tryEnc1aConfigure, wantsEnc1a } from "./routes-setup-enc1a.js";
 import {
 	detectOllama,
 	detectLlamaCpp,
@@ -77,6 +78,9 @@ export function handleSetupStatus(
 	}
 	const configured = detectConfiguredEmbedder(ctx.stateDir);
 	const active = detectCurrentEmbedder();
+	// ENC-1a (flag-gated, additive): echo the persisted endpoint URL and an
+	// embeddingApiKeySet boolean ONLY — the raw API key is never returned. When
+	// the flag is off (or neither is set) both fields are simply omitted.
 	const body: SetupStatusResponse = {
 		currentEmbedder: active,
 		configuredEmbedder: configured.embedder,
@@ -87,6 +91,7 @@ export function handleSetupStatus(
 		minilm: ["1", "true", "yes"].includes(
 			(process.env["MEGACOMPACT_MINILM"] ?? "").trim().toLowerCase(),
 		),
+		...enc1aStatusFields(ctx.stateDir),
 	};
 	// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
 	res.writeHead(200, { "Content-Type": "application/json" });
@@ -205,6 +210,11 @@ export function handleSetupConfigure(
 			return;
 		}
 		const body = parsed.value as unknown as SetupConfigureRequest;
+		// ENC-1a (flag-gated, additive): a pure external-embedder configure
+		// (new keys, no embedder selection) is handled by the sibling writer.
+		// Flag-off = the keys are simply not recognized, falling through to the
+		// pre-ENC-1a embedder path below (byte-identical predecessor).
+		if (tryEnc1aConfigure(body, res, ctx)) return;
 		const embedder = body.embedder;
 		if (embedder !== "ollama" && embedder !== "llama" && embedder !== "trigram" && embedder !== "custom" && embedder !== "onnx") {
 			res.writeHead(400, { "Content-Type": "application/json" });
@@ -257,6 +267,17 @@ export function handleSetupConfigure(
 			res.writeHead(500, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ error: `write_failed: ${e instanceof Error ? e.message : String(e)}` }));
 			return;
+		}
+		// ENC-1a: a combined payload (valid embedder + new keys) also upserts
+		// the endpoint/key lines onto the freshly-written env file.
+		if (wantsEnc1a(body)) {
+			writeEnc1aEnv(stateDir, {
+				endpointUrl:
+					typeof body.embeddingEndpointUrl === "string" && body.embeddingEndpointUrl
+						? body.embeddingEndpointUrl
+						: null,
+				apiKey: typeof body.embeddingApiKey === "string" ? body.embeddingApiKey : null,
+			});
 		}
 		// Detect if the new config matches what's already active (no restart needed).
 		const currentUrl = process.env["MEGACOMPACT_EMBEDDING_URL"];

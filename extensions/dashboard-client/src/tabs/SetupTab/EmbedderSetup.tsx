@@ -16,6 +16,7 @@ import EmbedderHealthCard from "./EmbedderHealthCard";
 import SettingsPanel from "./SettingsPanel";
 import CustomEndpointSection from "./CustomEndpointSection";
 import { styles } from "./EmbedderSetupStyles";
+import { embedderLabel, trigramWarning, detectBadge } from "./EmbedderSetupHelpers";
 
 export default function EmbedderSetup(): React.ReactElement {
 	const [status, setStatus] = useState<SetupStatusResponse | null>(null);
@@ -36,11 +37,12 @@ export default function EmbedderSetup(): React.ReactElement {
 			);
 	}, []);
 
-	const applyEmbedder = useCallback((embedder: "ollama" | "llama" | "trigram" | "custom" | "onnx", url?: string) => {
+	const applyEmbedder = useCallback((embedder: "ollama" | "llama" | "trigram" | "custom" | "onnx", url?: string, apiKey?: string) => {
 		setConfiguring(embedder);
 		setConfigError(null);
 		setConfigResult(null);
-		configureEmbedder({ embedder, url })
+		// ENC-1a: optional custom-endpoint URL + bearer key ride on the setup-configure POST (additive; flag-off ignores them).
+		configureEmbedder({ embedder, url, embeddingEndpointUrl: url, embeddingApiKey: apiKey })
 			.then((r) => {
 				setConfigResult(r);
 				setConfiguring(null);
@@ -87,41 +89,6 @@ export default function EmbedderSetup(): React.ReactElement {
 		const id = setInterval(runDetect, 5000);
 		return () => clearInterval(id);
 	}, [runDetect]);
-
-	const embedderLabel = (e: string): string => {
-		switch (e) {
-			case "trigram":
-				return "TrigramEmbedder (heuristic, default)";
-			case "http":
-				return "HTTP Embedder (BYO localhost)";
-			case "minilm":
-				return "MiniLM (experimental)";
-			default:
-				return "Unknown";
-		}
-	};
-
-	const trigramWarning = status?.currentEmbedder === "trigram" && (
-		<div style={styles.warning}>
-			<strong>Note:</strong> TrigramEmbedder is a heuristic-strength default
-			embedder. It works without any setup but recall quality may be lower
-			than a dedicated embedding backend. If you notice poor recall results,
-			consider installing Ollama and running the{" "}
-			<code>/megasetup</code> command, or set{" "}
-			<code>MEGACOMPACT_EMBEDDING_URL</code> to point at your own localhost
-			embedding server.
-		</div>
-	);
-
-	const detectBadge = (installed: boolean): React.ReactElement => {
-		const bg = installed ? "#1a5a1a" : "#3a1a1a";
-		const color = installed ? "#4caf50" : "#f44336";
-		return (
-			<span style={{ ...styles.badge, background: bg, color }}>
-				{installed ? "Detected" : "Not found"}
-			</span>
-		);
-	};
 
 	return (
 		<div style={styles.container}>
@@ -186,7 +153,7 @@ export default function EmbedderSetup(): React.ReactElement {
 							<span style={styles.label}>MiniLM:</span>
 							<span style={styles.value}>{status.minilm ? "enabled" : "disabled"}</span>
 						</div>
-						{trigramWarning}
+						{trigramWarning(status)}
 					</>
 				)}
 				{!status && !statusError && (
@@ -334,7 +301,7 @@ export default function EmbedderSetup(): React.ReactElement {
 								{configuring === "trigram" ? "Writing..." : "Use Trigram (default)"}
 							</button>
 						</div>
-						{configResult && (
+						{configResult && configResult.embedder !== "custom" && (
 							<div style={styles.warning}>
 								{configResult.alreadyActive
 									? "Already active — no restart needed."
@@ -356,6 +323,9 @@ export default function EmbedderSetup(): React.ReactElement {
 				setCustomUrl={setCustomUrl}
 				applyEmbedder={applyEmbedder}
 				configuring={configuring}
+				inputEnabled={status !== null && "embeddingApiKeySet" in status}
+				configureResult={configResult}
+				configureError={configError}
 			/>
 
 			{/* Help Section */}

@@ -294,5 +294,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"ENC-0g makes the Setup Cortex status route honest: reads the ENC-0f QualificationV1 record (when ENC_0F is ON and a record exists) and lets its verdict override the structural verify for the qualification field; computes the blocker list from (platform, record, manifest head-count) with corrected HG statuses/wording; re-derives VC9B action gating from live blockers. OFF = verdict from verifyEncoderAsset alone, static SETUP_CORTEX_BLOCKERS, static action gating (byte-identical ENC-0f predecessor).",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_ENC_1A",
+			"ENC-1a external embedder API key + endpoint Settings fields",
+			"ENC-1a adds a Settings-visible field pair for the external embedder endpoint URL + optional Bearer API key, persisted by the setup-configure writer branch to the per-repo .mega-compact.env (MEGACOMPACT_EMBEDDING_URL / MEGACOMPACT_EMBEDDING_KEY). The GET status route echoes the endpoint URL and reports embeddingApiKeySet as a boolean ONLY — the raw key is never returned. OFF = no new GET fields, no writer branch, no new Settings text rows (byte-identical ENC-0g predecessor).",
+			true,
+		),
 	],
 };

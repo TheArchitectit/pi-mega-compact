@@ -2,15 +2,35 @@
  * SetupTab/CustomEndpointSection.tsx — custom remote embedder endpoint section.
  *
  * Extracted from EmbedderSetup.tsx to respect the extensions/ 400-line soft limit.
+ *
+ * ENC-1a: an additive "API key (optional Bearer)" password input sits beside the
+ * existing custom-URL input. The key is NEVER prefilled (the setup-status GET does
+ * not echo it — only an "is set" boolean, embeddingApiKeySet) and it is only ever
+ * sent up via the POST /api/setup-configure body. When the ENC-1a surface is
+ * inactive (flag off, the server omits the new GET fields) the key input is hidden
+ * and only the pre-existing URL row remains — byte-identical to the predecessor.
  */
 import type React from "react";
+import { useState } from "react";
+import type { SetupConfigureResponse } from "@contracts";
 import { styles } from "./EmbedderSetupStyles";
+
+/** ENC-1a surfaced a successful custom-endpoint persistence on the card. */
+const SAVED_NOTICE = "Saved; takes effect on next session start";
 
 interface CustomEndpointSectionProps {
 	customUrl: string;
 	setCustomUrl: (v: string) => void;
-	applyEmbedder: (embedder: "ollama" | "llama" | "trigram" | "custom" | "onnx", url?: string) => void;
+	applyEmbedder: (
+		embedder: "ollama" | "llama" | "trigram" | "custom" | "onnx",
+		url?: string,
+		apiKey?: string,
+	) => void;
 	configuring: string | null;
+	/** ENC-1a surface active — true when the new setup-status fields are present. */
+	inputEnabled: boolean;
+	configureResult: SetupConfigureResponse | null;
+	configureError: string | null;
 }
 
 export default function CustomEndpointSection({
@@ -18,7 +38,14 @@ export default function CustomEndpointSection({
 	setCustomUrl,
 	applyEmbedder,
 	configuring,
+	inputEnabled,
+	configureResult,
+	configureError,
 }: CustomEndpointSectionProps): React.ReactElement {
+	// The API key is intentionally local-only state: it always renders blank and
+	// is never seeded from the persisted value (the server never returns it).
+	const [customApiKey, setCustomApiKey] = useState("");
+
 	return (
 		<div style={styles.section}>
 			<h3 style={styles.sectionTitle}>Custom Endpoint (remote / third-party)</h3>
@@ -46,14 +73,42 @@ export default function CustomEndpointSection({
 						fontFamily: "monospace",
 					}}
 				/>
+				{inputEnabled && (
+					<input
+						type="password"
+						autoComplete="new-password"
+						aria-label="API key (optional Bearer)"
+						placeholder="API key (optional Bearer)"
+						value={customApiKey}
+						onChange={(e) => setCustomApiKey(e.target.value)}
+						style={{
+							flex: "1 1 300px",
+							background: "#12122a",
+							color: "#e0e0e0",
+							border: "1px solid #2a2a4e",
+							borderRadius: "6px",
+							padding: "0.4rem 0.6rem",
+							fontSize: "0.85rem",
+							fontFamily: "monospace",
+						}}
+					/>
+				)}
 				<button
 					style={{ ...styles.button, opacity: customUrl ? 1 : 0.4 }}
-					onClick={() => applyEmbedder("custom", customUrl)}
+					onClick={() => applyEmbedder("custom", customUrl, customApiKey)}
 					disabled={!customUrl || configuring !== null}
 				>
 					{configuring === "custom" ? "Writing..." : "Use Custom URL"}
 				</button>
 			</div>
+			{configureError !== null && (
+				<p style={{ color: "#f44336", fontSize: "0.85rem", marginTop: "0.5rem" }}>
+					Configure error: {configureError}
+				</p>
+			)}
+			{configureResult !== null && configureResult.embedder === "custom" && (
+				<div style={styles.warning}>{SAVED_NOTICE}</div>
+			)}
 			<div style={styles.warning}>
 				<strong>Heads up:</strong> a remote endpoint receives the text you embed
 				(it does NOT receive your full conversation — only the strings passed to

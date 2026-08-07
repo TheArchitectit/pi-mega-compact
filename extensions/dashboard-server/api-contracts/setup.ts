@@ -27,6 +27,12 @@ export interface SetupStatusResponse {
   readonly embedCache: string | null;
   /** Whether MEGACOMPACT_MINILM is set to a truthy value. */
   readonly minilm: boolean;
+  /** ENC-1a: the external embedder endpoint URL persisted in the per-repo
+   *  `.mega-compact.env`, when one is configured (additive, flag-gated). */
+  readonly embeddingEndpointUrl?: string;
+  /** ENC-1a: whether an external embedder API key is configured. The raw key is
+   *  NEVER returned — only this boolean presence marker (additive, flag-gated). */
+  readonly embeddingApiKeySet?: boolean;
 }
 
 /**
@@ -72,6 +78,12 @@ export interface SetupConfigureRequest {
   readonly embedder: "ollama" | "llama" | "trigram" | "custom" | "onnx";
   /** Override URL (required for "custom"; optional defaults for ollama/llama/onnx). */
   readonly url?: string;
+  /** ENC-1a: external embedder endpoint URL, persisted to the per-repo
+   *  `.mega-compact.env` (additive, flag-gated). */
+  readonly embeddingEndpointUrl?: string;
+  /** ENC-1a: external embedder API key, persisted to the per-repo
+   *  `.mega-compact.env` only — never returned by any GET (additive, flag-gated). */
+  readonly embeddingApiKey?: string;
 }
 
 /** Response for POST /api/setup-configure. */

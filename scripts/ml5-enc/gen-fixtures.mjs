@@ -909,6 +909,99 @@ const statusFixtures = [
   },
 ];
 
+
+// ── ENC-1a: encoder-settings fixtures ────────────────────────────────────────
+// External embedder API key + endpoint Settings surface (ENCV-1a): the GET
+// status route echoes the persisted endpoint URL and reports apiKeySet as a
+// boolean ONLY (the raw key is never returned); the setup-configure writer
+// branch persists MEGACOMPACT_EMBEDDING_URL / MEGACOMPACT_EMBEDDING_KEY to the
+// per-repo .mega-compact.env (create-or-append, never deleting other keys);
+// flag-off omits both fields from GET and does not recognize the new keys on
+// POST (byte-identical predecessor); contract is additive for pre-ENC-1a
+// clients. The redaction invariant is zero-tolerance (ENC-SET-003).
+const SET_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema#",
+  title: "ENC-1a encoder-settings fixture envelope",
+  type: "object",
+  description:
+    "Common structure every ENC-1a encoder-settings fixture validates against. `kind` names the round-trip / absent-key / redaction / flag-off / contract branch exercised; `setup` carries the endpoint URL + api key + flag_on override for the route harness; `expected_outcome` is ok or error; `expected_result` pins the fields the writer+reader round-trip and the redaction scan must assert (written_url, written_key, apiKeySet, key_never_in_get, get_omits_fields, post_disabled, byte_identical, contract_additive).",
+  required: ["id", "producer", "assertion", "kind", "setup", "expected_outcome", "expected_result"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: {
+      type: "string",
+      enum: [
+        "round-trip-set-redacted",
+        "absent-key-nonfatal",
+        "secret-redaction",
+        "flag-off",
+        "contract-additive",
+      ],
+    },
+    setup: {
+      type: "object",
+      properties: {
+        endpoint: { type: ["string", "null"] },
+        api_key: { type: ["string", "null"] },
+        flag_on: { type: "boolean" },
+        runs: { type: "integer" },
+      },
+    },
+    expected_outcome: { type: "string", enum: ["ok", "error"] },
+    expected_result: { type: "object" },
+  },
+};
+
+const settingsFixtures = [
+  {
+    id: "ENC-SET-001",
+    assertion:
+      "POST URL + key rounds trip to the per-repo .mega-compact.env and the next GET echoes the URL and reports apiKeySet:true (key redacted)",
+    kind: "round-trip-set-redacted",
+    setup: { endpoint: "http://127.0.0.1:11434/v1/embeddings", api_key: "sk-local-test", flag_on: true, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { written_url: true, written_key: true, apiKeySet: true, key_redacted: true },
+  },
+  {
+    id: "ENC-SET-002",
+    assertion:
+      "absent-key is non-fatal: POST URL only writes only the URL line; next GET reports apiKeySet:false",
+    kind: "absent-key-nonfatal",
+    setup: { endpoint: "http://127.0.0.1:11434/v1/embeddings", api_key: null, flag_on: true, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { written_url: true, written_key: false, apiKeySet: false },
+  },
+  {
+    id: "ENC-SET-003",
+    assertion:
+      "secret-redaction: no GET response at any flag state ever contains the raw API key substring (zero-tolerance), and no event/log carries it",
+    kind: "secret-redaction",
+    setup: { api_key: "sk-local-test", flag_on: true, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { key_never_in_get: true, key_redacted: true },
+  },
+  {
+    id: "ENC-SET-004",
+    assertion:
+      "flag-off (MEGACOMPACT_ENC_1A=0) -> GET omits both new fields, POST with the new keys is not recognized (disabled), byte-identical predecessor",
+    kind: "flag-off",
+    setup: { endpoint: "http://127.0.0.1:11434/v1/embeddings", api_key: "sk-local-test", flag_on: false, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { get_omits_fields: true, post_disabled: true, byte_identical: true },
+  },
+  {
+    id: "ENC-SET-005",
+    assertion:
+      "contract additive — a pre-ENC-1a client that omits the new keys still validates against the unchanged contract",
+    kind: "contract-additive",
+    setup: { endpoint: null, api_key: null, flag_on: true, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { contract_additive: true, validates: true },
+  },
+];
+
 // ── Main (mirrors the VC9 setup generator coordinate with manifest.json) ─────
 export function writeAll() {
   mkdirSync(ENC_DIR, { recursive: true });
@@ -1162,6 +1255,41 @@ export function writeAll() {
     });
   }
 
+  // The ENC-SET schema row.
+  const setSchemaBytes = Buffer.from(canonicalJson(SET_SCHEMA), "utf8");
+  const setSchemaRel = "schemas/encoder-settings-fixture.schema.json";
+  writeFileSync(join(V2, setSchemaRel), setSchemaBytes);
+  rows.push({
+    id: "encoder-settings-fixture",
+    path: setSchemaRel,
+    sha256: sha256Hex(setSchemaBytes),
+    schema: setSchemaRel,
+    algorithm: "json-schema",
+    producer,
+    expected: "schema",
+    license: "synthetic",
+  });
+
+  // The 5 ENC-SET fixture rows + on-disk files.
+  const setDir = join(V2, "encoder-settings");
+  mkdirSync(setDir, { recursive: true });
+  for (const fx of settingsFixtures) {
+    const obj = { ...fx, schema: setSchemaRel, producer };
+    const bytes = Buffer.from(canonicalJson(obj), "utf8");
+    const rel = `encoder-settings/${fx.id}.json`;
+    writeFileSync(join(V2, rel), bytes);
+    rows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: setSchemaRel,
+      algorithm: "encoder-settings",
+      producer,
+      expected: fx.expected_outcome,
+      license: "synthetic",
+    });
+  }
+
   // Merge into the existing manifest (id-dedupe so re-runs are idempotent) and
   // re-sort the whole fixtures array by id.
   const existing = manifest.fixtures.filter((r) => !rows.some((n) => n.id === r.id));
@@ -1199,6 +1327,9 @@ export function writeAll() {
   setCsv("domain", "encoder-status");
   setCsv("schemaVersion", "encoder-status-fixture");
   setOwnerCsv("owner", "ENC-0g");
+  setCsv("domain", "encoder-settings");
+  setCsv("schemaVersion", "encoder-settings-fixture");
+  setOwnerCsv("owner", "ENC-1a");
 
   writeFileSync(manifestPath, Buffer.from(canonicalJson(manifest), "utf8"));
 
@@ -1210,8 +1341,9 @@ export function writeAll() {
       promotionFixtures.length +
       demotionFixtures.length +
       budgetFixtures.length +
-      statusFixtures.length,
-    schemaCount: 7,
+      statusFixtures.length +
+      settingsFixtures.length,
+    schemaCount: 8,
   };
 }
 
