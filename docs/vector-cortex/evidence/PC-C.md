@@ -1,6 +1,7 @@
 # PC-C Evidence
 
 Status: reviewer-accepted
+**PUBLISHED as v0.20.33** — implementation landed at commit `9333e64`; reviewer-attested 2026-08-05/06.
 Implementation commit: `feat(pcc): dashboard prompt-cache per-turn visibility` (see git log). Full gate run on the working tree (build / acceptance both flag states / full test / lint / regression / guardrails / failure-log / conformance / docs-check / evidence-check / diff-check / dashboard-client typecheck+build).
 
 Contract review: implementer self-review complete on 2026-08-05 — every touched file read:

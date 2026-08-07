@@ -1,6 +1,7 @@
 # VC9C Evidence
 
 Status: reviewer-accepted
+**PUBLISHED as v0.20.28** — implementation landed at commit `bc64af4`; reviewer-attested 2026-08-05/06.
 Implementation commits/sub-sprint gates: single commit `feat(vc9c): ...` (see git log); full gate run on the working tree (build / test / lint / regression / guardrails / conformance / docs-check / scope-check / evidence-check / dashboard-client tsc+build).
 Contract review: implementer self-review complete on 2026-08-05 — every touched file read (client contract pair `types/setup-cortex.ts` + `api/setup-cortex.ts` — mirror-redeclared in lockstep with the server contract, no `any`, loopback-only POST/GET; `useSetupCortexPoll.ts` sibling of `useVectorCortexPoll` with `isCortexSubTabVisible` off/disabled-gating predicate; `SetupTab.tsx` additive sub-tab filtered from `SUB_TABS` via the predicate; the three cards + shell + styles each well under the extension soft limit; `vector-cortex-vc9c.ts` sibling flag extract; flag registered in `VECTOR_CORTEX_SETTINGS` as a visible boolDirect toggle, never `EXCLUDED_SETTINGS`), mutation scan clean (no disabled guards, no payload-surface mutation, no server logic touched), per-gate re-runs green (acceptance 6/6 both flag states; conformance 790; docs 32 sprints; scope + evidence gate-run pending commit). No forced deviation beyond the already-declared setup seam conventions. HG-1/HG-3/HG-4/HG-5 restated OPEN, never closed in-workstream; the fetch-model/bench drivers are surfaced but remain 423-gated by the open items.
 
