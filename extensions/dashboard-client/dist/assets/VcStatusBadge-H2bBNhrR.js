@@ -1,2 +1,0 @@
-import{j as r,B as a}from"./index-H-sfROoW.js";function t({status:e}){switch(e){case"live":return r.jsx(a,{variant:"success",children:"LIVE"});case"awaiting_data":return r.jsx(a,{variant:"warning",children:"AWAITING DATA"});case"deferred":return r.jsx(a,{variant:"outline",children:"DEFERRED"});case"structural":return r.jsx(a,{variant:"accent",children:"STRUCTURAL"});case"off":return r.jsx(a,{variant:"danger",children:"OFF"});default:return r.jsx(a,{variant:"danger",children:"OFF"})}}export{t as V};
-//# sourceMappingURL=VcStatusBadge-H2bBNhrR.js.map
