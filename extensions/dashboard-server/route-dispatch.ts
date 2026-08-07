@@ -63,6 +63,7 @@ import {
 	handleImproveCortex,
 	handleImproveCortexStatus,
 	handleDedupTierAttribution,
+	handleCosineFpReport,
 } from "./routes.js";
 // VC6C repair lives in its own module (routes-vector-cortex-repair.ts) so the
 // heal route file stays well under the 400-line extension soft limit.
@@ -160,5 +161,6 @@ export function dispatchRoutes(
 	if (handleImproveCortex(req, res, ctx)) return true;
 	if (handleImproveCortexStatus(req, res, ctx)) return true;
 	if (handleDedupTierAttribution(req, res, ctx)) return true;
+	if (handleCosineFpReport(req, res, ctx)) return true;
 	return false;
 }

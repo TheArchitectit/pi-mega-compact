@@ -343,3 +343,17 @@ export type {
 	DedupTierAccumulator,
 	DedupTierAttributionResponse,
 } from "./dedup-attribution.js";
+
+// COS-FP-A — synthetic cosine threshold report
+export type {
+	CosineFpStatus,
+	CosineFpBenchStatus,
+	CosineFpGrid,
+	CosineFpPerTypeCounts,
+	CosineFpPerTypeResult,
+	CosineFpPerTypeRow,
+	CosineFpRow,
+	CosineFpCorpusSummary,
+	CosineFpOverrides,
+	CosineFpReportV1,
+} from "./cosine-fp.js";

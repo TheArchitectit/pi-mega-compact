@@ -31,6 +31,7 @@ import type {
   CortexImproveStatus,
 } from "../cortex-improve.js";
 import type { DedupTierAttributionResponse } from "../dedup-attribution.js";
+import type { CosineFpReportV1 } from "../cosine-fp.js";
 
 /** Additive endpoint entries spread into the ENDPOINTS registry. */
 export const EXTRA_ENDPOINTS = {
@@ -169,4 +170,14 @@ export const EXTRA_ENDPOINTS = {
 		undefined,
 		DedupTierAttributionResponse
 	>,
+
+	// ─── COS-FP-A cosine threshold report ────────────────────────────
+
+	/** GET /api/cosine-fp-report — reader-only synthetic FP bench recommendation. */
+	cosineFpReport: {
+		method: "GET",
+		path: "/api/cosine-fp-report",
+		description:
+			"Reader-only cosine-FP report (COS-FP-A): the last written synthetic bench aggregate — grid summary, per-content-type FP/FN/F1, recommended default, report digest. Counts + fractions + digests only, never template text. Missing report → awaiting_data; flag-off returns 404.",
+	} as const satisfies EndpointDef<"GET", undefined, CosineFpReportV1>,
 } as const;

@@ -312,5 +312,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"ENC-2a exposes the runtime operator knob MEGACOMPACT_NATIVE_ORT_BUDGET_MIB (default 300 MiB, clamp 8192) as a dashboard Settings field. The knob gates budgetOk in the encoder runtime decision (decision.ts installBudgetMib + runtime-select.ts selectRuntimeBackend). Persisted to the per-repo .mega-compact.env via the setup-configure writer branch; the GET status route surfaces the persisted value AND the effective integer installBudgetMib() resolves to (so the dashboard shows the runtime's actual operand). OFF = no new GET fields, no writer branch, no new Settings rows (byte-identical ENC-1b predecessor).",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_COSINE_FP_BENCH",
+			"COS-FP-A Synthetic FP Bench",
+			"Synthetic FP harness + L2 cosine threshold calibration (COS-FP-A): drives the deterministic synthetic-corpus grid sweep (scripts/cosine-fp/bench.mjs) that measures L2 cosine false-positive rates and emits a recommended default, and serves the reader-only GET /api/cosine-fp-report. Synthetic-corpus-only — never reads real session/ledger bytes. OFF = bench inert, endpoint 404s, no report write, L2_COSINE plain MEGACOMPACT_L2_THRESHOLD (byte-identical predecessor).",
+			true,
+		),
 	],
 };
