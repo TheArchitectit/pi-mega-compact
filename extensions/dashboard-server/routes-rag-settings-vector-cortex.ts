@@ -336,5 +336,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"DASH-0a dashboard tab-audit + consolidation merge plan: records (as typed constants) the collapse of the 13 current TabIds onto the fixed 7 navigational surfaces (Overview, Sessions, Cache+Performance, Memory Graph, Diagnostics, Setup, Admin), plus the deep-link map, a11y nav-map, and responsive plan. Contract-planning only — no component moves, no route change. OFF = the plan module is inert (never imported by the shell); all 13 tab/section top-level files render exactly as today (byte-identical predecessor).",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_DASH_0B",
+			"Dashboard Consolidation — Sessions/Cortex sections",
+			"DASH-0b dashboard consolidation execution: (1) the Sessions surface absorbs TurnsTab as a drill-down — a SessionsViews toggle renders the existent session summary/chart/table or the turns view (TurnMemoryView); (2) VectorCortexTab re-groups its flat 14-card layout under 4 <section aria-labelledby> headers (Cortex status / repair / cache / adaptive). OFF = SessionsTab renders only its own body (no toggle, no TurnMemoryView) and VectorCortexTab keeps its flat card layout (byte-identical predecessor).",
+			true,
+		),
 	],
 };

@@ -1,0 +1,1 @@
+{"assertion":"the sessions surface exposes both the sessions body and the turns drill-down (TurnMemoryView)","expected":{"shows_sessions":true,"shows_turns_drilldown":true,"surface":"sessions"},"id":"DASH-0B-001","kind":"dashboard-tab-plan","producer":"DASH-0b-merge-sessions-turns-and-cortex-infra","schema":"schemas/dashboard-consolidation-fixture.schema.json"}

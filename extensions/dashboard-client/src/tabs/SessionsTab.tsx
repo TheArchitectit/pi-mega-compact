@@ -1,9 +1,22 @@
 /**
- * dashboard-client/src/tabs/SessionsTab.tsx — Sessions tab (S39).
+ * dashboard-client/src/tabs/SessionsTab.tsx — Sessions tab (S39, DASH-0b).
  *
- * Renders: window selector (5/15/30/60 min), sessions summary tiles,
- * the stacked-memory graph (SessionsMemoryChart), and the active sessions
- * table (ActiveSessionsTable).
+ * DASH-0b: the Sessions surface absorbs the existent TurnsTab as a drill-down.
+ * A `SessionsViews` toggle ("Active Sessions" / "Turn Memory") switches between
+ * the existent sessions summary/chart/table body and the turns view (rendered by
+ * `SessionsTab/TurnMemoryView.tsx` — the turns body moved VERBATIM from the
+ * standalone TurnsTab.tsx, which is left untouched this sprint for flag-off
+ * parity).
+ *
+ * Flag: `MEGACOMPACT_DASH_0B` default ON. The dashboard client is a browser
+ * bundle with NO `process` global, so the positive sprint flag cannot be read
+ * server-side-style (`process.env`) inside the client. Instead the flag is read
+ * from the server-authoritative `/api/rag-settings` state: the server resolves
+ * `process.env["MEGACOMPACT_DASH_0B"] ?? default` into the `SettingState.value`
+ * boolean. When the flag is OFF (settings confirmed value=false), this surface
+ * renders ONLY the existent sessions body — no toggle, no TurnMemoryView branch
+ * (byte-identical predecessor). The standalone TurnsTab.tsx top-level surface is
+ * untouched and remains reachable for flag-off parity.
  *
  * Data sources: fetchSessions() + fetchSessionTimeseries(minutes). Both poll
  * every 2s for near-real-time updates. useSSE() listens for session_sample
@@ -18,12 +31,19 @@ import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useApi } from "../hooks/useApi";
 import { useSSE } from "../hooks/useSSE";
-import { fetchSessions, fetchSessionTimeseries } from "../api/client";
-import type { SseEvent, SseSessionSample, SessionsResponse, SessionTimeseriesResponse } from "@contracts";
+import { fetchSessions, fetchSessionTimeseries, fetchSettings } from "../api/client";
+import type {
+	SseEvent,
+	SseSessionSample,
+	SessionsResponse,
+	SessionTimeseriesResponse,
+	SettingsResponse,
+} from "@contracts";
 import { SessionsMemoryChart } from "../components/SessionsMemoryChart";
 import { ActiveSessionsTable } from "../components/ActiveSessionsTable";
 import { Toggle } from "../components/ui/toggle";
 import { Card, CardContent } from "../components/ui/card";
+import { TurnMemoryView } from "./SessionsTab/TurnMemoryView";
 
 /**
  * Shape of the {@link SseSessionSample} SSE event appended to events.log by
@@ -38,6 +58,21 @@ function isSessionSample(
 	e: SseEvent,
 ): e is SessionSampleEvent {
 	return e.type === "session_sample";
+}
+
+const DASH_0B_KEY = "MEGACOMPACT_DASH_0B";
+
+/** Resolve the DASH-0b consolidation flag from the server settings state.
+ *  Absent/not-yet-loaded => false (flag-off posture), so flag-off users never
+ *  see a toggle flash; the toggle appears only once settings confirm it is ON. */
+function dash0bEnabled(settings: SettingsResponse | null): boolean {
+	if (!settings) return false;
+	for (const cat of settings.categories) {
+		for (const s of cat.settings) {
+			if (s.key === DASH_0B_KEY && s.type === "boolean") return s.value === true;
+		}
+	}
+	return false;
 }
 
 const WINDOWS: ReadonlyArray<{ value: number; label: string }> = [
@@ -98,8 +133,19 @@ function SummaryTiles({ sessions }: SummaryTilesProps): React.ReactElement {
 	);
 }
 
+type SessionsView = "active" | "turns";
+
 export default function SessionsTab(): React.ReactElement {
 	const [minutes, setMinutes] = useState(30);
+	const [view, setView] = useState<SessionsView>("active");
+
+	const {
+		data: settingsData,
+	} = useApi<SettingsResponse>(
+		useCallback(() => fetchSettings(), []),
+		{ pollInterval: 0, maxRetries: 0 },
+	);
+	const dash0bOn = dash0bEnabled(settingsData);
 
 	const {
 		data: sessionsData,
@@ -141,6 +187,10 @@ export default function SessionsTab(): React.ReactElement {
 		refetchSessions();
 		refetchTimeseries();
 	}, [lastSampleTs, refetchSessions, refetchTimeseries]);
+
+	if (dash0bOn && view === "turns") {
+		return <TurnMemoryView />;
+	}
 
 	if (sessionsErr && !sessionsData) {
 		return (
@@ -184,6 +234,27 @@ export default function SessionsTab(): React.ReactElement {
 					))}
 				</div>
 			</div>
+
+			{dash0bOn && (
+				<div
+					className="flex items-center gap-2"
+					role="tablist"
+					aria-label="Sessions views"
+				>
+					<Toggle
+						pressed={view === "active"}
+						onClick={() => setView("active")}
+					>
+						Active Sessions
+					</Toggle>
+					<Toggle
+						pressed={view === "turns"}
+						onClick={() => setView("turns")}
+					>
+						Turn Memory
+					</Toggle>
+				</div>
+			)}
 
 			{sessions.length === 0 ? (
 				<div className="text-sm text-muted-foreground">No active sessions.</div>

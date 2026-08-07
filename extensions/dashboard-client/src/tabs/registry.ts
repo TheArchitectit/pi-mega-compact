@@ -58,3 +58,20 @@ export const ADVANCED_TABS: TabDef[] = [
 export const ADVANCED_TAB_IDS: ReadonlySet<TabId> = new Set(
   ADVANCED_TABS.map((t) => t.id),
 );
+
+/**
+ * The fixed 7 dashboard navigation SURFACE ids from the DASH-0a merge plan
+ * (plan.ts `DASHSurface`). These are the consolidated surfaces consumed by the
+ * additive `tabs/index.ts` barrel. The existent 13-tab `TabId` union above is
+ * LEFT UNCHANGED (rollback-safe) — this constant documents the 7 surfaces the
+ * DASH-0d rewire will navigate, and deliberately does NOT replace TabId.
+ */
+export const DASH_SURFACE_IDS: readonly string[] = [
+  "overview",
+  "sessions",
+  "cache-perf",
+  "memory-graph",
+  "diagnostics",
+  "setup",
+  "admin",
+] as const;

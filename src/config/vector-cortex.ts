@@ -71,6 +71,8 @@ export { COSINE_FP_REAL_ENABLED } from "./vector-cortex-cosfp-real.js";
 export { REPO_CORPUS_ENABLED } from "./repo-corpus.js";
 // DASH-0a dashboard consolidation tab-plan flag extracted to vector-cortex-dash-0a.ts.
 export { DASH_0A_ENABLED } from "./vector-cortex-dash-0a.js";
+// DASH-0b dashboard consolidation execution flag extracted to vector-cortex-dash-0b.ts.
+export { DASH_0B_ENABLED } from "./vector-cortex-dash-0b.js";
 export { ENC_1A_ENABLED } from "./vector-cortex-enc1a.js";
 export {
   ENC_1B_ENABLED,

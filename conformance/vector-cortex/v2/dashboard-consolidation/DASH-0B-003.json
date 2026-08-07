@@ -1,0 +1,1 @@
+{"assertion":"flag-off renders the two prior surfaces independently (sessions-only + standalone turns + flat cortex)","expected":{"flag_enabled":false,"sessions_self_contained":true,"turns_standalone":true},"id":"DASH-0B-003","kind":"dashboard-tab-plan","producer":"DASH-0b-merge-sessions-turns-and-cortex-infra","schema":"schemas/dashboard-consolidation-fixture.schema.json"}

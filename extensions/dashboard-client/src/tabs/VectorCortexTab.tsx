@@ -1,13 +1,27 @@
 /**
- * VectorCortexTab.tsx — vector-cortex dashboard tab.
+ * VectorCortexTab.tsx — vector-cortex dashboard tab (VC0A, DASH-0b).
  * VC0A: reader-only aggregate latency histogram + per-mode sample counts from
  * GET /api/vector-cortex/evaluation. VC0C (task 5): live safety envelope health
  * card (breaker state, window/probe/backoff, durable spool frontier/lag) from
  * GET /api/vector-cortex/health plus an admin "reset cooldown" action. Polls
  * every 5s via useVectorCortexPoll.
+ *
+ * DASH-0b: delegate-shell. Flag `MEGACOMPACT_DASH_0B` default ON re-groups the
+ * flat 18-card layout under 4 `<section aria-labelledby>` headers (rendered by
+ * `VectorCortexTab/sections.tsx`). Flag-OFF keeps the original flat card list
+ * in this file — byte-identical predecessor layout. No card component file is
+ * edited; only their import grouping moves.
+ *
+ * The client is a browser bundle with no `process` global, so the flag is read
+ * from the server-authoritative `/api/rag-settings` state (the server resolves
+ * `process.env["MEGACOMPACT_DASH_0B"] ?? default` into a boolean SettingState);
+ * see the same pattern in SessionsTab. PREVENT-PI-004: loopback reader calls only.
  */
 
 import { useState } from "react";
+import { useApi } from "../hooks/useApi";
+import { fetchSettings } from "../api/client";
+import type { SettingsResponse } from "@contracts";
 import {
 	resetVectorCortexBreaker,
 	fetchVectorCortexHealth,
@@ -17,6 +31,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Badge } from "../components/ui/badge";
 import { Metric } from "./VectorCortexMetric";
 import { useVectorCortexPoll } from "./useVectorCortexPoll";
+import { VectorCortexSections } from "./VectorCortexTab/sections";
 import { VectorCortexRenderCard } from "./VectorCortexRenderCard";
 import { VectorCortexRolloutCard } from "./VectorCortexRolloutCard";
 import { VectorCortexClosureCard } from "./VectorCortexClosureCard";
@@ -38,6 +53,19 @@ import { VectorCortexLedgerCard } from "./VectorCortexLedgerCard";
 import { VcStatusBadge } from "./VcStatusBadge";
 import { ModelImprovementCard } from "../components/ModelImprovementCard";
 
+const DASH_0B_KEY = "MEGACOMPACT_DASH_0B";
+
+/** Resolve the DASH-0b flag from the server settings state (false unless confirmed). */
+function dash0bEnabled(settings: SettingsResponse | null): boolean {
+	if (!settings) return false;
+	for (const cat of settings.categories) {
+		for (const s of cat.settings) {
+			if (s.key === DASH_0B_KEY && s.type === "boolean") return s.value === true;
+		}
+	}
+	return false;
+}
+
 function ModeChip({ mode, count }: { mode: string; count: number }): React.ReactElement {
 	return (
 		<div className="flex items-center justify-between border-b border-border/50 py-1 text-sm">
@@ -50,6 +78,12 @@ function ModeChip({ mode, count }: { mode: string; count: number }): React.React
 export default function VectorCortexTab(): React.ReactElement {
 	const [poll, refetch] = useVectorCortexPoll();
 	const [resetMsg, setResetMsg] = useState<string | null>(null);
+
+	const { data: settingsData } = useApi<SettingsResponse>(
+		() => fetchSettings(),
+		{ pollInterval: 0, maxRetries: 0 },
+	);
+	const dash0bOn = dash0bEnabled(settingsData);
 
 	const { loading, error, data, health } = poll;
 
@@ -85,138 +119,150 @@ export default function VectorCortexTab(): React.ReactElement {
 				</span>
 			</div>
 
-			<div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-				<Card>
-					<CardHeader>
-						<CardTitle>Samples</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<div className="text-3xl font-bold">{data.samples}</div>
-						<div className="mt-2 flex flex-col">
-							<ModeChip mode="A" count={data.byMode.A} />
-							<ModeChip mode="B" count={data.byMode.B} />
-							<ModeChip mode="C" count={data.byMode.C} />
-						</div>
-					</CardContent>
-				</Card>
+			{dash0bOn ? (
+				<VectorCortexSections
+					data={data}
+					health={health}
+					poll={poll}
+					onReset={onReset}
+					resetMsg={resetMsg}
+				/>
+			) : (
+				<>
+					<div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+						<Card>
+							<CardHeader>
+								<CardTitle>Samples</CardTitle>
+							</CardHeader>
+							<CardContent>
+								<div className="text-3xl font-bold">{data.samples}</div>
+								<div className="mt-2 flex flex-col">
+									<ModeChip mode="A" count={data.byMode.A} />
+									<ModeChip mode="B" count={data.byMode.B} />
+									<ModeChip mode="C" count={data.byMode.C} />
+								</div>
+							</CardContent>
+						</Card>
 
-				<Card className="md:col-span-2">
-					<CardHeader>
-						<CardTitle>Latency Histogram (ms, inclusive edges)</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<div className="flex items-end gap-2" style={{ height: 160 }}>
-							{data.histogram.edges.map((edge, i) => {
-								const h = (data.histogram.cells[i] / max) * 140;
-								return (
-									<div key={edge} className="flex flex-1 flex-col items-center gap-1">
+						<Card className="md:col-span-2">
+							<CardHeader>
+								<CardTitle>Latency Histogram (ms, inclusive edges)</CardTitle>
+							</CardHeader>
+							<CardContent>
+								<div className="flex items-end gap-2" style={{ height: 160 }}>
+									{data.histogram.edges.map((edge, i) => {
+										const h = (data.histogram.cells[i] / max) * 140;
+										return (
+											<div key={edge} className="flex flex-1 flex-col items-center gap-1">
+												<span className="text-xs text-muted-foreground">
+													{data.histogram.cells[i]}
+												</span>
+												<div
+													className="w-full rounded-t"
+													style={{ height: Math.max(2, h), background: "#6366f1" }}
+												/>
+												<span className="text-[10px] text-muted-foreground">&le;{edge}</span>
+											</div>
+										);
+									})}
+									<div className="flex flex-1 flex-col items-center gap-1">
 										<span className="text-xs text-muted-foreground">
-											{data.histogram.cells[i]}
+											{data.histogram.overflow}
 										</span>
 										<div
 											className="w-full rounded-t"
-											style={{ height: Math.max(2, h), background: "#6366f1" }}
+											style={{
+												height: Math.max(2, (data.histogram.overflow / max) * 140),
+												background: "#f87171",
+											}}
 										/>
-										<span className="text-[10px] text-muted-foreground">&le;{edge}</span>
+										<span className="text-[10px] text-muted-foreground">&gt;250</span>
 									</div>
-								);
-							})}
-							<div className="flex flex-1 flex-col items-center gap-1">
-								<span className="text-xs text-muted-foreground">
-									{data.histogram.overflow}
-								</span>
-								<div
-									className="w-full rounded-t"
-									style={{
-										height: Math.max(2, (data.histogram.overflow / max) * 140),
-										background: "#f87171",
-									}}
-								/>
-								<span className="text-[10px] text-muted-foreground">&gt;250</span>
-							</div>
-						</div>
-						<div className="mt-1 text-xs text-muted-foreground">
-							Total: {data.histogram.total} · Rejects: {data.rejects.length}
-						</div>
-					</CardContent>
-				</Card>
-			</div>
-
-			<Card>
-				<CardHeader>
-					<div className="flex items-center justify-between">
-						<CardTitle>Live Safety Envelope (VC0C)</CardTitle>
-						<div className="flex items-center gap-2">
-							{health?.stateSource === "ephemeral" && (
-								<Badge variant="outline">EPHEMERAL (non-live)</Badge>
-							)}
-							<button
-								onClick={onReset}
-								disabled={!health?.enabled}
-								className="rounded border border-border px-2 py-1 text-xs disabled:opacity-50"
-							>
-								Reset Cooldown
-							</button>
-						</div>
+								</div>
+								<div className="mt-1 text-xs text-muted-foreground">
+									Total: {data.histogram.total} · Rejects: {data.rejects.length}
+								</div>
+							</CardContent>
+						</Card>
 					</div>
-				</CardHeader>
-				<CardContent>
-					{resetMsg && (
-						<div className="mb-2 text-xs text-muted-foreground">{resetMsg}</div>
+
+					<Card>
+						<CardHeader>
+							<div className="flex items-center justify-between">
+								<CardTitle>Live Safety Envelope (VC0C)</CardTitle>
+								<div className="flex items-center gap-2">
+									{health?.stateSource === "ephemeral" && (
+										<Badge variant="outline">EPHEMERAL (non-live)</Badge>
+									)}
+									<button
+										onClick={onReset}
+										disabled={!health?.enabled}
+										className="rounded border border-border px-2 py-1 text-xs disabled:opacity-50"
+									>
+										Reset Cooldown
+									</button>
+								</div>
+							</div>
+						</CardHeader>
+						<CardContent>
+							{resetMsg && (
+								<div className="mb-2 text-xs text-muted-foreground">{resetMsg}</div>
+							)}
+							{!health ? (
+								<div className="vc-empty">Health unavailable (VC0C off).</div>
+							) : (
+								<div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+									<Metric label="State" value={health.state} />
+									<Metric label="Mode" value={health.mode} />
+									<Metric label="Window" value={`${health.windowMs}ms`} />
+									<Metric label="Probes" value={String(health.probeCount)} />
+									<Metric label="Backoff" value={`${health.backoffDelayMs}ms`} />
+									<Metric
+										label="Failures"
+										value={`${health.failures}/${health.attempts}`}
+									/>
+									<Metric
+										label="Frontier"
+										value={
+											health.stateSource === "ephemeral"
+												? "non-live"
+												: health.frontierFrozen
+													? "FROZEN"
+													: "LIVE"
+										}
+									/>
+									<Metric label="Spool lag" value={String(health.spoolLag)} />
+									<Metric label="Encoder mode" value={health.encoderMode} />
+									<Metric label="Encoder asset" value={health.encoderAssetDigest ? health.encoderAssetDigest.slice(0, 12) : "none"} />
+								</div>
+							)}
+						</CardContent>
+					</Card>
+					{data.ml5dEnabled && (
+						<ModelImprovementCard
+							encoderMode={health?.encoderMode ?? "B"}
+							encoderAssetDigest={health?.encoderAssetDigest ?? null}
+							status={data.status}
+						/>
 					)}
-					{!health ? (
-						<div className="vc-empty">Health unavailable (VC0C off).</div>
-					) : (
-						<div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-							<Metric label="State" value={health.state} />
-							<Metric label="Mode" value={health.mode} />
-							<Metric label="Window" value={`${health.windowMs}ms`} />
-							<Metric label="Probes" value={String(health.probeCount)} />
-							<Metric label="Backoff" value={`${health.backoffDelayMs}ms`} />
-							<Metric
-								label="Failures"
-								value={`${health.failures}/${health.attempts}`}
-							/>
-							<Metric
-								label="Frontier"
-								value={
-									health.stateSource === "ephemeral"
-										? "non-live"
-										: health.frontierFrozen
-											? "FROZEN"
-											: "LIVE"
-								}
-							/>
-							<Metric label="Spool lag" value={String(health.spoolLag)} />
-							<Metric label="Encoder mode" value={health.encoderMode} />
-							<Metric label="Encoder asset" value={health.encoderAssetDigest ? health.encoderAssetDigest.slice(0, 12) : "none"} />
-						</div>
-					)}
-				</CardContent>
-			</Card>
-			{data.ml5dEnabled && (
-				<ModelImprovementCard
-					encoderMode={health?.encoderMode ?? "B"}
-					encoderAssetDigest={health?.encoderAssetDigest ?? null}
-					status={data.status}
-				/>
+					<VectorCortexTopologyCard topology={poll.topology} query={poll.query} />
+					<VectorCortexShardsCard view={poll.shards} />
+					<VectorCortexReconstructCard view={poll.reconstruct} />
+					<VectorCortexPlansCard view={poll.plans} />
+					<VectorCortexRenderCard view={poll.render} />
+					<VectorCortexRolloutCard view={poll.rollout} />
+					<VectorCortexClosureCard view={poll.closureProof} />
+					<VectorCortexRestoreCard view={poll.restore} />
+					<VectorCortexRepairCard view={poll.repair} />
+					<VectorCortexCrystalsCard view={poll.crystals} />
+					<VectorCortexEconomicsCard view={poll.economics} />
+					<VectorCortexDiagnosticsCard view={poll.diagnostics} />
+					<VectorCortexOutcomesCard view={poll.outcomes} />
+					<VectorCortexPolicyCard view={poll.policy} />
+					<VectorCortexPlatformCard view={poll.platform} />
+					<VectorCortexLedgerCard ledger={poll.ledger} />
+				</>
 			)}
-			<VectorCortexTopologyCard topology={poll.topology} query={poll.query} />
-			<VectorCortexShardsCard view={poll.shards} />
-			<VectorCortexReconstructCard view={poll.reconstruct} />
-			<VectorCortexPlansCard view={poll.plans} />
-			<VectorCortexRenderCard view={poll.render} />
-			<VectorCortexRolloutCard view={poll.rollout} />
-			<VectorCortexClosureCard view={poll.closureProof} />
-			<VectorCortexRestoreCard view={poll.restore} />
-			<VectorCortexRepairCard view={poll.repair} />
-			<VectorCortexCrystalsCard view={poll.crystals} />
-			<VectorCortexEconomicsCard view={poll.economics} />
-			<VectorCortexDiagnosticsCard view={poll.diagnostics} />
-			<VectorCortexOutcomesCard view={poll.outcomes} />
-			<VectorCortexPolicyCard view={poll.policy} />
-			<VectorCortexPlatformCard view={poll.platform} />
-			<VectorCortexLedgerCard ledger={poll.ledger} />
 		</div>
 	);
 }
