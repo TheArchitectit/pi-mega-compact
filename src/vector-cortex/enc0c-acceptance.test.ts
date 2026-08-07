@@ -1,18 +1,18 @@
 /** ENC-0c acceptance aggregator (fixtures-driven, no mocks).
- *  Drives ENC-HEADS-001..006 against the staged synthetic corpus, the
- *  head-candidate seam (heads-candidate.ts), and the ENC_0C flag. Asserts:
- *  all five heads fire with real non-constant vectors, a malformed/absent
- *  candidate is rejected without a partial load, flag-off serves the ENC-0b
- *  survivor byte-identically, corpus split groups never cross boundaries, and
- *  head outputs are deterministic across 3 forward passes.
- *  Local file reads + temp-dir fixtures only, zero network (PREVENT-PI-004).
+ *  Drives ENC-HEADS-001..006 against the staged synthetic corpus and the
+ *  ENC_0C flag. Asserts: fixture registration, all five heads fire with real
+ *  non-constant vectors, flag-off serves the ENC-0b survivor byte-identically,
+ *  corpus split groups never cross boundaries, and head outputs are
+ *  deterministic across 3 forward passes. The head-candidate load/validate
+ *  seam (dim-mismatch / non-finite / digest / trunk rejections) lives in the
+ *  sibling enc0c-candidate-acceptance.test.ts so both files stay under the
+ *  src/ 300-line soft limit. Local file reads only, zero network.
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, existsSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -27,10 +27,6 @@ import {
 import {
   encodeVectorSet,
   loadHeadCandidate,
-  validateHeadCandidate,
-  HEAD_CANDIDATE_SCHEMA,
-  HEAD_CANDIDATE_FAIL,
-  type HeadCandidateManifest,
 } from "./encoder/heads.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -88,47 +84,6 @@ function fixture(id: string): HeadsFixture {
 
 function sha256(buf: Uint8Array | string): string {
   return createHash("sha256").update(buf).digest("hex");
-}
-
-/** Build a minimal head-candidate dir from real survivor projections. */
-function stageCandidate(dir: string, overrides?: {
-  omitHead?: EncoderHeadName;
-  nonFiniteHead?: EncoderHeadName;
-  digestCorrupt?: boolean;
-  trunkDigestOverride?: string;
-}): HeadCandidateManifest {
-  const manifest = readEncoderManifest(ASSET_DIR)!;
-  const heads = [];
-  let totalBytes = 0;
-  for (const h of ENCODER_HEAD_ORDER) {
-    const dim = ENCODER_HEAD_DIMS[h];
-    // Deterministic non-constant weights: sinusoidal ramp L2-normalized.
-    const w = new Float32Array(dim);
-    for (let i = 0; i < dim; i++) w[i] = Math.sin((i + 1) * 0.001 * (ENCODER_HEAD_ORDER.indexOf(h) + 1));
-    let norm = 0;
-    for (const v of w) norm += v * v;
-    norm = Math.sqrt(norm);
-    for (let i = 0; i < dim; i++) w[i] = w[i]! / norm;
-    if (overrides?.nonFiniteHead === h) w[0] = Number.NaN;
-    const bytes = Buffer.from(w.buffer, w.byteOffset, dim * 4);
-    let digest = sha256(bytes);
-    if (overrides?.digestCorrupt && h === "contradiction") digest = "0".repeat(64);
-    writeFileSync(join(dir, `${h}.bin`), bytes);
-    heads.push({ name: h, dim, sha256: digest, bytes: dim * 4 });
-    totalBytes += dim * 4;
-  }
-  const effective = overrides?.omitHead
-    ? heads.filter((x) => x.name !== overrides.omitHead)
-    : heads;
-  const manifestObj: HeadCandidateManifest = {
-    schema: HEAD_CANDIDATE_SCHEMA,
-    version: "encoder-v1",
-    trunkDigest: overrides?.trunkDigestOverride ?? manifest.onnx.sha256,
-    heads: effective,
-    totalBytes: overrides?.omitHead ? totalBytes - ENCODER_HEAD_DIMS[overrides.omitHead] * 4 : totalBytes,
-  };
-  writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifestObj));
-  return manifestObj;
 }
 
 describe("ENC-0c conformance registration", () => {
@@ -200,92 +155,6 @@ describe("ENC-0c heads fire with real non-constant vectors (ENC-HEADS-001)", () 
   });
 });
 
-describe("ENC-0c candidate load seam", () => {
-  test("a well-formed staged candidate loads and validates (HEAD_CANDIDATE_SCHEMA)", () => {
-    if (!ENC_0C_ENABLED()) return; // aggregator flag-agnostic; sibling MEGACOMPACT_ENC_0C=0 run covers the off path.
-    const dir = mkdtempSync(join(tmpdir(), "enc0c-cand-"));
-    try {
-      const manifest = readEncoderManifest(ASSET_DIR)!;
-      stageCandidate(dir);
-      const loaded = loadHeadCandidate(dir, manifest);
-      assert.ok(loaded, "candidate loads");
-      assert.equal(loaded!.schema, HEAD_CANDIDATE_SCHEMA);
-      for (const h of ENCODER_HEAD_ORDER) {
-        assert.equal(loaded!.dims[h], ENCODER_HEAD_DIMS[h], `${h} dim`);
-        assert.equal(loaded!.weights[h].length, ENCODER_HEAD_DIMS[h], `${h} weights length`);
-        const v = validateHeadCandidate(loaded!);
-        assert.ok(v.ok, `${h} validates`);
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("a missing head is rejected with no partial load (ENC-HEADS-003)", () => {
-    if (!ENC_0C_ENABLED()) return;
-    const dir = mkdtempSync(join(tmpdir(), "enc0c-dim-"));
-    try {
-      const manifest = readEncoderManifest(ASSET_DIR)!;
-      stageCandidate(dir, { omitHead: "payloadRouting" });
-      const loaded = loadHeadCandidate(dir, manifest);
-      assert.equal(loaded, null, "dim-mismatch candidate rejected, no partial load");
-      const fx = fixture("ENC-HEADS-003");
-      assert.equal(fx.expected_result["rejected"], "dim-mismatch");
-      assert.equal(fx.expected_result["partialLoad"], false);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("a non-finite or digest-corrupt candidate is rejected, never force-loaded (ENC-HEADS-004)", () => {
-    if (!ENC_0C_ENABLED()) return;
-    const fx = fixture("ENC-HEADS-004");
-    assert.equal(fx.expected_result["rejected"], "non-finite-weights");
-    assert.equal(fx.expected_result["forceLoad"], false);
-    // Non-finite: NaN in contradiction weights → loadHeadCandidate returns null.
-    const dirNaN = mkdtempSync(join(tmpdir(), "enc0c-nan-"));
-    try {
-      const manifest = readEncoderManifest(ASSET_DIR)!;
-      // Digest is computed over the NaN bytes, so the digest check passes but
-      // finiteness fails inside validateHeadCandidate (NON_FINITE).
-      stageCandidate(dirNaN, { nonFiniteHead: "contradiction" });
-      const loaded = loadHeadCandidate(dirNaN, manifest);
-      assert.equal(loaded, null, "NaN candidate rejected");
-    } finally {
-      rmSync(dirNaN, { recursive: true, force: true });
-    }
-    // Digest-corrupt: sha256 lie in the manifest → loadHeadCandidate returns null.
-    const dirDig = mkdtempSync(join(tmpdir(), "enc0c-dig-"));
-    try {
-      const manifest = readEncoderManifest(ASSET_DIR)!;
-      stageCandidate(dirDig, { digestCorrupt: true });
-      const loaded = loadHeadCandidate(dirDig, manifest);
-      assert.equal(loaded, null, "digest-corrupt candidate rejected");
-    } finally {
-      rmSync(dirDig, { recursive: true, force: true });
-    }
-  });
-
-  test("trunk-digest mismatch rejects the candidate (frozen-trunk pinning)", () => {
-    if (!ENC_0C_ENABLED()) return;
-    const dir = mkdtempSync(join(tmpdir(), "enc0c-trunk-"));
-    try {
-      const manifest = readEncoderManifest(ASSET_DIR)!;
-      stageCandidate(dir, { trunkDigestOverride: "f".repeat(64) });
-      const loaded = loadHeadCandidate(dir, manifest);
-      assert.equal(loaded, null, "wrong trunkDigest rejected");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  test("HEAD_CANDIDATE_FAIL codes cover the spec rejection surface", () => {
-    for (const k of ["INVALID", "TRUNK_MISMATCH", "DIM_MISMATCH", "NON_FINITE", "DIGEST_MISMATCH"]) {
-      assert.ok((HEAD_CANDIDATE_FAIL as Record<string, string>)[k], `HEAD_CANDIDATE_FAIL.${k}`);
-    }
-  });
-});
-
 describe("ENC-0c flag semantics", () => {
   test("flag exports a live boolean (aggregator flag-agnostic)", () => {
     assert.equal(typeof ENC_0C_ENABLED(), "boolean");
@@ -295,18 +164,19 @@ describe("ENC-0c flag semantics", () => {
     const fx = fixture("ENC-HEADS-002");
     assert.equal(fx.expected_result["byteIdentical"], true);
     assert.equal(fx.expected_result["fallback"], "enc-0b-survivor");
-    // With ENC_0C=0, loadHeadCandidate refuses to even read the dir.
+    // With ENC_0C=0, loadHeadCandidate refuses to read any candidate dir.
+    // (The sibling enc0c-candidate-acceptance.test.ts stages a full valid
+    // candidate tree and asserts the same gate from the candidate side.)
     if (!ENC_0C_ENABLED()) {
-      const dir = mkdtempSync(join(tmpdir(), "enc0c-off-"));
-      try {
-        const manifest = readEncoderManifest(ASSET_DIR)!;
-        stageCandidate(dir);
-        assert.equal(loadHeadCandidate(dir, manifest), null, "flag-off never loads a candidate");
-      } finally {
-        rmSync(dir, { recursive: true, force: true });
-      }
+      const manifest = readEncoderManifest(ASSET_DIR)!;
+      assert.equal(
+        loadHeadCandidate(join(ROOT, ".tmp-nonexistent-enc0c-dir"), manifest),
+        null,
+        "flag-off never loads a candidate",
+      );
     }
-    // Byte-identity holds regardless of flag state: encodeVectorSet ignores the candidate seam.
+    // Byte-identity holds regardless of flag state: encodeVectorSet ignores the
+    // candidate seam entirely; the two runs are element-identical.
     const vs1 = encodeVectorSet([1, 2, 3, 4, 5]);
     const vs2 = encodeVectorSet([1, 2, 3, 4, 5]);
     for (let i = 0; i < vs1.heads.length; i++) {

@@ -143,21 +143,28 @@ to reviewer-accepted:
 - [x] `python3 scripts/regression_check.py --all` → 0 blocking;
       7 dev-only/moderate warnings (audit, non-blocking)
 - [x] `python3 scripts/regression_check.py --soft-as-hard --pre-commit
-      --soft-as-hard-base v0.20.44` → clean (no changed file over soft limit;
-      largest edit heads.ts 262 / vector-cortex.ts exactly 300)
+      --soft-as-hard-base v0.20.44` → clean (aggregators 274 + 188 ≤ 300;
+      heads.ts 262 / vector-cortex.ts exactly 300 — caught and fixed the
+      404-line single-aggregator violation by splitting into the candidate
+      sibling before publish)
 - [x] `node scripts/guardrails-scan.mjs` → clean (ran inside `npm run lint`)
 - [x] `node scripts/vector-cortex-scope-check.mjs ENC-0c 8b1404f` →
       `all 37 committed file(s) inside Production ownership + cross-cutting`
 - [x] `node scripts/vector-cortex-evidence-check.mjs ENC-0c` →
       `1 record, 0 mismatches, 0 warnings`
-- [x] `npm test` → `TOTAL: 3735 passed, 0 failed across 377 files in 52.7s`
-      (+15 over pre-ENC-0c 3720 — the aggregator's 15 assertions)
-- [x] `node --test dist/vector-cortex/enc0c-acceptance.test.js` →
-      `15 pass / 0 fail` (default ON)
-- [x] `MEGACOMPACT_ENC_0C=0 node --test dist/vector-cortex/enc0c-acceptance.test.js`
-      → `15 pass / 0 fail` (flag-off byte-parity confirmed; aggregator
-      flag-agnostic — the candidate-load seams early-return null under `=0`,
-      proven by the ENC-HEADS-002 block)
+- [x] `npm test` → `TOTAL: 3735 passed, 0 failed across 377 files in 52.7s` on
+      the pre-split single aggregator (pre-ENC-0c baseline 3720); the final
+      split run is 3736 — the two aggregators now carry 16 assertions
+      (11 main + 5 candidate-seam), both ≤ 300 src/ soft limit
+- [x] `node --test dist/vector-cortex/enc0c-acceptance.test.js
+      dist/vector-cortex/enc0c-candidate-acceptance.test.js` →
+      `16 pass / 0 fail` (default ON; 11 aggregator + 5 candidate-seam)
+- [x] `MEGACOMPACT_ENC_0C=0 node --test dist/vector-cortex/enc0c-acceptance.test.js
+      dist/vector-cortex/enc0c-candidate-acceptance.test.js` → `16 pass / 0 fail`
+      (flag-off byte-parity confirmed; aggregator flag-agnostic — the
+      candidate-load seams early-return null under `=0`, proven by the
+      ENC-HEADS-002 block in the aggregator and the candidate flag-gate test in
+      the sibling)
 - [x] `git diff --check` → clean
 
 Controller attestation: all gates green on the ENC-0c implementation commit
