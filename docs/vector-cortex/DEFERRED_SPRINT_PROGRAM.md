@@ -148,6 +148,7 @@ Steps 1–8 repeat per sprint until all nine ship.
 | DASH-0b | `feat/DASH-0b` | `3051cba` | v0.20.59 |
 | DASH-0c | `feat/DASH-0c` | `697378a` | v0.20.60 |
 | DASH-0d | `feat/DASH-0d` | `a8605ef` | v0.20.61 |
+| DOC-0b | `feat/DOC-0b` | `2c841fa` | docs-only |
 
 ## Exit evidence for the program
 
