@@ -1,0 +1,1 @@
+{"assertion":"head-embedding determinism — identical sha256 across 3 forward passes (maxAbsDelta 0)","expected_outcome":"ok","expected_result":{"backend":"wasm","maxAbsDelta":0,"passes":3,"sha256":"stable"},"id":"ENC-HEADS-006","kind":"determinism","producer":"ml5-enc/gen-fixtures.mjs","schema":"schemas/encoder-heads-real-fixture.schema.json","setup":{"runs":3}}

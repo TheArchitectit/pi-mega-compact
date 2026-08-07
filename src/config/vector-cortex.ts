@@ -281,7 +281,7 @@ export { ML5E_ENABLED } from "./vector-cortex-ml5e.js";
 export { DEDUP_ATTR_ENABLED } from "./vector-cortex-dedup-attr.js";
 export { ENC_0A_ENABLED } from "./vector-cortex-enc0a.js";
 export { ENC_0B_ENABLED } from "./vector-cortex-enc0b.js";
-
+export { ENC_0C_ENABLED } from "./vector-cortex-enc0c.js";
 // Breaker constants (TRIAD_RESILIENCE.md §breaker) extracted to vector-cortex-breakers.ts.
 export {
   BREAKER_WINDOW_MS,

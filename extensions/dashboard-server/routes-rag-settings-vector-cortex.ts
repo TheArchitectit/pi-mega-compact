@@ -264,5 +264,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"ENC-0b real ONNX trunk fetch + gated inference: replaces the LCG placeholder with the real bge-small int8 model through an ONNX InferenceSession (onnxruntime-web WASM). OFF = LCG placeholder serves byte-identical predecessor output, no ONNX session built.",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_ENC_0C",
+			"ENC-0c Five-Head Supervision Transfer",
+			"ENC-0c five-head supervision transfer on the frozen bge-small trunk: when a developer-trained head candidate is staged under ~/.pi/mega-compact-encoder/candidates/, the five heads serve the trained weights. OFF = no candidate is loaded, the heads serve byte-identical ENC-0b survivor defaults.",
+			true,
+		),
 	],
 };

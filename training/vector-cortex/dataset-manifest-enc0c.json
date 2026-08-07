@@ -1,0 +1,218 @@
+{
+  "corpusDigest": "7f1db24a1791fc128b33b5a3ddeb28107baf5b267573585080c0c2c8d373dadf",
+  "generator": "gen_synthetic_corpus.py",
+  "groupCount": 12,
+  "groupSplits": {
+    "repo-alpha/sess-1": "train",
+    "repo-alpha/sess-2": "train",
+    "repo-beta/sess-3": "calibration",
+    "repo-beta/sess-4": "train",
+    "repo-delta/sess-7": "train",
+    "repo-delta/sess-8": "calibration",
+    "repo-epsilon/sess-10": "test",
+    "repo-epsilon/sess-9": "train",
+    "repo-gamma/sess-5": "test",
+    "repo-gamma/sess-6": "train",
+    "repo-zeta/sess-11": "train",
+    "repo-zeta/sess-12": "train"
+  },
+  "heads": [
+    "semantic",
+    "dependency",
+    "contradiction",
+    "cache",
+    "payload"
+  ],
+  "noUserBytes": true,
+  "perGroupSampleCount": {
+    "cache": 6,
+    "contradiction": 8,
+    "dependency": 8,
+    "payload": 6,
+    "semantic": 8
+  },
+  "schema": "training-dataset-manifest-v1",
+  "seed": 1729,
+  "sessionNeverSplit": true,
+  "sources": {
+    "calibration/cache-0.jsonl": {
+      "byteCount": 2907,
+      "generated": true,
+      "head": "cache",
+      "license": "UNLICENSED-synthetic",
+      "path": "corpus/calibration/cache-0.jsonl",
+      "sampleCount": 12,
+      "schema": "synthetic-corpus-v1",
+      "sha256": "91533450ab0eacddcd83a463a20a25895f51ceea69a517a92f21d5fef133493e",
+      "split": "calibration"
+    },
+    "calibration/contradiction-0.jsonl": {
+      "byteCount": 3993,
+      "generated": true,
+      "head": "contradiction",
+      "license": "UNLICENSED-synthetic",
+      "path": "corpus/calibration/contradiction-0.jsonl",
+      "sampleCount": 16,
+      "schema": "synthetic-corpus-v1",
+      "sha256": "e6f30372fb1efa417ca7867bbf9e0690283aec7fce5509883faa52987cde32c7",
+      "split": "calibration"
+    },
+    "calibration/dependency-0.jsonl": {
+      "byteCount": 4150,
+      "generated": true,
+      "head": "dependency",
+      "license": "UNLICENSED-synthetic",
+      "path": "corpus/calibration/dependency-0.jsonl",
+      "sampleCount": 16,
+      "schema": "synthetic-corpus-v1",
+      "sha256": "bb8df9d43bc4e14e7619f032b5c83618d5546cef8f2baa93d092ebcf79e39124",
+      "split": "calibration"
+    },
+    "calibration/payload-0.jsonl": {
+      "byteCount": 3032,
+      "generated": true,
+      "head": "payload",
+      "license": "UNLICENSED-synthetic",
+      "path": "corpus/calibration/payload-0.jsonl",
+      "sampleCount": 12,
+      "schema": "synthetic-corpus-v1",
+      "sha256": "c36a36e141ddd376e576952bdc36e7010ba08076acac2cc7d18ced08636e13d2",
+      "split": "calibration"
+    },
+    "calibration/semantic-0.jsonl": {
+      "byteCount": 3938,
+      "generated": true,
+      "head": "semantic",
+      "license": "UNLICENSED-synthetic",
+      "path": "corpus/calibration/semantic-0.jsonl",
+      "sampleCount": 16,
+      "schema": "synthetic-corpus-v1",
+      "sha256": "ad8bee899e13a58cb09c2bbc9f27f5b1fba08876b02d27102b26df2d37e48e8c",
+      "split": "calibration"
+    },
+    "test/cache-0.jsonl": {
+      "byteCount": 2952,
+      "generated": true,
+      "head": "cache",
+      "license": "UNLICENSED-synthetic",
+      "path": "corpus/test/cache-0.jsonl",
+      "sampleCount": 12,
+      "schema": "synthetic-corpus-v1",
+      "sha256": "7b7335ee358f9ca72c7ed8797b742b6bc15fa81356c88956fd772f6cbd996c5f",
+      "split": "test"
+    },
+    "test/contradiction-0.jsonl": {
+      "byteCount": 4058,
+      "generated": true,
+      "head": "contradiction",
+      "license": "UNLICENSED-synthetic",
+      "path": "corpus/test/contradiction-0.jsonl",
+      "sampleCount": 16,
+      "schema": "synthetic-corpus-v1",
+      "sha256": "fadeca892197711378e2f28b6004e1353a3748b6cc5f6d26db8f561852388971",
+      "split": "test"
+    },
+    "test/dependency-0.jsonl": {
+      "byteCount": 4209,
+      "generated": true,
+      "head": "dependency",
+      "license": "UNLICENSED-synthetic",
+      "path": "corpus/test/dependency-0.jsonl",
+      "sampleCount": 16,
+      "schema": "synthetic-corpus-v1",
+      "sha256": "cb96977c80699a116a99ae88ac1b32388e5c842120842bb8572440596c069682",
+      "split": "test"
+    },
+    "test/payload-0.jsonl": {
+      "byteCount": 3063,
+      "generated": true,
+      "head": "payload",
+      "license": "UNLICENSED-synthetic",
+      "path": "corpus/test/payload-0.jsonl",
+      "sampleCount": 12,
+      "schema": "synthetic-corpus-v1",
+      "sha256": "3397c55e9130be3d9b4222326c565b4f556c6bcedeca344fb84d0313532bf316",
+      "split": "test"
+    },
+    "test/semantic-0.jsonl": {
+      "byteCount": 3991,
+      "generated": true,
+      "head": "semantic",
+      "license": "UNLICENSED-synthetic",
+      "path": "corpus/test/semantic-0.jsonl",
+      "sampleCount": 16,
+      "schema": "synthetic-corpus-v1",
+      "sha256": "9152fb663a6219acbbe5263e8d5e07068beeb5c28d103c5f5d62166dc07d3489",
+      "split": "test"
+    },
+    "train/cache-0.jsonl": {
+      "byteCount": 11720,
+      "generated": true,
+      "head": "cache",
+      "license": "UNLICENSED-synthetic",
+      "path": "corpus/train/cache-0.jsonl",
+      "sampleCount": 48,
+      "schema": "synthetic-corpus-v1",
+      "sha256": "e010f2ada38f57be03de542ddb17ece08b587224ac5a45b8a8957b2fda91217b",
+      "split": "train"
+    },
+    "train/contradiction-0.jsonl": {
+      "byteCount": 16088,
+      "generated": true,
+      "head": "contradiction",
+      "license": "UNLICENSED-synthetic",
+      "path": "corpus/train/contradiction-0.jsonl",
+      "sampleCount": 64,
+      "schema": "synthetic-corpus-v1",
+      "sha256": "166fbe0189de9fbbe9d9ab4d4f90897e557751f61c0f74823cb783bcf58e07be",
+      "split": "train"
+    },
+    "train/dependency-0.jsonl": {
+      "byteCount": 16684,
+      "generated": true,
+      "head": "dependency",
+      "license": "UNLICENSED-synthetic",
+      "path": "corpus/train/dependency-0.jsonl",
+      "sampleCount": 64,
+      "schema": "synthetic-corpus-v1",
+      "sha256": "a00b9dd1f07eebbe09b9e79e809bf48b863e530568fc2de4153243eed43b7f2e",
+      "split": "train"
+    },
+    "train/payload-0.jsonl": {
+      "byteCount": 12158,
+      "generated": true,
+      "head": "payload",
+      "license": "UNLICENSED-synthetic",
+      "path": "corpus/train/payload-0.jsonl",
+      "sampleCount": 48,
+      "schema": "synthetic-corpus-v1",
+      "sha256": "6f8f8d78fb9cd9e0ab932dfb0169f401f661c2604360d19fa14a5552d497b8c6",
+      "split": "train"
+    },
+    "train/semantic-0.jsonl": {
+      "byteCount": 15808,
+      "generated": true,
+      "head": "semantic",
+      "license": "UNLICENSED-synthetic",
+      "path": "corpus/train/semantic-0.jsonl",
+      "sampleCount": 64,
+      "schema": "synthetic-corpus-v1",
+      "sha256": "cea81465f79c990cd91b4c4d5d7908f95abbf2b892cb16d236e4411b4b0ab7a1",
+      "split": "train"
+    }
+  },
+  "splitBy": "repository/session",
+  "splitRule": {
+    "0": "train",
+    "1": "train",
+    "2": "calibration",
+    "3": "train",
+    "4": "test"
+  },
+  "syntheticOnly": true,
+  "testGroups": [
+    "repo-epsilon/sess-10",
+    "repo-gamma/sess-5"
+  ],
+  "totalSamples": 432
+}

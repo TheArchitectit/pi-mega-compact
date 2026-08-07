@@ -1,7 +1,11 @@
 {
   "schema": "train-config-v1",
   "seed": 1729,
+  "encoderSeed": 1729,
   "epochs": 1,
+  "frozenTrunk": true,
+  "trunk": "bge-small-en-v1.5",
+  "trunkDim": 384,
   "headOrder": ["semantic", "dependency", "contradiction", "cacheStability", "payloadRouting"],
   "losses": {
     "semantic": 0.35,
@@ -10,6 +14,14 @@
     "cacheStability": 0.15,
     "payloadRouting": 0.1
   },
+  "teacher": {
+    "contradiction": {"model": "cross-encoder/nli-deberta-v3-small", "role": "distiller", "tier": "nli-deberta-v3-small"},
+    "dependency": {"model": "nli-family-prior", "role": "self-labeled", "note": "entailment/contradiction priors from the NLI family + deterministic construction pairs; no teacher model"},
+    "cacheStability": {"model": null, "role": "heuristic", "note": "same-canonical-request-prefix hashing features; label derives from canonical request digest, not user payloads"},
+    "payloadRouting": {"model": "trunk-MLP", "role": "mlp", "note": "small MLP on the trunk embedding predicting {semantic,exact,residual,anchor}"},
+    "semantic": {"model": "trunk-CLS", "role": "identity", "note": "identity regression onto bge-small last_hidden_state[:,0] pooled vector, L2-normalized"}
+  },
   "groups": {},
-  "note": "corpus records are collected under VC2B; groups remain empty until the corpus manifest is populated"
+  "source": "training/vector-cortex/corpus",
+  "note": "five-head supervision transfer onto the frozen bge-small trunk (ENC-0c); corpus is synthetic/self-labeled only (gen_synthetic_corpus.py); loss weights exactly .35/.20/.20/.15/.10 sum 1.0"
 }

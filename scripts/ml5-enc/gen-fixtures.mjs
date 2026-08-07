@@ -344,6 +344,154 @@ const trunkFixtures = [
   },
 ];
 
+// ── ENC-0c: encoder-heads-real fixtures ─────────────────────────────────────
+// Five real heads on the frozen bge-small trunk: semantic-384, dependency-128,
+// contradiction-128, cache-stability-64, payload-routing-32 (ENCODER_HEAD_DIM_ORDER).
+const HEAD_ORDER = [
+  { name: "semantic", dim: 384 },
+  { name: "dependency", dim: 128 },
+  { name: "contradiction", dim: 128 },
+  { name: "cache-stability", dim: 64 },
+  { name: "payload-routing", dim: 32 },
+];
+const HEADS_FIRE = HEAD_ORDER.map((h) => ({ name: h.name, dim: h.dim, nonConstant: true }));
+
+const HEADS_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema#",
+  title: "ENC-0c encoder-heads-real fixture envelope",
+  type: "object",
+  description:
+    "Common structure every ENC-0c encoder-heads-real fixture validates against. `kind` names the trained-five-head branch exercised; `setup` carries candidate/split/run overrides for the test harness; `expected_outcome` is ok or error; `expected_result` pins the fields the runtime must assert (per-head dim/non-constant, mode, fallback, split digest, determinism delta).",
+  required: ["id", "producer", "assertion", "kind", "setup", "expected_outcome", "expected_result"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: {
+      type: "string",
+      enum: [
+        "heads-fire",
+        "flag-off-parity",
+        "dim-mismatch",
+        "non-finite-weights",
+        "split-boundary",
+        "determinism",
+      ],
+    },
+    setup: {
+      type: "object",
+      properties: {
+        corpus: { type: "string" },
+        flag_off: { type: "boolean" },
+        runs: { type: "integer" },
+        digest_stable: { type: "boolean" },
+        split_groups: {
+          type: "object",
+          properties: {
+            train: { type: "integer" },
+            calibration: { type: "integer" },
+            test: { type: "integer" },
+          },
+        },
+        candidate: {
+          type: "object",
+          properties: {
+            missing_head_dim: { type: "string" },
+            non_finite: { type: "string" },
+            digest_mismatch: { type: "boolean" },
+          },
+        },
+      },
+    },
+    expected_outcome: { type: "string", enum: ["ok", "error"] },
+    expected_result: {
+      type: "object",
+      properties: {
+        backend: { type: "string" },
+        mode: { type: "string" },
+        byteIdentical: { type: "boolean" },
+        fallback: { type: "string" },
+        rejected: { type: "string" },
+        partialLoad: { type: "boolean" },
+        forceLoad: { type: "boolean" },
+        splitDigest: { type: "string" },
+        crossingGroups: { type: "integer" },
+        maxAbsDelta: { type: "number" },
+        passes: { type: "integer" },
+        sha256: { type: "string" },
+        heads: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              dim: { type: "integer" },
+              nonConstant: { type: "boolean" },
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
+const headsFixtures = [
+  {
+    id: "ENC-HEADS-001",
+    assertion:
+      "all five heads return real, non-constant vectors over synthetic corpus (semantic 384 / dependency 128 / contradiction 128 / cache 64 / payload 32)",
+    kind: "heads-fire",
+    setup: { corpus: "synthetic", runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { backend: "wasm", heads: HEADS_FIRE, mode: "A" },
+  },
+  {
+    id: "ENC-HEADS-002",
+    assertion:
+      "flag-off (MEGACOMPACT_ENC_0C=0) loads no candidate — every head byte-identical to the ENC-0b survivor",
+    kind: "flag-off-parity",
+    setup: { flag_off: true, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { byteIdentical: true, fallback: "enc-0b-survivor", mode: "B" },
+  },
+  {
+    id: "ENC-HEADS-003",
+    assertion:
+      "missing head dim in the candidate -> rejected, fallback to survivor (no partial load)",
+    kind: "dim-mismatch",
+    setup: { candidate: { missing_head_dim: "payload-routing" } },
+    expected_outcome: "error",
+    expected_result: { fallback: "enc-0b-survivor", partialLoad: false, rejected: "dim-mismatch" },
+  },
+  {
+    id: "ENC-HEADS-004",
+    assertion:
+      "non-finite or digest-mismatched candidate -> rejected, fallback (no force-load)",
+    kind: "non-finite-weights",
+    setup: { candidate: { non_finite: "contradiction-128", digest_mismatch: true } },
+    expected_outcome: "error",
+    expected_result: { fallback: "enc-0b-survivor", forceLoad: false, rejected: "non-finite-weights" },
+  },
+  {
+    id: "ENC-HEADS-005",
+    assertion:
+      "synthetic corpus split groups never cross train/calibration/test boundaries; split digest stable",
+    kind: "split-boundary",
+    setup: { digest_stable: true, split_groups: { train: 3, calibration: 1, test: 1 } },
+    expected_outcome: "ok",
+    expected_result: { crossingGroups: 0, splitDigest: "stable" },
+  },
+  {
+    id: "ENC-HEADS-006",
+    assertion:
+      "head-embedding determinism — identical sha256 across 3 forward passes (maxAbsDelta 0)",
+    kind: "determinism",
+    setup: { runs: 3 },
+    expected_outcome: "ok",
+    expected_result: { backend: "wasm", maxAbsDelta: 0, passes: 3, sha256: "stable" },
+  },
+];
+
 // ── Main (mirrors the VC9 setup generator coordinate with manifest.json) ─────
 export function writeAll() {
   mkdirSync(ENC_DIR, { recursive: true });
@@ -422,6 +570,41 @@ export function writeAll() {
     });
   }
 
+  // The ENC-HEADS schema row.
+  const headsSchemaBytes = Buffer.from(canonicalJson(HEADS_SCHEMA), "utf8");
+  const headsSchemaRel = "schemas/encoder-heads-real-fixture.schema.json";
+  writeFileSync(join(V2, headsSchemaRel), headsSchemaBytes);
+  rows.push({
+    id: "encoder-heads-real-fixture",
+    path: headsSchemaRel,
+    sha256: sha256Hex(headsSchemaBytes),
+    schema: headsSchemaRel,
+    algorithm: "json-schema",
+    producer,
+    expected: "schema",
+    license: "synthetic",
+  });
+
+  // The 6 ENC-HEADS fixture rows + on-disk files.
+  const headsDir = join(V2, "encoder-heads-real");
+  mkdirSync(headsDir, { recursive: true });
+  for (const fx of headsFixtures) {
+    const obj = { ...fx, schema: headsSchemaRel, producer };
+    const bytes = Buffer.from(canonicalJson(obj), "utf8");
+    const rel = `encoder-heads-real/${fx.id}.json`;
+    writeFileSync(join(V2, rel), bytes);
+    rows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: headsSchemaRel,
+      algorithm: "encoder-heads-real",
+      producer,
+      expected: fx.expected_outcome,
+      license: "synthetic",
+    });
+  }
+
   // Merge into the existing manifest (id-dedupe so re-runs are idempotent) and
   // re-sort the whole fixtures array by id.
   const existing = manifest.fixtures.filter((r) => !rows.some((n) => n.id === r.id));
@@ -444,10 +627,16 @@ export function writeAll() {
   setCsv("domain", "encoder-trunk");
   setCsv("schemaVersion", "encoder-trunk-fixture");
   setOwnerCsv("owner", "ENC-0b");
+  setCsv("domain", "encoder-heads-real");
+  setCsv("schemaVersion", "encoder-heads-real-fixture");
+  setOwnerCsv("owner", "ENC-0c");
 
   writeFileSync(manifestPath, Buffer.from(canonicalJson(manifest), "utf8"));
 
-  return { fixtureCount: fixtures.length + trunkFixtures.length, schemaCount: 2 };
+  return {
+    fixtureCount: fixtures.length + trunkFixtures.length + headsFixtures.length,
+    schemaCount: 3,
+  };
 }
 
 if (process.argv[1] && process.argv[1].endsWith("gen-fixtures.mjs")) {

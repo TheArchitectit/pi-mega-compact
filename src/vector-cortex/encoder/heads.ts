@@ -246,3 +246,17 @@ export function projectHeadFromTrunk(
 }
 
 export { ENCODER_HEAD_ORDER, ENCODER_HEAD_DIMS, ENCODER_HEAD_LOSS_SUM, ENCODER_SEED, NOOP_VC2B_REPORTER };
+
+// ENC-0c five-head candidate seam (delegate-shell): the load/validate impl
+// lives in heads-candidate.ts; these re-exports keep the public import path
+// stable at heads.ts without growing this survivor file over the soft limit.
+export {
+  HEAD_CANDIDATE_SCHEMA,
+  HEAD_CANDIDATE_FAIL,
+  loadHeadCandidate,
+  validateHeadCandidate,
+  type HeadCandidate,
+  type HeadCandidateManifest,
+  type HeadCandidateHeadDigest,
+  type HeadCandidateValidation,
+} from "./heads-candidate.js";
