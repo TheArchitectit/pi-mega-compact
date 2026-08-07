@@ -1,0 +1,1 @@
+{"assertion":"the a11y audit passes serious/critical-clean on the merged surfaces (nav map satisfied)","expected":{"nav_map_satisfied":true,"serious_critical_violations":0,"surfaces":7},"id":"DASH-0D-004","kind":"dashboard-tab-plan","producer":"DASH-0d-rollup-accessibility-lazyload-flags","schema":"schemas/dashboard-consolidation-fixture.schema.json"}

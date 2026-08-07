@@ -66,7 +66,7 @@ export const ADVANCED_TAB_IDS: ReadonlySet<TabId> = new Set(
  * LEFT UNCHANGED (rollback-safe) — this constant documents the 7 surfaces the
  * DASH-0d rewire will navigate, and deliberately does NOT replace TabId.
  */
-export const DASH_SURFACE_IDS: readonly string[] = [
+export const DASH_SURFACE_IDS = [
   "overview",
   "sessions",
   "cache-perf",
@@ -75,6 +75,14 @@ export const DASH_SURFACE_IDS: readonly string[] = [
   "setup",
   "admin",
 ] as const;
+
+/** The fixed 7 consolidated navigational surface ids (DASH-0d navigation set).
+ *  Distinct from the legacy 13-tab `TabId` union, which is retained for the
+ *  flag-off (pre-rollup) surface set + the sidebar/AppShell nav types. */
+export type DashTabId = (typeof DASH_SURFACE_IDS)[number];
+
+/** Exactly 7 top-level navigational surfaces (DASH-0d tab-count contract). */
+export const DASH_TAB_COUNT: number = DASH_SURFACE_IDS.length;
 
 /**
  * DASH-0c: labels for the consolidated surfaces. Additive — the 13-tab

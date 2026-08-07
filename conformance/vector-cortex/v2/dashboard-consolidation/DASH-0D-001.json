@@ -1,0 +1,1 @@
+{"assertion":"the merged dashboard exposes exactly 7 top-level navigational surfaces","expected":{"expected_surfaces":["overview","sessions","cache-perf","memory-graph","diagnostics","setup","admin"],"surfaces":7},"id":"DASH-0D-001","kind":"dashboard-tab-plan","producer":"DASH-0d-rollup-accessibility-lazyload-flags","schema":"schemas/dashboard-consolidation-fixture.schema.json"}

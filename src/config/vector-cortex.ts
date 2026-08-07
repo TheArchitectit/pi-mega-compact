@@ -75,6 +75,8 @@ export { DASH_0A_ENABLED } from "./vector-cortex-dash-0a.js";
 export { DASH_0B_ENABLED } from "./vector-cortex-dash-0b.js";
 // DASH-0c dashboard consolidation execution flag extracted to vector-cortex-dash-0c.ts.
 export { DASH_0C_ENABLED } from "./vector-cortex-dash-0c.js";
+// DASH-0d dashboard consolidation roll-up flag extracted to vector-cortex-dash-0d.ts.
+export { DASH_0D_ENABLED } from "./vector-cortex-dash-0d.js";
 export { ENC_1A_ENABLED } from "./vector-cortex-enc1a.js";
 export {
   ENC_1B_ENABLED,

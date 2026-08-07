@@ -1,0 +1,1 @@
+{"assertion":"flag-off reproduces the pre-rollup 13-surface lazy list byte-identically","expected":{"byte_identical":true,"flag_enabled":false,"surfaces":13},"id":"DASH-0D-003","kind":"dashboard-tab-plan","producer":"DASH-0d-rollup-accessibility-lazyload-flags","schema":"schemas/dashboard-consolidation-fixture.schema.json"}

@@ -348,5 +348,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"DASH-0c dashboard consolidation execution: (1) the Cache surface absorbs MetricsTab as a Performance section (CacheTab label becomes 'Cache+Performance'); (2) MaintenanceTab + ConfigTab combine under a new AdminTab delegate-shell with an AdminViews toggle (maintenance/config), and SetupTab hides its Config sub-tab. OFF = CacheTab renders only its cache sections, MetricsTab/MaintenanceTab/ConfigTab render as standalone surfaces, SetupTab keeps its Config sub-tab (byte-identical predecessor).",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_DASH_0D",
+			"Dashboard Consolidation — Rollup / 7-surface",
+			"DASH-0d dashboard consolidation roll-up: App.tsx consolidates its lazy list + TabContent switch onto the 7 fixed navigational surfaces (Overview, Sessions, Cache+Performance, Memory Graph, Diagnostics, Setup, Admin) with an additive hash→surface deep-link router; the duplicate TurnsTab/MetricsTab indirection bodies are reconciled to their canonical homes. OFF = App.tsx reproduces the pre-rollup 13-tab surface set byte-identically (byte-identical DASH-0c predecessor).",
+			true,
+		),
 	],
 };
