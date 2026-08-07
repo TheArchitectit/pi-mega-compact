@@ -3,9 +3,10 @@
  *
  * The durable EncoderBackendDecisionV1 record: which ONNX runtime backend the
  * real learned encoder ships on (transformers.js/WASM vs onnxruntime-node
- * native), whether the 80 MiB install budget holds, the per-platform install
- * matrix, the opset baseline (locked 21 by ENC-0a), the license verdict, and
- * the pinned model/tokenizer sha256 digests.
+ * native), whether the configurable install budget holds (default 300 MiB;
+ * operator-overridable via `MEGACOMPACT_NATIVE_ORT_BUDGET_MIB`), the per-platform
+ * install matrix, the opset baseline (locked 21 by ENC-0a), the license
+ * verdict, and the pinned model/tokenizer sha256 digests.
  *
  * ENC-0a is the DECISION + MEASUREMENT sprint: this contract is what the
  * deterministic resolver (`scripts/encoder/resolve-backend-decision.mjs`) and
@@ -83,10 +84,40 @@ export interface EncoderBackendDecisionV1 {
 }
 
 /**
- * The normative ENC-0a budget: the 80 MiB install/asset cap (MODEL_ASSET.md
- * §Qualification). Backend qualifies (budgetOk) iff the shipped byte-count fits.
+ * The operator-configurable native-ort install byte-budget (MiB). Default 300
+ * (shipped 5-platform ~160 MiB comfortably fits); override via
+ * `MEGACOMPACT_NATIVE_ORT_BUDGET_MIB`. Safe upper clamp `INSTALL_BUDGET_CLAMP_MIB`
+ * rejects absurd values. Backend qualifies (`budgetOk`) iff the shipped
+ * byte-count fits the configured budget.
  */
-export const ENCODER_INSTALL_BUDGET_MIB = 80;
+export const INSTALL_BUDGET_CLAMP_MIB = 8192;
+export const INSTALL_BUDGET_DEFAULT_MIB = 300;
+
+/**
+ * Pure resolver: given a raw string (or null/undefined when the env var is
+ * unset), return the integer budget the runtime will use. Out-of-range /
+ * non-integer / empty input falls back to the default. Exported so the
+ * dashboard Settings surface can compute the EFFECTIVE operand from a
+ * persisted-but-not-yet-env-loaded value (the operator just POSTed a new
+ * budget to disk; the running process has not sourced `.mega-compact.env`,
+ * so `installBudgetMib()` reads the stale env, but the dashboard should show
+ * what the runtime WILL use after the restart the dashboard itself tells the
+ * operator is required).
+ */
+export function resolveInstallBudgetMib(
+  raw: string | null | undefined,
+): number {
+  if (raw === undefined || raw === null || raw === "") return INSTALL_BUDGET_DEFAULT_MIB;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0 || n > INSTALL_BUDGET_CLAMP_MIB) {
+    return INSTALL_BUDGET_DEFAULT_MIB;
+  }
+  return n;
+}
+
+export function installBudgetMib(): number {
+  return resolveInstallBudgetMib(process.env.MEGACOMPACT_NATIVE_ORT_BUDGET_MIB);
+}
 
 /** The p95 latency gate at 512 tokens / 4 threads on linux-x64 (ms). */
 export const ENCODER_DECISION_P95_MS = 40;

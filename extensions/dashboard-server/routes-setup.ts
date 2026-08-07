@@ -16,6 +16,11 @@ import type { RouteContext } from "./routes-core.js";
 import { VC9D_ENABLED } from "../../src/config.js";
 import { enc1aStatusFields, writeEnc1aEnv, tryEnc1aConfigure, wantsEnc1a } from "./routes-setup-enc1a.js";
 import { enc1bStatusFields, tryEnc1bConfigure, tryEnc1bInto, enc1bValidateCombined } from "./routes-setup-enc1b.js";
+import {
+	enc2BudgetStatusFields,
+	tryEnc2BudgetInto,
+	enc2BudgetValidateCombined,
+} from "./routes-setup-enc2budget.js";
 import { writeEmbedderEnv } from "./routes-setup-env-upsert.js";
 import {
 	detectOllama,
@@ -94,6 +99,7 @@ export function handleSetupStatus(
 			(process.env["MEGACOMPACT_MINILM"] ?? "").trim().toLowerCase(),
 		),
 		...enc1aStatusFields(ctx.stateDir), ...enc1bStatusFields(ctx.stateDir),
+		...enc2BudgetStatusFields(ctx.stateDir),
 	};
 	// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
 	res.writeHead(200, { "Content-Type": "application/json" });
@@ -232,6 +238,18 @@ export function handleSetupConfigure(
 			res.end(JSON.stringify({ error: combinedError }));
 			return;
 		}
+		// ENC-2a combined-payload validation: when a payload carries a valid
+		// embedder PLUS the budget key, validate the budget BEFORE the upsert so
+		// the combined path is rejected with the same 400 code. Flag-off:
+		// enc2BudgetValidateCombined returns null (byte-identical predecessor —
+		// the unknown key falls through untouched).
+		const budgetCombinedError = enc2BudgetValidateCombined(body);
+		if (budgetCombinedError !== null) {
+			// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: budgetCombinedError }));
+			return;
+		}
 		const embedder = body.embedder;
 		if (embedder !== "ollama" && embedder !== "llama" && embedder !== "trigram" && embedder !== "custom" && embedder !== "onnx") {
 			res.writeHead(400, { "Content-Type": "application/json" });
@@ -281,6 +299,7 @@ export function handleSetupConfigure(
 			});
 		}
 		tryEnc1bInto(stateDir, body); // ENC-1b combined upsert (dim/headers/allow-remote/native)
+		tryEnc2BudgetInto(stateDir, body); // ENC-2a combined upsert (native budget MiB)
 		// Detect if the new config matches what's already active (no restart needed).
 		const currentUrl = process.env["MEGACOMPACT_EMBEDDING_URL"];
 		const alreadyActive = (resolvedUrl === null && !currentUrl) || (resolvedUrl !== null && currentUrl === resolvedUrl);

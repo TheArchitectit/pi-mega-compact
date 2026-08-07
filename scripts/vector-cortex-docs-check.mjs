@@ -28,7 +28,7 @@ const SPRINTS_DIR = join(DOCS, "sprints");
 const PHASES_DIR = join(DOCS, "phases");
 const MAX_MD_LINES = 500;
 const KNOWN_MIGRATIONS = new Set(["M2", "M3", "M4", "M5", "M6", "M7", "MIG-DOWN-001"]);
-const EXPECTED_SPRINTS = 63; // 45 prior + 15 deferred-audit (DASH×4 + ENC×6 + COS-FP×2 + REPO×1 + DOC×2) + ENC-0g honest-state + ENC-1a embedder API + ENC-1b ONNX runtime surface
+const EXPECTED_SPRINTS = 65; // 45 prior + 15 deferred-audit (DASH×4 + ENC×6 + COS-FP×2 + REPO×1 + DOC×2) + ENC-0g honest-state + ENC-1a embedder API + ENC-1b ONNX runtime surface + ENC-2a install-guide spec + ENC-2a install-budget dashboard knob
 const EXPECTED_PHASES = 16; // 11 prior + 5 new phase docs (ENC, DASH, COS-FP, REPO, DOC)
 
 const issues = [];

@@ -90,16 +90,16 @@ describe("ML5-C conformance registration", () => {
 });
 
 describe("ML5-RUNTIME-001..005 envelope invariants", () => {
-  test("001 install budget byte-count compliance — native uses amended budget", () => {
+  test("001 install budget byte-count compliance — native fits within the default 300 MiB budget", () => {
     const fx = fixture("ML5-RUNTIME-001");
     assert.equal(fx.kind, "runtime-choice");
     assert.equal(fx.flag, "MEGACOMPACT_ML5_C");
-    // Decision rule selected native — fixture records amended budget, not byte_count_le_budget.
+    // Decision rule selected native — shipped ~160 MiB fits the default 300 MiB
+    // budget; no amendment is required at the default (amended_budget_mib null).
     assert.equal(fx.backend, "native");
-    assert.equal(fx.budget_mib, 80);
-    assert.equal(fx.byte_count_le_budget, null);
-    assert.equal(typeof fx.amended_budget_mib, "number");
-    assert.ok((fx.amended_budget_mib ?? 0) > 80, "amended budget exceeds the unamended 80 MiB");
+    assert.equal(fx.budget_mib, 300);
+    assert.equal(fx.byte_count_le_budget, true);
+    assert.equal(fx.amended_budget_mib, null);
   });
   test("002 per-platform install matrix resolves completely", () => {
     const fx = fixture("ML5-RUNTIME-002");
@@ -157,7 +157,7 @@ describe("ML5-C decision-rule dispatch (runtime-select.ts pure)", () => {
       assert.ok(true, "flag on: selection dispatch runs (no byte-identical mode-B override)");
     }
   });
-  test("decision rule: linux-x64 with native opt-in + no bench record → native (budget amended)", () => {
+  test("decision rule: linux-x64 with native opt-in + no bench record → native (fits default 300 MiB budget)", () => {
     if (!ML5C_ENABLED()) return;
     const r = selectRuntimeBackend({
       platform: "linux-x64",
@@ -165,21 +165,21 @@ describe("ML5-C decision-rule dispatch (runtime-select.ts pure)", () => {
       nativeOptIn: true,
     });
     assert.equal(r.backend, "native");
-    assert.equal(r.budgetOk, false);         // native exceed the 80 MiB unamended budget
+    assert.equal(r.budgetOk, true);          // shipped ~160 MiB fits the default 300 MiB budget
     assert.equal(r.platform, "linux-x64");
   });
-  test("decision rule: linux-x64 default (no opt-in) + no bench record → native fallback", () => {
+  test("decision rule: linux-x64 default (no opt-in) + no bench record → native fallback (fits default 300 MiB budget)", () => {
     if (!ML5C_ENABLED()) return;
     const r = selectRuntimeBackend({
       platform: "linux-x64",
       benchRecord: null,
       nativeOptIn: false,
     });
-    // No real bench record → the dispatch records the native fallback with its
-    // budget amendment pinned (vc2-model-prep measured evidence). This is the
-    // production close-out of the 42-byte placeholder state on master.
+    // No real bench record → the dispatch records the native fallback. At the
+    // default 300 MiB budget, the shipped ~160 MiB fits → budgetOk:true. This is
+    // the production close-out of the 42-byte placeholder state on master.
     assert.equal(r.backend, "native");
-    assert.equal(r.budgetOk, false);
+    assert.equal(r.budgetOk, true);
     assert.equal(r.p95Ms, null);
   });
   test("decision rule: darwin-x64 demotes to WASM per HG-4 (never native on this platform)", () => {
@@ -219,7 +219,7 @@ describe("ML5-C decision-rule dispatch (runtime-select.ts pure)", () => {
     assert.equal(r.budgetOk, true);
     assert.equal(r.p95Ms, 25);
   });
-  test("decision rule: failing benchRecord (p95 > 40 on WASM) → native with amendment", () => {
+  test("decision rule: failing benchRecord (p95 > 40 on WASM) → native (fits default 300 MiB budget)", () => {
     if (!ML5C_ENABLED()) return;
     const bench: BenchResultV1 = {
       timestamp: 1,
@@ -243,7 +243,7 @@ describe("ML5-C decision-rule dispatch (runtime-select.ts pure)", () => {
       nativeOptIn: false,
     });
     assert.equal(r.backend, "native");
-    assert.equal(r.budgetOk, false);
+    assert.equal(r.budgetOk, true);   // shipped ~160 MiB fits the default 300 MiB budget
     assert.equal(r.p95Ms, 75.4);
   });
 });

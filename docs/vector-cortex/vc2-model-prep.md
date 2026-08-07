@@ -234,7 +234,7 @@ The backend question is now settled; these remain:
 | --- | --- | --- | --- |
 | 1 | **Five projection heads do not exist.** | **blocker** | Spec requires semantic 384 / dependency 128 / contradiction 128 / cache-stability 64 / payload-routing 32. Stock MiniLM emits only `last_hidden_state [1, N, 384]`. Requires VC2B training + export; no download can supply this. |
 | 2 | Opset 14 ≠ required 17 | blocker | §5. Resolved by the same re-export as #1. |
-| 3 | `onnxruntime-node` installs **259 MiB** | **blocker** | Bundles all 5 platforms (linux-x64 37M, linux-arm64 20M, darwin-arm64 75M, win32-x64 62M, win32-arm64 67M). MODEL_ASSET caps installed assets at **80 MiB**. Needs either a per-platform `optionalDependencies` split, a budget amendment, or pruning non-target platforms at pack time. |
+| 3 | `onnxruntime-node` installs **259 MiB** | **blocker** | Bundles all 5 platforms (linux-x64 37M, linux-arm64 20M, darwin-arm64 75M, win32-x64 62M, win32-arm64 67M). Backend qualification is p95-gated; the install byte-budget is **operator-configurable** via `MEGACOMPACT_NATIVE_ORT_BUDGET_MIB` (default 300 MiB; shipped 5-platform ~160 MiB fits at the default). The blocker is the missing operator install + probe path, not the byte-count. Needs either a per-platform `optionalDependencies` split or pruning non-target platforms at pack time. |
 | 4 | **No `darwin-x64` binary** in ort-node 1.27.0 | high | Supported matrix mandates `darwin-x64`; only `darwin/arm64` ships. Intel macOS must fall back to mode B, or the matrix must drop it. |
 | 5 | RSS margin at 512 tokens is ~0.5% | medium | 149.2 MiB vs 150 MiB cap, run-to-run variance 119–149 MiB. Consider capping mode A at 384 tokens (135 MiB, 14.3 ms) for real headroom, or measuring the marginal-footprint accounting `runtime.ts` already implements rather than whole-process RSS. |
 | 6 | 4 threads mandatory for 512-token p95 | medium | 2 threads → 44.3 ms, fails. Low-core platforms may not qualify for A. |
@@ -242,7 +242,7 @@ The backend question is now settled; these remain:
 
 Items 1, 2 and 7 are training work (VC2B), not backend work. **Item 3 is the
 newly-surfaced one most likely to be missed** — the runtime dependency, not the
-model, is what busts the install budget.
+model, is what drives the large install footprint.
 
 ---
 
@@ -257,7 +257,7 @@ model, is what busts the install budget.
    `manifest.json` with real digests (§4 shape), and verify via
    `node scripts/vector-cortex-verify-assets.mjs`.
 4. **VC2C — `package.json`.** Add `onnxruntime-node` as a dependency. **Do not add
-   an `allowScripts` entry** (§1). Resolve the 259 MiB install budget (blocker #3)
+   an `allowScripts` entry** (§1). Resolve the native install path (blocker #3)
    before publishing.
 5. **Wire the backend.** Replace the deterministic `projectSemantic` stub in
    `src/vector-cortex/encoder/runtime.ts` with a real `InferenceSession`, pinning

@@ -306,5 +306,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"ENC-1b completes the embedder API Settings surface (dim / headers / allow-remote persisted to the per-repo .mega-compact.env) and surfaces the ONNX runtime selection knob (MEGACOMPACT_ENCODER_NATIVE) as a toggle plus the current effective backend + demotion reason. OFF = no new GET fields, no writer branch, no new Settings rows or toggle (byte-identical ENC-1a predecessor).",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_ENC_2BUDGET",
+			"ENC-2a operator-configurable native install-budget knob",
+			"ENC-2a exposes the runtime operator knob MEGACOMPACT_NATIVE_ORT_BUDGET_MIB (default 300 MiB, clamp 8192) as a dashboard Settings field. The knob gates budgetOk in the encoder runtime decision (decision.ts installBudgetMib + runtime-select.ts selectRuntimeBackend). Persisted to the per-repo .mega-compact.env via the setup-configure writer branch; the GET status route surfaces the persisted value AND the effective integer installBudgetMib() resolves to (so the dashboard shows the runtime's actual operand). OFF = no new GET fields, no writer branch, no new Settings rows (byte-identical ENC-1b predecessor).",
+			true,
+		),
 	],
 };

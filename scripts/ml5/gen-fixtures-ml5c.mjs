@@ -58,11 +58,11 @@ const fixtures = [
     id: "ML5-RUNTIME-001",
     kind: "runtime-choice",
     flag: "MEGACOMPACT_ML5_C",
-    backend: "native", // amended: measured native p95 22.4ms but WASM is 75.4ms — the rule picks native
-    budget_mib: 80,
-    byte_count_le_budget: null,  // replaced by amended_budget_mib for native
-    amended_budget_mib: 140,     // wasm 9 + native ~131 MiB across 5 platforms (fails 80-MiB unamended)
-    assertion: "install budget byte-count compliance for the chosen backend: native Option N records amended_budget_mib because the 80 MiB unamended baseline is exceeded by the shipped 5-platform optionalDependencies matrix",
+    backend: "native", // measured native p95 22.4ms but WASM is 75.4ms — the rule picks native
+    budget_mib: 300,             // operator-configurable default (MEGACOMPACT_NATIVE_ORT_BUDGET_MIB)
+    byte_count_le_budget: true,  // shipped 5-platform ~160 MiB fits within the 300 MiB default
+    amended_budget_mib: null,    // no amendment at the default 300; an operator lowering the budget below 160 would flip this
+    assertion: "install budget byte-count compliance for the chosen backend: at the default 300 MiB budget, native's shipped ~160 MiB fits → byte_count_le_budget:true; an operator lowering MEGACOMPACT_NATIVE_ORT_BUDGET_MIB below 160 flips budgetOk to false",
   },
   {
     id: "ML5-RUNTIME-002",

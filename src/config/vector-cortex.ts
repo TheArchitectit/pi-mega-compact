@@ -71,6 +71,12 @@ export {
   ENC_1B_ALLOW_REMOTE_EMBEDDER_ENV,
   ENC_1B_ENCODER_NATIVE_ENV,
 } from "./vector-cortex-enc1b.js";
+export {
+  ENC_2BUDGET_ENABLED,
+  ENC_2BUDGET_NATIVE_ORT_BUDGET_ENV,
+  ENC_2BUDGET_MAX_MIB,
+  ENC_2BUDGET_DEFAULT_MIB,
+} from "./vector-cortex-enc2budget.js";
 // Breaker constants (TRIAD_RESILIENCE.md §breaker) extracted to vector-cortex-breakers.ts.
 export {
   BREAKER_WINDOW_MS,

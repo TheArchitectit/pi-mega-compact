@@ -25,9 +25,12 @@ Its output is the durable, deterministic decision record
 `docs/vector-cortex/encoder-backend-decision.md` + the resolver that reproduces it.
 
 **Verdict:** `backend: "wasm"`, `budgetOk: true` — transformers.js v4.2.0 +
-onnxruntime-web WASM is the leading candidate, the only path fitting the 80 MiB
-cap (≈9.5 MiB shell + ≈23 MiB bge-small int8). onnxruntime-node native (≈258 MiB)
-fails the budget unless a per-platform split (recorded as ENC-DEC-002).
+onnxruntime-web WASM is the leading candidate (≈9.5 MiB shell + ≈23 MiB bge-small
+int8 ≈ 33 MiB install). onnxruntime-node native installs ≈258 MiB; at ENC-0a ship
+time it exceeded the then-default 80 MiB install budget. The budget is now the
+operator-configurable knob `MEGACOMPACT_NATIVE_ORT_BUDGET_MIB` (default 300 MiB,
+clamp 8192) — under the current default, native ≈258 MiB fits. See ENC-DEC-002
+for the amended/native-selected branch.
 
 `MEGACOMPACT_ENC_0A` gate in `src/config/vector-cortex-enc0a.ts` (default ON;
 `=0` → no decision-record wiring, runtime byte-identical mode-B serving).
@@ -44,8 +47,11 @@ TypeScript (src):
   contract (schema `encoder-backend-decision-v1`, `backend` enum, `budgetOk`,
   `opset:21` literal, `platformMatrix` Record over `EncoderPlatform`, MIT
   license, pinned artifacts, `p95Ms`, `blockedBy`) + `buildDecision()` that
-  validates platform completeness; `ENCODER_INSTALL_BUDGET_MIB=80`,
-  `ENCODER_DECISION_P95_MS=40`. No `any` (PREVENT-011).
+  validates platform completeness; the install budget is
+  operator-configurable (`INSTALL_BUDGET_DEFAULT_MIB=300`,
+  `INSTALL_BUDGET_CLAMP_MIB=8192`, `installBudgetMib()` reads
+  `MEGACOMPACT_NATIVE_ORT_BUDGET_MIB`), `ENCODER_DECISION_P95_MS=40`.
+  No `any` (PREVENT-011).
 - `src/vector-cortex/encoder/types.ts` (EDIT) — **`ENCODER_OPSET` flipped 17 → 21**
   by the controller (see Resolutions #1). Comment records the ENC-0a ownership:
   "ENC-0a re-baselines from 17 to 21".
@@ -205,9 +211,12 @@ Spec sweep (controller, no-deferral directive):
 `schemas/encoder-decision-fixture.schema.json`, algorithm `encoder-decision`),
 owner `ENC-0a` added to the CSV, domain extended `encoder-decision`.
 
-- **ENC-DEC-001** wasm-qualified — p95 18.2, bytes ≤ 80 MiB → `wasm`, `budgetOk
-  true`.
-- **ENC-DEC-002** native-amended — p95 54.7 (> 40) → `native`, `budgetOk false`.
+- **ENC-DEC-001** wasm-qualified — p95 18.2, bytes ≤ configured budget → `wasm`,
+  `budgetOk true` (default 300 MiB).
+- **ENC-DEC-002** native-amended — p95 54.7 (> 40) → `native`, `budgetOk true`
+  at the default 300 MiB budget (native 258 MiB fits). Under the original 80 MiB
+  budget ENC-DEC-002 recorded `budgetOk:false`; at the current default the branch
+  resolves to native with `budgetOk:true`.
 - **ENC-DEC-003** opset-pinned — decision `opset` exactly 21.
 - **ENC-DEC-004** platform-matrix — every EncoderPlatform resolves;
   `darwin-x64` → `demotion:"wasm"` (HG-4; action ships ENC-0e).
@@ -293,8 +302,8 @@ Executed: **15/15 pass** flag-on and flag-off (post-`npm run build`).
 
 | Arm | Algorithm | Inputs | Independence |
 | --- | --- | --- | --- |
-| **A — WASM qualifies** | p95 ≤ 40 AND bytes ≤ 80 MiB → wasm/budgetOk true. | ENC-DEC-001 (p95 18.2, ~23 MiB). | Active only when both budget + p95 bind. |
-| **B — native-amended** | p95 > 40 or bytes > 80 MiB → native/budgetOk false + amendment. | ENC-DEC-002 (p95 54.7). | Triggered on the disjoint p95/budget branch; independent inputs. |
+| **A — WASM qualifies** | p95 ≤ 40 AND bytes ≤ configured budget (default 300 MiB; operator-overridable via `MEGACOMPACT_NATIVE_ORT_BUDGET_MIB`) → wasm/budgetOk true. | ENC-DEC-001 (p95 18.2, ~23 MiB). | Active only when both budget + p95 bind. |
+| **B — native-amended** | p95 > 40 → native; `budgetOk` against the configured budget (at default 300 MiB native's ≈258 MiB fits → `budgetOk:true`; under a lowered budget → `budgetOk:false`). | ENC-DEC-002 (p95 54.7). | Triggered on the p95 branch; budget check evaluated independently. |
 | **C — opset/platform audit** | opset pinned 21; every EncoderPlatform row resolves. | ENC-DEC-003, ENC-DEC-004. | Pure structural asserts, independent of the branch arms; darwin-x64 demotion is HG-4 (ships ENC-0e). |
 
 Pin/degradation arms: ENC-DEC-005 (sha256 mismatch fails — recorded digest

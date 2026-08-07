@@ -1,0 +1,1 @@
+{"assertion":"installBudgetMib() resolves to the 300 MiB default when MEGACOMPACT_NATIVE_ORT_BUDGET_MIB is unset","env_state":null,"expected_effective_mib":300,"flag":"MEGACOMPACT_ENC_2BUDGET","id":"ENC-BUDGET-001","kind":"default-fallback","producer":"scripts/vc9-setup-dashboard/gen-fixtures-enc-budget.mjs","schema":"schemas/enc-budget-fixture.schema.json"}

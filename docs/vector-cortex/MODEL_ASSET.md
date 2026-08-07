@@ -30,7 +30,7 @@ Training/export may be developer tooling; runtime must be TypeScript/local and l
 
 ## Qualification and packaging
 
-A qualifies only if: per-head thresholds in [EVALUATION](EVALUATION.md) pass; 100% deterministic output within `1e-6` on 1,000 repeats; no NaN/wrong dimension; p95 inference ≤40 ms and RSS delta ≤150 MiB on each supported platform; asset total ≤35 MiB compressed npm listing and ≤80 MiB installed; and B/C demotion works on missing/corrupt assets. Supported matrix is explicitly `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `win32-x64`; unsupported platforms select B.
+A qualifies only if: per-head thresholds in [EVALUATION](EVALUATION.md) pass; 100% deterministic output within `1e-6` on 1,000 repeats; no NaN/wrong dimension; p95 inference ≤40 ms and RSS delta ≤150 MiB on each supported platform; asset total ≤35 MiB compressed npm listing and shipped native-runtime byte-count ≤ the operator-configured `MEGACOMPACT_NATIVE_ORT_BUDGET_MIB` (default 300 MiB installed); and B/C demotion works on missing/corrupt assets. Supported matrix is explicitly `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `win32-x64`; unsupported platforms select B.
 
 `package.json` changes occur only in VC2C implementation. `scripts/deploy.sh` must be enhanced there to verify manifest digests, supported matrix, and asset paths in `npm pack --dry-run` output (listing only; never create a `.tgz`) before publish. Test a clean temporary npm install with network denied, delete caches, run packaged inference smoke, and verify no write outside temp state.
 

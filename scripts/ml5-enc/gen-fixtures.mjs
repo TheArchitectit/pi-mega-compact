@@ -65,7 +65,8 @@ function artifactsOf(modelBytes, tokenizerBytes) {
   };
 }
 
-// Passing WASM bench input: p95 <= 40, model+tokenizer <= 80 MiB, pinned digests.
+// Passing WASM bench input: p95 <= 40, model+tokenizer <= operator-configured
+// budget (default 300 MiB), pinned digests.
 const PASS_BENCH = {
   measured_p95_ms: 18.2,
   install_bytes_model: 24117248, // 23 MiB int8 model
@@ -101,7 +102,7 @@ const fixtures = [
   {
     id: "ENC-DEC-001",
     assertion:
-      "budget-viable WASM: measured p95 <= 40 ms AND shipped bytes <= 80 MiB -> backend wasm, budgetOk true (Option W, the leading candidate)",
+      "WASM-qualified: measured p95 <= 40 ms -> backend wasm, budgetOk true (Option W, the leading candidate; install bytes fit the operator-configurable budget at the default 300 MiB)",
     kind: "wasm-qualified",
     bench_input: PASS_BENCH,
     expected_decision: PASS_DECISION,
@@ -110,13 +111,13 @@ const fixtures = [
   {
     id: "ENC-DEC-002",
     assertion:
-      "budget-exceeding WASM: measured p95 > 40 ms -> backend native, budgetOk false (native ships > 80 MiB; 258 MiB total install recorded)",
+      "native fallback: measured p95 > 40 ms -> backend native, budgetOk true at the default 300 MiB budget (shipped 5-platform ~160 MiB fits; an operator lowering MEGACOMPACT_NATIVE_ORT_BUDGET_MIB below the shipped byte-count flips budgetOk false)",
     kind: "native-amended",
     bench_input: { ...PASS_BENCH, measured_p95_ms: 54.7 },
     expected_decision: {
       ...PASS_DECISION,
       backend: "native",
-      budgetOk: false,
+      budgetOk: true,
       p95Ms: 54.7,
     },
     expected_outcome: "ok",

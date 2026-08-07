@@ -85,11 +85,11 @@ export const SETUP_CORTEX_BLOCKERS: readonly SetupCortexBlockerV1[] = [
   },
   {
     id: "HG-3",
-    title: "onnxruntime-node install exceeds the 80 MiB asset budget",
+    title: "native onnxruntime-node install path unresolved (needs operator install + probe), currently demoted to WASM",
     severity: "blocker",
     status: "open",
     resolution:
-      "onnxruntime-node bundles ~258 MiB across all platforms. Candidate: transformers.js v4.2.0 (9.5 MiB shell, pure-Node via onnxruntime-web WASM) measured against budget + p95 gate before committing.",
+      "operator-run install of the pinned onnxruntime-node version into ~/.pi/mega-compact/native-ort, then re-run the ENC-0f qualification gate. The install byte-budget is operator-configurable (MEGACOMPACT_NATIVE_ORT_BUDGET_MIB, default 300 MiB; shipped 5-platform ~160 MiB fits at the default).",
   },
   {
     id: "HG-4",

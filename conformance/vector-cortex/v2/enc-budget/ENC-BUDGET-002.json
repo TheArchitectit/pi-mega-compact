@@ -1,0 +1,1 @@
+{"assertion":"installBudgetMib() honors a positive-integer operator override within the 8192 clamp (512 → 512)","env_state":"512","expected_effective_mib":512,"flag":"MEGACOMPACT_ENC_2BUDGET","id":"ENC-BUDGET-002","kind":"operator-override","producer":"scripts/vc9-setup-dashboard/gen-fixtures-enc-budget.mjs","schema":"schemas/enc-budget-fixture.schema.json"}

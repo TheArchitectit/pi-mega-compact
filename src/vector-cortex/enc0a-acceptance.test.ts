@@ -13,7 +13,9 @@ import { fileURLToPath } from "node:url";
 import { ENC_0A_ENABLED } from "../config/vector-cortex.js";
 import {
   buildDecision,
-  ENCODER_INSTALL_BUDGET_MIB,
+  INSTALL_BUDGET_CLAMP_MIB,
+  INSTALL_BUDGET_DEFAULT_MIB,
+  installBudgetMib,
   type EncoderBackendDecisionV1,
   type EncoderPlatformRow,
 } from "./encoder/decision.js";
@@ -170,26 +172,45 @@ describe("ENC-DEC fixture envelopes", () => {
     }
   });
 
-  test("budget constant is 80 MiB (MODEL_ASSET install cap)", () => {
-    assert.equal(ENCODER_INSTALL_BUDGET_MIB, 80);
+  test("install budget defaults to 300 MiB, is operator-overridable, and clamps out-of-range input", () => {
+    assert.equal(INSTALL_BUDGET_DEFAULT_MIB, 300);
+    assert.equal(INSTALL_BUDGET_CLAMP_MIB, 8192);
+    const saved = process.env.MEGACOMPACT_NATIVE_ORT_BUDGET_MIB;
+    try {
+      delete process.env.MEGACOMPACT_NATIVE_ORT_BUDGET_MIB;
+      assert.equal(installBudgetMib(), 300, "unset -> default 300");
+      process.env.MEGACOMPACT_NATIVE_ORT_BUDGET_MIB = "512";
+      assert.equal(installBudgetMib(), 512, "operator override honored");
+      process.env.MEGACOMPACT_NATIVE_ORT_BUDGET_MIB = "0";
+      assert.equal(installBudgetMib(), 300, "zero -> default (non-positive rejected)");
+      process.env.MEGACOMPACT_NATIVE_ORT_BUDGET_MIB = "9000";
+      assert.equal(installBudgetMib(), 300, "over-clamp -> default");
+      process.env.MEGACOMPACT_NATIVE_ORT_BUDGET_MIB = "12.5";
+      assert.equal(installBudgetMib(), 300, "non-integer -> default");
+      process.env.MEGACOMPACT_NATIVE_ORT_BUDGET_MIB = "abc";
+      assert.equal(installBudgetMib(), 300, "non-numeric -> default");
+    } finally {
+      if (saved === undefined) delete process.env.MEGACOMPACT_NATIVE_ORT_BUDGET_MIB;
+      else process.env.MEGACOMPACT_NATIVE_ORT_BUDGET_MIB = saved;
+    }
   });
 });
 
 describe("resolver decision branches (real resolver subprocess)", () => {
-  test("ENC-DEC-001 wasm-qualified: p95<=40 + bytes<=80 -> wasm, budgetOk true", () => {
+  test("ENC-DEC-001 wasm-qualified: p95<=40 + bytes<=default-300 budget -> wasm, budgetOk true", () => {
     const fx = fixture("ENC-DEC-001");
     const { status, stdout } = runResolver("ENC-DEC-001");
     assert.equal(status, 0, "ok outcome exits 0");
     assert.deepEqual(JSON.parse(stdout), fx.expected_decision);
   });
 
-  test("ENC-DEC-002 native-amended: p95>40 -> native, budgetOk false", () => {
+  test("ENC-DEC-002 native-selected: p95>40 -> native, budgetOk true at default 300 MiB budget", () => {
     const fx = fixture("ENC-DEC-002");
     const { status, stdout } = runResolver("ENC-DEC-002");
     assert.equal(status, 0);
     const d = JSON.parse(stdout) as EncoderBackendDecisionV1;
     assert.equal(d.backend, "native");
-    assert.equal(d.budgetOk, false);
+    assert.equal(d.budgetOk, true, "native 258 MiB fits within the default 300 MiB budget");
     assert.equal(d.p95Ms, 54.7);
     assert.deepEqual(d, fx.expected_decision);
   });

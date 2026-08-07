@@ -1,0 +1,1 @@
+{"assertion":"installBudgetMib() rejects non-numeric input (abc → 300 default fallback)","env_state":"abc","expected_effective_mib":300,"flag":"MEGACOMPACT_ENC_2BUDGET","id":"ENC-BUDGET-004","kind":"non-numeric-fallback","producer":"scripts/vc9-setup-dashboard/gen-fixtures-enc-budget.mjs","schema":"schemas/enc-budget-fixture.schema.json"}

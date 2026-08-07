@@ -126,12 +126,14 @@ flag (default ON; `=0` byte-identical to ML5-B survivor).
 
 **Decision: NATIVE.** ML5-B's bench harness measured WASM p95 at 75.4 ms (FAIL,
 budget 40 ms) from the vc2-model-prep measurements; native p95 measured 22.4
-ms (PASS). The decision rule is: WASM if p95 <= 40 ms on linux-x64, else native
-with budget amendment. The native backend ships across 5 platforms
+ms (PASS). The decision rule is: WASM if p95 <= 40 ms on linux-x64, else native.
+The native backend ships across 5 platforms
 (linux-x64, linux-arm64, darwin-arm64, darwin-x64, win32-x64) as
 `optionalDependencies` in `package.json` via per-platform `onnxruntime-node`
-packages. Total shipped byte-count is ~160 MiB across all 5 platforms, exceeding
-the 80 MiB install budget (HG-3); an amendment is recorded.
+packages. Total shipped byte-count is ~160 MiB across all 5 platforms. At ship
+time the install budget was 80 MiB; since 2026-08-07 the budget is the
+operator-configurable knob `MEGACOMPACT_NATIVE_ORT_BUDGET_MIB` (default 300
+MiB) and native fits within it.
 
 **HG-4 (darwin-x64 demotion):** darwin-x64 uses the WASM backend (not native)
 because the native runtime has known stability issues on Intel Macs. The
@@ -156,11 +158,12 @@ TypeScript (src):
 - `src/vector-cortex/encoder/runtime-select.ts` (167) — pure decision-rule
   dispatch: `selectRuntimeBackend(input)` returns `{ backend, p95Ms, budgetOk,
   platform, rationale }`. Decision flow: flag-off -> modeB; darwin-x64 -> wasm
-  (HG-4); nativeOptIn -> native with budgetOk = shippedMib <= 80; no bench /
-  degraded -> native fallback with budgetOk=false; p95 <= 40ms -> wasm; p95 >
-  40ms -> native. `NATIVE_FOOTPRINT_MIB` per-platform map. Shipped across 5
-  platforms: 160 MiB > 80 MiB budget -> amendment recorded in the fixtures
-  (`amended_budget_mib`), not in the runtime result envelope.
+  (HG-4); nativeOptIn -> native with `budgetOk = shippedMib <= installBudgetMib()`
+  (default 300 MiB, operator-overridable); no bench / degraded -> native fallback
+  with `budgetOk` computed against the configured budget; p95 <= 40ms -> wasm;
+  p95 > 40ms -> native. `NATIVE_FOOTPRINT_MIB` per-platform map. Shipped across 5
+  platforms: ~160 MiB; at the default 300 MiB the install budget is satisfied
+  (`amended_budget_mib: null` in the fixture envelope).
 - `src/vector-cortex/encoder/runtime-wasm.ts` (110) — `createWasmSession()`
   using `onnxruntime-web` via lazy `import()` with `@ts-expect-error` for
   optional peer. Shadow type `OrtWasmModule` (no package import). Returns
@@ -215,8 +218,9 @@ Scripts:
 
 Conformance:
 - `conformance/vector-cortex/v2/runtime-choice/ML5-RUNTIME-001.json` — install
-  budget: native, shipped across 5 platforms, ~160 MiB > 80 MiB budget,
-  amendment recorded.
+  budget: native, shipped across 5 platforms, ~160 MiB fits within the operator
+  default of 300 MiB (`MEGACOMPACT_NATIVE_ORT_BUDGET_MIB`); no amendment at the
+  default.
 - `conformance/vector-cortex/v2/runtime-choice/ML5-RUNTIME-002.json` —
   per-platform matrix: 5 platforms, darwin-x64 demoted to WASM (HG-4),
   matrix_complete:true.
@@ -260,7 +264,8 @@ Docs: `docs/vector-cortex/evidence/ML5-C.md` (this record).
 the CSV.
 
 - **ML5-RUNTIME-001** — install budget: native backend, 5 platforms shipped,
-  ~160 MiB > 80 MiB budget, amendment recorded.
+  ~160 MiB fits within the default 300 MiB operator budget
+  (`MEGACOMPACT_NATIVE_ORT_BUDGET_MIB`); no amendment at the default.
 - **ML5-RUNTIME-002** — per-platform matrix: 5 platforms, darwin-x64 demoted to
   WASM (HG-4), `matrix_complete:true`.
 - **ML5-RUNTIME-003** — opset-17 handshake: session created with opset 17.
@@ -309,7 +314,8 @@ Suites:
    platform matrix, opset-17, stub-fallback, native opt-in).
 3. Decision-rule dispatch (5 tests): pure `selectRuntimeBackend` — p95=25ms ->
    WASM, p95=75.4ms -> native, darwin-x64 -> wasm (HG-4), native opt-in ->
-   native with budgetOk=false (shipped > 80 MiB), flag-off -> modeB.
+   native with budgetOk=true at the default 300 MiB budget (shipped ~160 MiB
+   fits), flag-off -> modeB.
 4. Seller event shape (2 tests): `emitRuntimeSelected` writes exactly
    `vector_cortex_runtime_selected` with `ts`+`backend`+`p95Ms`+`budgetOk`+
    `platform` and no payload-content keys.

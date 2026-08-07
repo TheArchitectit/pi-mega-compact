@@ -10,7 +10,9 @@
  *
  * Decision rule (pre-registered, deterministic, measured — see the ENC-0a spec):
  *   - if a measured bench record (JSONL) is present:
- *         budgetOk := (model+tokenizer bytes) <= 80 MiB
+ *         budgetOk := (model+tokenizer bytes) <= installBudgetMib()
+ *                    (operator-configurable via MEGACOMPACT_NATIVE_ORT_BUDGET_MIB,
+ *                     default 300 MiB)
  *         p95Ok   := measured_p95_ms <= 40 ms  (512 tokens / 4 threads, linux-x64)
  *         backend := (budgetOk && p95Ok) ? "wasm" : "native"
  *   - if NO measured bench is present, the resolver DEGRADES to the recorded
@@ -41,7 +43,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 // research confirming BAAI/bge-small-en-v1.5 (MIT, 33.4M params, ~23 MiB int8 ONNX,
 // opset 21).
 const RECORDED = {
-  // onnxruntime-node native total install (5-platform matrix), exceeds the 80 MiB cap.
+  // onnxruntime-node native total install (5-platform matrix), fits the default 300 MiB budget.
   nativeInstallMiB: 258,
   // transformers.js v4.2.0 + onnxruntime-web WASM shell (the leading candidate).
   wasmShellMiB: 9.5,
@@ -62,9 +64,25 @@ const RECORDED = {
 };
 
 // ── Budget + latency gates (normative MODEL_ASSET.md + ENC-0a spec) ─────────
-const INSTALL_BUDGET_MIB = 80;
+const INSTALL_BUDGET_DEFAULT_MIB = 300;
+const INSTALL_BUDGET_CLAMP_MIB = 8192;
 const P95_GATE_MS = 40;
 const MIB = 1048576;
+
+// Pure resolver mirroring decision.ts::resolveInstallBudgetMib so the script
+// (no src/ import) and the runtime share the exact same clamp rule.
+function resolveInstallBudgetMib(raw) {
+  if (raw === undefined || raw === null || raw === "") return INSTALL_BUDGET_DEFAULT_MIB;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0 || n > INSTALL_BUDGET_CLAMP_MIB) {
+    return INSTALL_BUDGET_DEFAULT_MIB;
+  }
+  return n;
+}
+
+function installBudgetMib() {
+  return resolveInstallBudgetMib(process.env.MEGACOMPACT_NATIVE_ORT_BUDGET_MIB);
+}
 
 // ── Platform matrix (wasm-leading-candidate snapshot; ground fact from types.ts) ──
 const PLATFORMS = Object.freeze([
@@ -152,13 +170,14 @@ function main() {
     tokenizerSha = RECORDED.tokenizerSha256;
   }
 
+  const budgetMib = installBudgetMib();
   const totalBytesMiB = (modelBytes + tokenizerBytes) / MIB;
-  const budgetOk = totalBytesMiB <= INSTALL_BUDGET_MIB;
+  const budgetOk = totalBytesMiB <= budgetMib;
   const p95Ok = p95Ms === null || p95Ms <= P95_GATE_MS; // null p95 (degraded) never blocks
   const backend = budgetOk && p95Ok ? "wasm" : "native";
   const resolvedBudgetOk = backend === "wasm"
     ? budgetOk
-    : false; // native ships 258 MiB > 80 -> budget amended off
+    : RECORDED.nativeInstallMiB <= budgetMib; // native ships 258 MiB; fits the default 300 MiB budget
 
   const platformMatrix = Object.fromEntries(
     PLATFORMS.map((p) => [

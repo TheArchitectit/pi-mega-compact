@@ -55,6 +55,15 @@ export interface SetupStatusResponse {
    *  falls back (e.g. native selected but onnxruntime-node absent / darwin-x64
    *  demoted), surfaced verbatim; null when no demotion (additive, flag-gated). */
   readonly encoderDemotionReason?: string | null;
+  /** ENC-2a: the persisted `MEGACOMPACT_NATIVE_ORT_BUDGET_MIB` value as its
+   *  numeric string, when configured (additive, flag-gated). Absent when the
+   *  operator has not set the knob. */
+  readonly nativeOrtBudgetMib?: string;
+  /** ENC-2a: the EFFECTIVE budget `installBudgetMib()` resolves to (integer
+   *  MiB as a numeric string), so the dashboard can show the runtime's actual
+   *  operand — persists even when `nativeOrtBudgetMib` is absent because the
+   *  runtime applies the default when unset. Additive, flag-gated. */
+  readonly nativeOrtBudgetEffectiveMib?: string;
 }
 
 /**
@@ -119,6 +128,10 @@ export interface SetupConfigureRequest {
   /** ENC-1b: opt in to `MEGACOMPACT_ENCODER_NATIVE` (onnxruntime-node native
    *  backend; additive, flag-gated). */
   readonly encoderNativeOptIn?: boolean;
+  /** ENC-2a: persisted `MEGACOMPACT_NATIVE_ORT_BUDGET_MIB` install budget as a
+   *  positive integer string within `ENC_2BUDGET_MAX_MIB` (validated; additive,
+   *  flag-gated). */
+  readonly nativeOrtBudgetMib?: string;
 }
 
 /** Response for POST /api/setup-configure. */

@@ -3,15 +3,19 @@
  * ml5/package-assets.mjs — ML5-C install-matrix + byte-count budget assertion.
  *
  * Assembles the per-platform install matrix for the chosen runtime backend
- * and asserts the 80 MiB install budget (HG-3 closure) BEFORE publish. The
- * matrix resolves every Node platform to a concrete package/size row —
- * onnxruntime-web for WASM (single package, all platforms), or
- * onnxruntime-(node) with per-platform optionalDependencies for native.
+ * and asserts the operator-configurable install budget (default 300 MiB;
+ * HG-3 closure surface) BEFORE publish. The matrix resolves every Node
+ * platform to a concrete package/size row — onnxruntime-web for WASM (single
+ * package, all platforms), or onnxruntime-(node) with per-platform
+ * optionalDependencies for native.
  *
- * Budget rule: for WASM (Option W) the `byte_count_le_budget` fixture asserts
- * PASS; for native (Option N) the budget is AMENDED per the measured evidence
- * (vc2-model-prep §3: native on linux-x64 lands ~100–150 MiB total, so the
- * fixture carries `amended_budget_mib` instead of `byte_count_le_budget:true`).
+ * Budget rule: the shipped byte-count is compared against
+ * `MEGACOMPACT_NATIVE_ORT_BUDGET_MIB` (default 300 MiB). At the default,
+ * WASM (~9 MiB) and native (~160 MiB across 5 platforms) both fit, so the
+ * fixture asserts `byte_count_le_budget: true`. An operator who lowers the
+ * budget below the shipped byte-count sees `budgetOk: false` in both the
+ * fixture and the runtime selection — the amendment path remains, but it is
+ * no longer the default disposition for native.
  *
  * LOCAL ONLY: filesystem reads only, zero network (PREVENT-PI-004).
  *
@@ -26,8 +30,28 @@ import { fileURLToPath } from "node:url";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(scriptDir, "..", "..");
 
-/** The unamended 80 MiB install budget in bytes. */
-export const RUNTIME_NATIVE_INSTALL_BUDGET_MIB = 80;
+/** The default operator-configurable install budget (MiB). */
+const INSTALL_BUDGET_DEFAULT_MIB = 300;
+const INSTALL_BUDGET_CLAMP_MIB = 8192;
+
+// Pure resolver mirroring decision.ts::resolveInstallBudgetMib so the script
+// (no src/ import) and the runtime share the exact same clamp rule.
+export function resolveInstallBudgetMib(raw) {
+  if (raw === undefined || raw === null || raw === "") return INSTALL_BUDGET_DEFAULT_MIB;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0 || n > INSTALL_BUDGET_CLAMP_MIB) {
+    return INSTALL_BUDGET_DEFAULT_MIB;
+  }
+  return n;
+}
+
+/** Returns the operator-configured install budget (MiB) from env, default 300. */
+export function installBudgetMib() {
+  return resolveInstallBudgetMib(process.env.MEGACOMPACT_NATIVE_ORT_BUDGET_MIB);
+}
+
+/** @deprecated use installBudgetMib() — kept for backwards-compat imports. */
+export const RUNTIME_NATIVE_INSTALL_BUDGET_MIB = INSTALL_BUDGET_DEFAULT_MIB;
 
 /** Per-platform native install sizes (MiB, approximate — vc2-model-prep §1 measured). */
 export const NATIVE_PER_PLATFORM_MIB = Object.freeze({
@@ -79,29 +103,22 @@ export function totalByteCountMib(backend, opts = {}) {
 
 /**
  * Assert the byte-count budget for the backend choice. Returns the assertion
- * payload the conformance fixture pins ({ byte_count_le_budget: true } for WASM,
- * { amended_budget_mib: N } for native when over budget). Throws when the
- * contract is unexpectedly violated (e.g. native under budget AND the fixture
- * still records an amendment).
+ * payload the conformance fixture pins (byte_count_le_budget: true at the
+ * default 300 MiB budget for both WASM and native; under an operator-lowered
+ * budget, `byte_count_le_budget: false` and `amended_budget_mib` carries the
+ * shipped byte-count as the amendment figure). When the shipped bytes fit the
+ * configured budget, `amended_budget_mib` is null (no amendment).
  */
 export function budgetAssertion(backend, opts = {}) {
   const totalMib = totalByteCountMib(backend, opts);
-  if (backend === "wasm" && !opts.nativeOptIn) {
-    return {
-      within_budget: true,
-      budget_mib: RUNTIME_NATIVE_INSTALL_BUDGET_MIB,
-      byte_count_mib: totalMib,
-      byte_count_le_budget: totalMib <= RUNTIME_NATIVE_INSTALL_BUDGET_MIB,
-      amended_budget_mib: null,
-      matrix_complete: buildInstallMatrix(backend, opts).every((r) => r.mib > 0),
-    };
-  }
+  const budgetMib = installBudgetMib();
+  const within = totalMib <= budgetMib;
   return {
-    within_budget: false,
-    budget_mib: RUNTIME_NATIVE_INSTALL_BUDGET_MIB,
+    within_budget: within,
+    budget_mib: budgetMib,
     byte_count_mib: totalMib,
-    byte_count_le_budget: false,
-    amended_budget_mib: totalMib,
+    byte_count_le_budget: within,
+    amended_budget_mib: within ? null : totalMib,
     matrix_complete: buildInstallMatrix(backend, opts).every((r) => r.mib > 0),
   };
 }

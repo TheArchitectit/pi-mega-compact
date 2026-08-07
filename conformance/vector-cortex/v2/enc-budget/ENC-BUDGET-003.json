@@ -1,0 +1,1 @@
+{"assertion":"installBudgetMib() rejects input over the 8192 clamp (9000 → 300 default fallback)","env_state":"9000","expected_effective_mib":300,"flag":"MEGACOMPACT_ENC_2BUDGET","id":"ENC-BUDGET-003","kind":"out-of-clamp-fallback","producer":"scripts/vc9-setup-dashboard/gen-fixtures-enc-budget.mjs","schema":"schemas/enc-budget-fixture.schema.json"}
