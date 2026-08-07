@@ -172,10 +172,13 @@ echo "[deploy] dashboard bundle verified in npm pack output."
 # MODEL_ASSET §qualification/packaging: require the qualified encoder manifest
 # (asset paths + supported matrix covered by the committed manifest; the VC2A
 # verification seam re-checks digests before load), and that the ENTIRE npm
-# package dry-run listing is <= 35 MiB (the compressed shipping budget).
+# package dry-run listing is <= 80 MiB (the compressed shipping budget —
+# re-baselined from 35 MiB by ENC-0b once the real 33.8 MB bge-small-en-v1.5
+# opset-21 model replaced the 42-byte placeholder).
 # Dry-run listing ONLY — never create a .tgz (PREVENT-DIST-001).
+PACKAGE_BUDGET_BYTES=$((80*1024*1024))
 VC2C_ASSET_DIR="assets/vector-cortex/encoder-v1"
-echo "[deploy] VC2C asset gate: qualified manifest + package listing <= 35 MiB"
+echo "[deploy] VC2C asset gate: qualified manifest + package listing <= 80 MiB"
 if [[ ! -f "$VC2C_ASSET_DIR/manifest.json" ]]; then
 	echo "[deploy] ERROR: qualified encoder manifest missing ($VC2C_ASSET_DIR/manifest.json)." >&2
 	exit 1
@@ -197,11 +200,11 @@ try:
 except Exception:
     print('')
 ")"
-if [[ -z "$PACKAGE_BYTES" || "$PACKAGE_BYTES" -gt $((35*1024*1024)) ]]; then
-	echo "[deploy] ERROR: total package listing ${PACKAGE_BYTES:-unknown} bytes exceeds the 35 MiB budget." >&2
+if [[ -z "$PACKAGE_BYTES" || "$PACKAGE_BYTES" -gt "$PACKAGE_BUDGET_BYTES" ]]; then
+	echo "[deploy] ERROR: total package listing ${PACKAGE_BYTES:-unknown} bytes exceeds the 80 MiB budget (re-baselined by ENC-0b from 35 → 80 MiB for the real bge-small-en-v1.5 opset-21 model)." >&2
 	exit 1
 fi
-echo "[deploy] package listing ${PACKAGE_BYTES} bytes <= 35 MiB; VC2C asset gate green."
+echo "[deploy] package listing ${PACKAGE_BYTES} bytes <= 80 MiB; VC2C asset gate green."
 
 # --- 5. bump version ----------------------------------------------------------
 CURRENT_VERSION="$(node -e "console.log(require('./package.json').version)")"
