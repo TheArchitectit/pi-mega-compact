@@ -291,10 +291,10 @@ function scorePairs(sessions) {
 
 /**
  * Run the full grid sweep over a consented corpus and return the report object
- * (pure + deterministic: same sessions + grid + seed → same digest). `sessions`
- * is the consent-filtered session list (type attribution by pair contentType).
+ * (pure + deterministic: same sessions + grid → same digest). `sessions` is the
+ * consent-filtered session list (type attribution by pair contentType).
  */
-export function computeReport(sessions, grid = makeGrid(), seed = 0) {
+export function computeReport(sessions, grid = makeGrid()) {
   const pairs = scorePairs(sessions);
   const thresholdRows = grid.map((threshold) => {
     const perType = {};
