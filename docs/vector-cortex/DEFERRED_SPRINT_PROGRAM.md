@@ -142,6 +142,7 @@ Steps 1–8 repeat per sprint until all nine ship.
 |--------|--------|-----------|-----------|
 | DOC-0a | `feat/DOC-0a` | `692c78a` | v0.20.54 |
 | COS-FP-A | `feat/COS-FP-A` | `87cc6d4` | v0.20.55 |
+| COS-FP-R | `feat/COS-FP-R` | `b81620a` | v0.20.56 |
 
 ## Exit evidence for the program
 
