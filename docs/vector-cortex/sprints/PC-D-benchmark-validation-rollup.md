@@ -1,6 +1,7 @@
 # PC-D — Benchmark validation + conformance roll-up
 
-**Status:** planned | **Depends on:** PC-C | **Phase:** PC
+**Status:** shipped | **Originally planned:** PC-D | **Phase:** PC
+**Shipped:** v0.20.34
 **Flag:** none (roll-up sprint — no new flag; validates the PC-A/PC-B/PC-C flags' cumulative effect)
 
 ## Goal and inputs/outputs

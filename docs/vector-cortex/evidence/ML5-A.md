@@ -1,6 +1,7 @@
 # ML5-A Evidence
 
 Status: reviewer-accepted — all sprint gates green (independently replicated by the controller), including the mandated flag-off run (`MEGACOMPACT_ML5_A=0`, byte-identical), the conformance/regression/guardrails gates, the python training-lint extension to `regression_check.py`, and the framework §8 live verification (15/15 endpoints + Playwright UI render PASS).
+**PUBLISHED as v0.20.36** — implementation landed at commit `816ed10`; reviewer-attested 2026-08-05/06.
 
 **Reconciliation (2026-08-05):** This record covers the ML5-A five-head training + calibration-corpus sprint end to end — the deterministic python pipeline (`train.py` → `export_onnx.py` → `calibrate.py`), the real `trained-heads-v1` / `calibration-v1` loaders in the existing encoder stubs, the six conformance fixtures (`ML5-TRAIN-001..006`) + schema, the acceptance aggregator, the regression_check python-coverage extension, and this evidence record. **Mid-sprint, a concurrent agent's `git reset --hard` on the shared tree wiped every tracked-file edit (the python pipeline, the encoder/calibrate/select loaders, the config + dashboard wiring, the manifest re-registration, and the regression_check python gate); all of it was rebuilt and re-verified, and the manifest was re-registered by re-running `gen-fixtures-ml5a.mjs` (idempotent).** The deterministic digests below are from the rebuilt pipeline.
 

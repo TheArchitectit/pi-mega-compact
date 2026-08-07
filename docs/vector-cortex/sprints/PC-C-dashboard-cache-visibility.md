@@ -1,6 +1,7 @@
 # PC-C — Dashboard prompt-cache per-turn visibility
 
-**Status:** planned | **Depends on:** PC-B | **Phase:** PC
+**Status:** shipped | **Originally planned:** PC-C | **Phase:** PC
+**Shipped:** v0.20.33
 **Flag:** `MEGACOMPACT_PC_C`, defined in `src/config/vector-cortex-pcc.ts` (sibling extract), re-exported by `vector-cortex.ts` + root `src/config.ts`, default ON; `MEGACOMPACT_PC_C=0` disables and must be byte-identical to the PC-B predecessor (the prefix-stability endpoint returns 404/disabled and the CacheTab renders exactly as before — stripe distribution + hit-rate trend only). Registered in `VECTOR_CORTEX_SETTINGS` as a visible boolDirect toggle, never in `EXCLUDED_SETTINGS`.
 
 ## Goal and inputs/outputs

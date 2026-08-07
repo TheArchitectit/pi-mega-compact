@@ -2,7 +2,7 @@
 
 **Date**: 2026-07-29
 **Branch**: `feature/promptcache-stats`
-**Status**: Draft — needs team review
+**Status**: Implemented (PC-A message separation + PC-B cache striping, both default ON as of v0.20.32; this file is a historical projection, superseded by the PC phase)
 
 ---
 
@@ -444,10 +444,10 @@ Based on current data (43 samples, ~60% hit rate):
 | Metric | Current | Phase 1 Target | Phase 2 Target | Phase 3 Target |
 | -------- | --------- | ---------------- | ---------------- | ---------------- |
 | Cache hit rate | 56% | 56% (display only) | 82% | 90% |
-| Cache data visible | ❌ | ✅ | ✅ | ✅ |
-| $ saved visible | ❌ | ✅ | ✅ | ✅ |
-| Per-turn breakdown | ❌ | ❌ | ✅ | ✅ |
-| Stripe optimization | ❌ | ❌ | ❌ | ✅ |
+| Cache data visible | ✅ | ✅ | ✅ | ✅ |
+| $ saved visible | ✅ | ✅ | ✅ | ✅ |
+| Per-turn breakdown | ✅ | ❌ | ✅ | ✅ |
+| Stripe optimization | ✅ | ❌ | ❌ | ✅ |
 
 ---
 
@@ -459,7 +459,7 @@ Based on current data (43 samples, ~60% hit rate):
 | Vector computation adds latency | Medium | Cache embeddings, compute async |
 | Topic detection is inaccurate | Medium | Start with conservative thresholds, tune later |
 | pgvector index grows too large | Low | Already bounded by repo, add TTL for old stripes |
-| Cache striping adds complexity | Medium | Keep Phase 1 + 2 simple, Phase 3 is opt-in |
+| Cache striping adds complexity | Medium | Keep Phase 1 + 2 simple, Phase 3 is default ON since PC-B (v0.20.32); the flag is `MEGACOMPACT_CACHE_STRIPING`, override with `=0` |
 
 ---
 

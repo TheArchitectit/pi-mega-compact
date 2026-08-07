@@ -1,6 +1,7 @@
 # PC-B — cacheStriping flag unification + default ON
 
-**Status:** planned | **Depends on:** PC-A | **Phase:** PC
+**Status:** shipped | **Originally planned:** PC-B | **Phase:** PC
+**Shipped:** v0.20.32
 **Flag:** `MEGACOMPACT_CACHE_STRIPING`, config-driven via `config.cacheStriping` in `extensions/mega-config.ts` (envBool default flipped `false`→`true`); the in-function env read in `buildCacheOptimizedPrompt` is REMOVED so the single gate lives at the call site (`tailResult.ts:47-51`). `MEGACOMPACT_CACHE_STRIPING=0` disables and must be byte-identical to the pre-change OFF state (delegates to `buildSeparatedPrompt`, which itself is gated by `config.messageSeparation` at the call site). Registered as a visible boolDirect toggle in `routes-rag-settings-helpers.ts`, never in `EXCLUDED_SETTINGS`.
 
 ## Goal and inputs/outputs

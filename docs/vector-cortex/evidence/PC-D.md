@@ -1,6 +1,7 @@
 # PC-D Evidence — Benchmark validation + conformance roll-up
 
 Status: reviewer-accepted
+**PUBLISHED as v0.20.34** — implementation landed at commit `e728dcc`; reviewer-attested 2026-08-05/06.
 Implementation commit: `feat(pcd): benchmark validation + conformance roll-up` (see git log). Full gate run on the working tree (build / acceptance / full test / lint / regression --soft-as-hard --pre-commit / guardrails / failure-log / conformance / docs-check / diff-check).
 
 This is the PC phase **roll-up**: it introduces no new flag and no runtime code path, delivers the controlled benchmark runner + conformance fixture set, and records the measured cumulative effect of the PC-A (message separation) + PC-B (cache striping) flags across the three flag states.

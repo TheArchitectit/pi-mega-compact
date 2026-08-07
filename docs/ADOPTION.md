@@ -68,8 +68,8 @@ All flags are set via environment variables prefixed with `MEGACOMPACT_`. Defaul
 | `MEGACOMPACT_WIKI_SEED_FROM_TURNS` | ON | Seed wiki from saved turn records. |
 | `MEGACOMPACT_TUI_WIDGET` | ON | Show pressure indicator in the pi status bar. |
 | `MEGACOMPACT_MEMORY_GRAPH_SEED_*` | ON (3 flags) | Seed memory graph from turns, turn content, and memories. |
-| `MEGACOMPACT_MESSAGE_SEPARATION` | OFF | Split conversation thread from tool results for cache stability. |
-| `MEGACOMPACT_CACHE_STRIPING` | OFF | Vector-aware prompt layering for cache stripe isolation. |
+| `MEGACOMPACT_MESSAGE_SEPARATION` | ON | Split conversation thread from tool results for cache stability. |
+| `MEGACOMPACT_CACHE_STRIPING` | ON | Vector-aware prompt layering for cache stripe isolation. |
 | `MEGACOMPACT_DB_MIRROR` | OFF | Mirror events to a separate database (debugging/audit). |
 | `MEGACOMPACT_QUERY_REFORMULATION` | OFF | Keyword expansion via embedding neighbors at recall time. |
 | `MEGACOMPACT_TIERED_ROUTER` | OFF | L0 cache > L1 FTS5 > L2 HNSW recall router. |
@@ -80,8 +80,8 @@ All flags are set via environment variables prefixed with `MEGACOMPACT_`. Defaul
 ### Quick tuning examples
 
 ```bash
-# Enable message separation + cache striping for a cache-aware session
-MEGACOMPACT_MESSAGE_SEPARATION=true MEGACOMPACT_CACHE_STRIPING=true pi
+# Disable message separation / cache striping if you want the flat pre-PC prompt
+MEGACOMPACT_MESSAGE_SEPARATION=0 MEGACOMPACT_CACHE_STRIPING=0 pi
 
 # Disable RAPPER tree clustering (saves memory on constrained hardware)
 MEGACOMPACT_RAPTOR_ENABLED=false pi
