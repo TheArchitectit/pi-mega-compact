@@ -25,12 +25,18 @@ import { readFileSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RouteContext } from "./routes-core.js";
-import { VC9A_ENABLED, ENC_0E_ENABLED } from "../../src/config.js";
+import { VC9A_ENABLED, ENC_0E_ENABLED, ENC_0F_ENABLED, ENC_0G_ENABLED } from "../../src/config.js";
 import { readEncoderManifest, verifyEncoderAsset, detectPlatform } from "../../src/vector-cortex/encoder/asset.js";
+import type { QualificationV1 } from "../../src/vector-cortex/encoder/qualify.js";
 import { selectRuntimeBackend } from "../../src/vector-cortex/encoder/runtime-select.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
 import { deriveVcStatus } from "./vc-status.js";
-import { SETUP_CORTEX_BLOCKERS } from "./setup-cortex-blockers.js";
+import { SETUP_CORTEX_BLOCKERS, computeSetupCortexBlockers } from "./setup-cortex-blockers.js";
+import {
+  readQualificationRecord,
+  encoderStateDir,
+  QUALIFICATION_RECORD_UNAVAILABLE,
+} from "./qualification-record.js";
 import type {
   SetupCortexStatusResponse,
   BlockerV1,
@@ -62,6 +68,8 @@ interface SetupCortexFacts {
   assetDigestPrefix: string | null;
   verdict: "qualified" | "demoted" | "unavailable";
   thresholdFailures: string[];
+  /** Number of projection heads the verified manifest declares, or null. */
+  headCount: number | null;
 }
 
 interface SetupCortexFactCache {
@@ -72,7 +80,13 @@ interface SetupCortexFactCache {
 let factCache: SetupCortexFactCache | null = null;
 
 /** Stable cache key: manifest bytes + (size,mtime) of the asset files + platform. */
-function factCacheKey(dir: string, manifestPath: string): string | null {
+function factCacheKey(
+  dir: string,
+  manifestPath: string,
+  stateDir: string,
+  record: QualificationV1 | null,
+  recordGate: boolean,
+): string | null {
   const platform = detectPlatform();
   if (!platform) return null;
   const parts: string[] = [platform];
@@ -86,16 +100,56 @@ function factCacheKey(dir: string, manifestPath: string): string | null {
   } catch {
     return null;
   }
+  // ENC-0g: fold the qualification-record gate + (mtime, content sha) into the
+  // key so a re-run gate invalidates memoized facts (no stale verdict served).
+  try {
+    const s = statSync(join(stateDir, "encoder-qualification.json"));
+    parts.push(`g:${recordGate ? "on" : "off"}`, `q:${s.size}:${s.mtimeMs}`);
+    parts.push(createHash("sha256").update(JSON.stringify(record)).digest("hex"));
+  } catch {
+    parts.push(`g:${recordGate ? "on" : "off"}`, "q:absent");
+  }
   return parts.join("|");
 }
 
-function computeSetupCortexFacts(dir: string): SetupCortexFacts | null {
+function applyQualificationOverride(
+  base: SetupCortexFacts,
+  record: QualificationV1 | null,
+  recordGate: boolean,
+): SetupCortexFacts {
+  // Flag-off (recordGate false): byte-identical verify-derived facts.
+  if (!recordGate) return base;
+  if (record !== null) {
+    // The ENC-0f QualificationV1 failure maps onto the contract "demoted": a
+    // structurally-valid asset whose real-asset gate measured failure is honest
+    // as demoted, NOT qualified. mode stays verify-derived (A).
+    return {
+      ...base,
+      verdict: record.verdict === "qualified" ? "qualified" : "demoted",
+      thresholdFailures: [...record.reasons],
+    };
+  }
+  // No record + gate on: keep the verify verdict but surface the missing-record
+  // sentinel (never a fabricated pass, never a bare silent fallback).
+  return {
+    ...base,
+    thresholdFailures: [...base.thresholdFailures, QUALIFICATION_RECORD_UNAVAILABLE],
+  };
+}
+
+function computeSetupCortexFacts(
+  dir: string,
+  stateDir: string,
+  record: QualificationV1 | null,
+  recordGate: boolean,
+): SetupCortexFacts | null {
   const manifest = readEncoderManifest(dir);
   if (manifest === null) {
-    return { mode: "C", assetDigestPrefix: null, verdict: "unavailable", thresholdFailures: [] };
+    return { mode: "C", assetDigestPrefix: null, verdict: "unavailable", thresholdFailures: [], headCount: null };
   }
+  const headCount = Object.keys(manifest.heads).length;
   const manifestPath = join(dir, "manifest.json");
-  const key = factCacheKey(dir, manifestPath);
+  const key = factCacheKey(dir, manifestPath, stateDir, record, recordGate);
   if (key === null) return null;
   if (factCache !== null && factCache.key === key) return factCache.facts;
   let digest: string;
@@ -103,26 +157,31 @@ function computeSetupCortexFacts(dir: string): SetupCortexFacts | null {
     // guardrails-allow PREVENT-PI-004: local manifest filesystem read (loopback)
     digest = createHash("sha256").update(readFileSync(manifestPath)).digest("hex");
   } catch {
-    const facts: SetupCortexFacts = { mode: "B", assetDigestPrefix: null, verdict: "demoted", thresholdFailures: ["ENC_ASSET_UNREADABLE"] };
+    const base: SetupCortexFacts = { mode: "B", assetDigestPrefix: null, verdict: "demoted", thresholdFailures: ["ENC_ASSET_UNREADABLE"], headCount };
+    const facts = applyQualificationOverride(base, record, recordGate);
     factCache = { key, facts };
     return facts;
   }
   const verify = verifyEncoderAsset(dir, manifest, detectPlatform());
   const prefix = digest.slice(0, 12);
-  const facts: SetupCortexFacts = verify.ok
-    ? { mode: "A", assetDigestPrefix: prefix, verdict: "qualified", thresholdFailures: [] }
-    : { mode: "B", assetDigestPrefix: prefix, verdict: "demoted", thresholdFailures: [verify.code] };
+  const base: SetupCortexFacts = verify.ok
+    ? { mode: "A", assetDigestPrefix: prefix, verdict: "qualified", thresholdFailures: [], headCount }
+    : { mode: "B", assetDigestPrefix: prefix, verdict: "demoted", thresholdFailures: [verify.code], headCount };
+  const facts = applyQualificationOverride(base, record, recordGate);
   factCache = { key, facts };
   return facts;
 }
 
-function setupCortexFacts(): SetupCortexFacts {
+function setupCortexFacts(
+  record: QualificationV1 | null,
+  recordGate: boolean,
+): SetupCortexFacts {
   const dir = encoderAssetDir();
   if (dir === null) {
-    return { mode: "C", assetDigestPrefix: null, verdict: "unavailable", thresholdFailures: [] };
+    return { mode: "C", assetDigestPrefix: null, verdict: "unavailable", thresholdFailures: [], headCount: null };
   }
-  const facts = computeSetupCortexFacts(dir);
-  return facts ?? { mode: "C", assetDigestPrefix: null, verdict: "unavailable", thresholdFailures: [] };
+  const facts = computeSetupCortexFacts(dir, encoderStateDir(), record, recordGate);
+  return facts ?? { mode: "C", assetDigestPrefix: null, verdict: "unavailable", thresholdFailures: [], headCount: null };
 }
 
 /**
@@ -145,8 +204,25 @@ export function handleSetupCortexStatus(
   }
 
   const enabled = VC9A_ENABLED();
-  const facts = enabled ? setupCortexFacts() : null;
-  const blocks: BlockerV1[] = enabled ? [...SETUP_CORTEX_BLOCKERS] : [];
+
+  // ENC-0g: when both gates are ON, read the QualificationV1 record and let its
+  // verdict override the structural verify for the `qualification` field. When
+  // ENC_0G is OFF, nothing below reads the record (byte-identical to ENC-0f-era).
+  const enc0g = enabled && ENC_0G_ENABLED();
+  const recordGate = enc0g && ENC_0F_ENABLED();
+  const record = recordGate ? readQualificationRecord(encoderStateDir()) : null;
+
+  const facts = enabled ? setupCortexFacts(record, recordGate) : null;
+
+  const blocks: BlockerV1[] = enabled
+    ? enc0g
+      ? [...computeSetupCortexBlockers({
+          platform: detectPlatform(),
+          qualification: record,
+          headCount: facts ? facts.headCount : null,
+        })]
+      : [...SETUP_CORTEX_BLOCKERS]
+    : [];
 
   // ENC-0e: surface the darwin-x64 demotion reason additively (reader-only GET,
   // no new route). The platform is read locally; the selection is pure. On a

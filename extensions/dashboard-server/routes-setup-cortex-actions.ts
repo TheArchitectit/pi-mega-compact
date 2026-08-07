@@ -19,10 +19,18 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { existsSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { RouteContext } from "./routes-core.js";
 import { sendJson, readJsonBody } from "./routes-vector-cortex-shared.js";
-import { VC9B_ENABLED } from "../../src/config.js";
-import { setupCortexActionBlockers } from "./setup-cortex-blockers.js";
+import { VC9B_ENABLED, ENC_0G_ENABLED, ENC_0F_ENABLED } from "../../src/config.js";
+import { setupCortexActionBlockers, computeSetupCortexBlockers } from "./setup-cortex-blockers.js";
+import { readEncoderManifest, detectPlatform } from "../../src/vector-cortex/encoder/asset.js";
+import {
+  readQualificationRecord,
+  encoderStateDir,
+} from "./qualification-record.js";
 import {
   runSetupCortexAction,
   readActionLogTail,
@@ -37,6 +45,42 @@ const ACTION_KINDS = new Set<SetupCortexActionKind>([
 
 function isActionKind(v: unknown): v is SetupCortexActionKind {
   return typeof v === "string" && ACTION_KINDS.has(v as SetupCortexActionKind);
+}
+
+/** The encoder asset dir used by the action gate (mirrors routes-setup-cortex.ts). */
+function encoderAssetDir(): string | null {
+  let dir = dirname(fileURLToPath(import.meta.url));
+  const rel = join("assets", "vector-cortex", "encoder-v1");
+  for (let i = 0; i < 8; i++) {
+    const candidate = join(dir, rel);
+    if (existsSync(join(candidate, "manifest.json"))) return candidate;
+    const next = dirname(dir);
+    if (next === dir) break;
+    dir = next;
+  }
+  return null;
+}
+
+/**
+ * ENC-0g: the live computed blockers for the action gate. When both gates are
+ * ON, read the QualificationV1 record + verified manifest head-count and derive
+ * the live list (so a closed HG-1 no longer gates fetch-model/bench). Otherwise
+ * return null and let setupCortexActionBlockers fall back to the static base.
+ */
+function liveActionBlockers(): ReturnType<typeof computeSetupCortexBlockers> | null {
+  if (!ENC_0G_ENABLED() || !ENC_0F_ENABLED()) return null;
+  const record = readQualificationRecord(encoderStateDir());
+  let headCount: number | null = null;
+  const dir = encoderAssetDir();
+  if (dir !== null) {
+    const manifest = readEncoderManifest(dir);
+    if (manifest !== null) headCount = Object.keys(manifest.heads).length;
+  }
+  return computeSetupCortexBlockers({
+    platform: detectPlatform(),
+    qualification: record,
+    headCount,
+  });
 }
 
 /** Flag-off response, byte-identical regardless of request (VC9B absent). */
@@ -79,7 +123,10 @@ export function handleSetupCortexAction(
     }
     // Hard-gate check: when an OPEN hard-gate item gates this action, do NOT
     // spawn — surface the blocker ids so the client highlights the matching rows.
-    const blockers = setupCortexActionBlockers(action);
+    // ENC-0g: re-derive against the LIVE computed blockers (a closed HG-1 no
+    // longer blocks), falling back to the static base when the gates are off.
+    const live = liveActionBlockers();
+    const blockers = live !== null ? setupCortexActionBlockers(action, live) : setupCortexActionBlockers(action);
     if (blockers.length > 0) {
       sendJson(res, 423, {
         error: "action_blocked_by_open_item",

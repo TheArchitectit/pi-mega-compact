@@ -276,6 +276,12 @@ function main() {
   // the published dist/vector-cortex/ offset.
   const nSupport = copyTree(SRC_VECTOR, DEST_VECTOR, (name) =>
     name === "vc3b-support.js" || name === "improve.js" ||
+    // ENC-0g: canonical blocker compute lives at src/vector-cortex/
+    // setup-cortex-blockers-compute.ts (previously a dashboard-server file). Mirror
+    // its runtime .js so the enc0g-acceptance aggregator's `./setup-cortex-
+    // blockers-compute.js` import resolves at the published dist/vector-cortex/
+    // offset (pure compute, not a test).
+    name === "setup-cortex-blockers-compute.js" ||
     (name.startsWith("_acceptance-") && name.endsWith(".js")),
   );
   // DEDUP-ATTR added the dedup-attr subtree (rollup.ts). Mirror its runtime

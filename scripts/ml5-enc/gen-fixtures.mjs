@@ -800,6 +800,115 @@ const budgetFixtures = [
   },
 ];
 
+// ── ENC-0g: encoder-status fixtures ──────────────────────────────────────────
+// Setup Cortex status route honest state: the status route reads the ENC-0f
+// QualificationV1 record (when a record exists) and lets its verdict override
+// the structural verifyEncoderAsset result; the blocker list is a pure computed
+// function over (platform, record, manifest head-count) with corrected HG
+// statuses/wording; VC9B action gating is re-derived from the live blockers.
+// Flag-off = verdict from verify alone, static blockers, static gating
+// (byte-identical to ENC-0f-era).
+const STAT_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema#",
+  title: "ENC-0g encoder-status fixture envelope",
+  type: "object",
+  description:
+    "Common structure every ENC-0g encoder-status fixture validates against. `kind` names the verdict-override / no-record / blocker-computation / gating / flag-off branch exercised; `setup` carries the QualificationV1 record inputs + manifest head-count + flag_off override; `expected_outcome` is ok or error; `expected_result` pins the fields the status route + blocker computation + action gating must assert (qualification_verdict, threshold_failures, blockers statuses, hg5_title, gating matrix, flag_off).",
+  required: ["id", "producer", "assertion", "kind", "setup", "expected_outcome", "expected_result"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: {
+      type: "string",
+      enum: [
+        "qualified-record-overrides",
+        "failed-record-overrides",
+        "no-record-fallback",
+        "hg1-closed-hg5-measured",
+        "gating-matrix",
+        "flag-off",
+      ],
+    },
+    setup: {
+      type: "object",
+      properties: {
+        platform: { type: "string" },
+        head_count: { type: ["integer", "null"] },
+        flag_off: { type: "boolean" },
+        qualification: {
+          type: ["object", "null"],
+          properties: {
+            verdict: { type: "string", enum: ["qualified", "failed"] },
+            reasons: { type: "array", items: { type: "string" } },
+            p95_ms: { type: "number" },
+            rss_mib: { type: "number" },
+          },
+        },
+      },
+    },
+    expected_outcome: { type: "string", enum: ["ok", "error"] },
+    expected_result: { type: "object" },
+  },
+};
+
+const statusFixtures = [
+  {
+    id: "ENC-STAT-001",
+    assertion:
+      "qualified QualificationV1 record present -> verdict qualified surfaces from the record (overrides structural verify)",
+    kind: "qualified-record-overrides",
+    setup: { platform: "linux-x64", head_count: 5, qualification: { verdict: "qualified", reasons: [], p95_ms: 25, rss_mib: 145 } },
+    expected_outcome: "ok",
+    expected_result: { qualification_verdict: "qualified", threshold_failures: [], blockers: { "HG-1": "closed", "HG-3": "open", "HG-4": "open", "HG-5": "closed" } },
+  },
+  {
+    id: "ENC-STAT-002",
+    assertion:
+      "failed record [latency,rss,bench_gates_not_green] -> verdict failed + thresholdFailures surfaced even when structural verify ok",
+    kind: "failed-record-overrides",
+    setup: { platform: "linux-x64", head_count: 5, qualification: { verdict: "failed", reasons: ["latency", "rss", "bench_gates_not_green"], p95_ms: 186.53, rss_mib: 294 } },
+    expected_outcome: "ok",
+    expected_result: { qualification_verdict: "failed", threshold_failures: ["latency", "rss", "bench_gates_not_green"], blockers: { "HG-1": "closed", "HG-3": "open", "HG-4": "open", "HG-5": "closed" } },
+  },
+  {
+    id: "ENC-STAT-003",
+    assertion:
+      "no QualificationV1 record -> verify-only fallback preserved, thresholdFailures includes qualification_record_unavailable",
+    kind: "no-record-fallback",
+    setup: { platform: "linux-x64", head_count: null, qualification: null },
+    expected_outcome: "ok",
+    expected_result: { qualification_verdict: "verify-only", threshold_failures: ["qualification_record_unavailable"], blockers: { "HG-1": "open", "HG-3": "open", "HG-4": "open", "HG-5": "superseded" } },
+  },
+  {
+    id: "ENC-STAT-004",
+    assertion:
+      "blocker statuses computed — HG-1 closed when manifest declares 5 heads; HG-5 wording reflects the measured (failed) verdict",
+    kind: "hg1-closed-hg5-measured",
+    setup: { platform: "linux-x64", head_count: 5, qualification: { verdict: "failed", reasons: ["latency", "rss"], p95_ms: 186.53, rss_mib: 294 } },
+    expected_outcome: "ok",
+    expected_result: { blockers: { "HG-1": "closed", "HG-3": "open", "HG-4": "open", "HG-5": "closed" }, hg5_title: "Real-asset qualification: failed (latency + marginal-RSS over budget)" },
+  },
+  {
+    id: "ENC-STAT-005",
+    assertion:
+      "action gating re-derived from computed blockers (HG-1 closed) — fetch-model/bench -> [HG-3], verify-asset -> []",
+    kind: "gating-matrix",
+    setup: { platform: "linux-x64", head_count: 5, qualification: { verdict: "failed", reasons: ["latency"], p95_ms: 186.53, rss_mib: 294 } },
+    expected_outcome: "ok",
+    expected_result: { gating: { "fetch-model": ["HG-3"], bench: ["HG-3"], "verify-asset": [] } },
+  },
+  {
+    id: "ENC-STAT-006",
+    assertion:
+      "flag-off -> status route byte-identical to ENC-0f era (verify-only verdict, static blockers, static gating)",
+    kind: "flag-off",
+    setup: { platform: "linux-x64", head_count: null, qualification: null, flag_off: true },
+    expected_outcome: "ok",
+    expected_result: { flag_off: true, byte_identical: true },
+  },
+];
+
 // ── Main (mirrors the VC9 setup generator coordinate with manifest.json) ─────
 export function writeAll() {
   mkdirSync(ENC_DIR, { recursive: true });
@@ -1018,6 +1127,41 @@ export function writeAll() {
     });
   }
 
+  // The ENC-STAT schema row.
+  const statSchemaBytes = Buffer.from(canonicalJson(STAT_SCHEMA), "utf8");
+  const statSchemaRel = "schemas/encoder-status-fixture.schema.json";
+  writeFileSync(join(V2, statSchemaRel), statSchemaBytes);
+  rows.push({
+    id: "encoder-status-fixture",
+    path: statSchemaRel,
+    sha256: sha256Hex(statSchemaBytes),
+    schema: statSchemaRel,
+    algorithm: "json-schema",
+    producer,
+    expected: "schema",
+    license: "synthetic",
+  });
+
+  // The 6 ENC-STAT fixture rows + on-disk files.
+  const statDir = join(V2, "encoder-status");
+  mkdirSync(statDir, { recursive: true });
+  for (const fx of statusFixtures) {
+    const obj = { ...fx, schema: statSchemaRel, producer };
+    const bytes = Buffer.from(canonicalJson(obj), "utf8");
+    const rel = `encoder-status/${fx.id}.json`;
+    writeFileSync(join(V2, rel), bytes);
+    rows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: statSchemaRel,
+      algorithm: "encoder-status",
+      producer,
+      expected: fx.expected_outcome,
+      license: "synthetic",
+    });
+  }
+
   // Merge into the existing manifest (id-dedupe so re-runs are idempotent) and
   // re-sort the whole fixtures array by id.
   const existing = manifest.fixtures.filter((r) => !rows.some((n) => n.id === r.id));
@@ -1052,6 +1196,9 @@ export function writeAll() {
   setCsv("domain", "encoder-budget");
   setCsv("schemaVersion", "encoder-budget-fixture");
   setOwnerCsv("owner", "ENC-0f");
+  setCsv("domain", "encoder-status");
+  setCsv("schemaVersion", "encoder-status-fixture");
+  setOwnerCsv("owner", "ENC-0g");
 
   writeFileSync(manifestPath, Buffer.from(canonicalJson(manifest), "utf8"));
 
@@ -1062,8 +1209,9 @@ export function writeAll() {
       headsFixtures.length +
       promotionFixtures.length +
       demotionFixtures.length +
-      budgetFixtures.length,
-    schemaCount: 6,
+      budgetFixtures.length +
+      statusFixtures.length,
+    schemaCount: 7,
   };
 }
 

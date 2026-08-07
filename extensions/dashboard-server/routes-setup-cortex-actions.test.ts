@@ -10,6 +10,10 @@
  * are always blocked and NO subprocess spawns — verified by asserting no log
  * file appears under <stateDir>/logs/vc9b/. verify-asset re-runs the committed
  * encoder verification seam (real, no subprocess).
+ *
+ * ENC-0g verify-asset log-honesty tests live in the sibling
+ * routes-setup-cortex-actions-enc0g.test.ts (this file stays under the 400-line
+ * extensions/ soft cap).
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
@@ -68,7 +72,13 @@ describe("/api/setup-cortex-action (VC9B)", () => {
 					assert.equal(res.status, 423, `${action} blocked`);
 					const body = (await res.json()) as { error: string; blockers: string[] };
 					assert.equal(body.error, "action_blocked_by_open_item");
-					assert.deepEqual(body.blockers.sort(), ["HG-1", "HG-3"]);
+					const enc0gOn = process.env.MEGACOMPACT_ENC_0G !== "0";
+					if (enc0gOn) {
+						// ENC-0g: HG-1 closed by the real 5-head manifest — only HG-3 still gates.
+						assert.deepEqual(body.blockers.sort(), ["HG-3"]);
+					} else {
+						assert.deepEqual(body.blockers.sort(), ["HG-1", "HG-3"]);
+					}
 					assertNoLogs(dir); // NO spawn — no log file created
 				}
 			});

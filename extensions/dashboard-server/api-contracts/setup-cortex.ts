@@ -21,8 +21,12 @@ export interface BlockerV1 {
   readonly title: string;
   /** Severity: blocker | high | medium. */
   readonly severity: "blocker" | "high" | "medium";
-  /** Lifecycle state — always "open" (hard gates not closed in-workstream). */
-  readonly status: "open";
+  /**
+   * Lifecycle state. "open" (hard gate unresolved), "closed" (re-derived by
+   * the ENC-0g computed blocker list, e.g. HG-1 once five heads exist), or
+   * "superseded" (an open question with no live measurement on this device).
+   */
+  readonly status: "open" | "closed" | "superseded";
   /** Optional candidate resolution surfaced for the user / controller. */
   readonly resolution?: string;
 }

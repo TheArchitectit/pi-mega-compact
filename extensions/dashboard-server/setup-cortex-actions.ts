@@ -36,6 +36,11 @@ import {
   verifyEncoderAsset,
   detectPlatform,
 } from "../../src/vector-cortex/encoder/asset.js";
+import { ENC_0G_ENABLED, ENC_0F_ENABLED } from "../../src/config.js";
+import {
+  readQualificationRecord,
+  encoderStateDir,
+} from "./qualification-record.js";
 
 /** Cap applied to every log tail served by the action-log route. */
 export const ACTION_LOG_TAIL_BYTES = 8192;
@@ -174,23 +179,37 @@ function runVerifyAsset(stateDir: string): SetupCortexActionResult {
   };
 }
 
+/**
+ * The ENC-0g honesty suffix for the verify-asset summary line: when both gates
+ * are ON, surface the QualificationV1 record verdict so the action log is honest
+ * alongside the (possibly demoted) status card. Returns "" byte-identical when
+ * ENC_0G is off. Bounded + redacted (verdict + reasons only).
+ */
+function qualificationRecordSuffix(): string {
+  if (!ENC_0G_ENABLED() || !ENC_0F_ENABLED()) return "";
+  const record = readQualificationRecord(encoderStateDir());
+  if (record === null) return " record_verdict=unavailable";
+  return ` record_verdict=${record.verdict} record_reasons=${record.reasons.join(",")}`;
+}
+
 /** Compute the redacted verify-asset summary lines (digests + codes only). */
 function buildVerifySummary(): string {
+  const suffix = qualificationRecordSuffix();
   const dir = encoderAssetDir();
   if (dir === null) {
-    return "mode=C verdict=unavailable reason=asset_missing\n";
+    return `mode=C verdict=unavailable reason=asset_missing${suffix}\n`;
   }
   const manifest = readEncoderManifest(dir);
   if (manifest === null) {
-    return "mode=B verdict=demoted reason=ENC_MANIFEST_INVALID\n";
+    return `mode=B verdict=demoted reason=ENC_MANIFEST_INVALID${suffix}\n`;
   }
   const platform = detectPlatform();
   const verify = verifyEncoderAsset(dir, manifest, platform);
   if (verify.ok) {
     const prefix = verify.onnxDigest.slice(0, 12);
-    return `mode=A verdict=qualified onnx_digest_prefix=${prefix} embedded_bytes=${verify.embeddedBytes}\n`;
+    return `mode=A verdict=qualified onnx_digest_prefix=${prefix} embedded_bytes=${verify.embeddedBytes}${suffix}\n`;
   }
-  return `mode=B verdict=demoted reason=${verify.code}\n`;
+  return `mode=B verdict=demoted reason=${verify.code}${suffix}\n`;
 }
 
 /** Walk up to the committed encoder-v1 asset dir (mirrors routes-setup-cortex.ts). */

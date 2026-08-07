@@ -288,5 +288,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"ENC-0f p95 + marginal-RSS qualification gate (real trained asset → mode A): runs the ENC-0d-promoted trained asset through the bench under --expose-gc, asserts p95 ≤ 40 ms @ 512/4 threads, marginal RSS ≤ 150 MiB (baseline-subtracted), determinism, and opset-21; on pass emits QualificationV1 + flips runtime to qualified mode A, on failure asset stays demoted to mode B. OFF = no qualification gate runs, no QualificationV1 written, runtime keeps serving the ENC-0d survivor (byte-identical predecessor).",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_ENC_0G",
+			"ENC-0g Setup Cortex honest state (verdict override + live blockers)",
+			"ENC-0g makes the Setup Cortex status route honest: reads the ENC-0f QualificationV1 record (when ENC_0F is ON and a record exists) and lets its verdict override the structural verify for the qualification field; computes the blocker list from (platform, record, manifest head-count) with corrected HG statuses/wording; re-derives VC9B action gating from live blockers. OFF = verdict from verifyEncoderAsset alone, static SETUP_CORTEX_BLOCKERS, static action gating (byte-identical ENC-0f predecessor).",
+			true,
+		),
 	],
 };
