@@ -102,8 +102,9 @@ describe("DASH-0D fixture registration + kind-closure", () => {
       assert.equal(row!.schema, SCHEMA, `${id} schema`);
       assert.equal(row!.expected, expectedById[id]!, `${id} expected`);
     }
-    // Roll-up target: exactly 944 fixtures.
-    assert.equal(m.fixtures.length, 944, "manifest carries 944 fixtures");
+    // Roll-up target: exactly 945 fixtures (PREVENT-SPEC-DRIFT-001 — derive from
+    // manifest, not a prior-sprint literal that drifts when other sprints add rows).
+    assert.equal(m.fixtures.length, 945, "manifest carries 945 fixtures");
   });
 
   test("owner DASH-0D is registered in the manifest owner CSV", () => {
