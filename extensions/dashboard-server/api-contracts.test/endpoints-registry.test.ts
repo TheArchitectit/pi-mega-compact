@@ -126,7 +126,7 @@ void _c_achievements;
 // correct paths.
 
 const ENDPOINT_KEYS = Object.keys(ENDPOINTS) as (keyof typeof ENDPOINTS)[];
-const EXPECTED_ENDPOINT_COUNT = 57; // 53 + improve-cortex + improve-cortex-status (ML5-D) + dedup-tier-attribution (DEDUP-ATTR) + cosine-fp-report (COS-FP-A)
+const EXPECTED_ENDPOINT_COUNT = 58; // 53 + improve-cortex + improve-cortex-status (ML5-D) + dedup-tier-attribution (DEDUP-ATTR) + cosine-fp-report (COS-FP-A) + repo-corpus (REPO-A)
 
 /** All `/api/*` paths served by server.ts (extracted from the route handlers). */
 const SERVER_TS_PATHS: string[] = [
@@ -157,6 +157,7 @@ const SERVER_TS_PATHS: string[] = [
 	"/api/cortex/improve/status/:jobId",
 	"/api/dedup-tier-attribution",
 	"/api/cosine-fp-report",
+	"/api/repo-corpus",
 ];
 
 // ─── Tests ───────────────────────────────────────────────────────────────────

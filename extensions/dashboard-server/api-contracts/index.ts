@@ -357,3 +357,15 @@ export type {
 	CosineFpOverrides,
 	CosineFpReportV1,
 } from "./cosine-fp.js";
+
+// REPO-A — cross-repo corpus status (reader-only)
+export type {
+	RepoCorpusStatus,
+	RepoCorpusRepoV1,
+	RepoCorpusOverlapV1,
+	RepoCorpusManifestV1,
+	RepoCorpusConsentStateV1,
+	RepoCorpusConsentRowV1,
+	RepoCorpusPerRepoStatusV1,
+	RepoCorpusStatusV1,
+} from "./repo-corpus.js";

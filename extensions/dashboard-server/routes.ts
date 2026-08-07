@@ -68,3 +68,4 @@ export {
 } from "./routes-cortex-improve.js";
 export { handleDedupTierAttribution } from "./routes-dedup-attribution.js";
 export { handleCosineFpReport } from "./routes-cosine-fp.js";
+export { handleRepoCorpus } from "./routes-repo-corpus.js";

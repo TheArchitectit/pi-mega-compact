@@ -307,12 +307,14 @@ function main() {
     // published dist/config/ offset. The config file has been split across
     // vector-cortex.ts / vector-cortex-breakers.ts / vector-cortex-flag.ts /
     // vector-cortex-early.ts; mirroring by glob is robust against further
-    // splits without needing a per-file block each time.
+    // splits without needing a per-file block each time. REPO-A's flag sibling
+    // (repo-corpus.ts) keeps its spec-named filename rather than the
+    // vector-cortex- prefix, so it is listed explicitly alongside the glob.
     for (const name of readdirSync(SRC_CONFIG)) {
       if (
-        name.startsWith("vector-cortex") &&
         name.endsWith(".js") &&
-        !name.endsWith(".test.js")
+        !name.endsWith(".test.js") &&
+        (name.startsWith("vector-cortex") || name === "repo-corpus.js")
       ) {
         copyFileSync(join(SRC_CONFIG, name), join(DEST_CONFIG, name));
       }

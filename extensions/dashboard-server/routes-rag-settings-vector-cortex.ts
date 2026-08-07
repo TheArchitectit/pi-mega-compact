@@ -324,5 +324,11 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			"Real-corpus L2 cosine FP validation (COS-FP-R): runs the real-corpus grid sweep (scripts/cosine-fp/real-bench.mjs) against donated, consent-approved sessions only (SECURITY_PRIVACY Lifecycle/Consent), scoring FP/FN with Wilson intervals + session-grouped bootstrap, and appends CI-backed per-content-type recommendations to the cosine-threshold report. Runs only when a valid consented corpus exists; absent corpus = no_corpus (normative pre-donation state, nothing written). OFF = script inert, nothing executes, no writes (byte-identical predecessor).",
 			true,
 		),
+		boolDirect(
+			"MEGACOMPACT_REPO_CORPUS",
+			"Cross-Repo Corpus (REPO-A)",
+			"Cross-repo corpus preparation (REPO-A): the governed, consent-gated reader-only path that builds a pseudonymous corpus manifest from per-repo events.log slices and serves GET /api/repo-corpus answering which pseudonymous repos/sessions are in the corpus, what cross-repo overlap exists, and whether consent is active for each — counts + IDs + status only, never payload content. Consent is append-only (consent.mjs, CLI/ops-only); revocation freezes the builder + route. OFF = builder refuses to run, reader route 404s, single-repo recall untouched (byte-identical predecessor).",
+			true,
+		),
 	],
 };

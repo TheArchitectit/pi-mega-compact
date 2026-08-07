@@ -1,0 +1,1 @@
+{"assertion":"flag-off (MEGACOMPACT_REPO_CORPUS=0): reader route 404, builder refuses, no manifest written, byte-identical predecessor","expected":{"manifest_written":false,"route_status":"off"},"flag_off":true,"id":"REPO-A-003","kind":"repo-corpus","producer":"REPO-A-cross-repo-corpus-prep","schema":"schemas/repo-corpus-manifest.schema.json"}
