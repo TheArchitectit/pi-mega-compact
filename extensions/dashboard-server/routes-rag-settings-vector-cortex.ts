@@ -321,6 +321,12 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			true,
 		),
 		boolDirect(
+			"MEGACOMPACT_ENC_2B",
+			"ENC-2b native ONNX runtime qualification retest (detect + re-qualify)",
+			"ENC-2b re-probes and re-qualifies the installed native onnxruntime binding (onnxruntime-node in ~/.pi/mega-compact/native-ort/, operator-installed via the ENC-2a guide): loads the LOCAL on-disk binding, runs a bounded warmup + p95 probe, measures RSS, and computes a fresh qualification verdict against the ENC-0f p95 budget + the operator install-budget. Never downloads or trains (PREVENT-PI-004 / HG-1 unchanged); surfaces nativeOrtRetestResult + nativeOrtBackendEffective on the GET /api/setup-status. OFF = no retest GET fields, no retest POST branch, no retest card (byte-identical ENC-2a predecessor).",
+			true,
+		),
+		boolDirect(
 			"MEGACOMPACT_COSINE_FP_BENCH",
 			"COS-FP-A Synthetic FP Bench",
 			"Synthetic FP harness + L2 cosine threshold calibration (COS-FP-A): drives the deterministic synthetic-corpus grid sweep (scripts/cosine-fp/bench.mjs) that measures L2 cosine false-positive rates and emits a recommended default, and serves the reader-only GET /api/cosine-fp-report. Synthetic-corpus-only — never reads real session/ledger bytes. OFF = bench inert, endpoint 404s, no report write, L2_COSINE plain MEGACOMPACT_L2_THRESHOLD (byte-identical predecessor).",

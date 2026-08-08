@@ -22,6 +22,7 @@ import {
 	enc2BudgetValidateCombined,
 } from "./routes-setup-enc2budget.js";
 import { readEnc2aGuide, enc2aGuideRequest } from "./routes-setup-enc2a.js";
+import { readEnc2bRetest, enc2bRetestRequest, runEnc2bRetest } from "./routes-setup-enc2b.js";
 import { writeEmbedderEnv } from "./routes-setup-env-upsert.js";
 import {
 	detectOllama,
@@ -94,7 +95,7 @@ export function handleSetupStatus(
 	// ENC-1a (flag-gated, additive): echo the persisted endpoint URL and an
 	// embeddingApiKeySet boolean ONLY — the raw API key is never returned. When
 	// the flag is off (or neither is set) both fields are simply omitted.
-	const body: SetupStatusResponse = {
+	const base: SetupStatusResponse = {
 		currentEmbedder: active,
 		configuredEmbedder: configured.embedder,
 		configuredUrl: configured.url,
@@ -109,9 +110,20 @@ export function handleSetupStatus(
 		...(enc2a.guide !== null ? { nativeOrtInstallGuide: enc2a.guide } : {}),
 		...(enc2a.installedVersion !== null ? { nativeOrtInstalledVersion: enc2a.installedVersion } : {}),
 	};
+	// ENC-2b (flag-gated, additive): the native qualification retest fields. The
+	// retest loads the on-disk binding in-process (bounded, never a fetch), so
+	// readEnc2bRetest is async; the handler returns true synchronously for the
+	// dispatch and writes the response after the await. Flag-off/none mutates
+	// the body additively and stays byte-identical to the ENC-2a-era shape.
 	// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
-	res.writeHead(200, { "Content-Type": "application/json" });
-	res.end(JSON.stringify(body));
+	readEnc2bRetest(ctx.stateDir).then((enc2b) => {
+		const body: SetupStatusResponse = { ...base, ...enc2b };
+		res.writeHead(200, { "Content-Type": "application/json" });
+		res.end(JSON.stringify(body));
+	}).catch(() => {
+		res.writeHead(200, { "Content-Type": "application/json" });
+		res.end(JSON.stringify(base));
+	});
 	return true;
 }
 
@@ -246,6 +258,30 @@ export function handleSetupConfigure(
 			// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(JSON.stringify({ nativeOrtInstallGuide: readEnc2aGuide(ctx.stateDir).guide }));
+			return;
+		}
+		// ENC-2b retest-action key (flag-gated, additive): `false` → 400 (an
+		// operator-driven no-op — nothing to retest), `true` → run the bounded
+		// retest synchronously and return the fresh result. Flag-off: the key
+		// falls through unrecognized (byte-identical ENC-2a-era predecessor).
+		// The retest never fetches — the binding is on disk from the ENC-2a
+		// install (PREVENT-PI-004 clean).
+		const retestReq = enc2bRetestRequest(body);
+		// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
+		if (retestReq === "reject") {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: "retest_rejected_false_nothing_to_do" }));
+			return;
+		}
+		if (retestReq === "run") {
+			// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
+			runEnc2bRetest(ctx.stateDir).then((fresh) => {
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ nativeOrtRetestResult: fresh }));
+			}).catch(() => {
+				res.writeHead(500, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ error: "retest_failed" }));
+			});
 			return;
 		}
 		if (tryEnc1aConfigure(body, res, ctx)) return;

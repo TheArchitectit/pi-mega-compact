@@ -1282,6 +1282,122 @@ const installFixtures = [
   },
 ];
 
+// ── ENC-2b: encoder-qualification-retest fixtures ────────────────────────────
+// Native onnxruntime qualification retest (detect + re-qualify): the GET status
+// route surfaces nativeOrtRetestResult (platform, version, verdict, p95Ms,
+// rssMiB, testedAt) + nativeOrtBackendEffective when the flag is on AND a native
+// binding is installed; absent when no binding; a failed verdict keeps the
+// backend "wasm". The POST `nativeOrtRetest: true` action returns the fresh
+// result, `false` returns 400. Flag-off omits both new fields byte-identical to
+// the ENC-2a survivor. Contract is additive (ENC-RETEST-006).
+const RETEST_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema#",
+  title: "ENC-2b encoder-qualification-retest fixture envelope",
+  type: "object",
+  description:
+    "Common structure every ENC-2b encoder-qualification-retest fixture validates against. `kind` names the binding-present round-trip / binding-absent / flag-off / failed-verdict / post-action / contract-additive branch exercised; `setup` carries the platform + binding_present + flag_off + verdict inputs for the route harness; `expected_outcome` is ok or error; `expected_result` pins the fields the retest module + route must assert (verdict, p95Ms, rssMiB, testedAt, backend_effective, absent, byte_identical, false_rejected).",
+  required: ["id", "producer", "assertion", "kind", "setup", "expected_outcome", "expected_result"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: {
+      type: "string",
+      enum: [
+        "binding-present-round-trip",
+        "binding-absent",
+        "flag-off",
+        "failed-verdict",
+        "post-action",
+        "contract-additive",
+      ],
+    },
+    setup: {
+      type: "object",
+      properties: {
+        platform: { type: "string" },
+        binding_present: { type: "boolean" },
+        verdict: { type: "string", enum: ["qualified", "degraded", "failed"] },
+        flag_off: { type: "boolean" },
+        contract_additive: { type: "boolean" },
+        runs: { type: "integer" },
+      },
+    },
+    expected_outcome: { type: "string", enum: ["ok", "error"] },
+    expected_result: { type: "object" },
+  },
+};
+
+const RETEST_VERSION = "1.27.0";
+const RETEST_P95_BUDGET_MS = 40;
+const RETEST_RSS_BUDGET_MIB = 300;
+
+const retestFixtures = [
+  {
+    id: "ENC-RETEST-001",
+    assertion:
+      "binding-present retest round-trip: a native binding is installed -> the GET carries nativeOrtRetestResult with a non-null verdict in [qualified, degraded, failed], p95Ms > 0, rssMiB > 0, an ISO testedAt, and nativeOrtBackendEffective matching the verdict (native iff qualified, else wasm)",
+    kind: "binding-present-round-trip",
+    setup: { platform: "linux-x64", binding_present: true, verdict: "qualified", runs: 1 },
+    expected_outcome: "ok",
+    expected_result: {
+      retest_result_present: true,
+      verdict_enum: ["qualified", "degraded", "failed"],
+      p95Ms_gt_0: true,
+      rssMiB_gt_0: true,
+      testedAt_iso: true,
+      backend_matches_verdict: true,
+      p95_budget_ms: RETEST_P95_BUDGET_MS,
+      rss_budget_mib: RETEST_RSS_BUDGET_MIB,
+    },
+  },
+  {
+    id: "ENC-RETEST-002",
+    assertion:
+      "binding-absent retest absent: no native binding installed -> the GET omits BOTH nativeOrtRetestResult and nativeOrtBackendEffective (absent, not null), so the client hides the retest card",
+    kind: "binding-absent",
+    setup: { platform: "linux-x64", binding_present: false, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { retest_result_absent: true, backend_effective_absent: true },
+  },
+  {
+    id: "ENC-RETEST-003",
+    assertion:
+      "flag-off (MEGACOMPACT_ENC_2B=0) -> the GET omits both new fields (nativeOrtRetestResult + nativeOrtBackendEffective), byte-identical to the ENC-2a-era shape",
+    kind: "flag-off",
+    setup: { platform: "linux-x64", binding_present: true, verdict: "qualified", flag_off: true, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { retest_result_absent: true, backend_effective_absent: true, byte_identical: true },
+  },
+  {
+    id: "ENC-RETEST-004",
+    assertion:
+      "failed verdict stays wasm: a native binding is present but crashes on load (cannot create a session) -> verdict: \"failed\" with nativeOrtBackendEffective: \"wasm\" (the operator sees the failure but the runtime does not silently switch)",
+    kind: "failed-verdict",
+    setup: { platform: "linux-x64", binding_present: true, verdict: "failed", runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { verdict_failed: true, backend_effective: "wasm" },
+  },
+  {
+    id: "ENC-RETEST-005",
+    assertion:
+      "POST retest action: `nativeOrtRetest: true` returns the fresh RetestResult; `false` returns 400 retest_rejected_false_nothing_to_do",
+    kind: "post-action",
+    setup: { platform: "linux-x64", binding_present: true, verdict: "qualified", runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { post_true_returns_result: true, post_false_rejected: "retest_rejected_false_nothing_to_do" },
+  },
+  {
+    id: "ENC-RETEST-006",
+    assertion:
+      "contract additive — a pre-ENC-2b client that omits the new keys still validates against the unchanged contract; the retest module loads ONLY from the on-disk path (NO fetch/http/https — PREVENT-PI-004 clean)",
+    kind: "contract-additive",
+    setup: { platform: "linux-x64", contract_additive: true, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { contract_additive: true, validates: true, no_network: true },
+  },
+];
+
 // ── Main (mirrors the VC9 setup generator coordinate with manifest.json) ─────
 export function writeAll() {
   mkdirSync(ENC_DIR, { recursive: true });
@@ -1640,6 +1756,41 @@ export function writeAll() {
     });
   }
 
+  // The ENC-RETEST schema row.
+  const retestSchemaBytes = Buffer.from(canonicalJson(RETEST_SCHEMA), "utf8");
+  const retestSchemaRel = "schemas/encoder-qualification-retest-fixture.schema.json";
+  writeFileSync(join(V2, retestSchemaRel), retestSchemaBytes);
+  rows.push({
+    id: "encoder-qualification-retest-fixture",
+    path: retestSchemaRel,
+    sha256: sha256Hex(retestSchemaBytes),
+    schema: retestSchemaRel,
+    algorithm: "json-schema",
+    producer,
+    expected: "schema",
+    license: "synthetic",
+  });
+
+  // The 6 ENC-RETEST fixture rows + on-disk files.
+  const retestDir = join(V2, "encoder-qualification-retest");
+  mkdirSync(retestDir, { recursive: true });
+  for (const fx of retestFixtures) {
+    const obj = { ...fx, schema: retestSchemaRel, producer };
+    const bytes = Buffer.from(canonicalJson(obj), "utf8");
+    const rel = `encoder-qualification-retest/${fx.id}.json`;
+    writeFileSync(join(V2, rel), bytes);
+    rows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: retestSchemaRel,
+      algorithm: "encoder-qualification-retest",
+      producer,
+      expected: fx.expected_outcome,
+      license: "synthetic",
+    });
+  }
+
   // Merge into the existing manifest (id-dedupe so re-runs are idempotent) and
   // re-sort the whole fixtures array by id.
   const existing = manifest.fixtures.filter((r) => !rows.some((n) => n.id === r.id));
@@ -1686,6 +1837,9 @@ export function writeAll() {
   setCsv("domain", "encoder-install-guide");
   setCsv("schemaVersion", "encoder-install-guide-fixture");
   setOwnerCsv("owner", "ENC-2a");
+  setCsv("domain", "encoder-qualification-retest");
+  setCsv("schemaVersion", "encoder-qualification-retest-fixture");
+  setOwnerCsv("owner", "ENC-2b");
 
   writeFileSync(manifestPath, Buffer.from(canonicalJson(manifest), "utf8"));
 
@@ -1700,8 +1854,9 @@ export function writeAll() {
       statusFixtures.length +
       settingsFixtures.length +
       runtimeSettingsFixtures.length +
-      installFixtures.length,
-    schemaCount: 10,
+      installFixtures.length +
+      retestFixtures.length,
+    schemaCount: 11,
   };
 }
 

@@ -83,6 +83,30 @@ export interface SetupStatusResponse {
    *  and platform-matched. Absent (NOT null) when not installed, so the client
    *  hides the detected-version row. Additive, flag-gated, reader-only. */
   readonly nativeOrtInstalledVersion?: string | null;
+  /** ENC-2b: the native onnxruntime qualification retest result, present (as an
+   *  object) when the flag is on AND a native binding is installed AND the
+   *  retest ran. `null` when the retest is flag-disabled; ABSENT when no binding
+   *  is installed (the client hides the retest card). Additive, flag-gated,
+   *  reader-only — computed per GET, never persisted. */
+  readonly nativeOrtRetestResult?: RetestResult | null;
+  /** ENC-2b: the effective backend AFTER the retest. `"native"` when the retest
+   *  verdict is `qualified`; `"wasm"` on a `degraded`/`failed` verdict or flag
+   *  off (the runtime never silently switches on a failed retest). Additive,
+   *  flag-gated, absent when no binding installed or flag off. */
+  readonly nativeOrtBackendEffective?: "native" | "wasm";
+}
+
+/** ENC-2b: the native onnxruntime qualification retest result, mirroring
+ *  `src/vector-cortex/encoder/native-qualify-retest.ts`. Surfaces only the
+ *  platform, version string, verdict, latency, and RSS — NEVER the binding
+ *  binary contents or model weights (SECURITY_PRIVACY). */
+export interface RetestResult {
+  readonly platform: string;
+  readonly version: string;
+  readonly verdict: "qualified" | "degraded" | "failed";
+  readonly p95Ms: number;
+  readonly rssMiB: number;
+  readonly testedAt: string;
 }
 
 /**
@@ -156,6 +180,12 @@ export interface SetupConfigureRequest {
    *  execution); `false` → 400 `guide_rejected_false_nothing_to_do`.
    *  Flag-gated, additive — ignored (no-op) when the flag is off. */
   readonly nativeOrtInstallGuide?: boolean;
+  /** ENC-2b: an optional { boolean } retest-request key. `true` → runs the
+   *  native onnxruntime qualification retest synchronously (bounded, ~2s, the
+   *  binding is on disk from the ENC-2a install — never a fetch) and returns
+   *  the fresh result; `false` → 400 `retest_rejected_false_nothing_to_do`.
+   *  Flag-gated, additive — ignored (no-op) when the flag is off. */
+  readonly nativeOrtRetest?: boolean;
 }
 
 /** Response for POST /api/setup-configure. */
