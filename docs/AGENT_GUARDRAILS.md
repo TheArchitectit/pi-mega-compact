@@ -110,7 +110,7 @@ See [skills/shared-prompts/four-laws.md](../skills/shared-prompts/four-laws.md) 
 | **NO PROD CREDENTIALS IN TEST** | CRITICAL | Halt, rollback |
 | **ASK IF UNCERTAIN** | HIGH | Ask user before proceeding |
 
-**pi-mega-compact note:** this extension is **local-only** — it must make **zero network calls** at runtime (PREVENT-PI-004). The store is `better-sqlite3` (in-process native SQLite, FS persistence), not a remote database. There is no production/remote boundary to cross, but the spirit of test/prod separation still applies: never point a test at a real user state dir, and never commit the `MEGACOMPACT_STATE_DIR` contents.
+**pi-mega-compact note:** this extension is **local-only** — it must make **zero network calls by default** at runtime (PREVENT-PI-004 applies to defaults; optional, user-configured features that require network are exempt when the user opts in). The store is `better-sqlite3` (in-process native SQLite, FS persistence), not a remote database. There is no production/remote boundary to cross, but the spirit of test/prod separation still applies: never point a test at a real user state dir, and never commit the `MEGACOMPACT_STATE_DIR` contents.
 
 ---
 
@@ -222,7 +222,7 @@ OUT OF SCOPE (DO NOT TOUCH):
 | PREVENT-PI-001 | error | Dropping messages without anchor-floor guard |
 | PREVENT-PI-002 | error | Splitting a toolCall/toolResult pair at a boundary |
 | PREVENT-PI-003 | error | Injecting compacted context as `role:"system"` (must use `before_agent_start` systemPrompt) |
-| PREVENT-PI-004 | critical | Network calls in extension (must stay local — no fetch/http to remote). EXCEPTION: the optional `/dashboard` localhost UI server, audited via inline `// guardrails-allow PREVENT-PI-004: <reason>` annotations (scanner requires a reason). |
+| PREVENT-PI-004 | critical | Network calls in extension **by default** (the zero-network rule applies to defaults, not optional user-configured features). Opt-in network paths (dashboard server, BYO localhost embedder, cost API) are exempt when user-enabled, audited via inline `// guardrails-allow PREVENT-PI-004: <reason>` annotations (scanner requires a reason). |
 
 ### PREVENT-STUB / PREVENT-MOCK rules (enforced by scripts/stub-scan.mjs + scripts/mock-scan.mjs)
 

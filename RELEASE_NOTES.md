@@ -1,5 +1,11 @@
 # Release Notes — pi-mega-compact
 
+## unreleased — PREVENT-PI-004 scope clarification
+
+**Policy clarification, no code changes.** The PREVENT-PI-004 guardrail rule has been reworded from "Zero network calls at runtime" to "Zero network calls at runtime **by default**." The rule applies to defaults — optional, user-configured features that require network access (dashboard server, BYO localhost embedder, HyDE/RAPTOR local LLM generation, cost-API pricing lookup) are exempt when the user explicitly opts in. All such opt-in paths remain audited via `// guardrails-allow PREVENT-PI-004: <reason>` inline annotations (scanner enforces a reason). Updated: CLAUDE.md, docs/AGENT_GUARDRAILS.md, docs/vector-cortex/SECURITY_PRIVACY.md, README.md, CHANGELOG.md.
+
+---
+
 ## v0.14.0 (2026-08-03) — RAPTOR promoted live + HyDE telemetry + cost API + build history
 
 Four major improvements from the RAPTOR/HyDE audit and dashboard cost-data work:

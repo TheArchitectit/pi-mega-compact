@@ -90,7 +90,7 @@ Set env vars before starting pi. Defaults are in `src/config/dedup.ts`.
 | `MEGACOMPACT_WIKI_INCREMENTAL` | `true` | Incremental wiki updates (no full rebuild) |
 | `MEGACOMPACT_AUTO_WIKI` | `true` | Auto-generate wiki from turns |
 | `MEGACOMPACT_NEW_UI` | `true` | Use the new Tailwind/shadcn dashboard shell |
-| `MEGACOMPACT_COST_API_ENABLED` | `false` | Opt-in: fetch model pricing from an external API (PREVENT-PI-004 network exception). Enriches dashboard cost data for models not in the local pricing table |
+| `MEGACOMPACT_COST_API_ENABLED` | `false` | Opt-in: fetch model pricing from an external API (PREVENT-PI-004 applies to defaults; opt-in features are exempt). Enriches dashboard cost data for models not in the local pricing table |
 | `MEGACOMPACT_COST_API_URL` | _(unset)_ | OpenRouter-compatible model pricing endpoint (e.g. `https://openrouter.ai/api/v1/models`). Only contacted when `MEGACOMPACT_COST_API_ENABLED=true` |
 
 Full config reference: [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)

@@ -1,5 +1,11 @@
 # Changelog
 
+## unreleased — PREVENT-PI-004 scope clarification
+
+- **policy(guardrails): PREVENT-PI-004 now scoped to defaults only.** The rule previously stated "Zero network calls at runtime" without distinguishing default behavior from optional, user-configured features. Clarified: the extension makes zero network calls **by default**; optional features that the user explicitly opts into (dashboard server, BYO localhost embedder, HyDE/RAPTOR local LLM, cost-API pricing lookup) are exempt when enabled. All opt-in network paths remain audited via `// guardrails-allow PREVENT-PI-004: <reason>` inline annotations. Updated CLAUDE.md, docs/AGENT_GUARDRAILS.md, docs/vector-cortex/SECURITY_PRIVACY.md, and README.md to reflect the clarified scope. No code or scanner behavior changes — the scanner already enforced this distinction via the annotation allow-list.
+
+---
+
 ## v0.11.4 (2026-07-31) — Error-Retry Hardening Sprints R8–R12
 
 - **fix(error-retry): router-wrapped infra errors stay transient (R8).** Second 2026-07-30 incident: pi's console `Error: 500:` prefix is not part of the delivered message body, so router phrasings ("No healthy target selected", "All targets failed", "Too many concurrent requests", "socket connection was closed unexpectedly") matched no known-retryable marker and the 0-token signal classified them poisoned-context on the FIRST turn — the `/clear` false alarm again. `KNOWN_RETRYABLE_TRANSIENT_PATTERN` gains the router/infra phrasings, and `classifyError` now extracts a structured HTTP status from the message/error object which wins over phrasing (429/5xx → transient, 401/403 → permanent).
