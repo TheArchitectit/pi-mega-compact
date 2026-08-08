@@ -30,18 +30,21 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
 import { VC7C_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
-import { countVcEvents, vcCount } from "./vc-event-counts.js";
 import { deriveVcStatus } from "./vc-status.js";
+import { readLivewireSnapshot } from "../../src/vector-cortex/livewire/livewire-registry.js";
 import type { VectorCortexDiagnosticsView } from "./api-contracts/vector-cortex-diagnostics.js";
 
-// Actual events emitted by src/vector-cortex/cache/diagnostics-emit.ts.
-const DIAGNOSTICS_EVENTS = ["vector_cortex_cache_serve_blocked"] as const;
+// The flag-off deferred reason, kept byte-identical to the pre-LIVEWIRE
+// predecessor (VC7C: `cache_classifier_not_wired_v0_20_23`).
+const DEFERRED_REASON = "cache_classifier_not_wired_v0_20_23";
 
 /**
  * Reader-only GET /api/vector-cortex/cache-diagnostics (VC7C).
  *
- * Per-miss-class counts, breaker state, and CACHE and M5 codes only — a static
- * reader-only aggregate seam with the same shape as the VC7B economics handler.
+ * Per-miss-class counts, serveBlocked, breaker state, and CACHE/M5 codes only.
+ * With the flag ON it surfaces the LIVEWIRE classifier/breaker tallies
+ * accumulated at runtime; with the flag OFF it returns the byte-identical legacy
+ * deferred view (mode C, deferredReason present).
  */
 export function handleVectorCortexDiagnostics(
   req: IncomingMessage,
@@ -57,32 +60,52 @@ export function handleVectorCortexDiagnostics(
   }
 
   const enabled = VC7C_ENABLED();
-  const counts = countVcEvents(ctx.stateDir, DIAGNOSTICS_EVENTS);
-  // Flag-off routes to mode C: with VC7C off the diagnostics/breaker reporter is
-  // suppressed, so no cache serve is attested here and the surface reports the
-  // all-cache bypass outcome. Reporting A (crystal served) or B (fresh render
-  // forced by a breaker) would attest a cache decision this seam is not wired to
-  // observe. Mirrors how the VC7A/VC7B OFF views report the mode they take.
-  const mode: "A" | "B" | "C" = enabled ? "A" : "C";
+  if (!enabled) {
+    // Flag-off parity: byte-identical to the predecessor (mode C + deferred).
+    const body: VectorCortexDiagnosticsView = {
+      enabled: false,
+      mode: "C",
+      profileMisses: 0,
+      rangeMisses: 0,
+      dependencyMisses: 0,
+      requestMisses: 0,
+      generationMisses: 0,
+      unknownMisses: 0,
+      serveBlocked: 0,
+      breakerState: "closed",
+      lastFailure: null,
+      updatedAt: new Date().toISOString(),
+      deferredReason: DEFERRED_REASON,
+      status: deriveVcStatus({ enabled: false, hasData: false }),
+    };
+    sendJson(res, 200, body);
+    return true;
+  }
+
+  const diag = readLivewireSnapshot(ctx.stateDir).diagnostics;
+  const hasData =
+    diag.profileMisses +
+      diag.rangeMisses +
+      diag.dependencyMisses +
+      diag.requestMisses +
+      diag.generationMisses +
+      diag.unknownMisses +
+      diag.serveBlocked >
+    0;
   const body: VectorCortexDiagnosticsView = {
-    enabled,
-    mode,
-    profileMisses: 0,
-    rangeMisses: 0,
-    dependencyMisses: 0,
-    requestMisses: 0,
-    generationMisses: 0,
-    unknownMisses: 0,
-    serveBlocked: vcCount(counts, "vector_cortex_cache_serve_blocked"),
-    breakerState: "closed",
-    lastFailure: null,
+    enabled: true,
+    mode: "A",
+    profileMisses: diag.profileMisses,
+    rangeMisses: diag.rangeMisses,
+    dependencyMisses: diag.dependencyMisses,
+    requestMisses: diag.requestMisses,
+    generationMisses: diag.generationMisses,
+    unknownMisses: diag.unknownMisses,
+    serveBlocked: diag.serveBlocked,
+    breakerState: diag.breakerState,
+    lastFailure: diag.lastFailure,
     updatedAt: new Date().toISOString(),
-    deferredReason: "cache_classifier_not_wired_v0_20_23",
-    status: deriveVcStatus({
-      enabled,
-      deferredReason: "cache_classifier_not_wired_v0_20_23",
-      hasData: vcCount(counts, "vector_cortex_cache_serve_blocked") > 0,
-    }),
+    status: deriveVcStatus({ enabled: true, hasData }),
   };
   sendJson(res, 200, body);
   return true;

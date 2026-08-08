@@ -108,3 +108,87 @@ export async function seedEval(dir: string): Promise<void> {
     { session: "s1", seq: 4, event: "encode", value: 12, unit: "ms", mode: "A" },
   ]);
 }
+
+/**
+ * Seed a LIVEWIRE aggregate snapshot directly on disk so the spawned dashboard
+ * server (a separate process) rehydrates real subsystem counts and its reader-only
+ * routes report LIVE (non-deferred) data. This is how the LIVEWIRE route tests
+ * prove the wiring: the runtimes' persisted counts are exactly what a reader
+ * process reconstructs. Counts + codes + triad mode only (SECURITY_PRIVACY).
+ */
+export async function seedLivewireSnapshot(
+  dir: string,
+  overrides?: {
+    crystals?: Partial<Record<
+      "crystalCount" | "totalBytes" | "hits" | "misses" | "hitBytes" |
+      "writes" | "duplicateWrites" | "collisions",
+      number
+    >>;
+    diagnostics?: Partial<Record<
+      "profileMisses" | "rangeMisses" | "dependencyMisses" | "requestMisses" |
+      "generationMisses" | "unknownMisses" | "serveBlocked",
+      number
+    >> & { breakerState?: string };
+    economics?: {
+      computed?: boolean;
+      profileCount?: number;
+      provenExclusions?: number;
+      unprovenExclusions?: number;
+    };
+    policy?: {
+      shadowDecisions?: number;
+      clampedDecisions?: number;
+      rejectedInputs?: number;
+      pressureVersion?: number;
+      liveMutations?: number;
+    };
+  },
+): Promise<void> {
+  const { saveLivewireSnapshot } = await import(
+    "../../src/vector-cortex/livewire/livewire-snapshot.js"
+  );
+  const c = overrides?.crystals ?? {};
+  const d = overrides?.diagnostics ?? {};
+  const e = overrides?.economics ?? {};
+  const p = overrides?.policy ?? {};
+  saveLivewireSnapshot(dir, {
+    schema: "vector-cortex-livewire-v1",
+    crystals: {
+      mode: "A",
+      crystalCount: c.crystalCount ?? 3,
+      totalBytes: c.totalBytes ?? 1024,
+      hits: c.hits ?? 0,
+      misses: c.misses ?? 0,
+      hitBytes: c.hitBytes ?? 0,
+      writes: c.writes ?? 0,
+      duplicateWrites: c.duplicateWrites ?? 0,
+      collisions: c.collisions ?? 0,
+    },
+    diagnostics: {
+      profileMisses: d.profileMisses ?? 0,
+      rangeMisses: d.rangeMisses ?? 0,
+      dependencyMisses: d.dependencyMisses ?? 0,
+      requestMisses: d.requestMisses ?? 0,
+      generationMisses: d.generationMisses ?? 0,
+      unknownMisses: d.unknownMisses ?? 0,
+      serveBlocked: d.serveBlocked ?? 0,
+      breakerState: d.breakerState ?? "CLOSED_A",
+      lastFailure: null,
+    },
+    economics: {
+      profileCount: e.profileCount ?? 4,
+      provenExclusions: e.provenExclusions ?? 1,
+      unprovenExclusions: e.unprovenExclusions ?? 0,
+      computed: e.computed ?? true,
+      lastFailure: null,
+    },
+    policy: {
+      shadowDecisions: p.shadowDecisions ?? 0,
+      clampedDecisions: p.clampedDecisions ?? 0,
+      rejectedInputs: p.rejectedInputs ?? 0,
+      liveMutations: p.liveMutations ?? 0,
+      pressureVersion: (p.pressureVersion ?? 1) as 1 | 2,
+      lastFailure: null,
+    },
+  });
+}
