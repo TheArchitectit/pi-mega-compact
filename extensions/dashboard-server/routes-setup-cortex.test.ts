@@ -12,12 +12,13 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { withServer, realManifestDigest } from "./routes-vector-cortex-helpers.js";
 import { readEnc2aGuide } from "./routes-setup-enc2a.js";
-import { encoderStateDir } from "./qualification-record.js";
+import { persistQualifiedRecord } from "./routes-setup-enc2b.js";
+import { encoderStateDir, readQualificationRecord } from "./qualification-record.js";
 
 /**
  * ENC-0g: write a fake QualificationV1 record into an isolated state dir and
@@ -335,6 +336,65 @@ describe("/api/setup-cortex-status (VC9A reader-only)", () => {
 					delete process.env.MEGACOMPACT_VC9A;
 				}
 			});
+		});
+	});
+});
+
+describe("ENC-2b retest → qualification-record persist (EN-2b closes the loop)", () => {
+	// persistQualifiedRecord writes a `qualified` QualificationV1 record to the
+	// real record path via encoderStateDir() (MEGACOMPACT_STATE_DIR first), then
+	// the REAL reader (readQualificationRecord) reads it back. No mocks: real
+	// writes + real reads on a temp state dir.
+	function withStateDir(fn: (dir: string) => void): void {
+		const dir = mkdtempSync(join(tmpdir(), "enc2b-persist-"));
+		process.env.MEGACOMPACT_STATE_DIR = dir;
+		try {
+			fn(dir);
+		} finally {
+			delete process.env.MEGACOMPACT_STATE_DIR;
+			rmSync(dir, { recursive: true, force: true });
+		}
+	}
+
+	test("a qualified retest result is atomically written and readable as a qualified record", () => {
+		withStateDir((dir) => {
+			persistQualifiedRecord({
+				platform: "linux-x64",
+				version: "1.27.0",
+				verdict: "qualified",
+				p95Ms: 18.4,
+				rssMiB: 121.3,
+				testedAt: "2026-08-07T00:00:00.000Z",
+			});
+			const record = readQualificationRecord(encoderStateDir());
+			assert.ok(record, "post-retest record is present and readable");
+			assert.equal(record!.schema, "qualification-v1");
+			assert.equal(record!.verdict, "qualified");
+			assert.equal(record!.platform, "linux-x64");
+			assert.equal(record!.p95Ms, 18.4);
+			assert.equal(record!.rssMib, 121.3);
+			assert.equal(record!.opset, 21);
+			assert.deepEqual(record!.reasons, []);
+			// No leftover tmp file after the atomic rename.
+			const leftovers = readdirSync(dir).filter((f) => f.startsWith("encoder-qualification.json.tmp-"));
+			assert.deepEqual(leftovers, [], "atomic tmp cleaned up after rename");
+		});
+	});
+
+	test("the persisted numeric fields reflect the retest result, not baked constants", () => {
+		withStateDir((_dir) => {
+			persistQualifiedRecord({
+				platform: "darwin-arm64",
+				version: "1.27.0",
+				verdict: "qualified",
+				p95Ms: 12.1,
+				rssMiB: 98.7,
+				testedAt: "2026-08-07T00:00:00.000Z",
+			});
+			const record = readQualificationRecord(encoderStateDir());
+			assert.equal(record!.platform, "darwin-arm64");
+			assert.equal(record!.p95Ms, 12.1);
+			assert.equal(record!.rssMib, 98.7);
 		});
 	});
 });

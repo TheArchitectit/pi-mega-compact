@@ -29,7 +29,9 @@
  */
 
 import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { homedir, cpus } from "node:os";
+import { fileURLToPath } from "node:url";
 import { ENCODER_LATENCY_P95_MS, ENCODER_MAX_TOKENS } from "./types.js";
 import { installBudgetMib } from "./decision.js";
 import { detectPlatform } from "./asset.js";
@@ -122,13 +124,24 @@ function readInstalledVersion(pkgJsonPath: string): string | null {
   }
 }
 
-/** Locate a LOCAL onnx model to probe against, under the native-ort roots.
- *  Null when none exists (the retest cannot qualify without a probe target). */
+/** Locate a LOCAL onnx model to probe against. Probes the native-ort root, the
+ *  stateDir, the repo asset dir (walk-up from this module), and the installed
+ *  extension dir. Null when none exists. */
 function findLocalModel(stateDir: string): string | null {
-  const candidates = [
+  const candidates: string[] = [
     join(nativeOrtRootCandidates(stateDir)[0], "model.onnx"),
     join(stateDir, "model.onnx"),
+    join(homedir(), ".pi", "agent", "npm", "node_modules", "pi-mega-compact",
+      "assets", "vector-cortex", "encoder-v1", "model.onnx"),
   ];
+  // Walk up from this module's location looking for the repo asset dir.
+  let dir = dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 8; i++) {
+    candidates.push(join(dir, "assets", "vector-cortex", "encoder-v1", "model.onnx"));
+    const next = dirname(dir);
+    if (next === dir) break;
+    dir = next;
+  }
   for (const c of candidates) {
     if (existsSync(c)) return c;
   }
@@ -172,12 +185,15 @@ export async function runNativeRetest(stateDir: string): Promise<RetestResult | 
   }
 
   // Load the LOCAL binding via dynamic import. Load failure -> failed verdict.
+  // onnxruntime-node's package.json "main" is "dist/index.js" (the compiled JS
+  // that loads the native .node binding). Fall back to the bare package import
+  // (resolves via the installed node_modules resolution) as a secondary path.
   let ort: unknown;
   try {
-    ort = await import(join(rootDir, "lib", "index.js"));
+    ort = await import(join(rootDir, "dist", "index.js"));
   } catch {
     try {
-      ort = await import(join(rootDir, "dist", "ort.node.mjs"));
+      ort = await import(join(rootDir));
     } catch {
       return {
         platform: platformStr,
@@ -215,7 +231,7 @@ export async function runNativeRetest(stateDir: string): Promise<RetestResult | 
     };
     const session = await factory.InferenceSession.create(modelPath, {
       executionProviders: ["cpu"],
-      intraOpNumThreads: 4,
+      intraOpNumThreads: Math.min(8, Math.max(1, cpus().length - 1)),
       graphOptimizationLevel: "all",
     });
     const n = ENCODER_MAX_TOKENS;
@@ -225,10 +241,10 @@ export async function runNativeRetest(stateDir: string): Promise<RetestResult | 
     const mask = BigInt64Array.from({ length: n }, () => 1n);
     const types = new BigInt64Array(n);
 
-    // Bounded warmup (3 passes) + 10 timed passes.
-    for (let i = 0; i < 3; i++) await timedPass(ort, session, ids, mask, types);
+    // Bounded warmup (10 passes) + 30 timed passes for a stable p95.
+    for (let i = 0; i < 10; i++) await timedPass(ort, session, ids, mask, types);
     const lat: number[] = [];
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 30; i++) {
       const ms = await timedPass(ort, session, ids, mask, types);
       if (ms === null) break;
       lat.push(ms);

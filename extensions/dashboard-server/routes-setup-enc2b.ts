@@ -27,11 +27,16 @@
  * zero network — the retest NEVER fetches), PREVENT-011 (no `any`).
  */
 
+import { writeFileSync, renameSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { ENC_2B_ENABLED } from "../../src/config/vector-cortex.js";
 import {
   runNativeRetest,
   type RetestResult,
 } from "../../src/vector-cortex/encoder/native-qualify-retest.js";
+import { Logger } from "../../src/log.js";
+import type { QualificationV1 } from "../../src/vector-cortex/encoder/qualify.js";
+import { encoderStateDir } from "./qualification-record.js";
 import type { SetupConfigureRequest } from "./api-contracts/setup.js";
 
 /**
@@ -50,6 +55,10 @@ export async function readEnc2bRetest(stateDir: string): Promise<{
   if (!ENC_2B_ENABLED()) return {};
   const result = await runNativeRetest(stateDir);
   if (result === null) return {};
+  // Auto-persist a qualified verdict so the ENC-0g read path + HG-5 pick up the
+  // native result automatically — the operator does not need to click "Retest
+  // now" for the record to update. Degraded/failed never overwrite.
+  if (result.verdict === "qualified") persistQualifiedRecord(result);
   return {
     nativeOrtRetestResult: result,
     nativeOrtBackendEffective: result.verdict === "qualified" ? "native" : "wasm",
@@ -72,11 +81,53 @@ export function enc2bRetestRequest(body: SetupConfigureRequest): "run" | "reject
 }
 
 /**
+ * Atomically write a fresh `qualified` QualificationV1 record back to
+ * <stateDir>/encoder-qualification.json. This closes the ENC-2b loop: native
+ * install → retest qualifies → the HG-5 source-of-truth record is overwritten
+ * so the runtime can select mode A. Best-effort (PREVENT-PI-004 local FS only;
+ * never throws into the route). Only ever invoked on a `qualified` verdict —
+ * a `degraded`/`failed` retest never sweeps into the record (the incumbent
+ * verdict stands).
+ */
+export function persistQualifiedRecord(result: RetestResult): void {
+  const record: QualificationV1 = {
+    schema: "qualification-v1",
+    verdict: "qualified",
+    reasons: [],
+    platform: result.platform,
+    p95Ms: result.p95Ms,
+    rssMib: result.rssMiB,
+    opset: 21,
+    digest: "",
+  };
+  const dir = encoderStateDir();
+  const finalPath = join(dir, "encoder-qualification.json");
+  const tmpPath = join(dir, `encoder-qualification.json.tmp-${process.pid}`);
+  try {
+    // guardrails-allow PREVENT-PI-004: local qualification-record write (loopback)
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(tmpPath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+    renameSync(tmpPath, finalPath);
+  } catch (err) {
+    // Best-effort: log + continue — a persist failure must never break the route.
+    new Logger().warn("enc2b_qualification_record_persist_failed", {
+      error: String(err),
+      verdict: result.verdict,
+    });
+  }
+}
+
+/**
  * Run the ENC-2b retest now (bounded, synchronous on the request) and return
  * the fresh result. Flag-off or no binding → null. Used by the POST "run"
- * branch; the result is returned on the response body, never persisted.
+ * branch; the result is returned on the response body. When the retest
+ * qualifies, the qualification record is atomically updated (side-effect).
  */
 export async function runEnc2bRetest(stateDir: string): Promise<RetestResult | null> {
   if (!ENC_2B_ENABLED()) return null;
-  return runNativeRetest(stateDir);
+  const result = await runNativeRetest(stateDir);
+  if (result !== null && result.verdict === "qualified") {
+    persistQualifiedRecord(result);
+  }
+  return result;
 }
