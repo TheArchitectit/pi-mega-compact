@@ -176,13 +176,16 @@ function NewDashboard({
   snapshot,
   loading,
   error,
+  viewToggle,
 }: AppState & {
   activeTab: TabId;
   setActiveTab: (id: TabId) => void;
+  viewToggle?: React.ReactNode;
 }): React.ReactElement {
   return (
     <ErrorBoundary>
       <AppShell active={activeTab} onTabChange={setActiveTab} snapshot={snapshot}>
+        {viewToggle ? <div className="view-toggle-wrap">{viewToggle}</div> : null}
         <LegacyContent activeTab={activeTab} snapshot={snapshot} loading={loading} error={error} />
       </AppShell>
     </ErrorBoundary>
@@ -217,6 +220,11 @@ function ConsolidatedNav({
 
 export default function App(): React.ReactElement {
   const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
+  // DASH-0d consolidated 7-surface view is OPT-IN. The default is the full
+  // NewDashboard layout (left Sidebar + mobile BottomBar, 13 tabs). A toggle
+  // button (rendered when the consolidated code is available) lets the operator
+  // switch to the minimal 7-surface view on demand.
+  const [consolidatedView, setConsolidatedView] = useState(false);
   const {
     data: snapshot,
     loading,
@@ -235,6 +243,7 @@ export default function App(): React.ReactElement {
     { pollInterval: 0, maxRetries: 0 },
   );
   const dash0dOn = dash0dEnabled(settingsData);
+  const canConsolidate = NEW_UI() && dash0dOn;
 
   // Additive hash→surface deep-link router: every legacy #hash maps to a live
   // consolidated surface; empty hash keeps current behavior (default overview).
@@ -242,12 +251,27 @@ export default function App(): React.ReactElement {
   // pre-rollup 13-tab behavior unchanged (hash ignored).
   const hashSurface = useHashTab();
   useEffect(() => {
-    if (dash0dOn && hashSurface != null) setActiveTab(hashSurface);
-  }, [dash0dOn, hashSurface]);
+    if (canConsolidate && consolidatedView && hashSurface != null)
+      setActiveTab(hashSurface);
+  }, [canConsolidate, consolidatedView, hashSurface]);
 
-  // Flag-ON consolidated New-UI surface: a 7-surface rail + the consolidated
-  // content. Flag-OFF (or legacy NEW_UI false) renders the 13-tab path as today.
-  if (NEW_UI() && dash0dOn) {
+  // The toggle button renders inside both view headers when the consolidated
+  // code is available. Default view = full (Sidebar+BottomBar); minimal = 7
+  // surfaces.
+  const ViewToggle = canConsolidate ? (
+    <button
+      type="button"
+      className="view-toggle-btn"
+      onClick={() => setConsolidatedView((v) => !v)}
+      aria-pressed={consolidatedView}
+      title={consolidatedView ? "Switch to full dashboard" : "Switch to minimal dashboard"}
+    >
+      {consolidatedView ? "Full view" : "Minimal view"}
+    </button>
+  ) : null;
+
+  // Consolidated 7-surface view — OPT-IN via the toggle button above.
+  if (canConsolidate && consolidatedView) {
     const current = DASH_SURFACE_IDS.includes(activeTab as DashTabId)
       ? (activeTab as DashTabId)
       : "overview";
@@ -256,6 +280,7 @@ export default function App(): React.ReactElement {
         <div className="dashboard-app">
           <header className="dashboard-header">
             <h1>mega-compact dashboard <span className="tier">{snapshot?.tier ?? "unknown"}</span></h1>
+            {ViewToggle}
           </header>
           <ConsolidatedNav active={current} onSelect={(id: DashTabId) => setActiveTab(id)} />
           <main className="dashboard-content">
@@ -271,8 +296,9 @@ export default function App(): React.ReactElement {
     );
   }
 
-  // Flag-off (or legacy NEW_UI): always a legacy TabId (hash routing is gated
-  // on dash0dOn above, so activeTab stays a 13-tab id here).
+  // Default view (full): always a legacy TabId (hash routing is gated on
+  // canConsolidate && consolidatedView above, so activeTab stays a 13-tab id
+  // here).
   const legacyTab = (activeTab as TabId) ?? "overview";
 
   if (NEW_UI()) {
@@ -283,6 +309,7 @@ export default function App(): React.ReactElement {
         snapshot={snapshot}
         loading={loading}
         error={error}
+        viewToggle={ViewToggle}
       />
     );
   }

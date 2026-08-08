@@ -43,10 +43,18 @@ body {
 	gap: clamp(8px, 1.5vw, 16px);
 }
 
+.dashboard-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
 .dashboard-header h1 {
 	font-size: clamp(16px, 1.4vw, 22px);
 	font-weight: 600;
-	margin: 0 0 clamp(8px, 1vw, 16px);
+	margin: 0;
 }
 
 .dashboard-header .tier,
@@ -63,6 +71,61 @@ body {
 
 .dashboard-header .tier {
 	color: var(--accent);
+}
+
+/* View toggle button — switches between full (default) and minimal 7-surface */
+.view-toggle-btn {
+	background: var(--panel);
+	border: 1px solid var(--border);
+	color: var(--muted);
+	padding: 4px 12px;
+	font-size: clamp(11px, 0.8vw, 13px);
+	border-radius: 8px;
+	cursor: pointer;
+	white-space: nowrap;
+	transition: color 0.15s, border-color 0.15s;
+}
+.view-toggle-btn:hover {
+	color: var(--text);
+	border-color: var(--accent);
+}
+.view-toggle-btn[aria-pressed="true"] {
+	color: var(--accent);
+	border-color: var(--accent);
+}
+.view-toggle-wrap {
+	position: fixed;
+	top: 12px;
+	right: 16px;
+	z-index: 50;
+}
+
+/* Consolidated 7-surface nav — horizontal scrollable rail (mobile-friendly) */
+.consolidated-nav {
+	display: flex;
+	gap: 4px;
+	overflow-x: auto;
+	flex-wrap: nowrap;
+	border-bottom: 1px solid var(--border);
+	margin-bottom: clamp(8px, 1vw, 16px);
+	padding-bottom: 2px;
+}
+.consolidated-nav button {
+	background: none;
+	border: none;
+	color: var(--muted);
+	padding: 8px 14px;
+	cursor: pointer;
+	font-size: clamp(12px, 0.85vw, 14px);
+	white-space: nowrap;
+	border-bottom: 2px solid transparent;
+}
+.consolidated-nav button.active {
+	color: var(--text);
+	border-bottom-color: var(--accent);
+}
+.consolidated-nav button:hover {
+	color: var(--text);
 }
 
 .tab-bar {
