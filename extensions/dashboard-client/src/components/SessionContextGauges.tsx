@@ -128,18 +128,19 @@ export function SessionContextGauges({
 }: SessionContextGaugesProps): React.ReactElement {
 	const now = Date.now();
 
-	// Launcher gauge (always rendered, sourced from the snapshot). Include a
-	// truncated session ID so the user can tell WHICH session this is when
-	// multiple sessions are open.
-	const selfId = launcherSessionId
-		? launcherSessionId.length > 12
-			? `${launcherSessionId.slice(0, 8)}…`
-			: launcherSessionId
-		: null;
+	// Launcher gauge (always rendered, sourced from the snapshot). Resolve a
+	// meaningful label: try to match the launcher sessionId against the live
+	// sessions list to get the repo basename; fall back to "this session".
+	const selfSession = (sessions?.sessions ?? []).find(
+		(s) => s.sessionId === launcherSessionId,
+	);
+	const selfLabel = selfSession
+		? repoBasename(selfSession.repoRoot)
+		: "this session";
 	const gauges: GaugeData[] = [
 		{
 			key: "self",
-			label: selfId ? `this session (${selfId})` : "this session",
+			label: selfLabel,
 			sublabel: launcherSessionId ?? "",
 			tokens: launcher.tokens,
 			percent: launcher.percent,
