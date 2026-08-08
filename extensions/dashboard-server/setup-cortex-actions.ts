@@ -6,7 +6,9 @@
  * vc2-model-prep scripts (fetch-model.sh, bench-onnx.mjs), capturing their
  * output to <stateDir>/logs/vc9b/<action>-<ts>.log, re-running the committed
  * encoder asset verification seam for verify-asset (NO subprocess), and serving
- * a bounded + redacted log tail.
+ * a bounded + redacted log tail. ENC-2c adds the `install-native-ort` action,
+ * delegated to the sibling setup-cortex-actions-native-ort.ts (the confirm-gated,
+ * npm-delegated local install + ENC-2b re-qualification).
  *
  * This module is the ONLY place that touches the filesystem for VC9B actions.
  * The route file (routes-setup-cortex-actions.ts) carries NO path/script/blocker
@@ -41,6 +43,7 @@ import {
   readQualificationRecord,
   encoderStateDir,
 } from "./qualification-record.js";
+import { runInstallNativeOrt } from "./setup-cortex-actions-native-ort.js";
 
 /** Cap applied to every log tail served by the action-log route. */
 export const ACTION_LOG_TAIL_BYTES = 8192;
@@ -251,11 +254,14 @@ function writeLog(logPath: string, body: string): void {
  * result on success; throws nothing — every failure is surfaced as a result with
  * ok=false so the route can shape the HTTP response. Never touches the network;
  * the subprocesses it may spawn are the committed local vc2-model-prep scripts.
+ * Async (ENC-2c): install-native-ort runs the npm-delegated local install then
+ * re-qualifies via the ENC-2b retest path.
  */
-export function runSetupCortexAction(
+export async function runSetupCortexAction(
   action: SetupCortexActionKind,
   stateDir: string,
-): SetupCortexActionResult {
+): Promise<SetupCortexActionResult> {
   if (action === "verify-asset") return runVerifyAsset(stateDir);
+  if (action === "install-native-ort") return runInstallNativeOrt(stateDir);
   return runSpawnedAction(action, stateDir);
 }

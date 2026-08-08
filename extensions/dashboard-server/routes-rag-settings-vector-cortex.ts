@@ -327,6 +327,12 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			true,
 		),
 		boolDirect(
+			"MEGACOMPACT_ENC_2C",
+			"ENC-2c native ONNX runtime lazy-download INSTALL action (dashboard-triggered)",
+			"ENC-2c turns ENC-2a's operator run-script assist into a confirm-gated dashboard action: the Setup Cortex sub-tab gains an Install Native ORT button that, when the operator confirms, runs the committed scripts/encoder/install-native-ort.mjs subprocess locally (npm-delegated, sha256-verified) and then re-qualifies the binding via the ENC-2b retest path, exposing nativeOrtRetestResult / nativeOrtBackendEffective on the completion. PREVENT-PI-004 opt-in exemption: confirm-gated, npm-delegated, no URL literals (registry URL + sha256 live only in native-install-artifacts.ts). OFF = no install action POST branch, no UI button, no install result fields (byte-identical ENC-2b predecessor).",
+			true,
+		),
+		boolDirect(
 			"MEGACOMPACT_COSINE_FP_BENCH",
 			"COS-FP-A Synthetic FP Bench",
 			"Synthetic FP harness + L2 cosine threshold calibration (COS-FP-A): drives the deterministic synthetic-corpus grid sweep (scripts/cosine-fp/bench.mjs) that measures L2 cosine false-positive rates and emits a recommended default, and serves the reader-only GET /api/cosine-fp-report. Synthetic-corpus-only — never reads real session/ledger bytes. OFF = bench inert, endpoint 404s, no report write, L2_COSINE plain MEGACOMPACT_L2_THRESHOLD (byte-identical predecessor).",

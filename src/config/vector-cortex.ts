@@ -96,6 +96,8 @@ export {
 export { ENC_2A_ENABLED } from "./vector-cortex-enc2a.js";
 // ENC-2b native onnxruntime qualification-retest flag extracted to vector-cortex-enc2b.ts.
 export { ENC_2B_ENABLED } from "./vector-cortex-enc2b.js";
+// ENC-2c native onnxruntime lazy-download install-action flag extracted to vector-cortex-enc2c.ts.
+export { ENC_2C_ENABLED } from "./vector-cortex-enc2c.js";
 // Breaker constants (TRIAD_RESILIENCE.md §breaker) extracted to vector-cortex-breakers.ts.
 export {
   BREAKER_WINDOW_MS,

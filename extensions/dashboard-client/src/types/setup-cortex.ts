@@ -73,12 +73,27 @@ export interface SetupCortexStatusResponse {
 }
 
 /** The set of developer actions the Setup Cortex action drivers can run. */
-export type SetupCortexActionKind = "fetch-model" | "bench" | "verify-asset";
+export type SetupCortexActionKind =
+  | "fetch-model"
+  | "bench"
+  | "verify-asset"
+  | "install-native-ort";
 
 /** Request body for POST /api/setup-cortex-action. confirm:true required. */
 export interface SetupCortexActionRequest {
   readonly action: SetupCortexActionKind;
   readonly confirm: boolean;
+}
+
+/** ENC-2b/ENC-2c: the native onnxruntime qualification retest result (server
+ *  shape mirror from api-contracts/setup-cortex-native-ort.ts). */
+export interface NativeOrtRetestResult {
+  readonly platform: string;
+  readonly version: string;
+  readonly verdict: "qualified" | "degraded" | "failed";
+  readonly p95Ms: number;
+  readonly rssMiB: number;
+  readonly testedAt: string;
 }
 
 /** Outcome of running one Setup Cortex action. */
@@ -89,6 +104,12 @@ export interface SetupCortexActionResult {
   readonly logPath: string;
   readonly logName: string;
   readonly spawned: boolean;
+  /** ENC-2c: fresh retest result for install-native-ort (null when retest
+   *  could not run / no binding). Present ONLY for install-native-ort. */
+  readonly nativeOrtRetestResult?: NativeOrtRetestResult | null;
+  /** ENC-2c: effective backend after install retest — "native" when verdict is
+   *  "qualified", else "wasm". Present ONLY for install-native-ort. */
+  readonly nativeOrtBackendEffective?: "native" | "wasm";
 }
 
 /** Error body used when a hard gate blocks the requested action. */

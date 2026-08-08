@@ -1,23 +1,29 @@
 /**
  * SetupTab/CortexActionsCard.tsx — confirmation-gated Setup Cortex actions.
  *
- * fetch-model / bench / verify-asset. Uses the MaintenanceTab ActionDef +
- * window.confirm pattern; the POST body ALWAYS carries confirm:true (the
- * server hard-requires it). A 423 action_blocked_by_open_item surfaces the
+ * fetch-model / bench / verify-asset, plus the ENC-2c install-native-ort action
+ * (rendered only while the native binding is NOT installed — derived from the
+ * /api/setup-status poll's nativeOrtInstalledVersion). Uses the MaintenanceTab
+ * ActionDef + window.confirm pattern; the POST body ALWAYS carries confirm:true
+ * (the server hard-requires it). A 423 action_blocked_by_open_item surfaces the
  * gating blocker ids to the parent (which highlights the rows), a 400
  * confirmation_required and a 404 disabled are rendered honestly, and on a
  * successful run the returned logName is shown with a bounded log tail fetch.
+ * For install-native-ort the returned nativeOrtRetestResult (verdict/p95/RSS) is
+ * rendered inline.
  */
 import type React from "react";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type {
 	SetupCortexActionKind,
 	SetupCortexStatusResponse,
 } from "../../types/setup-cortex";
+import type { SetupStatusResponse } from "@contracts";
 import {
 	postSetupCortexAction,
 	fetchSetupCortexActionLog,
 } from "../../api/setup-cortex";
+import { fetchSetupStatus } from "../../api/client";
 import { styles } from "./CortexSetupStyles";
 
 interface ActionDef {
@@ -52,7 +58,23 @@ const ACTIONS: ActionDef[] = [
 		dangerous: false,
 		confirm: "Re-verify the committed encoder asset?",
 	},
+	{
+		key: "install-native-ort",
+		label: "Install Native ORT",
+		desc: "Lazy-download + install the native onnxruntime binding",
+		dangerous: true,
+		confirm:
+			"Download + install the native onnxruntime binding on this host? (npm-mediated, sha256-verified; then re-qualified.)",
+	},
 ];
+
+/** ENC-2c: the retest portion rendered after a successful install-native-ort. */
+interface RetestDisplay {
+	verdict: string;
+	p95Ms: number;
+	rssMiB: number;
+	backend: string | null;
+}
 
 interface ActionResultDisplay {
 	action: string;
@@ -60,6 +82,7 @@ interface ActionResultDisplay {
 	tail: string | null;
 	complete: boolean | null;
 	message: string;
+	retest: RetestDisplay | null;
 }
 
 export function CortexActionsCard({
@@ -75,6 +98,26 @@ export function CortexActionsCard({
 	const [result, setResult] = useState<ActionResultDisplay | null>(null);
 	const [actionError, setActionError] = useState<string | null>(null);
 	const [disabled, setDisabled] = useState(false);
+	// ENC-2c: poll the general setup status so we can hide the install button once
+	// the native binding is present (CortexActionsCard's cortex status prop does
+	// not carry nativeOrtInstalledVersion).
+	const [setupStatus, setSetupStatus] = useState<SetupStatusResponse | null>(null);
+
+	const loadSetupStatus = useCallback(() => {
+		fetchSetupStatus()
+			.then(setSetupStatus)
+			.catch(() => {
+				/* best-effort poll; hide install button when unavailable */
+			});
+	}, []);
+
+	useEffect(() => {
+		loadSetupStatus();
+		const id = setInterval(loadSetupStatus, 5000);
+		return () => clearInterval(id);
+	}, [loadSetupStatus]);
+
+	const nativeInstalled = (setupStatus?.nativeOrtInstalledVersion ?? null) !== null;
 
 	const runAction = useCallback(
 		async (def: ActionDef) => {
@@ -107,6 +150,15 @@ export function CortexActionsCard({
 						message: r.ok
 							? `${r.action} completed (spawned: ${r.spawned})`
 							: `${r.action} did not complete cleanly`,
+						retest:
+							r.nativeOrtRetestResult != null
+								? {
+										verdict: r.nativeOrtRetestResult.verdict,
+										p95Ms: r.nativeOrtRetestResult.p95Ms,
+										rssMiB: r.nativeOrtRetestResult.rssMiB,
+										backend: r.nativeOrtBackendEffective ?? null,
+									}
+								: null,
 					});
 					onAction();
 				} else if (outcome.error.error === "action_blocked_by_open_item") {
@@ -144,7 +196,10 @@ export function CortexActionsCard({
 		<div style={styles.section}>
 			<h3 style={styles.sectionTitle}>Cortex Actions</h3>
 
-			{ACTIONS.map((def) => {
+			{ACTIONS.filter(
+				// ENC-2c: hide the install button once the native binding is present.
+				(def) => def.key !== "install-native-ort" || !nativeInstalled,
+			).map((def) => {
 				const isRunning = running === def.key;
 				return (
 					<div
@@ -193,6 +248,35 @@ export function CortexActionsCard({
 						<span style={{ ...styles.mono, marginLeft: "0.5rem" }}>
 							log: {result.logName}
 						</span>
+					)}
+					{result.retest !== null && (
+						<div
+							style={{
+								marginTop: "0.5rem",
+								fontSize: "0.85rem",
+								display: "flex",
+								flexWrap: "wrap",
+								gap: "0.75rem",
+							}}
+						>
+							<span style={styles.label}>
+								Re-qualified:{" "}
+								<span style={{ color: "#4caf50", fontWeight: 600 }}>
+									{result.retest.verdict}
+								</span>
+							</span>
+							<span style={styles.label}>
+								p95: {result.retest.p95Ms.toFixed(1)} ms
+							</span>
+							<span style={styles.label}>
+								RSS: {result.retest.rssMiB.toFixed(1)} MiB
+							</span>
+							{result.retest.backend !== null && (
+								<span style={styles.label}>
+									backend: {result.retest.backend}
+								</span>
+							)}
+						</div>
 					)}
 					{result.tail !== null && (
 						<pre

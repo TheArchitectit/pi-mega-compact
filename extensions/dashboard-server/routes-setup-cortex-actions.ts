@@ -5,13 +5,14 @@
  *   GET  /api/setup-cortex-action-log        — bounded, redacted log tail
  *
  * Reader/actor-only: NEVER exposes payload bytes, prompts, or ledger. Actions
- * only spawn the committed local vc2-model-prep scripts or re-read the committed
- * encoder assets (verify-asset) — no network (PREVENT-PI-004). A hard gate
- * (HG-1/HG-3) blocking the requested action yields 423 action_blocked_by_open_item
- * with the blocker ids and NO subprocess is spawned. Missing confirm:true yields
- * 400 confirmation_required. Flag-off (MEGACOMPACT_VC9B=0) is byte-identical to
- * the VC9A-era predecessor: the routes are absent, so they return the 404
- * disabled shape and no action runs.
+ * only spawn the committed local vc2-model-prep scripts, re-read the committed
+ * encoder assets (verify-asset), or — ENC-2c — run the confirm-gated npm-delegated
+ * native onnxruntime install (install-native-ort) + re-qualify — no network in
+ * this layer (PREVENT-PI-004). A hard gate (HG-1/HG-3) blocking the requested
+ * action yields 423 action_blocked_by_open_item with the blocker ids and NO
+ * subprocess is spawned. Missing confirm:true yields 400 confirmation_required.
+ * Flag-off (MEGACOMPACT_VC9B=0) is byte-identical to the VC9A-era predecessor:
+ * the routes are absent, so they return the 404 disabled shape and no action runs.
  *
  * Guardrails: PREVENT-011 (no `any`), PREVENT-001 (guarded JSON.parse via
  * readJsonBody), no string literals for scripts/blockers (delegated to
@@ -24,7 +25,12 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RouteContext } from "./routes-core.js";
 import { sendJson, readJsonBody } from "./routes-vector-cortex-shared.js";
-import { VC9B_ENABLED, ENC_0G_ENABLED, ENC_0F_ENABLED } from "../../src/config.js";
+import {
+  VC9B_ENABLED,
+  ENC_0G_ENABLED,
+  ENC_0F_ENABLED,
+  ENC_2C_ENABLED,
+} from "../../src/config.js";
 import { setupCortexActionBlockers, computeSetupCortexBlockers } from "./setup-cortex-blockers.js";
 import { readEncoderManifest, detectPlatform } from "../../src/vector-cortex/encoder/asset.js";
 import {
@@ -41,6 +47,7 @@ const ACTION_KINDS = new Set<SetupCortexActionKind>([
   "fetch-model",
   "bench",
   "verify-asset",
+  "install-native-ort",
 ]);
 
 function isActionKind(v: unknown): v is SetupCortexActionKind {
@@ -113,7 +120,9 @@ export function handleSetupCortexAction(
     }
     const value = parsed.value;
     const action = value.action;
-    if (!isActionKind(action)) {
+    // ENC-2c: install-native-ort is recognized ONLY while ENC_2C is on —
+    // flag-off is byte-identical to the ENC-2b predecessor (invalid_action).
+    if (!isActionKind(action) || (action === "install-native-ort" && !ENC_2C_ENABLED())) {
       sendJson(res, 400, { error: "invalid_action" });
       return;
     }
@@ -134,8 +143,10 @@ export function handleSetupCortexAction(
       });
       return;
     }
-    const result = runSetupCortexAction(action, ctx.stateDir);
-    sendJson(res, result.ok ? 200 : 500, result);
+    void (async () => {
+      const result = await runSetupCortexAction(action, ctx.stateDir);
+      sendJson(res, result.ok ? 200 : 500, result);
+    })();
   });
   return true;
 }

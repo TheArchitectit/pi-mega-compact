@@ -82,8 +82,14 @@ export interface SetupCortexStatusResponse {
 
 // ─── VC9B action drivers ────────────────────────────────────────────────────
 
-/** The set of developer actions the Setup Cortex action drivers can run. */
-export type SetupCortexActionKind = "fetch-model" | "bench" | "verify-asset";
+/** The set of developer actions the Setup Cortex action drivers can run.
+ *  ENC-2c adds `install-native-ort` (confirm-gated lazy-download native install
+ *  + re-qualification), surfaced additively via setup-cortex-native-ort.ts. */
+export type SetupCortexActionKind =
+  | "fetch-model"
+  | "bench"
+  | "verify-asset"
+  | "install-native-ort";
 
 /**
  * Request body for POST /api/setup-cortex-action. `confirm:true` is the

@@ -198,7 +198,11 @@ export function computeSetupCortexBlockers(input: {
 // ─── VC9B action gating ─────────────────────────────────────────────────────
 
 /** The VC9B action kinds the drivers know how to run. */
-export type SetupCortexActionKind = "fetch-model" | "bench" | "verify-asset";
+export type SetupCortexActionKind =
+  | "fetch-model"
+  | "bench"
+  | "verify-asset"
+  | "install-native-ort";
 
 /**
  * The static PER-ACTION CANDIDATE gate ids — this is POLICY, NOT the derived
@@ -216,6 +220,9 @@ const ACTION_GATE_CANDIDATES: Readonly<Record<SetupCortexActionKind, readonly st
   // behavior change. HG-7 is training work (no action in this set).
   bench: ["HG-1", "HG-3", "HG-6"],
   "verify-asset": [],
+  // ENC-2c: installing the lazy-download native binding is gated by HG-3 (the
+  // open install-budget hard gate) — a closed HG-3 no longer blocks the install.
+  "install-native-ort": ["HG-3"],
 };
 
 /**
