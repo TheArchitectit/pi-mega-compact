@@ -26,7 +26,19 @@ import {
 } from "./types.js";
 
 export type AssetVerifyResult =
-  | { ok: true; embeddedBytes: number; maxTokens: number; onnxDigest: string; tokenizerDigest: string }
+  | {
+      ok: true;
+      embeddedBytes: number;
+      maxTokens: number;
+      onnxDigest: string;
+      tokenizerDigest: string;
+      /**
+       * ML5-A (VC2B-2): digest of the manifest-pinned `trained-heads.json`
+       * sibling when the manifest declares `headWeights`; null when the
+       * manifest ships no head weights (the committed placeholder bundle).
+       */
+      headWeightsDigest: string | null;
+    }
   | { ok: false; code: string };
 
 /** True when `p` is a single basename: non-empty, no path separators, no "..",
@@ -80,7 +92,14 @@ function isManifest(m: unknown): m is ModelManifestV1 {
     typeof o.onnx.path === "string" &&
     typeof o.onnx.sha256 === "string" &&
     typeof o.tokenizer.path === "string" &&
-    typeof o.tokenizer.sha256 === "string"
+    typeof o.tokenizer.sha256 === "string" &&
+    // ML5-A (VC2B-2): optional headWeights must, when present, be a valid
+    // ManifestAssetFile (path basename + sha256 + bytes).
+    (o.headWeights === undefined ||
+      (!!o.headWeights &&
+        typeof o.headWeights.path === "string" &&
+        typeof o.headWeights.sha256 === "string" &&
+        typeof o.headWeights.bytes === "number"))
   );
 }
 
@@ -122,6 +141,11 @@ export function verifyEncoderAsset(
   if (!isBasename(manifest.onnx.path) || !isBasename(manifest.tokenizer.path)) {
     return { ok: false, code: ENC_FAIL.MANIFEST_INVALID };
   }
+  // ML5-A (VC2B-2): a manifest-declared headWeights path must also be a bare
+  // basename (no traversal into arbitrary paths off the asset dir).
+  if (manifest.headWeights !== undefined && !isBasename(manifest.headWeights.path)) {
+    return { ok: false, code: ENC_FAIL.MANIFEST_INVALID };
+  }
 
   const onnxPath = join(assetDir, manifest.onnx.path);
   const onnxDigest = digestFile(onnxPath);
@@ -133,13 +157,32 @@ export function verifyEncoderAsset(
   if (tokDigest === null) return { ok: false, code: ENC_FAIL.ASSET_UNREADABLE };
   if (tokDigest !== manifest.tokenizer.sha256) return { ok: false, code: ENC_FAIL.DIGEST_MISMATCH };
 
+  // ML5-A (VC2B-2): verify the manifest-pinned trained-heads sibling when the
+  // manifest declares it. Absent declaration -> headWeightsDigest: null and no
+  // failure (committed placeholder bundle ships no trained weights).
+  let headWeightsDigest: string | null = null;
+  if (manifest.headWeights !== undefined) {
+    const hwPath = join(assetDir, manifest.headWeights.path);
+    const hwDigest = digestFile(hwPath);
+    if (hwDigest === null) return { ok: false, code: ENC_FAIL.ASSET_UNREADABLE };
+    if (hwDigest !== manifest.headWeights.sha256) return { ok: false, code: ENC_FAIL.DIGEST_MISMATCH };
+    headWeightsDigest = hwDigest;
+  }
+
   let embeddedBytes = 0;
   try {
     embeddedBytes = statSync(onnxPath).size + statSync(tokPath).size;
   } catch {
     return { ok: false, code: ENC_FAIL.ASSET_UNREADABLE };
   }
-  return { ok: true, embeddedBytes, maxTokens: manifest.maxTokens, onnxDigest, tokenizerDigest: tokDigest };
+  return {
+    ok: true,
+    embeddedBytes,
+    maxTokens: manifest.maxTokens,
+    onnxDigest,
+    tokenizerDigest: tokDigest,
+    headWeightsDigest,
+  };
 }
 
 /**

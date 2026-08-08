@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """ENC-0c train_heads.py — five-head supervision transfer over the frozen trunk.
 
+VC2B-2 SUPERSEDED: this script is the deterministic *placeholder* trainer whose
+`head-candidate-v1` .bin artifacts are INCOMPATIBLE with the runtime's
+`projectHeadFromTrunk` matmul (they hold [dim] not [dim*384]). The real
+gradient-based trainer is `train_heads_real.py` (same repo), which emits the
+`schema: "trained-heads-v1"` JSON (`loadHeadProjections` consumes). Keep this
+file for historical/back-compat reference only; do NOT use its output in the
+runtime path.
+
 Developer tooling only (zero network, PREVENT-PI-004). Reads the synthetic
 corpus produced by gen_synthetic_corpus.py and emits a staged "head-candidate-v1"
 artifact tree under ``~/.pi/mega-compact-encoder/candidates/<version>/`` per the

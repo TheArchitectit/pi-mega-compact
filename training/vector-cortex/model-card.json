@@ -1,7 +1,7 @@
 {
   "schema": "model-card-v1",
   "trunk": {
-    "provider": "Xenova/bge-small-en-v1.5",
+    "provider": "onnx-community/bge-small-en-v1.5-ONNX",
     "params": 33400000,
     "hiddenWidth": 384,
     "seq": 512,
@@ -22,9 +22,11 @@
     "payloadRouting": 0.1
   },
   "seed": 1729,
-  "opset": 17,
+  "opset": 21,
   "quantized": "int8",
-  "trainingCorpusDigest": null,
-  "calibrationDate": null,
-  "onnxSha256": null
+  "trainingCorpusDigest": "55a4fe79f1273725e5edac540a8c7b683ca689f82300d34890d896cc4b4e4e7a",
+  "calibrationDate": "2026-08-07",
+  "onnxSha256": "913a643a697a53fe88476395682995d5647c14f51321d344e69abcc3c4e854a2",
+  "finalLosses": null,
+  "note": "VC2B-2: real gradient head training (train_heads_real.py) against the frozen bge-small-en-v1.5 trunk. onnxSha256 is the committed model.onnx digest; trainingCorpusDigest is the regenerated (text-carrying) synthetic corpus digest from dataset-manifest-enc0c.json. finalLosses is populated by the training run once torch/onnxruntime are available."
 }

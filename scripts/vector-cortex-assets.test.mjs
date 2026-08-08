@@ -8,7 +8,7 @@
  * disk — it does not fabricate a bundle — and exercises the same verify/load path
  * the runtime uses.
  *
- *   - manifest schema + opset17/batch1/max512 constraints
+ *   - manifest schema + opset21/batch1/max512 constraints
  *   - on-disk ONNX + tokenizer SHA-256 equal the manifest digests (mode-A ready)
  *   - the runtime loads the committed asset as mode A and infers within 1..512 dims
  *   - a one-byte mutation of model.onnx demotes ENC_DIGEST_MISMATCH (mode B)
@@ -72,7 +72,7 @@ test("committed bundle: model.onnx + tokenizer.json exist and hash to the manife
   const manifest = readEncoderManifest(ASSET_DIR);
   assert.ok(manifest, "manifest parses + shape-checks");
   assert.equal(manifest.schema, "model-manifest-v1");
-  assert.equal(manifest.opset, 17, "opset 17");
+  assert.equal(manifest.opset, 21, "opset 21 (ENC-0a re-baseline)");
   assert.equal(manifest.batch, 1, "batch 1");
   assert.equal(manifest.maxTokens, 512, "maxTokens 512");
   assert.equal(manifest.semanticWidth, 384, "semantic width 384");
@@ -213,7 +213,7 @@ test("training provenance scaffold exists and matches the manifest digest", () =
   assert.equal(parsed.schema, "training-dataset-manifest-v1");
   assert.equal(parsed.policy.noUserLedger, true, "no user ledger as training data");
   assert.equal(parsed.policy.noSecrets, true, "no secrets");
-  assert.ok(Array.isArray(parsed.records), "records array present");
+  assert.ok(typeof parsed.records === "number" && parsed.records > 0, "numeric record count present");
   assert.ok(parsed.policy.consent.length > 0, "explicit consent mention present");
 });
 
