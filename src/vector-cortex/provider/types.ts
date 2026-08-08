@@ -36,6 +36,37 @@ export interface ProviderProfileExclusion {
 }
 
 /**
+ * Cache economics attached to a provider profile (VC7B).
+ *
+ * Prices are integer MICRO-UNITS PER TOKEN (1e-6 currency units), so a provider
+ * charging $3.00 per million input tokens has `basePrice: 3`. Integers keep the
+ * money path exact (see `economics.ts` for why floats are refused).
+ */
+export interface ProviderEconomicsV1 {
+  readonly schema: "provider-economics-v1";
+  /** The `ProviderProfileV1.id` these economics belong to. */
+  readonly profileId: string;
+  /** Profile version — economics are versioned WITH the profile they price. */
+  readonly profileVersion: string;
+  /** Uncached price per token, integer micro-units. The savings baseline. */
+  readonly basePrice: number;
+  /** Cache-READ price per token, integer micro-units. Normally < basePrice. */
+  readonly readPrice: number;
+  /** Cache-WRITE price per token, integer micro-units. Normally > basePrice. */
+  readonly writePrice: number;
+  /** Cache entry lifetime in ms. A prefix older than this cannot be read back. */
+  readonly ttlMs: number;
+  /** Minimum cacheable prefix in tokens; a shorter prefix is never cached. */
+  readonly minPrefix: number;
+  /**
+   * Conformance fixture ID proving this profile's exclusion set is safe, or
+   * `null` when the profile declares NO exclusions (nothing to prove). A profile
+   * WITH exclusions and a null/blank id is rejected — see `validateEconomics`.
+   */
+  readonly exclusionFixtureId: string | null;
+}
+
+/**
  * The provider-profile contract. A renderer consumes a profile to decide how the
  * rendered prompt is serialized into the canonical outbound request without
  * invalidating the provider's cache identity.
@@ -47,6 +78,12 @@ export interface ProviderProfileV1 {
   readonly hashMode: ProviderHashMode;
   /** Versioned, fixture-proven exclusions (empty = hash the whole request). */
   readonly excludedJsonPointers: readonly ProviderProfileExclusion[];
+  /**
+   * VC7B cache economics pricing this profile's frozen-render reuse. Every base
+   * profile carries economics so the cache-economics aggregate is computable
+   * without a side table; a profile WITHOUT economics is simply never cached.
+   */
+  readonly economics: ProviderEconomicsV1 | null;
 }
 
 /**

@@ -47,38 +47,16 @@
  * gates only the reporter/dashboard seam in `../cache/economics-emit.ts`.
  */
 
-import type { ProviderProfileExclusion, ProviderProfileV1 } from "./types.js";
+import type {
+  ProviderEconomicsV1,
+  ProviderProfileExclusion,
+  ProviderProfileV1,
+} from "./types.js";
 
-/**
- * Cache economics attached to a provider profile.
- *
- * Prices are integer MICRO-UNITS PER TOKEN (1e-6 currency units), so a provider
- * charging $3.00 per million input tokens has `basePrice: 3`. Integers keep the
- * money path exact; see the file header for why floats are refused.
- */
-export interface ProviderEconomicsV1 {
-  readonly schema: "provider-economics-v1";
-  /** The `ProviderProfileV1.id` these economics belong to. */
-  readonly profileId: string;
-  /** Profile version — economics are versioned WITH the profile they price. */
-  readonly profileVersion: string;
-  /** Uncached price per token, integer micro-units. The savings baseline. */
-  readonly basePrice: number;
-  /** Cache-READ price per token, integer micro-units. Normally < basePrice. */
-  readonly readPrice: number;
-  /** Cache-WRITE price per token, integer micro-units. Normally > basePrice. */
-  readonly writePrice: number;
-  /** Cache entry lifetime in ms. A prefix older than this cannot be read back. */
-  readonly ttlMs: number;
-  /** Minimum cacheable prefix in tokens; a shorter prefix is never cached. */
-  readonly minPrefix: number;
-  /**
-   * Conformance fixture ID proving this profile's exclusion set is safe, or
-   * `null` when the profile declares NO exclusions (nothing to prove). A profile
-   * WITH exclusions and a null/blank id is rejected — see `validateEconomics`.
-   */
-  readonly exclusionFixtureId: string | null;
-}
+// `ProviderEconomicsV1` is defined in `./types.js` so it can ride on
+// `ProviderProfileV1` without a type-only module cycle. Re-exported forward here
+// so every existing consumer import path (`from "./economics.js"`) is unchanged.
+export type { ProviderEconomicsV1 } from "./types.js";
 
 /** Observed (or shadow) cache traffic for one economics computation. */
 export interface CacheUsageV1 {

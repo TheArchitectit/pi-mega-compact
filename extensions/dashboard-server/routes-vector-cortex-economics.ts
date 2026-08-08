@@ -28,18 +28,25 @@ import type { RouteContext } from "./routes-core.js";
 import { VC7B_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
 import { deriveVcStatus } from "./vc-status.js";
+import { readLivewireSnapshot } from "../../src/vector-cortex/livewire/livewire-registry.js";
 import type { VectorCortexEconomicsView } from "./api-contracts/vector-cortex-economics.js";
+
+// The flag-off deferred reason, kept byte-identical to the pre-LIVEWIRE
+// predecessor (VC7B: `economics_not_computed_v0_20_23`).
+const DEFERRED_REASON = "economics_not_computed_v0_20_23";
 
 /**
  * Reader-only GET /api/vector-cortex/cache-economics (VC7B).
  *
- * Counts, profile tallies, and ECON_* codes only — a static reader-only
- * aggregate seam with the same shape as the VC7A crystals handler.
+ * Counts, profile tallies, and ECON_* codes only. With the flag ON it surfaces
+ * the LIVEWIRE-provided profile economics tallies + the runtime `computed` bit;
+ * with the flag OFF it returns the byte-identical legacy deferred view (mode C,
+ * deferredReason present).
  */
 export function handleVectorCortexEconomics(
   req: IncomingMessage,
   res: ServerResponse,
-  _ctx: RouteContext,
+  ctx: RouteContext,
 ): boolean {
   const url = req.url ?? "";
   const path = url.split("?")[0] ?? url;
@@ -50,25 +57,33 @@ export function handleVectorCortexEconomics(
   }
 
   const enabled = VC7B_ENABLED();
-  // Flag-off routes to mode C: with VC7B off no cache economics are served, which
-  // is exactly the spec's "economics bypass" outcome. Reporting A (cached render
-  // priced) or B (fresh render priced) would imply an economics path that is not
-  // wired at all. Mirrors how VC6C/VC7A OFF views report the mode they take.
-  const mode: "A" | "B" | "C" = enabled ? "A" : "C";
+  if (!enabled) {
+    // Flag-off parity: byte-identical to the predecessor (mode C + deferred).
+    const body: VectorCortexEconomicsView = {
+      enabled: false,
+      mode: "C",
+      profileCount: 0,
+      provenExclusions: 0,
+      unprovenExclusions: 0,
+      lastFailure: null,
+      updatedAt: new Date().toISOString(),
+      deferredReason: DEFERRED_REASON,
+      status: deriveVcStatus({ enabled: false, hasData: false }),
+    };
+    sendJson(res, 200, body);
+    return true;
+  }
+
+  const econ = readLivewireSnapshot(ctx.stateDir).economics;
   const body: VectorCortexEconomicsView = {
-    enabled,
-    mode,
-    profileCount: 0,
-    provenExclusions: 0,
-    unprovenExclusions: 0,
-    lastFailure: null,
+    enabled: true,
+    mode: "A",
+    profileCount: econ.profileCount,
+    provenExclusions: econ.provenExclusions,
+    unprovenExclusions: econ.unprovenExclusions,
+    lastFailure: econ.lastFailure,
     updatedAt: new Date().toISOString(),
-    deferredReason: "economics_not_computed_v0_20_23",
-    status: deriveVcStatus({
-      enabled,
-      deferredReason: "economics_not_computed_v0_20_23",
-      hasData: false,
-    }),
+    status: deriveVcStatus({ enabled: true, hasData: econ.computed }),
   };
   sendJson(res, 200, body);
   return true;

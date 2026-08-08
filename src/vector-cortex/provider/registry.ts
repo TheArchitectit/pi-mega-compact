@@ -18,6 +18,7 @@
 
 import {
   PRO_PROFILE_UNKNOWN,
+  type ProviderEconomicsV1,
   type ProviderProfileBundle,
   type ProviderProfileResult,
   type ProviderProfileV1,
@@ -60,6 +61,7 @@ function profile(
   id: string,
   version: string,
   excludedJsonPointers: ProviderProfileV1["excludedJsonPointers"],
+  economics: ProviderProfileV1["economics"],
 ): ProviderProfileV1 {
   return {
     schema: "provider-profile-v1",
@@ -67,8 +69,81 @@ function profile(
     version,
     hashMode: "entire-canonical-request",
     excludedJsonPointers,
+    economics,
   };
 }
+
+/**
+ * Build integer micro-unit economics for a base profile (VC7B). A cache WRITE
+ * costs more than an uncached token, a cache READ costs less — the standard
+ * provider-prompt-cache shape. `exclusionFixtureId` mirrors the profile's own
+ * exclusion fixture (or null when the profile has none to prove).
+ */
+function econ(
+  id: string,
+  version: string,
+  exclusionFixtureId: string | null,
+  values: {
+    basePrice: number;
+    readPrice: number;
+    writePrice: number;
+    ttlMs: number;
+    minPrefix: number;
+  },
+): ProviderEconomicsV1 {
+  return {
+    schema: "provider-economics-v1",
+    profileId: id,
+    profileVersion: version,
+    basePrice: values.basePrice,
+    readPrice: values.readPrice,
+    writePrice: values.writePrice,
+    ttlMs: values.ttlMs,
+    minPrefix: values.minPrefix,
+    exclusionFixtureId,
+  };
+}
+
+/** Representative integer micro-unit economics for the Anthropic opus base tier. */
+const OPUS_ECON: ProviderEconomicsV1 = econ(
+  "anthropic-claude-opus",
+  "v1",
+  null,
+  { basePrice: 15, readPrice: 2, writePrice: 19, ttlMs: 300_000, minPrefix: 1024 },
+);
+
+/** Representative integer micro-unit economics for the Anthropic sonnet base tier. */
+const SONNET_ECON: ProviderEconomicsV1 = econ(
+  "anthropic-claude-sonnet",
+  "v1",
+  null,
+  { basePrice: 3, readPrice: 0, writePrice: 4, ttlMs: 300_000, minPrefix: 1024 },
+);
+
+/** Representative integer micro-unit economics for the OpenAI gpt base tier. */
+const GPT_ECON: ProviderEconomicsV1 = econ(
+  "openai-gpt",
+  "v1",
+  null,
+  { basePrice: 5, readPrice: 1, writePrice: 6, ttlMs: 300_000, minPrefix: 1024 },
+);
+
+/** The gemini profile's versioned, fixture-proven exclusion. */
+const GEMINI_EXCLUSIONS: ProviderProfileV1["excludedJsonPointers"] = [
+  {
+    pointer: "/requestId",
+    fixtureId: "PRO-EXCLUDE-010",
+    proofDigest: "sha256:excluded-request-id-proof",
+  },
+];
+
+/** Representative integer micro-unit economics for the gemini base tier. */
+const GEMINI_ECON: ProviderEconomicsV1 = econ(
+  "google-gemini",
+  "v1",
+  "PRO-EXCLUDE-010",
+  { basePrice: 3, readPrice: 1, writePrice: 4, ttlMs: 300_000, minPrefix: 1024 },
+);
 
 /**
  * The fixture-backed base profiles. Each entry is the REAL bundle the renderer
@@ -76,33 +151,29 @@ function profile(
  */
 const BASE_PROFILES: readonly ProviderProfileBundle[] = [
   {
-    profile: profile("anthropic-claude-opus", "v1", []),
+    profile: profile("anthropic-claude-opus", "v1", [], OPUS_ECON),
     role: BASE_ROLE,
     tool: BASE_TOOL,
     cache: baseCache(["systemPromptPrepend", "tools", "nodes"]),
   },
   {
-    profile: profile("anthropic-claude-sonnet", "v1", []),
+    profile: profile("anthropic-claude-sonnet", "v1", [], SONNET_ECON),
     role: BASE_ROLE,
     tool: BASE_TOOL,
     cache: baseCache(["systemPromptPrepend", "tools", "nodes"]),
   },
   {
-    profile: profile("openai-gpt", "v1", []),
+    profile: profile("openai-gpt", "v1", [], GPT_ECON),
     role: BASE_ROLE,
     tool: BASE_TOOL,
     cache: baseCache(["systemPromptPrepend", "tools", "nodes"]),
   },
   {
     // A profile that proves a fixture-excluded pointer: a provider whose
-    // request-id header cannot affect cache identity. Excluded + versioned.
-    profile: profile("google-gemini", "v1", [
-      {
-        pointer: "/requestId",
-        fixtureId: "PRO-EXCLUDE-010",
-        proofDigest: "sha256:excluded-request-id-proof",
-      },
-    ]),
+    // request-id header cannot affect cache identity. Excluded + versioned, and
+    // the exclusion fixture id is carried into economics so the proof is
+    // honored (an unproven exclusion would fail economics validation).
+    profile: profile("google-gemini", "v1", GEMINI_EXCLUSIONS, GEMINI_ECON),
     role: BASE_ROLE,
     tool: BASE_TOOL,
     cache: baseCache(["systemPromptPrepend", "tools", "nodes"]),

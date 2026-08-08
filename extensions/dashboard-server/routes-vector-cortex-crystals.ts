@@ -28,21 +28,21 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { RouteContext } from "./routes-core.js";
 import { VC7A_ENABLED } from "../../src/config.js";
 import { sendJson } from "./routes-vector-cortex-shared.js";
-import { countVcEvents, vcCount } from "./vc-event-counts.js";
 import { deriveVcStatus } from "./vc-status.js";
+import { readLivewireSnapshot } from "../../src/vector-cortex/livewire/livewire-registry.js";
 import type { VectorCortexCrystalsView } from "./api-contracts/vector-cortex-cache.js";
 
-// Actual events emitted by src/vector-cortex/cache/crystal-emit.ts.
-const CRYSTAL_EVENTS = [
-  "vector_cortex_crystal_written",
-  "vector_cortex_crystal_collision",
-] as const;
+// The flag-off deferred reason, kept byte-identical to the pre-LIVEWIRE
+// predecessor (VC7A: `crystal_store_not_instantiated_v0_20_23`).
+const DEFERRED_REASON = "crystal_store_not_instantiated_v0_20_23";
 
 /**
  * Reader-only GET /api/vector-cortex/cache-crystals (VC7A).
  *
- * Counts, byte volumes, and CRY_* codes only — a static reader-only aggregate
- * seam with the same shape as the VC6A/VC6B/VC6C handlers.
+ * Counts, byte volumes, and CRY_* codes only. With the flag ON it surfaces the
+ * LIVEWIRE `CrystalStore` aggregate (live reads/writes/collisions accumulated at
+ * runtime); with the flag OFF it returns the byte-identical legacy deferred view
+ * (mode C, deferredReason present) so flag-off parity holds.
  */
 export function handleVectorCortexCrystals(
   req: IncomingMessage,
@@ -58,31 +58,47 @@ export function handleVectorCortexCrystals(
   }
 
   const enabled = VC7A_ENABLED();
-  const counts = countVcEvents(ctx.stateDir, CRYSTAL_EVENTS);
-  // Flag-off routes to mode C: with VC7A off nothing is served from the crystal
-  // cache, which is exactly the spec's "cache bypass" outcome. Reporting A (hit)
-  // or B (fresh render forced by a miss) would imply a cache path that is not
-  // wired at all. Mirrors how VC6C's OFF view reports the mode it actually takes.
-  const mode: "A" | "B" | "C" = enabled ? "A" : "C";
+  if (!enabled) {
+    // Flag-off parity: byte-identical to the predecessor (mode C + deferred).
+    const body: VectorCortexCrystalsView = {
+      enabled: false,
+      mode: "C",
+      crystalCount: 0,
+      totalBytes: 0,
+      hits: 0,
+      misses: 0,
+      hitBytes: 0,
+      writes: 0,
+      duplicateWrites: 0,
+      collisions: 0,
+      lastFailure: null,
+      updatedAt: new Date().toISOString(),
+      deferredReason: DEFERRED_REASON,
+      status: deriveVcStatus({ enabled: false, hasData: false }),
+    };
+    sendJson(res, 200, body);
+    return true;
+  }
+
+  const snap = readLivewireSnapshot(ctx.stateDir);
+  const crystal = snap.crystals;
+  const hasData = crystal.crystalCount > 0;
   const body: VectorCortexCrystalsView = {
-    enabled,
-    mode,
-    crystalCount: vcCount(counts, "vector_cortex_crystal_written"),
-    totalBytes: 0,
-    hits: 0,
-    misses: 0,
-    hitBytes: 0,
-    writes: 0,
-    duplicateWrites: 0,
-    collisions: vcCount(counts, "vector_cortex_crystal_collision"),
+    enabled: true,
+    // Surface the store's honest triad mode (B until a hit, A after, C when the
+    // store was set unavailable) rather than a hardcoded A.
+    mode: crystal.mode,
+    crystalCount: crystal.crystalCount,
+    totalBytes: crystal.totalBytes,
+    hits: crystal.hits,
+    misses: crystal.misses,
+    hitBytes: crystal.hitBytes,
+    writes: crystal.writes,
+    duplicateWrites: crystal.duplicateWrites,
+    collisions: crystal.collisions,
     lastFailure: null,
     updatedAt: new Date().toISOString(),
-    deferredReason: "crystal_store_not_instantiated_v0_20_23",
-    status: deriveVcStatus({
-      enabled,
-      deferredReason: "crystal_store_not_instantiated_v0_20_23",
-      hasData: vcCount(counts, "vector_cortex_crystal_written") > 0,
-    }),
+    status: deriveVcStatus({ enabled: true, hasData }),
   };
   sendJson(res, 200, body);
   return true;

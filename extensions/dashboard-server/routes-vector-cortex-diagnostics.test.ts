@@ -19,13 +19,25 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { withServer } from "./routes-vector-cortex-helpers.js";
+import { withServer, seedLivewireSnapshot } from "./routes-vector-cortex-helpers.js";
 
 describe("/api/vector-cortex/cache-diagnostics (VC7C reader-only)", () => {
-	test("GET returns the reader-only diagnostics aggregate when VC7C is ON", async () => {
+	test("GET returns the LIVE diagnostics aggregate (not deferred) when VC7C is ON", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "vc7c-diag-"));
 		process.env.MEGACOMPACT_VC7C = "1";
 		try {
+			await seedLivewireSnapshot(dir, {
+				diagnostics: {
+					profileMisses: 4,
+					rangeMisses: 3,
+					dependencyMisses: 2,
+					requestMisses: 1,
+					generationMisses: 5,
+					unknownMisses: 6,
+					serveBlocked: 7,
+					breakerState: "OPEN_B",
+				},
+			});
 			await withServer("9496", dir, async (port) => {
 				const res = await fetch(`http://localhost:${port}/api/vector-cortex/cache-diagnostics`);
 				assert.equal(res.status, 200);
@@ -42,21 +54,21 @@ describe("/api/vector-cortex/cache-diagnostics (VC7C reader-only)", () => {
 					breakerState: string;
 					lastFailure: string | null;
 					updatedAt: string;
+					deferredReason?: string;
+					status?: string;
 				};
 				assert.equal(body.enabled, true);
 				assert.equal(body.mode, "A");
-				for (const k of [
-					"profileMisses",
-					"rangeMisses",
-					"dependencyMisses",
-					"requestMisses",
-					"generationMisses",
-					"unknownMisses",
-					"serveBlocked",
-				] as const) {
-					assert.equal(typeof body[k], "number", `${k} is a count`);
-				}
-				assert.equal(typeof body.breakerState, "string");
+				assert.equal(body.deferredReason, undefined, "live classifier is not deferred");
+				assert.equal(body.status, "live");
+				assert.equal(body.profileMisses, 4);
+				assert.equal(body.rangeMisses, 3);
+				assert.equal(body.dependencyMisses, 2);
+				assert.equal(body.requestMisses, 1);
+				assert.equal(body.generationMisses, 5);
+				assert.equal(body.unknownMisses, 6);
+				assert.equal(body.serveBlocked, 7);
+				assert.equal(body.breakerState, "OPEN_B");
 				assert.equal(body.lastFailure, null);
 				assert.equal(typeof body.updatedAt, "string");
 			});
@@ -65,19 +77,28 @@ describe("/api/vector-cortex/cache-diagnostics (VC7C reader-only)", () => {
 		}
 	});
 
-	test("GET cache-diagnostics reports mode C + disabled when VC7C is OFF", async () => {
+	test("GET cache-diagnostics reports mode C + disabled + deferred when VC7C is OFF", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "vc7c-diag-off-"));
 		process.env.MEGACOMPACT_VC7C = "0";
 		try {
 			await withServer("9497", dir, async (port) => {
 				const res = await fetch(`http://localhost:${port}/api/vector-cortex/cache-diagnostics`);
 				assert.equal(res.status, 200);
-				const body = (await res.json()) as { enabled: boolean; mode: "A" | "B" | "C" };
+				const body = (await res.json()) as {
+					enabled: boolean;
+					mode: "A" | "B" | "C";
+					deferredReason?: string;
+				};
 				assert.equal(body.enabled, false);
 				assert.equal(
 					body.mode,
 					"C",
 					"flag-off attests no cache serve: all-cache bypass, not a crystal hit (mode C)",
+				);
+				assert.equal(
+					body.deferredReason,
+					"cache_classifier_not_wired_v0_20_23",
+					"flag-off parity: deferredReason is byte-identical to the predecessor",
 				);
 			});
 		} finally {
@@ -102,6 +123,9 @@ describe("/api/vector-cortex/cache-diagnostics (VC7C reader-only)", () => {
 		const dir = mkdtempSync(join(tmpdir(), "vc7c-diag-priv-"));
 		process.env.MEGACOMPACT_VC7C = "1";
 		try {
+			await seedLivewireSnapshot(dir, {
+				diagnostics: { profileMisses: 1, serveBlocked: 2 },
+			});
 			await withServer("9499", dir, async (port) => {
 				const res = await fetch(`http://localhost:${port}/api/vector-cortex/cache-diagnostics`);
 				assert.equal(res.status, 200);
@@ -110,7 +134,6 @@ describe("/api/vector-cortex/cache-diagnostics (VC7C reader-only)", () => {
 					Object.keys(body).sort(),
 					[
 						"breakerState",
-						"deferredReason",
 						"dependencyMisses",
 						"enabled",
 						"generationMisses",
@@ -124,7 +147,7 @@ describe("/api/vector-cortex/cache-diagnostics (VC7C reader-only)", () => {
 						"unknownMisses",
 						"updatedAt",
 					],
-					"diagnostics view exposes exactly the aggregate keys",
+					"diagnostics view exposes exactly the aggregate keys (no deferredReason when live)",
 				);
 				const json = JSON.stringify(body);
 				for (const leak of [

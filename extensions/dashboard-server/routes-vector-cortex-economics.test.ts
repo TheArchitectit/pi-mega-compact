@@ -16,13 +16,16 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { withServer } from "./routes-vector-cortex-helpers.js";
+import { withServer, seedLivewireSnapshot } from "./routes-vector-cortex-helpers.js";
 
 describe("/api/vector-cortex/cache-economics (VC7B reader-only)", () => {
-	test("GET returns the reader-only economics aggregate when VC7B is ON", async () => {
+	test("GET returns the LIVE economics aggregate (not deferred) when VC7B is ON", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "vc7b-econ-"));
 		process.env.MEGACOMPACT_VC7B = "1";
 		try {
+			await seedLivewireSnapshot(dir, {
+				economics: { computed: true, profileCount: 4, provenExclusions: 1, unprovenExclusions: 0 },
+			});
 			await withServer("9492", dir, async (port) => {
 				const res = await fetch(`http://localhost:${port}/api/vector-cortex/cache-economics`);
 				assert.equal(res.status, 200);
@@ -34,16 +37,16 @@ describe("/api/vector-cortex/cache-economics (VC7B reader-only)", () => {
 					unprovenExclusions: number;
 					lastFailure: string | null;
 					updatedAt: string;
+					deferredReason?: string;
+					status?: string;
 				};
 				assert.equal(body.enabled, true);
 				assert.equal(body.mode, "A");
-				for (const k of [
-					"profileCount",
-					"provenExclusions",
-					"unprovenExclusions",
-				] as const) {
-					assert.equal(typeof body[k], "number", `${k} is a count`);
-				}
+				assert.equal(body.deferredReason, undefined, "computed economics are not deferred");
+				assert.equal(body.status, "live");
+				assert.equal(body.profileCount, 4);
+				assert.equal(body.provenExclusions, 1);
+				assert.equal(body.unprovenExclusions, 0);
 				assert.equal(body.lastFailure, null);
 				assert.equal(typeof body.updatedAt, "string");
 			});
@@ -52,19 +55,49 @@ describe("/api/vector-cortex/cache-economics (VC7B reader-only)", () => {
 		}
 	});
 
-	test("GET cache-economics reports mode C + disabled when VC7B is OFF", async () => {
+	test("economics not yet computed reads awaiting_data (not deferred) when VC7B is ON", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "vc7b-econ-notcomputed-"));
+		process.env.MEGACOMPACT_VC7B = "1";
+		try {
+			await withServer("9496", dir, async (port) => {
+				const res = await fetch(`http://localhost:${port}/api/vector-cortex/cache-economics`);
+				assert.equal(res.status, 200);
+				const body = (await res.json()) as {
+					enabled: boolean;
+					deferredReason?: string;
+					status?: string;
+				};
+				assert.equal(body.enabled, true);
+				assert.equal(body.deferredReason, undefined, "economics is wired, so never deferred");
+				assert.equal(body.status, "awaiting_data");
+			});
+		} finally {
+			delete process.env.MEGACOMPACT_VC7B;
+		}
+	});
+
+	test("GET cache-economics reports mode C + disabled + deferred when VC7B is OFF", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "vc7b-econ-off-"));
 		process.env.MEGACOMPACT_VC7B = "0";
 		try {
 			await withServer("9493", dir, async (port) => {
 				const res = await fetch(`http://localhost:${port}/api/vector-cortex/cache-economics`);
 				assert.equal(res.status, 200);
-				const body = (await res.json()) as { enabled: boolean; mode: "A" | "B" | "C" };
+				const body = (await res.json()) as {
+					enabled: boolean;
+					mode: "A" | "B" | "C";
+					deferredReason?: string;
+				};
 				assert.equal(body.enabled, false);
 				assert.equal(
 					body.mode,
 					"C",
 					"flag-off serves nothing from cache economics: bypassed, not priced (mode C)",
+				);
+				assert.equal(
+					body.deferredReason,
+					"economics_not_computed_v0_20_23",
+					"flag-off parity: deferredReason is byte-identical to the predecessor",
 				);
 			});
 		} finally {
@@ -87,6 +120,7 @@ describe("/api/vector-cortex/cache-economics (VC7B reader-only)", () => {
 		const dir = mkdtempSync(join(tmpdir(), "vc7b-econ-priv-"));
 		process.env.MEGACOMPACT_VC7B = "1";
 		try {
+			await seedLivewireSnapshot(dir, { economics: { computed: true } });
 			await withServer("9495", dir, async (port) => {
 				const res = await fetch(`http://localhost:${port}/api/vector-cortex/cache-economics`);
 				assert.equal(res.status, 200);
@@ -94,7 +128,6 @@ describe("/api/vector-cortex/cache-economics (VC7B reader-only)", () => {
 				assert.deepEqual(
 					Object.keys(body).sort(),
 					[
-						"deferredReason",
 						"enabled",
 						"lastFailure",
 						"mode",
@@ -104,7 +137,7 @@ describe("/api/vector-cortex/cache-economics (VC7B reader-only)", () => {
 						"unprovenExclusions",
 						"updatedAt",
 					],
-					"economics view exposes exactly the aggregate keys",
+					"economics view exposes exactly the aggregate keys (no deferredReason when live)",
 				);
 				const json = JSON.stringify(body);
 				for (const leak of [

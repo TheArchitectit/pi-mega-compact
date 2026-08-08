@@ -78,6 +78,11 @@ export class CrystalStore {
   private writes = 0;
   private duplicateWrites = 0;
   private collisions = 0;
+  /** Restart-survival crystal count/bytes (LIVEWIRE rehydrate). The `committed`
+   *  map is empty in a fresh process; these offsets carry the persisted totals
+   *  so the dashboard does not reset to zero on restart. */
+  private rehydratedCrystalCount = 0;
+  private rehydratedTotalBytes = 0;
 
   /** Freeze a crystal object for a key/bytes pair (digest computed here). */
   static freeze(keyDigest: string, bytes: Uint8Array, key: CrystalV1["key"]): CrystalV1 {
@@ -196,11 +201,11 @@ export class CrystalStore {
 
   /** Reader-only aggregate for the dashboard seam — counts and bytes only. */
   stats(): CrystalStoreStats {
-    let totalBytes = 0;
+    let totalBytes = this.rehydratedTotalBytes;
     for (const c of this.committed.values()) totalBytes += c.byteCount;
     return {
       mode: this.mode(),
-      crystalCount: this.committed.size,
+      crystalCount: this.rehydratedCrystalCount + this.committed.size,
       totalBytes,
       hits: this.hits,
       misses: this.misses,
@@ -209,5 +214,24 @@ export class CrystalStore {
       duplicateWrites: this.duplicateWrites,
       collisions: this.collisions,
     };
+  }
+
+  /**
+   * Restart survival: seed the CUMULATIVE counters from a previously-persisted
+   * aggregate (LIVEWIRE). The in-memory `committed` map is naturally empty in a
+   * fresh process — this only restores the running totals the dashboard reports,
+   * so a process restart does not reset the dashboard to zero. It deliberately
+   * does NOT reconstruct crystals: frozen bytes are never persisted to the
+   * reader aggregate, only the counts.
+   */
+  rehydrate(stats: CrystalStoreStats): void {
+    this.rehydratedCrystalCount = stats.crystalCount;
+    this.rehydratedTotalBytes = stats.totalBytes;
+    this.hits = stats.hits;
+    this.misses = stats.misses;
+    this.hitBytes = stats.hitBytes;
+    this.writes = stats.writes;
+    this.duplicateWrites = stats.duplicateWrites;
+    this.collisions = stats.collisions;
   }
 }
