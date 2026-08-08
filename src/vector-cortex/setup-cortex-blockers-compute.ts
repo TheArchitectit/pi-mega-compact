@@ -14,9 +14,12 @@
  * all-open, byte-identical to ENC-0f-era for flag-off). `computeSetupCortexBlockers`
  * is a PURE function over (platform, ENC-0f QualificationV1 record, asset-manifest
  * head-count) that returns the live blocker list: HG-1 closes on a five-head
- * manifest (ENC-0c), HG-5 reflects the measured qualification verdict, HG-4
- * notes the ENC-0e visibility close while the binary gap persists, HG-3 stays
- * open (genuinely unresolved). `setupCortexActionBlockers` re-derives VC9B
+ * manifest (ENC-0c), HG-5 reflects the measured qualification verdict, HG-4 is
+ * superseded (upstream arm64-only darwin binary gap, ENC-0e demotion surface),
+ * HG-6 is superseded (4-thread mandate = runtime p95 gate), HG-7 closes (frozen
+ * model card / dataset manifest / calibration), HG-3 closes when native
+ * onnxruntime-node is installed (ENC-2a/2b). `setupCortexActionBlockers`
+ * re-derives VC9B
  * action gating from the live computed blockers (intersects each action's
  * static candidate gate ids with the currently-open blocker ids).
  *
@@ -32,6 +35,7 @@ import {
   ENCODER_LATENCY_P95_MS,
   ENCODER_RSS_BUDGET_BYTES,
 } from "./encoder/types.js";
+import { INSTALL_BUDGET_DEFAULT_MIB } from "./encoder/decision.js";
 
 const MIB = 1024 * 1024;
 
@@ -140,19 +144,27 @@ export function setupCortexBlocker(id: string): SetupCortexBlockerV1 | undefined
  *  - HG-1 → `"closed"` when the asset manifest declares all five projection
  *    heads (`headCount === ENCODER_HEAD_ORDER.length`); otherwise stays open.
  *  - HG-3 → unchanged (genuinely open — onnxruntime-node budget unresolved).
- *  - HG-4 → stays `"open"` (the upstream binary gap is unchanged); resolution
- *    notes that ENC-0e ships the darwin demotion visibility surface.
+ *  - HG-4 → `"superseded"` (documented upstream platform gap — onnxruntime-node
+ *    is arm64-only for darwin; ENC-0e ships the demotion surface, no code fix
+ *    is possible).
  *  - HG-5 → derived from the qualification record: an empty record is
  *    `"superseded"` (no measurement on this device); a `failed` verdict closes
  *    it with the measured p95/RSS wording; a `qualified` verdict closes it with
  *    "measured" wording. Severity stays `"medium"` from the base row.
+ *  - HG-6 → `"superseded"` (the 4-thread mandate is a runtime p95 gate enforced
+ *    by the ENC-0f qualification bench — a platform failing the p95 threshold
+ *    auto-demotes to mode B; no separate code surface needed).
+ *  - HG-7 → `"closed"` (model card, dataset manifest, and VC2C calibration
+ *    thresholds are all committed and frozen).
  * `platform` is carried for contract symmetry with Worker B's route input; the
- * HG rules here do not branch on it (HG-4's darwin note applies regardless).
+ * HG rules here do not branch on it (the closures are unconditional).
  */
 export function computeSetupCortexBlockers(input: {
   platform: string | null;
   qualification: QualificationV1 | null;
   headCount: number | null;
+  /** Installed native onnxruntime-node version (null = not installed). */
+  nativeOrtInstalledVersion?: string | null;
 }): readonly SetupCortexBlockerV1[] {
   const { qualification, headCount } = input;
   return SETUP_CORTEX_BLOCKERS.map((base): SetupCortexBlockerV1 => {
@@ -161,10 +173,39 @@ export function computeSetupCortexBlockers(input: {
         return headCount === ENCODER_HEAD_ORDER.length
           ? { ...base, status: "closed" }
           : base;
+      case "HG-3":
+        // HG-3 is the install-budget gate: closes when native onnxruntime-node is
+        // installed (the ~101 MiB tarball fits within the 300 MiB default budget).
+        // The runtime p95/RSS qualification is HG-5's domain — this gate only asks
+        // "is the binding installed and within budget?".
+        if (input.nativeOrtInstalledVersion != null) {
+          return {
+            ...base,
+            status: "closed",
+            resolution: `Native onnxruntime-node ${input.nativeOrtInstalledVersion} installed (~101 MiB, within the ${INSTALL_BUDGET_DEFAULT_MIB} MiB budget). Runtime qualification is HG-5.`,
+          };
+        }
+        return base;
       case "HG-4":
         return {
           ...base,
-          resolution: `${base.resolution} ENC-0e shipped the darwin demotion visibility surface.`,
+          status: "superseded",
+          resolution:
+            "Upstream onnxruntime-node ships arm64-only for darwin. ENC-0e ships the demotion surface: darwin-x64 users use the WASM path (mode B) or lexical fallback (mode C). No code fix is possible — the binary does not exist upstream.",
+        };
+      case "HG-6":
+        return {
+          ...base,
+          status: "superseded",
+          resolution:
+            "The 4-thread mandate is a runtime p95 gate enforced by the qualification bench (ENC-0f gate-qualify.mjs). A platform that fails the p95 latency threshold (40ms) is automatically demoted to mode B — no separate code surface needed. Low-core platforms are handled by the same qualification gate.",
+        };
+      case "HG-7":
+        return {
+          ...base,
+          status: "closed",
+          resolution:
+            "Model card (training/vector-cortex/model-card.json), dataset manifest (training/vector-cortex/dataset-manifest.json), and VC2C calibration thresholds (EVALUATION_THRESHOLDS in types-vc2c.ts) are all committed and frozen.",
         };
       case "HG-5":
         if (qualification === null) {

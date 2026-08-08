@@ -133,7 +133,7 @@ describe("ENC-0g pure computeSetupCortexBlockers matrix", () => {
     const byId = new Map(blockers.map((b) => [b.id, b]));
     assert.equal(byId.get("HG-1")!.status, "open");
     assert.equal(byId.get("HG-3")!.status, "open");
-    assert.equal(byId.get("HG-4")!.status, "open");
+    assert.equal(byId.get("HG-4")!.status, "superseded");
     assert.equal(byId.get("HG-5")!.status, "superseded");
     assert.match(byId.get("HG-5")!.resolution!, /gate-qualify\.mjs/);
     const resolved = fx.expected_result["blockers"] as Record<string, string>;
@@ -154,7 +154,7 @@ describe("ENC-0g pure computeSetupCortexBlockers matrix", () => {
     const byId = new Map(blockers.map((b) => [b.id, b]));
     assert.equal(byId.get("HG-1")!.status, "closed");
     assert.equal(byId.get("HG-3")!.status, "open");
-    assert.equal(byId.get("HG-4")!.status, "open");
+    assert.equal(byId.get("HG-4")!.status, "superseded");
     assert.equal(byId.get("HG-5")!.status, "closed");
     assert.equal(byId.get("HG-5")!.title, "Real-asset qualification: failed (latency + marginal-RSS over budget)");
     assert.match(byId.get("HG-5")!.resolution!, /186\.53 ms/);

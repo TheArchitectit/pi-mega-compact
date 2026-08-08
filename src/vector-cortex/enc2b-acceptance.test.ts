@@ -17,8 +17,9 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -129,10 +130,24 @@ describe("ENC-2b retest module + artifacts satisfy the fixture pins", () => {
     assert.equal(budget, fixture("ENC-RETEST-001").expected_result.rss_budget_mib, "rss budget = installBudgetMib");
   });
   test("runNativeRetest returns null when no binding is installed (ENC-RETEST-002 absence)", async () => {
-    // A temp stateDir with no native-ort binding -> the module returns null
-    // (never throws), so the GET omits both fields (absent, not null).
-    const result = await runNativeRetest("/tmp/enc2b-no-native-ort-absent");
-    assert.equal(result, null);
+    // An isolated HOME + stateDir with no native-ort binding -> the module
+    // probes neither the global (~/.pi/mega-compact/native-ort) nor the stateDir
+    // root and returns null (never throws), so the GET omits both fields
+    // (absent, not null). Isolating HOME keeps this deterministic regardless of
+    // whether the host machine has the ENC-2a native binding installed.
+    const home = mkdtempSync(join(tmpdir(), "enc2b-no-native-ort-home-"));
+    const stateDir = mkdtempSync(join(tmpdir(), "enc2b-no-native-ort-absent-"));
+    const savedHome = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      const result = await runNativeRetest(stateDir);
+      assert.equal(result, null);
+    } finally {
+      if (savedHome === undefined) delete process.env.HOME;
+      else process.env.HOME = savedHome;
+      rmSync(home, { recursive: true, force: true });
+      rmSync(stateDir, { recursive: true, force: true });
+    }
     const fx = fixture("ENC-RETEST-002");
     assert.equal(fx.expected_result.retest_result_absent, true, "binding-absent omits result");
     assert.equal(fx.expected_result.backend_effective_absent, true, "binding-absent omits backend");

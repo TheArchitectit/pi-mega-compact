@@ -25,7 +25,7 @@ import { readFileSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RouteContext } from "./routes-core.js";
-import { VC9A_ENABLED, ENC_0E_ENABLED, ENC_0F_ENABLED, ENC_0G_ENABLED } from "../../src/config.js";
+import { VC9A_ENABLED, ENC_0E_ENABLED, ENC_0F_ENABLED, ENC_0G_ENABLED, ENC_2A_ENABLED } from "../../src/config.js";
 import { readEncoderManifest, verifyEncoderAsset, detectPlatform } from "../../src/vector-cortex/encoder/asset.js";
 import type { QualificationV1 } from "../../src/vector-cortex/encoder/qualify.js";
 import { selectRuntimeBackend } from "../../src/vector-cortex/encoder/runtime-select.js";
@@ -37,6 +37,7 @@ import {
   encoderStateDir,
   QUALIFICATION_RECORD_UNAVAILABLE,
 } from "./qualification-record.js";
+import { readEnc2aGuide } from "./routes-setup-enc2a.js";
 import type {
   SetupCortexStatusResponse,
   BlockerV1,
@@ -214,12 +215,18 @@ export function handleSetupCortexStatus(
 
   const facts = enabled ? setupCortexFacts(record, recordGate) : null;
 
+  // ENC-2a native ORT detection: pass the installed version + retest verdict to
+  // the blockers compute so HG-3 can close when native is installed + qualified.
+  const enc2a = enabled && ENC_2A_ENABLED() ? readEnc2aGuide(encoderStateDir()) : null;
+  const nativeOrtInstalledVersion = enc2a?.installedVersion ?? null;
+
   const blocks: BlockerV1[] = enabled
     ? enc0g
       ? [...computeSetupCortexBlockers({
           platform: detectPlatform(),
           qualification: record,
           headCount: facts ? facts.headCount : null,
+          nativeOrtInstalledVersion,
         })]
       : [...SETUP_CORTEX_BLOCKERS]
     : [];

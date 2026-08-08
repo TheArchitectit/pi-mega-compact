@@ -16,6 +16,8 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { withServer, realManifestDigest } from "./routes-vector-cortex-helpers.js";
+import { readEnc2aGuide } from "./routes-setup-enc2a.js";
+import { encoderStateDir } from "./qualification-record.js";
 
 /**
  * ENC-0g: write a fake QualificationV1 record into an isolated state dir and
@@ -98,15 +100,19 @@ describe("/api/setup-cortex-status (VC9A reader-only)", () => {
 				const ids = body.blockers.map((b) => b.id).sort();
 				assert.deepEqual(ids, ["HG-1", "HG-3", "HG-4", "HG-5", "HG-6", "HG-7"]);
 				const enc0gOn = process.env.MEGACOMPACT_ENC_0G !== "0";
+				// HG-3 closes when the ENC-2a native binding is installed. The route
+				// derives this from the device, so derive the expected status the same
+				// way (reader-only probe of the installed onnxruntime-node version).
+				const hg3Expected = readEnc2aGuide(encoderStateDir()).installedVersion != null ? "closed" : "open";
 				for (const b of body.blockers) {
 					if (enc0gOn) {
 						if (b.id === "HG-1") assert.equal(b.status, "closed", "HG-1 closes on 5-head manifest");
-						else if (b.id === "HG-3") assert.equal(b.status, "open", "HG-3 stays genuinely open");
-						else if (b.id === "HG-4") assert.equal(b.status, "open", "HG-4 binary gap persists");
+						else if (b.id === "HG-3") assert.equal(b.status, hg3Expected, "HG-3 closes on native install, else stays open");
+						else if (b.id === "HG-4") assert.equal(b.status, "superseded", "HG-4 superseded (upstream binary gap)");
 						else if (b.id === "HG-5")
 							assert.ok(["closed", "superseded"].includes(b.status), `HG-5 measured or superseded, got ${b.status}`);
-						else if (b.id === "HG-6") assert.equal(b.status, "open", "HG-6 stays open");
-						else if (b.id === "HG-7") assert.equal(b.status, "open", "HG-7 stays open");
+						else if (b.id === "HG-6") assert.equal(b.status, "superseded", "HG-6 superseded (runtime p95 gate)");
+						else if (b.id === "HG-7") assert.equal(b.status, "closed", "HG-7 closed (artifacts frozen)");
 					} else {
 						assert.equal(b.status, "open", `${b.id} never closed (flag-off)`);
 					}

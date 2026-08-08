@@ -30,7 +30,7 @@ import {
   NATIVE_ORT_VERSION,
   NATIVE_ORT_PACKAGE,
   NATIVE_ORT_TARBALL_SHA256,
-} from "../../src/vector-cortex/encoder/native-install-artifacts.js";
+} from "../../dist/vector-cortex/encoder/native-install-artifacts.js";
 
 const NATIVE_ORT_DIR = join(process.env.HOME ?? "", ".pi", "mega-compact", "native-ort");
 const INSTALLABLE = ["linux-x64", "linux-arm64", "darwin-arm64", "win32-x64"];
@@ -108,51 +108,54 @@ function main() {
     process.exit(0);
   }
 
-  const spec = `${NATIVE_ORT_PACKAGE}@${NATIVE_ORT_VERSION}`;
-  // execFileSync (NOT exec) — argument vectors only, no shell interpolation.
-  execFileSync("npm", ["install", "--prefix", NATIVE_ORT_DIR, spec], {
+  // Download the tarball to a temp path so we can sha256-verify BEFORE install
+  // (the npm install path's .package.json integrity is sha512, not sha256, and
+  // hashing the installed package.json is a false verify — both are bugs fixed here).
+  mkdirSync(NATIVE_ORT_DIR, { recursive: true });
+  try {
+    execFileSync("npm", ["pack", `${NATIVE_ORT_PACKAGE}@${NATIVE_ORT_VERSION}`, "--pack-destination", join(NATIVE_ORT_DIR, ".")], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "inherit"],
+    });
+  } catch {
+    console.error("npm pack failed — could not download tarball");
+    process.exit(1);
+  }
+
+  // npm pack writes <pkg>-<ver>.tgz; find it in the native-ort dir.
+  const packedName = `${NATIVE_ORT_PACKAGE}-${NATIVE_ORT_VERSION}.tgz`;
+  const packedPath = join(NATIVE_ORT_DIR, packedName);
+  if (!existsSync(packedPath)) {
+    console.error(`packed tarball not found: ${packedPath}`);
+    process.exit(1);
+  }
+
+  const actual = sha256File(packedPath);
+  console.log(`verify: expected sha256=${NATIVE_ORT_TARBALL_SHA256}`);
+  console.log(`verify: actual   sha256=${actual}`);
+  if (actual !== NATIVE_ORT_TARBALL_SHA256) {
+    console.error(
+      `sha256 mismatch — downloaded tarball does not match the pinned NATIVE_ORT_TARBALL_SHA256; refusing to install`,
+    );
+    execFileSync("rm", ["-f", packedPath], { stdio: "ignore" });
+    process.exit(1);
+  }
+
+  // Install from the verified local tarball (never from the registry a second time).
+  mkdirSync(NATIVE_ORT_DIR, { recursive: true });
+  execFileSync("npm", ["install", "--prefix", NATIVE_ORT_DIR, packedPath], {
     stdio: "inherit",
   });
+  execFileSync("rm", ["-f", packedPath], { stdio: "ignore" });
 
   const installedPkg = join(NATIVE_ORT_DIR, "node_modules", NATIVE_ORT_PACKAGE, "package.json");
   if (!existsSync(installedPkg)) {
     console.error(`installed package.json not found: ${installedPkg}`);
     process.exit(1);
   }
-  const tarballJson = join(NATIVE_ORT_DIR, "node_modules", NATIVE_ORT_PACKAGE, ".package.json");
-
-  // Verify the sha256 of the CURRENT installed package against the pin. If the
-  // tarball integrity info is present in the npm-installed metadata, use it;
-  // otherwise hash the main entry file below. Never a silent pass on mismatch.
-  let actual = NATIVE_ORT_TARBALL_SHA256;
-  if (existsSync(tarballJson)) {
-    try {
-      const meta = JSON.parse(readFileSync(tarballJson, "utf8"));
-      if (meta && meta.integrity && typeof meta.integrity === "string") {
-        const m = meta.integrity.match(/sha256-([A-Za-z0-9+/=]+)/);
-        if (m) {
-          actual = Buffer.from(m[1], "base64").toString("hex");
-        }
-      }
-    } catch {
-      // fall through to the file-hash below
-    }
-  } else {
-    const fileToHash = installedPkg;
-    if (existsSync(fileToHash)) actual = sha256File(fileToHash);
-  }
-
-  console.log(`verify: expected sha256=${NATIVE_ORT_TARBALL_SHA256}`);
-  console.log(`verify: actual   sha256=${actual}`);
-  if (actual !== NATIVE_ORT_TARBALL_SHA256) {
-    console.error(
-      `sha256 mismatch — installed tarball does not match the pinned NATIVE_ORT_TARBALL_SHA256; refusing to mark installed`,
-    );
-    process.exit(1);
-  }
 
   writeMarker(platform);
-  console.log(`installed onnxruntime-node@${NATIVE_ORT_VERSION} (${platform}); marker written.`);
+  console.log(`installed onnxruntime-node@${NATIVE_ORT_VERSION} (${platform}); sha256 verified + marker written.`);
   console.log("restart: pi update --extensions && pi session-start");
   console.log("verify: expect encoderBackend: native on next status poll");
 }
