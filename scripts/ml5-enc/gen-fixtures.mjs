@@ -1161,6 +1161,127 @@ const runtimeSettingsFixtures = [
   },
 ];
 
+// ── ENC-2a: encoder-install-guide fixtures ──────────────────────────────────
+// Native onnxruntime install GUIDE (detect + copy-paste): the GET status route
+// surfaces a platform-matched three-step install guide + installed-version,
+// built ONLY from the artifacts module constants (never an inline URL/hash).
+// The guide renders only when opt-in on AND effective backend "wasm" AND the
+// host platform is installable; the ENC-0e darwin-x64 demotion sentinel keeps
+// the guide absent on an Intel Mac. Flag-off omits both new fields byte-
+// identical to the ENC-1b survivor. Contract is additive (ENC-INSTALL-006).
+const INSTALL_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema#",
+  title: "ENC-2a encoder-install-guide fixture envelope",
+  type: "object",
+  description:
+    "Common structure every ENC-2a encoder-install-guide fixture validates against. `kind` names the guide round-trip / constants-present / sha256-format / darwin-absent / flag-off / contract-additive branch exercised; `setup` carries the platform + opt-in + effective backend + flag_off inputs for the route harness; `expected_outcome` is ok or error; `expected_result` pins the fields the route + artifacts module must assert (guide_commands, script_path, platform, version, sha256_lowercase_hex64, guide_absent, demotion_sentinel, byte_identical, contract_additive).",
+  required: ["id", "producer", "assertion", "kind", "setup", "expected_outcome", "expected_result"],
+  properties: {
+    id: { type: "string" },
+    producer: { type: "string" },
+    assertion: { type: "string" },
+    kind: {
+      type: "string",
+      enum: [
+        "guide-round-trip",
+        "constants-present",
+        "sha256-format",
+        "darwin-guide-absent",
+        "flag-off",
+        "contract-additive",
+      ],
+    },
+    setup: {
+      type: "object",
+      properties: {
+        platform: { type: "string" },
+        native_opt_in: { type: "boolean" },
+        effective_backend: { type: "string", enum: ["wasm", "native"] },
+        flag_off: { type: "boolean" },
+        contract_additive: { type: "boolean" },
+        runs: { type: "integer" },
+      },
+    },
+    expected_outcome: { type: "string", enum: ["ok", "error"] },
+    expected_result: { type: "object" },
+  },
+};
+
+const INSTALL_VERSION = "1.27.0";
+const INSTALL_PACKAGE = "onnxruntime-node";
+const INSTALL_SHA256 = "c3779c01c59832f8c03e2c392ac3af10bf08579f1822e8b1c63cc451edb302a2";
+
+const installFixtures = [
+  {
+    id: "ENC-INSTALL-001",
+    assertion:
+      "supported-platform guide round-trip: opt-in on + wasm backend (onnxruntime-node absent) -> the GET carries the platform-matched install/restart/verify commands + scriptPath built verbatim from the artifacts constants (version pinned 1.27.0, no inline URL/hash in the route)",
+    kind: "guide-round-trip",
+    setup: { platform: "linux-x64", native_opt_in: true, effective_backend: "wasm", runs: 1 },
+    expected_outcome: "ok",
+    expected_result: {
+      guide_commands_length: 3,
+      step1_install: `npm install --prefix ~/.pi/mega-compact/native-ort onnxruntime-node@${INSTALL_VERSION}`,
+      script_path: "scripts/encoder/install-native-ort.mjs",
+      platform: "linux-x64",
+      version: INSTALL_VERSION,
+    },
+  },
+  {
+    id: "ENC-INSTALL-002",
+    assertion:
+      "artifacts constants present: single monolithic tarball for onnxruntime-node@1.27.0 — NATIVE_ORT_TARBALL_SHA256 + NATIVE_ORT_PACKAGE + NATIVE_ORT_VERSION scalars (one sha for all hosts, NO per-platform Record), and the src module carries NO raw registry URL (the URL is derived by the operator script from package+version — PREVENT-PI-004)",
+    kind: "constants-present",
+    setup: { platform: "linux-x64", runs: 1 },
+    expected_outcome: "ok",
+    expected_result: {
+      package: INSTALL_PACKAGE,
+      sha256: INSTALL_SHA256,
+      version: INSTALL_VERSION,
+    },
+  },
+  {
+    id: "ENC-INSTALL-003",
+    assertion:
+      "sha256 format pin: the single NATIVE_ORT_TARBALL_SHA256 is lowercase hex length 64; NATIVE_ORT_VERSION is a major.minor.patch semver string",
+    kind: "sha256-format",
+    setup: { platform: "linux-x64", runs: 1 },
+    expected_outcome: "ok",
+    expected_result: {
+      sha256_lowercase_hex64: true,
+      version_semver: true,
+      version: INSTALL_VERSION,
+    },
+  },
+  {
+    id: "ENC-INSTALL-004",
+    assertion:
+      "darwin-x64 guide ABSENT (no native binary upstream — the ENC-0e demotion sentinel keeps the guide off for an Intel Mac even with opt-in on + wasm backend; the blockers row surfaces the demotion reason instead)",
+    kind: "darwin-guide-absent",
+    setup: { platform: "darwin-x64", native_opt_in: true, effective_backend: "wasm", runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { guide_absent: true, demotion_sentinel: true },
+  },
+  {
+    id: "ENC-INSTALL-005",
+    assertion:
+      "flag-off (MEGACOMPACT_ENC_2A=0) -> GET omits both new fields (nativeOrtInstallGuide + nativeOrtInstalledVersion), byte-identical to the ENC-1b-era shape",
+    kind: "flag-off",
+    setup: { platform: "linux-x64", native_opt_in: true, effective_backend: "wasm", flag_off: true, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { guide_absent: true, installed_absent: true, byte_identical: true },
+  },
+  {
+    id: "ENC-INSTALL-006",
+    assertion:
+      "contract additive — a pre-ENC-2a client that omits the new keys still validates against the unchanged contract; the guide-request POST `false` returns 400 guide_rejected_false_nothing_to_do (no server execution)",
+    kind: "contract-additive",
+    setup: { platform: "linux-x64", contract_additive: true, runs: 1 },
+    expected_outcome: "ok",
+    expected_result: { contract_additive: true, validates: true, false_rejected: "guide_rejected_false_nothing_to_do" },
+  },
+];
+
 // ── Main (mirrors the VC9 setup generator coordinate with manifest.json) ─────
 export function writeAll() {
   mkdirSync(ENC_DIR, { recursive: true });
@@ -1484,6 +1605,41 @@ export function writeAll() {
     });
   }
 
+  // The ENC-INSTALL schema row.
+  const installSchemaBytes = Buffer.from(canonicalJson(INSTALL_SCHEMA), "utf8");
+  const installSchemaRel = "schemas/encoder-install-guide-fixture.schema.json";
+  writeFileSync(join(V2, installSchemaRel), installSchemaBytes);
+  rows.push({
+    id: "encoder-install-guide-fixture",
+    path: installSchemaRel,
+    sha256: sha256Hex(installSchemaBytes),
+    schema: installSchemaRel,
+    algorithm: "json-schema",
+    producer,
+    expected: "schema",
+    license: "synthetic",
+  });
+
+  // The 6 ENC-INSTALL fixture rows + on-disk files.
+  const installDir = join(V2, "encoder-install-guide");
+  mkdirSync(installDir, { recursive: true });
+  for (const fx of installFixtures) {
+    const obj = { ...fx, schema: installSchemaRel, producer };
+    const bytes = Buffer.from(canonicalJson(obj), "utf8");
+    const rel = `encoder-install-guide/${fx.id}.json`;
+    writeFileSync(join(V2, rel), bytes);
+    rows.push({
+      id: fx.id,
+      path: rel,
+      sha256: sha256Hex(bytes),
+      schema: installSchemaRel,
+      algorithm: "encoder-install-guide",
+      producer,
+      expected: fx.expected_outcome,
+      license: "synthetic",
+    });
+  }
+
   // Merge into the existing manifest (id-dedupe so re-runs are idempotent) and
   // re-sort the whole fixtures array by id.
   const existing = manifest.fixtures.filter((r) => !rows.some((n) => n.id === r.id));
@@ -1527,6 +1683,9 @@ export function writeAll() {
   setCsv("domain", "encoder-runtime-settings");
   setCsv("schemaVersion", "encoder-runtime-settings-fixture");
   setOwnerCsv("owner", "ENC-1b");
+  setCsv("domain", "encoder-install-guide");
+  setCsv("schemaVersion", "encoder-install-guide-fixture");
+  setOwnerCsv("owner", "ENC-2a");
 
   writeFileSync(manifestPath, Buffer.from(canonicalJson(manifest), "utf8"));
 
@@ -1540,8 +1699,9 @@ export function writeAll() {
       budgetFixtures.length +
       statusFixtures.length +
       settingsFixtures.length +
-      runtimeSettingsFixtures.length,
-    schemaCount: 9,
+      runtimeSettingsFixtures.length +
+      installFixtures.length,
+    schemaCount: 10,
   };
 }
 

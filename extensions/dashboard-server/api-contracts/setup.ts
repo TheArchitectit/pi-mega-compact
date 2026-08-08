@@ -64,6 +64,25 @@ export interface SetupStatusResponse {
    *  operand — persists even when `nativeOrtBudgetMib` is absent because the
    *  runtime applies the default when unset. Additive, flag-gated. */
   readonly nativeOrtBudgetEffectiveMib?: string;
+  /** ENC-2a: the native onnxruntime install-guide, present (as an object) when
+   *  the operator opted into the native backend AND the effective runtime is
+   *  still wasm (onnxruntime-node absent) AND the host platform is installable.
+   *  `null` when opt-in is off or the platform is unsupported/demoted (the guide
+   *  never renders). Built ONLY from the artifacts module constants — no inline
+   *  URLs or hashes in the route. Additive, flag-gated; absent = no guide. */
+  readonly nativeOrtInstallGuide?: {
+    /** The host's EncoderPlatform this guide is matched to. */
+    readonly platform: string;
+    /** The [install, restart, verify] copy-paste commands. */
+    readonly commands: readonly string[];
+    /** The committed operator script path (repo-rel). */
+    readonly scriptPath: string;
+  } | null;
+  /** ENC-2a: the installed native onnxruntime version read from
+   *  `~/.pi/mega-compact/native-ort/` when the probe marker/package is present
+   *  and platform-matched. Absent (NOT null) when not installed, so the client
+   *  hides the detected-version row. Additive, flag-gated, reader-only. */
+  readonly nativeOrtInstalledVersion?: string | null;
 }
 
 /**
@@ -132,6 +151,11 @@ export interface SetupConfigureRequest {
    *  positive integer string within `ENC_2BUDGET_MAX_MIB` (validated; additive,
    *  flag-gated). */
   readonly nativeOrtBudgetMib?: string;
+  /** ENC-2a: an optional { boolean } guide-request key. `true` → 200 + the
+   *  guide echoed (this sprint conveys the GUIDE only — no server-side
+   *  execution); `false` → 400 `guide_rejected_false_nothing_to_do`.
+   *  Flag-gated, additive — ignored (no-op) when the flag is off. */
+  readonly nativeOrtInstallGuide?: boolean;
 }
 
 /** Response for POST /api/setup-configure. */

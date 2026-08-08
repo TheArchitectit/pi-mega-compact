@@ -315,6 +315,12 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 			true,
 		),
 		boolDirect(
+			"MEGACOMPACT_ENC_2A",
+			"ENC-2a native onnxruntime install GUIDE (detect + copy-paste)",
+			"ENC-2a surfaces the platform-matched native onnxruntime install-guide (three copy-paste steps + script path) on the Setup Cortex sub-tab when the operator opted into the native backend but the effective runtime is still wasm (onnxruntime-node absent). Pure guidance — the extension NEVER executes or fetches (PREVENT-PI-004 unchanged); the committed operator script scripts/encoder/install-native-ort.mjs runs in the USER's shell. OFF = no guide GET fields, no guide-request POST branch, no install card (byte-identical ENC-1b predecessor).",
+			true,
+		),
+		boolDirect(
 			"MEGACOMPACT_COSINE_FP_BENCH",
 			"COS-FP-A Synthetic FP Bench",
 			"Synthetic FP harness + L2 cosine threshold calibration (COS-FP-A): drives the deterministic synthetic-corpus grid sweep (scripts/cosine-fp/bench.mjs) that measures L2 cosine false-positive rates and emits a recommended default, and serves the reader-only GET /api/cosine-fp-report. Synthetic-corpus-only — never reads real session/ledger bytes. OFF = bench inert, endpoint 404s, no report write, L2_COSINE plain MEGACOMPACT_L2_THRESHOLD (byte-identical predecessor).",

@@ -21,6 +21,7 @@ import {
 	tryEnc2BudgetInto,
 	enc2BudgetValidateCombined,
 } from "./routes-setup-enc2budget.js";
+import { readEnc2aGuide, enc2aGuideRequest } from "./routes-setup-enc2a.js";
 import { writeEmbedderEnv } from "./routes-setup-env-upsert.js";
 import {
 	detectOllama,
@@ -85,6 +86,11 @@ export function handleSetupStatus(
 	}
 	const configured = detectConfiguredEmbedder(ctx.stateDir);
 	const active = detectCurrentEmbedder();
+	// ENC-2a (flag-gated, additive): the native install-guide + installed-version
+	// fields. Optional fields are added only when present/installable; when the
+	// flag is off readEnc2aGuide returns nulls so the body stays byte-identical
+	// to the ENC-1b-era shape.
+	const enc2a = readEnc2aGuide(ctx.stateDir);
 	// ENC-1a (flag-gated, additive): echo the persisted endpoint URL and an
 	// embeddingApiKeySet boolean ONLY — the raw API key is never returned. When
 	// the flag is off (or neither is set) both fields are simply omitted.
@@ -100,6 +106,8 @@ export function handleSetupStatus(
 		),
 		...enc1aStatusFields(ctx.stateDir), ...enc1bStatusFields(ctx.stateDir),
 		...enc2BudgetStatusFields(ctx.stateDir),
+		...(enc2a.guide !== null ? { nativeOrtInstallGuide: enc2a.guide } : {}),
+		...(enc2a.installedVersion !== null ? { nativeOrtInstalledVersion: enc2a.installedVersion } : {}),
 	};
 	// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
 	res.writeHead(200, { "Content-Type": "application/json" });
@@ -218,10 +226,28 @@ export function handleSetupConfigure(
 			return;
 		}
 		const body = parsed.value as unknown as SetupConfigureRequest;
+		// ENC-2a guide-request key (flag-gated, additive): `false` → 400 (an
+		// operator-driven no-op — this sprint conveys the GUIDE only, no server
+		// execution), `true` → 200 + the guide echoed (still no execution; the
+		// execute path is ENC-2c). Flag-off: enc2aGuideRequest returns null so the
+		// key falls through unrecognized (byte-identical ENC-1b-era predecessor).
+		const guideReq = enc2aGuideRequest(body);
+		// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
+		if (guideReq !== null && guideReq.status === 400) {
+			res.writeHead(400, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ error: "guide_rejected_false_nothing_to_do" }));
+			return;
+		}
 		// ENC-1a (flag-gated, additive): a pure external-embedder configure
 		// (new keys, no embedder selection) is handled by the sibling writer.
 		// Flag-off = the keys are simply not recognized, falling through to the
 		// pre-ENC-1a embedder path below (byte-identical predecessor).
+		if (guideReq !== null && guideReq.status === 200) {
+			// guardrails-allow PREVENT-PI-004: loopback dashboard response (local)
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ nativeOrtInstallGuide: readEnc2aGuide(ctx.stateDir).guide }));
+			return;
+		}
 		if (tryEnc1aConfigure(body, res, ctx)) return;
 		if (tryEnc1bConfigure(body, res, ctx)) return; // pure ENC-1b configure (dim/headers/allow-remote/native)
 		// ENC-1b combined-payload validation: when a payload carries a valid

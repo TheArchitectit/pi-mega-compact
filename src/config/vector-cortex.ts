@@ -92,6 +92,8 @@ export {
   ENC_2BUDGET_MAX_MIB,
   ENC_2BUDGET_DEFAULT_MIB,
 } from "./vector-cortex-enc2budget.js";
+// ENC-2a native onnxruntime install-guide flag extracted to vector-cortex-enc2a.ts.
+export { ENC_2A_ENABLED } from "./vector-cortex-enc2a.js";
 // Breaker constants (TRIAD_RESILIENCE.md §breaker) extracted to vector-cortex-breakers.ts.
 export {
   BREAKER_WINDOW_MS,

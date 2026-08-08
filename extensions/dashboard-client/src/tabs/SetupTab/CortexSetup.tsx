@@ -15,6 +15,7 @@ import { CortexEncoderCard } from "./CortexEncoderCard";
 import { CortexBlockersCard } from "./CortexBlockersCard";
 import { CortexActionsCard } from "./CortexActionsCard";
 import CortexRuntimeCard from "./CortexRuntimeCard";
+import CortexRuntimeInstallCard from "./CortexRuntimeInstallCard";
 import { VectorCortexCosineFpCard } from "./VectorCortexCosineFpCard";
 import { VectorCortexRepoCorpusCard } from "./VectorCortexRepoCorpusCard";
 import { styles } from "./CortexSetupStyles";
@@ -43,6 +44,7 @@ export default function CortexSetup(): React.ReactElement {
 
 			<CortexEncoderCard data={state.data} error={state.error} />
 			<CortexRuntimeCard />
+			<CortexRuntimeInstallCard />
 			<VectorCortexCosineFpCard />
 			<VectorCortexRepoCorpusCard />
 			<CortexBlockersCard
