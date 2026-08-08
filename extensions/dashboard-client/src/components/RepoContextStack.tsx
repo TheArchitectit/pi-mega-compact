@@ -17,6 +17,7 @@
  */
 
 import type React from "react";
+import { useRef } from "react";
 import type { ActiveSession, SessionsResponse } from "@contracts";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 
@@ -152,6 +153,17 @@ export function RepoContextStack({
 	loading,
 	error,
 }: RepoContextStackProps): React.ReactElement | null {
+	// Hysteresis: retain the last non-empty aggregates so a transiently-empty
+	// /api/sessions poll (prune-vs-heartbeat race) doesn't unmount/remount the
+	// chart (the visible "blinking"). We only fall back to "No active sessions."
+	// when there has NEVER been data (initial mount) or after a sustained empty.
+	const lastNonEmpty = useRef<{
+		repos: RepoAggregate[];
+		totalTokens: number;
+		maxWindow: number;
+		sessionCount: number;
+	} | null>(null);
+
 	if (error) {
 		return (
 			<StackCard>
@@ -174,7 +186,17 @@ export function RepoContextStack({
 	const { repos, totalTokens, maxWindow, sessionCount } =
 		aggregateRepos(activeSessions);
 
-	if (repos.length === 0) {
+	if (repos.length > 0) {
+		lastNonEmpty.current = { repos, totalTokens, maxWindow, sessionCount };
+	}
+
+	// Use last-known-good data when the current poll is transiently empty.
+	const displayed =
+		repos.length > 0
+			? { repos, totalTokens, maxWindow, sessionCount }
+			: lastNonEmpty.current;
+
+	if (!displayed) {
 		return (
 			<StackCard>
 				<span className="text-sm text-muted-foreground">No active sessions.</span>
@@ -183,7 +205,9 @@ export function RepoContextStack({
 	}
 
 	const combinedPct =
-		maxWindow > 0 ? Math.round((totalTokens / maxWindow) * 100) : 0;
+		displayed.maxWindow > 0
+			? Math.round((displayed.totalTokens / displayed.maxWindow) * 100)
+			: 0;
 
 	return (
 		<StackCard>
@@ -192,10 +216,12 @@ export function RepoContextStack({
 				role="group"
 				aria-label="Per-repo context usage"
 			>
-				{repos.map((r) => {
+				{displayed.repos.map((r) => {
 					const pctOfTotal =
-						totalTokens > 0 ? (r.tokens / totalTokens) * 100 : 0;
-					const widthPct = totalTokens > 0 ? pctOfTotal : 0;
+						displayed.totalTokens > 0
+							? (r.tokens / displayed.totalTokens) * 100
+							: 0;
+					const widthPct = displayed.totalTokens > 0 ? pctOfTotal : 0;
 					const tooltip =
 						`${r.basename}: ${fmtTokens(r.tokens)} tokens ` +
 						`(${pctOfTotal.toFixed(1)}% of total)`;
@@ -214,16 +240,16 @@ export function RepoContextStack({
 				})}
 			</div>
 			<p className="repo-stack-total">
-				{fmtTokens(totalTokens)} tokens across {repos.length}{" "}
-				{repos.length === 1 ? "repo" : "repos"} /{" "}
-				{sessionCount}{" "}
-				{sessionCount === 1 ? "session" : "sessions"}{" "}
+				{fmtTokens(displayed.totalTokens)} tokens across {displayed.repos.length}{" "}
+				{displayed.repos.length === 1 ? "repo" : "repos"} /{" "}
+				{displayed.sessionCount}{" "}
+				{displayed.sessionCount === 1 ? "session" : "sessions"}{" "}
 				<span className="pct">— {combinedPct}% of combined max window</span>
 			</p>
 			<div className="repo-stack-legend">
-				{repos.map((r) => {
+				{displayed.repos.map((r) => {
 					const pctOfTotal =
-						totalTokens > 0 ? (r.tokens / totalTokens) * 100 : 0;
+						displayed.totalTokens > 0 ? (r.tokens / displayed.totalTokens) * 100 : 0;
 					return (
 						<div
 							key={r.repoRoot ?? "__null__"}
