@@ -26,15 +26,24 @@
  */
 
 import { createEncoderRuntime } from "./runtime.js";
-import { encodeVectorSet, type HeadProjectionOptions } from "./heads.js";
+import {
+  encodeVectorSet,
+  loadHeadProjections,
+  projectHeadFromTrunk,
+  type HeadProjectionOptions,
+  type HeadProjectionTable,
+} from "./heads.js";
 import { embedTrigram512, selectTrigramBFallback } from "./trigram.js";
 import { embedLexical, selectLexicalC } from "./lexical.js";
 import { createEncoderHeadsReporter, type EncoderHeadsReporter } from "./emit-vc2b.js";
+import { ML5A_ENABLED } from "../../config/vector-cortex.js";
 import {
   ENC_FAIL,
+  ENCODER_HEAD_ORDER,
   type EncoderInput,
   type EncoderLoadResult,
   type EncoderRuntime,
+  type HeadVector,
   type VectorSetV1,
 } from "./types.js";
 
@@ -61,6 +70,15 @@ export interface RouterOptions extends HeadProjectionOptions {
   /** Forced fallback: skips the A load and selects the named VC2B fallback
    *  (used to exercise C when A and B are both disabled). Optional. */
   readonly forceFallback?: "B" | "C";
+  /**
+   * ML5-A (VC2B-2): path to the `trained-heads-v1` artifact. When supplied AND
+   * the MEGACOMPACT_ML5_A gate is on AND the artifact loads (correct seed +
+   * shape), the mode-A VectorSet is produced by projecting the real trained head
+   * matrices over the trunk embedding (`projectHeadFromTrunk`). When absent /
+   * flag-off / unloadable, the mode-A producer falls back to the deterministic
+   * LCG placeholder `encodeVectorSet` (byte-identical predecessor).
+   */
+  readonly trainedHeadsPath?: string;
 }
 
 /** Deterministic text derived from an int token sequence so the asset-free
@@ -133,8 +151,44 @@ export function encodeOrFallback(
   if (!inferred.ok) {
     return fallbackFromLoad({ ok: false, mode: "B", code: inferred.code }, reporter, tokens);
   }
-  const vectorSet = encodeVectorSet(tokens, { reporter, seed: options.seed });
+  const vectorSet = produceVectorSet(inferred.semantic, tokens, options, reporter);
   return { ok: true, mode: "A", vectorSet, code: null };
+}
+
+/**
+ * Produce a mode-A `VectorSetV1` from the [1,384] trunk embedding (the
+ * `runtime.infer` result). VC2B-2 ML5-A: when real trained heads are loaded
+ * (`MEGACOMPACT_ML5_A` on + a `trainedHeadsPath` that loads), the multi-head
+ * output is projected through the real trained projection matrices via
+ * `projectHeadFromTrunk`. Otherwise (flag-off / absent / unloadable artifact)
+ * the deterministic LCG placeholder `encodeVectorSet` serves mode A —
+ * byte-identical to the VC2B predecessor. Non-fatal: an unloadable artifact
+ * degrades to the placeholder, never a throw.
+ */
+function produceVectorSet(
+  trunkEmbedding: Float32Array,
+  tokens: readonly number[],
+  options: RouterOptions,
+  reporter: EncoderHeadsReporter,
+): VectorSetV1 {
+  const table: HeadProjectionTable | null =
+    ML5A_ENABLED() && options.trainedHeadsPath !== undefined
+      ? loadHeadProjections(options.trainedHeadsPath)
+      : null;
+  if (table !== null) {
+    const heads: HeadVector[] = ENCODER_HEAD_ORDER.map((h) =>
+      projectHeadFromTrunk(h, trunkEmbedding, table),
+    );
+    reporter.headsEmitted({
+      heads: heads.length,
+      dims: heads.map((h) => h.dim).join("/"),
+      normalized: true,
+      tokens: tokens.length,
+    });
+    return { schema: "vector-set-v1", inputTokens: [...tokens], heads, normalized: true };
+  }
+  // ML5-A placeholder fallback (byte-identical predecessor).
+  return encodeVectorSet(tokens, { reporter, seed: options.seed });
 }
 
 /**

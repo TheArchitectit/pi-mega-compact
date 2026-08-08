@@ -92,6 +92,9 @@ export interface ModelManifestV1 {
   readonly heads: EncoderHeads;
   readonly onnx: ManifestAssetFile;
   readonly tokenizer: ManifestAssetFile;
+  /** ML5-A (VC2B-2): optional sibling `trained-heads.json` (`trained-heads-v1`) shipping
+   *  REAL trained head weights; absent in the placeholder bundle, non-fatal when missing. */
+  readonly headWeights?: ManifestAssetFile;
   readonly totalBytes: number;
   readonly trainingManifestDigest: string;
 }

@@ -147,11 +147,21 @@ def _samples_for(head, rng):
 
 
 def gen_samples(head, group, rng, seed):
-    """Yield one jsonl-ready line per sample for a head+group."""
+    """Yield one jsonl-ready line per sample for a head+group.
+
+    VC2B-2: each line now carries the raw synthetic `text` (privacy-hard-gated —
+    the only strings that can appear are the hard-coded template pools above) so
+    the real training script (`train_heads_real.py`) can tokenize it with the
+    real BGE tokenizer (assets/vector-cortex/encoder-v1/tokenizer.json) instead
+    of the old sha256-derived fake ids. The legacy `input_ids` field is retained
+    for backward compatibility with `train_heads.py`; it is NOT used by the real
+    trainer, which re-tokenizes `text` at load time.
+    """
     base = _samples_for(head, rng)
     for k, (text, label) in enumerate(base):
         yield {
             "input_ids": tokens_for(text, 24, seed + k),
+            "text": text,
             "label": label,
             "pair_id": f"{head}-{group.replace('/', '_')}-{k:04d}",
             "repo_session_group": group,
