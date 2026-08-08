@@ -10,7 +10,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { MegaRuntime } from "../../mega-runtime.js";
 import { piCompactWouldNoop } from "../../mega-pipeline.js";
 import type { MegaConfig } from "../../mega-config.js";
-import { safeSendUserMessage } from "../send-safe.js";
+import { safeSendInvisibleMessage } from "../send-safe.js";
 
 /** Handle the `agent_end` pi event. Non-fatal end-to-end. */
 export async function handleAgentEnd(
@@ -228,7 +228,7 @@ export async function handleAgentEnd(
 					lengthStop && !didDurableTrim
 						? "[mega-compact] the last response hit the output-token cap; continue from where it stopped."
 						: "[mega-compact] continue from the compacted context above.";
-				await safeSendUserMessage(pi, nudgeMsg);
+				await safeSendInvisibleMessage(pi, nudgeMsg);
 			}
 		} catch {
 			/* non-fatal: a failed nudge never blocks */

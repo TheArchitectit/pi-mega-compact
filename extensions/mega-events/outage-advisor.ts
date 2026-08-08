@@ -9,12 +9,12 @@
  * Distinct from the poisoned-context /clear advise: the outage advisory is
  * for transient errors where the user's context is fine.
  *
- * PREVENT-PI-003: sends via safeSendUserMessage (user-role only).
+ * PREVENT-PI-003: sends via safeSendInvisibleMessage (user-role only).
  * PREVENT-PI-004: local ctx call, no network.
  */
 
 import type { MegaRuntime } from "../mega-runtime.js";
-import { safeSendUserMessage } from "./send-safe.js";
+import { safeSendInvisibleMessage } from "./send-safe.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 /** R11: optional diagnostic detail passed from the classifier. */
@@ -31,7 +31,7 @@ export interface OutageDetail {
  *
  * @param effectiveCategory — must be "transient" for the advisory to fire.
  * @param runtime   — the live MegaRuntime (mutated on advisory fire).
- * @param pi        — pi ExtensionAPI for safeSendUserMessage.
+ * @param pi        — pi ExtensionAPI for safeSendInvisibleMessage.
  * @param config    — providerOutageAdviseThreshold config.
  * @param detail    — R11: optional signal + rawText for forensics.
  */
@@ -70,8 +70,8 @@ export async function maybeSendProviderOutageAdvisory(
 	// injecting into the conversation scares users and triggers false-positive
 	// re-classification of the resulting turn (2026-07-31 incident).
 	if (!config.advisoryChannel) {
-		// Legacy path (flag OFF): user-role message injection.
-		await safeSendUserMessage(
+		// Legacy path (flag OFF): invisible user-role message (display:false).
+		await safeSendInvisibleMessage(
 			pi,
 			`[mega-compact] the provider is having issues (${runtime.rt.consecutiveErrors} consecutive failures — timeouts/5xx/rate-limits). Retries are bounded and continue automatically; your context is fine — do NOT clear or reset it. Work resumes as soon as the provider recovers.`,
 		);

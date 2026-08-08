@@ -197,7 +197,9 @@ export function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = 
 		getFlag: () => undefined,
 		registerMessageRenderer: () => {},
 		registerEntryRenderer: () => {},
-		sendMessage: (_m: any) => {},
+		sendMessage: (m: { content?: string }) => {
+			if (typeof m?.content === "string") sendUserMessages.push(m.content);
+		},
 		sendUserMessage: (m: string) => {
 			sendUserMessages.push(m);
 		},

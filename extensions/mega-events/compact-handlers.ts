@@ -22,7 +22,7 @@ import type { MegaConfig } from "../mega-config.js";
 import { recordScore, getDedupStats } from "../../src/store/sqlite.js";
 import { evaluateAndUnlockAchievements } from "../../src/store/sqlite/game-achievements.js";
 import { resolveRepoRoot } from "../mega-config.js";
-import { safeSendUserMessage } from "./send-safe.js";
+import { safeSendInvisibleMessage } from "./send-safe.js";
 
 /**
  * Build a minimal fallback compaction so pi never runs its throwing compact().
@@ -59,7 +59,7 @@ function fallbackCompaction(
  * Debounced resume-nudge: restart the agent loop after a compaction (which
  * may have stopped it). Idempotent — one nudge per 30s, never blocks.
  *
- * Uses safeSendUserMessage ({ deliverAs: 'followUp' } + catch-guard) so that a
+ * Uses safeSendInvisibleMessage ({ deliverAs: 'followUp' } + catch-guard) so that a
  * nudge fired during session_before_compact (which is mid-prompt-submission,
  * so the agent can be busy) QUEUES instead of throwing
  * "Agent is already processing. Specify streamingBehavior (steer or followUp)".
@@ -70,7 +70,7 @@ async function nudgeResume(pi: ExtensionAPI, runtime: MegaRuntime): Promise<void
 		if (now >= runtime.resumeNudgeUntil) {
 			runtime.resumeNudgeUntil = now + 30_000;
 			runtime.rt.extensionInitiatedTurn = true; // R13: suppress self-classification
-			await safeSendUserMessage(
+			await safeSendInvisibleMessage(
 				pi,
 				"[mega-compact] continue from the compacted context above.",
 			);

@@ -21,7 +21,7 @@ import {
 	extractErrorSignature,
 	isKnownRetryableTransient,
 } from "../../error-classifier.js";
-import { safeSendUserMessage } from "../../send-safe.js";
+import { safeSendInvisibleMessage } from "../../send-safe.js";
 import { maybeSendProviderOutageAdvisory } from "../../outage-advisor.js";
 import type { TurnEndEvent } from "./event.js";
 
@@ -232,7 +232,10 @@ export async function errorRetry(
 				// Default ON (advisoryChannel=true): dashboard-only, no user message.
 				if (!config.advisoryChannel) {
 					// PREVENT-PI-003: user-role sendUserMessage only.
-					await safeSendUserMessage(
+					// Invisible: display:false — the dashboard event + log already
+					// capture the poisoned-context signal; the user does not need a
+					// visible "Follow-up:" message.
+					await safeSendInvisibleMessage(
 						pi,
 						"[mega-compact] this session's context may be poisoned (the provider is rejecting every request). Run /clear or /new to start a fresh context.",
 					);
@@ -407,7 +410,9 @@ export async function errorRetry(
 							max,
 						});
 						// PREVENT-PI-003: user-role sendUserMessage only (queued + catch-guarded).
-						await safeSendUserMessage(
+						// Invisible: display:false so the retry trigger fires without
+						// rendering "Follow-up:" spam in the conversation UI.
+						await safeSendInvisibleMessage(
 							pi,
 							"[mega-compact] the last turn ended with an error; please retry.",
 						);

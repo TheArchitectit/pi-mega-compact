@@ -122,7 +122,7 @@ export function harness(opts: { keepTier?: boolean; keepThreshold?: boolean } = 
 		registerCommand: () => {}, registerTool: () => {}, registerShortcut: () => {},
 		registerFlag: () => {}, getFlag: () => undefined,
 		registerMessageRenderer: () => {}, registerEntryRenderer: () => {},
-		sendMessage: () => {}, sendUserMessage: (m: string) => { sendUserMessages.push(m); },
+		sendMessage: (m: { content?: string }) => { if (typeof m?.content === "string") sendUserMessages.push(m.content); }, sendUserMessage: (m: string) => { sendUserMessages.push(m); },
 		appendEntry: (t: string, d: any) => appended.push({ t, d }),
 		setSessionName: () => {}, getSessionName: () => undefined, setLabel: () => {},
 		exec: async () => ({ stdout: "", stderr: "", code: 0 }),
