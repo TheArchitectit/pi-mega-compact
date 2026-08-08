@@ -11,12 +11,12 @@
 	grid-column: 1 / -1;
 }
 
-/* Full-width grid: each gauge gets plenty of room, wraps across the whole
- * row. If there are more sessions than columns, the outer wrapper scrolls
- * horizontally rather than cramping the gauges (see .session-gauges-scroll). */
+/* Auto-sizing grid: columns stretch to fit content, wrapping as needed.
+ * minmax(0, 1fr) with auto-fill lets the grid decide column widths based on
+ * available space rather than forcing a fixed minimum. */
 .session-gauges-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+	grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
 	gap: 16px;
 }
 
@@ -32,6 +32,7 @@
 	background: var(--bg);
 	border: 1px solid var(--border);
 	border-radius: 8px;
+	min-width: 0; /* allow flex children to shrink below content size */
 }
 
 .session-gauge-self {
@@ -45,17 +46,20 @@
 	justify-content: space-between;
 	align-items: baseline;
 	gap: 8px;
+	min-width: 0; /* allow label to shrink */
 }
 
-/* Repo/session label — readable 14px. Not truncated by default (full repo
- * names matter); the ellipsis is applied only as a last resort via a
- * truncate+title pattern on the component when space is genuinely tight. */
+/* Repo/session label — auto-scales via clamp() and wraps if needed.
+ * No truncation: the full label is always visible, font shrinks on
+ * narrow containers. */
 .session-gauge-label {
-	font-size: 14px;
+	font-size: clamp(11px, 1.1vw, 14px);
 	font-weight: 600;
 	line-height: 1.25;
 	color: var(--text);
 	min-width: 0;
+	overflow-wrap: break-word;
+	word-break: break-word;
 }
 
 .session-gauge-self .session-gauge-label {
@@ -63,7 +67,7 @@
 }
 
 .session-gauge-pct {
-	font-size: 20px;
+	font-size: clamp(16px, 1.4vw, 20px);
 	font-weight: 700;
 	line-height: 1.1;
 	color: var(--muted);
@@ -77,14 +81,14 @@
 
 .session-gauge-sub {
 	margin: 0;
-	font-size: 14px;
+	font-size: clamp(12px, 1vw, 14px);
 	font-weight: 500;
 	color: var(--text);
 }
 
 .session-gauge-meta {
 	margin: 0;
-	font-size: 12px;
+	font-size: clamp(10px, 0.85vw, 12px);
 	color: var(--muted);
 	overflow: hidden;
 	text-overflow: ellipsis;

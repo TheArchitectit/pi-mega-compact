@@ -85,7 +85,7 @@ interface GaugeData {
 
 /** A single readable gauge: header label, fill bar, tokens/window sublabel. */
 function SessionGauge({ data }: { data: GaugeData }): React.ReactElement {
-	const pct = data.percent ?? 0;
+	const pct = Math.round((data.percent ?? 0) * 10) / 10;
 	const fillWidth = Math.max(pct, 1);
 	const cls = severityClass(pct);
 	const tokStr = fmtTokens(data.tokens);
@@ -94,9 +94,7 @@ function SessionGauge({ data }: { data: GaugeData }): React.ReactElement {
 	return (
 		<div className={`session-gauge ${data.isSelf ? "session-gauge-self" : ""}`}>
 			<div className="session-gauge-head">
-				{/* Full repo/session name by default; truncate only as a last
-				 * resort (ellipsis + hover title) when space is genuinely tight. */}
-				<span className="session-gauge-label truncate" title={data.label}>
+				<span className="session-gauge-label" title={data.label}>
 					{data.label}
 				</span>
 				<span className="session-gauge-pct">{pct}%</span>
