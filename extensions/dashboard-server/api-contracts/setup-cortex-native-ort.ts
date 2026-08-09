@@ -3,9 +3,11 @@
  * lazy-download INSTALL action contract types.
  *
  * Sibling additive types for the VC9B action driver: POST /api/setup-cortex-action
- * gains the `install-native-ort` action that, when confirmed, runs the committed
- * scripts/encoder/install-native-ort.mjs subprocess locally (npm-delegated,
- * sha256-verified) and then re-qualifies the binding via the ENC-2b retest path.
+ * gains the `install-native-ort` action that, when confirmed, performs the
+ * pinned-tarball fetch + sha256 verify + npm install in-process (a TypeScript
+ * port of scripts/encoder/install-native-ort.mjs — the npm package ships
+ * src/dist/extensions but NOT scripts/, so an installed device has no checkout
+ * script to spawn), then re-qualifies the binding via the ENC-2b retest path.
  *
  * The retest result shape mirrors `RetestResult` from
  * extensions/dashboard-server/api-contracts/setup.ts (and

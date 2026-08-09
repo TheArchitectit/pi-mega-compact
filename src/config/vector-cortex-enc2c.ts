@@ -9,12 +9,15 @@
  *
  * ENC-2c turns ENC-2a's operator run-script assist into a dashboard action: the
  * Setup Cortex sub-tab gains an "Install Native ORT" button that, when confirmed
- * by the operator, runs the committed `scripts/encoder/install-native-ort.mjs`
- * subprocess locally (npm-delegated, sha256-verified) and then re-qualifies the
- * binding via the ENC-2b retest path. This is a PREVENT-PI-004 opt-in exemption:
- * it is confirm-gated (never automatic), delegated to a local subprocess of a
- * committed repo script, and carries NO URL literals in src/ or extensions/
- * (the registry URL + sha256 live only in the artifacts-module constants).
+ * by the operator, performs the pinned-tarball fetch + sha256 verify + npm
+ * install in-process (a TypeScript port of
+ * `scripts/encoder/install-native-ort.mjs` — the npm package ships
+ * src/dist/extensions but NOT scripts/, so an installed device has no checkout
+ * script to spawn), then re-qualifies the binding via the ENC-2b retest path.
+ * This is a PREVENT-PI-004 opt-in exemption: it is confirm-gated (never
+ * automatic), delegated to the operator's npm as a local subprocess, and carries
+ * NO URL literals in src/ or extensions/ (the registry URL + sha256 live only
+ * in the artifacts-module constants).
  *
  * `MEGACOMPACT_ENC_2C=0` disables: no install action branch, no UI button, no
  * install-related result fields — byte-identical to the ENC-2b predecessor. The

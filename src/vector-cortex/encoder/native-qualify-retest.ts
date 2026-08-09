@@ -39,12 +39,16 @@ import { NATIVE_ORT_PACKAGE, type EncoderPlatform } from "./native-install-artif
 
 /** Candidate ONNX runtime native-ort prefixes. The ENC-2a guide installs to
  *  the global `~/.pi/mega-compact/native-ort/`; `stateDir` (per-repo) is a
- *  secondary probe root so the retest resolves either install location. */
+ *  secondary probe root so the retest resolves either install location.
+ *  `MEGACOMPACT_NATIVE_ORT_ROOT` overrides the global root (ENC-2a parity +
+ *  test isolation — honors the same override the enc2a probe and the ENC-2c
+ *  in-process installer honor). */
 function nativeOrtRootCandidates(stateDir: string): string[] {
-  return [
-    join(process.env.HOME ?? "", ".pi", "mega-compact", "native-ort"),
-    join(stateDir, "native-ort"),
-  ];
+  const override = process.env.MEGACOMPACT_NATIVE_ORT_ROOT;
+  const global = override !== undefined && override.length > 0
+    ? override
+    : join(process.env.HOME ?? "", ".pi", "mega-compact", "native-ort");
+  return [global, join(stateDir, "native-ort")];
 }
 
 /** A single bounded inference pass on the fixed 512-token synthetic input;

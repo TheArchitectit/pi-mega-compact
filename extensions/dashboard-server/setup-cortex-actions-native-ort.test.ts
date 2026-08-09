@@ -2,14 +2,19 @@
  * setup-cortex-actions-native-ort.test.ts — ENC-2c lazy-download install driver.
  *
  * Verifies the confirm-gated install-native-ort action mechanics: the committed
- * script locator resolves to a REAL on-disk script (never a hallucinated path),
+ * script locator resolves to a REAL on-disk script (never a hallucinated path —
+ * kept as a regression check on the original scripts/encoder/install-native-ort.mjs,
+ * though the dashboard button no longer spawns it — the action is an in-process
+ * port so it works on npm-installed devices without a checkout),
  * the route rejects a missing confirmation (400) and a flag-off request (400
  * invalid_action — byte-identical ENC-2b predecessor), and the driver carries NO
  * URL literals anywhere in its source (no-network proof, PREVENT-PI-004).
  *
  * Uses the real spawn-and-fetch harness (withServer) — no mocks, no stubs. The
- * install action itself is blocked by the open HG-3 gate in-workstream (423), so
- * no install subprocess spawns; these tests never attempt a real download.
+ * install action is NEVER gate-blocked by an open HG-3 (chicken-and-egg fix:
+ * the action exists to close that gate). In-process install runs via the
+ * MEGACOMPACT_NATIVE_ORT_ROOT override so tests install into an isolated tmp dir,
+ * never the real ~/.pi/mega-compact/native-ort.
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
@@ -105,11 +110,11 @@ describe("/api/setup-cortex-action — install-native-ort (route)", () => {
 		}
 	});
 
-	test("an open HG-3 gate blocks install-native-ort (423, no spawn)", async () => {
-		const dir = mkdtempSync(join(tmpdir(), "enc2c-blocked-"));
+	test("install-native-ort is NEVER blocked by HG-3 (the action exists to close that gate)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "enc2c-ungated-"));
 		// Redirect the native-ort root + encoder state dir so the ENC-2a probe
-		// finds NO installed binding — this keeps HG-3 open regardless of whether
-		// the dev machine has the binding installed globally.
+		// finds NO installed binding — this keeps HG-3 open in the blocker list,
+		// but install-native-ort must NOT be gated by it (chicken-and-egg fix).
 		const emptyOrt = join(dir, "native-ort-empty");
 		const savedStateDir = process.env.MEGACOMPACT_STATE_DIR;
 		const savedOrtRoot = process.env.MEGACOMPACT_NATIVE_ORT_ROOT;
@@ -124,18 +129,9 @@ describe("/api/setup-cortex-action — install-native-ort (route)", () => {
 					headers: { "Content-Type": "application/json" },
 					body: ACTION_BODY("install-native-ort", true),
 				});
-				const body = (await res.json()) as { error: string; blockers: string[] };
-				assert.equal(body.error, "action_blocked_by_open_item");
-				assert.ok(body.blockers.includes("HG-3"), `HG-3 gates install-native-ort, got ${body.blockers}`);
-				// No spawn: assert no vc9b log file was produced for this action.
-				const logDir = join(dir, "logs", "vc9b");
-				const { existsSync, readdirSync } = await import("node:fs");
-				if (existsSync(logDir)) {
-					assert.ok(
-						!readdirSync(logDir).some((f) => f.startsWith("install-native-ort-")),
-						"no install-native-ort log means no subprocess spawned",
-					);
-				}
+				// The install must NOT return 423 — HG-3 open is expected, but the
+				// action exists to close that gate. It must proceed past the gate.
+				assert.notEqual(res.status, 423, "install-native-ort must never be gate-blocked by HG-3");
 			});
 		} finally {
 			if (savedStateDir === undefined) delete process.env.MEGACOMPACT_STATE_DIR;

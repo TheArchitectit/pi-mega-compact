@@ -329,7 +329,7 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 		boolDirect(
 			"MEGACOMPACT_ENC_2C",
 			"ENC-2c native ONNX runtime lazy-download INSTALL action (dashboard-triggered)",
-			"ENC-2c turns ENC-2a's operator run-script assist into a confirm-gated dashboard action: the Setup Cortex sub-tab gains an Install Native ORT button that, when the operator confirms, runs the committed scripts/encoder/install-native-ort.mjs subprocess locally (npm-delegated, sha256-verified) and then re-qualifies the binding via the ENC-2b retest path, exposing nativeOrtRetestResult / nativeOrtBackendEffective on the completion. PREVENT-PI-004 opt-in exemption: confirm-gated, npm-delegated, no URL literals (registry URL + sha256 live only in native-install-artifacts.ts). OFF = no install action POST branch, no UI button, no install result fields (byte-identical ENC-2b predecessor).",
+			"ENC-2c turns ENC-2a's operator run-script assist into a confirm-gated dashboard action: the Setup Cortex sub-tab gains an Install Native ORT button that, when the operator confirms, performs the pinned-tarball fetch + sha256 verify + npm install in-process (TypeScript port of scripts/encoder/install-native-ort.mjs — the npm package doesn't ship scripts/, so installed devices have no checkout script to spawn) and then re-qualifies the binding via the ENC-2b retest path, exposing nativeOrtRetestResult / nativeOrtBackendEffective on the completion. PREVENT-PI-004 opt-in exemption: confirm-gated, npm-delegated, no URL literals (registry URL + sha256 live only in native-install-artifacts.ts). OFF = no install action POST branch, no UI button, no install result fields (byte-identical ENC-2b predecessor).",
 			true,
 		),
 		boolDirect(

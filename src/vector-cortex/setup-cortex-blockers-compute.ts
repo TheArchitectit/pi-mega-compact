@@ -261,9 +261,11 @@ const ACTION_GATE_CANDIDATES: Readonly<Record<SetupCortexActionKind, readonly st
   // behavior change. HG-7 is training work (no action in this set).
   bench: ["HG-1", "HG-3", "HG-6"],
   "verify-asset": [],
-  // ENC-2c: installing the lazy-download native binding is gated by HG-3 (the
-  // open install-budget hard gate) — a closed HG-3 no longer blocks the install.
-  "install-native-ort": ["HG-3"],
+  // install-native-ort is NEVER gated by HG-3: the action's entire purpose is
+  // to install the binding that closes HG-3. Gating it would deadlock — you
+  // can't install the binding that closes the gate because the gate blocks the
+  // install. HG-3 closes when the install succeeds (the probe detects it).
+  "install-native-ort": [],
 };
 
 /**

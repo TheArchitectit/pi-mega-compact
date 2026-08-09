@@ -111,16 +111,16 @@ const fixtures = [
   {
     id: "SETUP-CORTEX-034",
     assertion:
-      "ENC-2c: install-native-ort with confirm:true is gated by the open HG-3 install-budget hard gate — 423 action_blocked_by_open_item, HG-3 surfaced, NO install subprocess spawns",
+      "ENC-2c (chicken-and-egg fix): install-native-ort with confirm:true is NEVER gate-blocked by the open HG-3 hard gate — the action exists to close HG-3, so gating it would deadlock. The action proceeds past the gate (action-result body, no blockers, install spawns).",
     kind: "setup-cortex-action",
     flag_enabled: true,
     action: "install-native-ort",
     confirm: true,
-    expected_status_code: 423,
-    error: "action_blocked_by_open_item",
-    blocker_ids: ["HG-3"],
-    no_spawn: true,
-    expected_body_shape: "blocked",
+    expected_status_code: 200,
+    error: null,
+    blocker_ids: [],
+    no_spawn: false,
+    expected_body_shape: "action-result",
   },
   {
     id: "SETUP-CORTEX-035",
@@ -170,17 +170,17 @@ const fixtures = [
   {
     id: "SETUP-CORTEX-038",
     assertion:
-      "ENC-2c no-network guard: the install-native-ort driver source (setup-cortex-actions-native-ort.ts) contains NO URL literals and no fetch — the install is npm-delegated to the committed local script (PREVENT-PI-004 opt-in exemption)",
+      "ENC-2c no-network guard: the install-native-ort driver source (setup-cortex-actions-native-ort.ts) contains NO URL literals and no fetch — the install is npm-delegated (PREVENT-PI-004 opt-in exemption). Never gate-blocked by HG-3 (chicken-and-egg fix).",
     kind: "setup-cortex-action",
     flag_enabled: true,
     action: "install-native-ort",
     confirm: true,
-    expected_status_code: 423,
-    error: "action_blocked_by_open_item",
-    blocker_ids: ["HG-3"],
-    no_spawn: true,
+    expected_status_code: 200,
+    error: null,
+    blocker_ids: [],
+    no_spawn: false,
     no_url_literal: true,
-    expected_body_shape: "blocked",
+    expected_body_shape: "action-result",
   },
 ];
 

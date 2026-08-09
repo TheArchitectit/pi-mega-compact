@@ -37,6 +37,11 @@ sqlite.db
 # Local runtime audit/state dir from pi-crew / mega-compact
 .crew/
 
+# Stray state dirs from dashboard test runs + accidental CLI-arg artifact dirs
+.mega-compact/
+--port/
+
+
 # PGlite vector index (Slice 2) + stray :memory: pgdata artifact from bad dataDir
 mega-compact-vector/
 :memory:/

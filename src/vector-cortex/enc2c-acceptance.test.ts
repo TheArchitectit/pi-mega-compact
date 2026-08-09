@@ -116,17 +116,18 @@ describe("ENC-2c kind-closure (server + client)", () => {
   });
 });
 
-describe("ENC-2c block-gate (HG-3)", () => {
-  test("ACTION_GATE_CANDIDATES maps install-native-ort to the HG-3 install-budget gate", () => {
+describe("ENC-2c block-gate (HG-3 — chicken-and-egg fix)", () => {
+  test("ACTION_GATE_CANDIDATES does NOT map install-native-ort to any hard gate", () => {
     const src = readFileSync(BLOCKERS_COMPUTE, "utf8");
     const block = src.slice(src.indexOf("ACTION_GATE_CANDIDATES"), src.indexOf("Re-derived VC9B action gating"));
-    assert.match(block, /"install-native-ort":\s*\["HG-3"\]/, "install-native-ort is gated by HG-3");
+    assert.match(block, /"install-native-ort":\s*\[\]/, "install-native-ort is NEVER gated (the action exists to close HG-3)");
   });
-  test("the route surfaces the open HG-3 blocker for install-native-ort (423 no spawn)", () => {
+  test("fixture SETUP-CORTEX-034 pins the install action as unblocked (200, no blockers)", () => {
     const fx = fixture("SETUP-CORTEX-034");
-    assert.equal(fx.expected_status_code, 423);
-    assert.deepEqual(fx.blocker_ids, ["HG-3"]);
-    assert.equal(fx.no_spawn, true);
+    assert.equal(fx.expected_status_code, 200);
+    assert.equal(fx.error, null);
+    assert.deepEqual(fx.blocker_ids, []);
+    assert.equal(fx.no_spawn, false);
   });
 });
 
