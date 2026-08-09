@@ -37,6 +37,7 @@ import {
   readQualificationRecord,
   encoderStateDir,
 } from "./qualification-record.js";
+import { readEnc2aGuide } from "./routes-setup-enc2a.js";
 import {
   runSetupCortexAction,
   readActionLogTail,
@@ -87,6 +88,12 @@ function liveActionBlockers(): ReturnType<typeof computeSetupCortexBlockers> | n
     platform: detectPlatform(),
     qualification: record,
     headCount,
+    // ENC-2c: the install action's HG-3 gate closes when the native binding is
+    // installed on this device. The action would be a no-op without this — a
+    // stale "open" HG-3 permanently blocks the install button even after the
+    // binding is on disk, because the compute default is nativeOrtInstalledVersion
+    // = null (not installed). Read the ENC-2a guide probe to get the true state.
+    nativeOrtInstalledVersion: readEnc2aGuide(encoderStateDir()).installedVersion,
   });
 }
 

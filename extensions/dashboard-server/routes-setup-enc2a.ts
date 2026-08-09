@@ -45,8 +45,12 @@ import type { SetupConfigureRequest } from "./api-contracts/setup.js";
 const ENC_2A_SCRIPT_PATH = "scripts/encoder/install-native-ort.mjs";
 
 /** Where the operator script installs the native binding (absolute install
- *  prefix used verbatim in the guide commands + the version probe). */
+ *  prefix used verbatim in the guide commands + the version probe). The
+ *  MEGACOMPACT_NATIVE_ORT_ROOT override exists so tests can point at an empty
+ *  dir (isolation from a globally-installed binding). */
 function nativeOrtDir(): string {
+  const override = process.env.MEGACOMPACT_NATIVE_ORT_ROOT;
+  if (override !== undefined && override.length > 0) return override;
   return join(process.env.HOME ?? "", ".pi", "mega-compact", "native-ort");
 }
 
@@ -111,19 +115,25 @@ export function readEnc2aGuide(stateDir: string): {
     };
   }
 
-  return { guide, installedVersion: probeInstalledVersion() };
+  return { guide, installedVersion: probeInstalledVersion(stateDir) };
 }
 
 /** Probe the local native-ort package.json for the installed onnxruntime-node
- *  version. Null when the package is absent/unreadable (reader-only, local). */
-function probeInstalledVersion(): string | null {
+ *  version. Probes `<stateDir>/native-ort/` first (test isolation), then the
+ *  global `~/.pi/mega-compact/native-ort/`. Null when the package is
+ *  absent/unreadable in both roots (reader-only, local). */
+function probeInstalledVersion(stateDir: string): string | null {
+  for (const root of [join(stateDir, "native-ort"), nativeOrtDir()]) {
+    const v = probeVersionAt(root);
+    if (v !== null) return v;
+  }
+  return null;
+}
+
+/** Version probe for one candidate root. */
+function probeVersionAt(root: string): string | null {
   try {
-    const pkgPath = join(
-      nativeOrtDir(),
-      "node_modules",
-      NATIVE_ORT_PACKAGE,
-      "package.json",
-    );
+    const pkgPath = join(root, "node_modules", NATIVE_ORT_PACKAGE, "package.json");
     if (!existsSync(pkgPath)) return null;
     const raw = JSON.parse(readFileSync(pkgPath, "utf8")) as unknown;
     if (

@@ -60,6 +60,14 @@ describe("/api/setup-cortex-action (VC9B)", () => {
 
 	test("a hard-gate-blocked action returns 4xx + blockers and does NOT spawn a subprocess", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "vc9b-blocked-"));
+		// Redirect the native-ort root + encoder state dir so the ENC-2a probe
+		// finds NO installed binding — this keeps HG-3 open regardless of whether
+		// the dev machine has the binding installed globally.
+		const emptyOrt = join(dir, "native-ort-empty");
+		const savedStateDir = process.env.MEGACOMPACT_STATE_DIR;
+		const savedOrtRoot = process.env.MEGACOMPACT_NATIVE_ORT_ROOT;
+		process.env.MEGACOMPACT_STATE_DIR = dir;
+		process.env.MEGACOMPACT_NATIVE_ORT_ROOT = emptyOrt;
 		process.env.MEGACOMPACT_VC9B = "1";
 		try {
 			await withServer("9721", dir, async (port) => {
@@ -83,6 +91,10 @@ describe("/api/setup-cortex-action (VC9B)", () => {
 				}
 			});
 		} finally {
+			if (savedStateDir === undefined) delete process.env.MEGACOMPACT_STATE_DIR;
+			else process.env.MEGACOMPACT_STATE_DIR = savedStateDir;
+			if (savedOrtRoot === undefined) delete process.env.MEGACOMPACT_NATIVE_ORT_ROOT;
+			else process.env.MEGACOMPACT_NATIVE_ORT_ROOT = savedOrtRoot;
 			delete process.env.MEGACOMPACT_VC9B;
 		}
 	});

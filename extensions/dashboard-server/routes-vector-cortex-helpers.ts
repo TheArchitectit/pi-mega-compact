@@ -72,6 +72,14 @@ export async function withServer<T>(
     env: {
       ...process.env,
       MEGACOMPACT_INDEX_DIR: dir,
+      // Forward test-isolation overrides so the spawned server's readers
+      // resolve to the test temp dir, not the operator's global install.
+      ...(process.env.MEGACOMPACT_STATE_DIR !== undefined
+        ? { MEGACOMPACT_STATE_DIR: process.env.MEGACOMPACT_STATE_DIR }
+        : {}),
+      ...(process.env.MEGACOMPACT_NATIVE_ORT_ROOT !== undefined
+        ? { MEGACOMPACT_NATIVE_ORT_ROOT: process.env.MEGACOMPACT_NATIVE_ORT_ROOT }
+        : {}),
     },
   });
   try {

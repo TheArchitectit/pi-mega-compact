@@ -68,15 +68,14 @@ export default function CortexRuntimeCard(): React.ReactElement {
 		}
 	}, [budgetSeeded, status]);
 
+	// Omit embedder/url when the card only manages runtime keys — the server's
+	// tryEnc1bConfigure handles pure additive configure (no embedder change) and
+	// returns before the embedder-validation gate.
 	const toggleNative = useCallback(
 		(next: boolean) => {
 			setSaving(true);
 			setError(null);
-			configureEmbedder({
-				embedder: "custom",
-				url: status?.embeddingEndpointUrl ?? undefined,
-				encoderNativeOptIn: next,
-			})
+			configureEmbedder({ encoderNativeOptIn: next })
 				.then(() => {
 					setSaving(false);
 					loadStatus();
@@ -86,7 +85,7 @@ export default function CortexRuntimeCard(): React.ReactElement {
 					setSaving(false);
 				});
 		},
-		[status, loadStatus],
+		[loadStatus],
 	);
 
 	const saveBudget = useCallback(() => {
@@ -104,11 +103,7 @@ export default function CortexRuntimeCard(): React.ReactElement {
 		}
 		setSaving(true);
 		setError(null);
-		configureEmbedder({
-			embedder: "custom",
-			url: status?.embeddingEndpointUrl ?? undefined,
-			nativeOrtBudgetMib: trimmed,
-		})
+		configureEmbedder({ nativeOrtBudgetMib: trimmed })
 			.then(() => {
 				setSaving(false);
 				loadStatus();

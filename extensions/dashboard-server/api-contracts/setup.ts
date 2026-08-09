@@ -148,8 +148,10 @@ export interface SetupConfigureRequest {
   /** Which embedder to configure. "trigram" clears the URL (uses built-in).
    *  "custom" writes a user-supplied URL and opts in to non-loopback endpoints
    *  (sets MEGACOMPACT_ALLOW_REMOTE_EMBEDDER=1) for third-party / hosted APIs.
-   *  "onnx" points at a local ONNX text-embeddings-inference server. */
-  readonly embedder: "ollama" | "llama" | "trigram" | "custom" | "onnx";
+   *  "onnx" points at a local ONNX text-embeddings-inference server.
+   *  Optional: absent when the payload carries only ENC-1b/ENC-2a additive
+   *  keys (pure additive configure, no embedder change). */
+  readonly embedder?: "ollama" | "llama" | "trigram" | "custom" | "onnx";
   /** Override URL (required for "custom"; optional defaults for ollama/llama/onnx). */
   readonly url?: string;
   /** ENC-1a: external embedder endpoint URL, persisted to the per-repo

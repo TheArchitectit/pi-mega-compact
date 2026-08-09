@@ -107,6 +107,14 @@ describe("/api/setup-cortex-action — install-native-ort (route)", () => {
 
 	test("an open HG-3 gate blocks install-native-ort (423, no spawn)", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "enc2c-blocked-"));
+		// Redirect the native-ort root + encoder state dir so the ENC-2a probe
+		// finds NO installed binding — this keeps HG-3 open regardless of whether
+		// the dev machine has the binding installed globally.
+		const emptyOrt = join(dir, "native-ort-empty");
+		const savedStateDir = process.env.MEGACOMPACT_STATE_DIR;
+		const savedOrtRoot = process.env.MEGACOMPACT_NATIVE_ORT_ROOT;
+		process.env.MEGACOMPACT_STATE_DIR = dir;
+		process.env.MEGACOMPACT_NATIVE_ORT_ROOT = emptyOrt;
 		process.env.MEGACOMPACT_VC9B = "1";
 		process.env.MEGACOMPACT_ENC_2C = "1";
 		try {
@@ -130,6 +138,10 @@ describe("/api/setup-cortex-action — install-native-ort (route)", () => {
 				}
 			});
 		} finally {
+			if (savedStateDir === undefined) delete process.env.MEGACOMPACT_STATE_DIR;
+			else process.env.MEGACOMPACT_STATE_DIR = savedStateDir;
+			if (savedOrtRoot === undefined) delete process.env.MEGACOMPACT_NATIVE_ORT_ROOT;
+			else process.env.MEGACOMPACT_NATIVE_ORT_ROOT = savedOrtRoot;
 			delete process.env.MEGACOMPACT_VC9B;
 			delete process.env.MEGACOMPACT_ENC_2C;
 		}
