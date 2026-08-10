@@ -5,12 +5,13 @@
  *   GET  /api/setup-cortex-action-log        — bounded, redacted log tail
  *
  * Reader/actor-only: NEVER exposes payload bytes, prompts, or ledger. Actions
- * only spawn the committed local vc2-model-prep scripts, re-read the committed
+ * run in-process (fetch-model via HTTPS, bench via ONNX), re-read the committed
  * encoder assets (verify-asset), or — ENC-2c — run the confirm-gated npm-delegated
- * native onnxruntime install (install-native-ort) + re-qualify — no network in
- * this layer (PREVENT-PI-004). A hard gate (HG-1/HG-3) blocking the requested
- * action yields 423 action_blocked_by_open_item with the blocker ids and NO
- * subprocess is spawned. Missing confirm:true yields 400 confirmation_required.
+ * native onnxruntime install (install-native-ort) + re-qualify — no subprocess
+ * spawn for fetch-model/bench (PREVENT-PI-004 opt-in for fetch-model HTTPS).
+ * A hard gate (HG-1/HG-3) blocking the requested
+ * action yields 423 action_blocked_by_open_item with the blocker ids and the
+ * action does NOT execute. Missing confirm:true yields 400 confirmation_required.
  * Flag-off (MEGACOMPACT_VC9B=0) is byte-identical to the VC9A-era predecessor:
  * the routes are absent, so they return the 404 disabled shape and no action runs.
  *

@@ -201,7 +201,7 @@ export const VECTOR_CORTEX_SETTINGS: SettingGroup = {
 		boolDirect(
 			"MEGACOMPACT_VC9B",
 			"VC9B Setup Cortex Actions",
-			"Setup Cortex action drivers (POST /api/setup-cortex-action + GET /api/setup-cortex-action-log): confirmation-gated wrappers that fetch-model / bench / verify-asset by spawning only the committed local scripts (scripts/vc2-model-prep/fetch-model.sh, bench-onnx.mjs) or re-reading the committed encoder assets — never payload bytes, no network. Actions gated by an OPEN hard-gate item (HG-1/HG-3) return action_blocked_by_open_item and do NOT spawn. OFF = byte-identical predecessor (VC9A-era): the action POST returns a disabled/404 shape and flag-off bytes are unchanged.",
+			"Setup Cortex action drivers (POST /api/setup-cortex-action + GET /api/setup-cortex-action-log): confirmation-gated wrappers that fetch-model / bench / verify-asset using in-process model fetch (HTTPS download from HuggingFace) and in-process ONNX bench — never payload bytes. Actions gated by an OPEN hard-gate item (HG-1/HG-3) return action_blocked_by_open_item and do NOT execute. OFF = byte-identical predecessor (VC9A-era): the action POST returns a disabled/404 shape and flag-off bytes are unchanged.",
 			true,
 		),
 		boolDirect(

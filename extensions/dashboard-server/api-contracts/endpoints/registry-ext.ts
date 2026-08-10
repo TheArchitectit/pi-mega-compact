@@ -99,7 +99,7 @@ export const EXTRA_ENDPOINTS = {
 		method: "POST",
 		path: "/api/setup-cortex-action",
 		description:
-			"Confirmation-gated driver: fetch-model / bench / verify-asset. Executes only the committed local scripts (scripts/vc2-model-prep/*) or re-reads the committed encoder assets; an OPEN hard-gate item returns action_blocked_by_open_item and does NOT spawn. Never payload bytes; confirm:true required.",
+			"Confirmation-gated driver: fetch-model / bench / verify-asset. Runs in-process model fetch (HTTPS) + ONNX bench or re-reads the committed encoder assets; an OPEN hard-gate item returns action_blocked_by_open_item and does NOT execute. Never payload bytes; confirm:true required.",
 	} as const satisfies EndpointDef<
 		"POST",
 		SetupCortexActionRequest,

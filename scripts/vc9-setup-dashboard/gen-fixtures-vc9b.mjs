@@ -60,7 +60,7 @@ const ACTION_SCHEMA = {
   title: "VC9B setup-cortex action fixture envelope",
   type: "object",
   description:
-    "Common structure every VC9B setup-cortex action fixture validates against. `flag_enabled` pins the VC9B flag state; `action` pins the driver action kind; `confirm` pins the required confirm:true gate; `expected_status_code` pins the HTTP status the route returns; `error` pins the machine error code (or null on success); `blocker_ids` pins the open hard-gate ids surfaced when the action is blocked; `no_spawn` pins that a subprocess must NOT be spawned; `expected_body_shape` pins the body class (action-result / blocked / confirm-rejected / disabled / method-not-allowed / log-tail); `log_tail_bounded_kib` + `log_redacted` pin the log-tail endpoint guarantees.",
+    "Common structure every VC9B setup-cortex action fixture validates against. `flag_enabled` pins the VC9B flag state; `action` pins the driver action kind; `confirm` pins the required confirm:true gate; `expected_status_code` pins the HTTP status the route returns; `error` pins the machine error code (or null on success); `blocker_ids` pins the open hard-gate ids surfaced when the action is blocked; `no_spawn` pins that a blocked/rejected action must NOT execute (no subprocess, no in-process run); `expected_body_shape` pins the body class (action-result / blocked / confirm-rejected / disabled / method-not-allowed / log-tail); `log_tail_bounded_kib` + `log_redacted` pin the log-tail endpoint guarantees.",
   required: [
     "id",
     "producer",

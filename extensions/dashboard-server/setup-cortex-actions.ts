@@ -2,24 +2,20 @@
  * dashboard-server/setup-cortex-actions.ts — VC9B action driver (actor surface).
  *
  * Implements the actual mechanics behind POST /api/setup-cortex-action and
- * GET /api/setup-cortex-action-log: locating + spawning ONLY the committed local
- * vc2-model-prep scripts (fetch-model.sh, bench-onnx.mjs), capturing their
- * output to <stateDir>/logs/vc9b/<action>-<ts>.log, re-running the committed
- * encoder asset verification seam for verify-asset (NO subprocess), and serving
- * a bounded + redacted log tail. ENC-2c adds the `install-native-ort` action,
- * delegated to the sibling setup-cortex-actions-native-ort.ts (the confirm-gated,
- * npm-delegated local install + ENC-2b re-qualification).
+ * GET /api/setup-cortex-action-log: in-process HTTPS download for fetch-model
+ * and in-process ONNX bench (delegated to setup-cortex-actions-vc2.ts), re-running
+ * the committed encoder asset verification seam for verify-asset (NO subprocess),
+ * and serving a bounded + redacted log tail. ENC-2c adds the `install-native-ort`
+ * action, delegated to the sibling setup-cortex-actions-native-ort.ts (the
+ * confirm-gated, npm-delegated local install + ENC-2b re-qualification).
  *
  * This module is the ONLY place that touches the filesystem for VC9B actions.
  * The route file (routes-setup-cortex-actions.ts) carries NO path/script/blocker
- * string literals — it delegates here. Guardrails: the spawned scripts are the
- * existing committed local developer-tooling scripts (never fetched, no network,
- * PREVENT-PI-004); the log tail is bounded at 8 KiB and redacted (digest
- * prefixes + codes only, never payload bytes — EVAL-REDACT-002); PREVENT-011
- * (no `any`).
+ * string literals — it delegates here. Guardrails: the log tail is bounded at
+ * 8 KiB and redacted (digest prefixes + codes only, never payload bytes —
+ * EVAL-REDACT-002); PREVENT-011 (no `any`).
  */
 
-import { spawnSync } from "node:child_process"; // guardrails-allow PREVENT-PI-004: local subprocess spawn of committed repo script (loopback)
 import {
   mkdirSync,
   readFileSync,
@@ -44,23 +40,10 @@ import {
   encoderStateDir,
 } from "./qualification-record.js";
 import { runInstallNativeOrt } from "./setup-cortex-actions-native-ort.js";
+import { runVc2Action } from "./setup-cortex-actions-vc2.js";
 
 /** Cap applied to every log tail served by the action-log route. */
 export const ACTION_LOG_TAIL_BYTES = 8192;
-
-/** Locate the commit's vc2-model-prep directory by walking up to the repo root. */
-function vc2ScriptDir(): string | null {
-  let dir = dirname(fileURLToPath(import.meta.url));
-  const rel = join("scripts", "vc2-model-prep");
-  for (let i = 0; i < 8; i++) {
-    const candidate = join(dir, rel);
-    if (existsSync(join(candidate, "fetch-model.sh"))) return candidate;
-    const next = dirname(dir);
-    if (next === dir) break;
-    dir = next;
-  }
-  return null;
-}
 
 /** Absolute dir holding this repo's <stateDir>/logs/vc9b/ action logs. */
 export function vc9bLogDir(stateDir: string): string {
@@ -122,43 +105,6 @@ export function readActionLogTail(
     name,
     tail: redactLog(bounded),
     complete: raw.length <= ACTION_LOG_TAIL_BYTES,
-  };
-}
-
-/** Run a vc2-model-prep subprocess and capture its output to a vc9b log file. */
-function runSpawnedAction(
-  action: Extract<SetupCortexActionKind, "fetch-model" | "bench">,
-  stateDir: string,
-): SetupCortexActionResult {
-  const dir = vc2ScriptDir();
-  const { name, logPath } = writeLogName(action, stateDir);
-  if (dir === null) {
-    writeLog(logPath, "vc2-model-prep scripts not found in this checkout\n");
-    return { action, ok: false, exitCode: null, logPath, logName: name, spawned: true };
-  }
-  let result;
-  if (action === "fetch-model") {
-    // guardrails-allow PREVENT-PI-004: local subprocess spawn of committed repo script (loopback)
-    result = spawnSync("bash", [join(dir, "fetch-model.sh"), join(stateDir, "vc2-model-prep")], {
-      encoding: "utf8",
-      timeout: 60_000,
-    });
-  } else {
-    // guardrails-allow PREVENT-PI-004: local subprocess spawn of committed repo script (loopback)
-    result = spawnSync(process.execPath, [join(dir, "bench-onnx.mjs")], {
-      encoding: "utf8",
-      timeout: 60_000,
-    });
-  }
-  const out = `${result.stdout ?? ""}${result.stderr ?? ""}`;
-  writeLog(logPath, out || "(no output)\n");
-  return {
-    action,
-    ok: result.status === 0,
-    exitCode: result.status === null ? null : result.status,
-    logPath,
-    logName: name,
-    spawned: true,
   };
 }
 
@@ -236,7 +182,7 @@ interface LogFileRef {
 }
 
 /** Unique <action>-<ts>.log name + absolute path under the vc9b log dir. */
-function writeLogName(action: SetupCortexActionKind, stateDir: string): LogFileRef {
+export function writeLogName(action: SetupCortexActionKind, stateDir: string): LogFileRef {
   let ts = Date.now();
   const existing = new Set(readdirSync(ensureLogDir(stateDir)));
   while (existing.has(`${action}-${ts}.log`)) ts++;
@@ -244,7 +190,8 @@ function writeLogName(action: SetupCortexActionKind, stateDir: string): LogFileR
   return { name, logPath: join(vc9bLogDir(stateDir), name) };
 }
 
-function writeLog(logPath: string, body: string): void {
+/** Write a vc9b action log file. Exported for the VC2 sibling. */
+export function writeLog(logPath: string, body: string): void {
   // guardrails-allow PREVENT-PI-004: local state-dir filesystem write (loopback)
   writeFileSync(logPath, body, "utf8");
 }
@@ -252,10 +199,10 @@ function writeLog(logPath: string, body: string): void {
 /**
  * Run one Setup Cortex action against the given stateDir. Returns the action
  * result on success; throws nothing — every failure is surfaced as a result with
- * ok=false so the route can shape the HTTP response. Never touches the network;
- * the subprocesses it may spawn are the committed local vc2-model-prep scripts.
- * Async (ENC-2c): install-native-ort runs the npm-delegated local install then
- * re-qualifies via the ENC-2b retest path.
+ * ok=false so the route can shape the HTTP response. fetch-model/bench run
+ * in-process via the VC2 sibling (HTTPS download + ONNX bench); install-native-ort
+ * (ENC-2c) runs the npm-delegated local install then re-qualifies via the ENC-2b
+ * retest path.
  */
 export async function runSetupCortexAction(
   action: SetupCortexActionKind,
@@ -263,5 +210,5 @@ export async function runSetupCortexAction(
 ): Promise<SetupCortexActionResult> {
   if (action === "verify-asset") return runVerifyAsset(stateDir);
   if (action === "install-native-ort") return runInstallNativeOrt(stateDir);
-  return runSpawnedAction(action, stateDir);
+  return runVc2Action(action, stateDir);
 }

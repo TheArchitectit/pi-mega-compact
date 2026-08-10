@@ -22,9 +22,10 @@ import { sprintFlag } from "./vector-cortex-flag.js";
  * GET /api/setup-cortex-action-log). Default ON. `MEGACOMPACT_VC9B=0` disables
  * and is byte-identical to the predecessor (VC9A-era): the action POST returns
  * the disabled shape (404/disabled) and flag-off bytes are unchanged. The
- * actions only spawn the existing committed local scripts
- * (scripts/vc2-model-prep/fetch-model.sh / bench-onnx.mjs) or re-read the
- * committed encoder assets — never payload bytes, no network (PREVENT-PI-004).
+ * actions run in-process: fetch-model downloads via HTTPS (opt-in, confirm-gated)
+ * and bench runs ONNX inference directly — no subprocess spawns. verify-asset
+ * re-reads the committed encoder assets; install-native-ort uses the npm-delegated
+ * install (PREVENT-PI-004 opt-in). Never payload bytes.
  * This flag MUST also be a dashboard SETTINGS toggle (visible in config UI,
  * never in EXCLUDED_SETTINGS), mirroring VC9A.
  */
