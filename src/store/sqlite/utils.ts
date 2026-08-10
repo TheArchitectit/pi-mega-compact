@@ -73,6 +73,13 @@ export function openStore(stateDir: string = getStateDir()): DatabaseSync {
 
   if (!existsSync(stateDir)) mkdirSync(stateDir, { recursive: true });
   const db = new DatabaseSync(join(stateDir, "sqlite.db"));
+  // busy_timeout BEFORE journal_mode/schema writes: with the default 0ms a
+  // second process opening this global DB while a live session holds a WAL
+  // write/recovery lock fails instantly with SQLITE_BUSY — the "Failed to load
+  // extension: database is locked" abort that kills child pi runs (e.g. agent
+  // dispatches). 5s grace waits out transient contention; connections.ts and
+  // global-index.ts already follow this.
+  db.exec("PRAGMA busy_timeout = 5000");
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA foreign_keys = ON");
   initSchema(db);

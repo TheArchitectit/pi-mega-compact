@@ -64,9 +64,9 @@ export function openTurnDb(
 		mkdirSync(stateDir, { recursive: true });
 	}
 	const db = new DatabaseSync(resolvedPath);
+	db.exec("PRAGMA busy_timeout = 5000");
 	db.exec("PRAGMA journal_mode = WAL");
 	db.exec("PRAGMA foreign_keys = ON");
-	db.exec("PRAGMA busy_timeout = 5000");
 	initTurnSchema(db);
 	// S49B: one-time move of legacy main-db turn tables into turns.db (idempotent,
 	// non-fatal). File-backed only; never runs for the in-memory test backend.

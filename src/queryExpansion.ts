@@ -200,6 +200,7 @@ function loadDb(stateDir: string): { db: import("node:sqlite").DatabaseSync } {
   const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
   const { join } = require("node:path") as typeof import("node:path");
   const db = new DatabaseSync(join(stateDir, "mega-compact.db"));
+  db.exec("PRAGMA busy_timeout = 5000"); // tolerate concurrent-opener WAL contention (see store/sqlite/utils.ts)
   db.exec("PRAGMA journal_mode=WAL");
   _dbCache.set(stateDir, { db });
   return { db };
