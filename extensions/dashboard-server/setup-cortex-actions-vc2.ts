@@ -95,8 +95,11 @@ function download(url: string): Promise<Buffer> {
         res.headers.location
       ) {
         res.resume();
-        // Follow a single redirect (HuggingFace CDN redirects).
-        download(res.headers.location).then(resolve, reject);
+        // Follow a single redirect (HuggingFace CDN redirects). The Location
+        // header may be a RELATIVE path (e.g. /api/resolve-cache/...) — resolve
+        // it against the original URL so httpsGet never receives a bare path.
+        const redirected = new URL(res.headers.location, url).toString();
+        download(redirected).then(resolve, reject);
         return;
       }
       if (res.statusCode !== 200) {
