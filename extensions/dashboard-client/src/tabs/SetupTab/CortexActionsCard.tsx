@@ -105,7 +105,13 @@ export function CortexActionsCard({
 
 	const loadSetupStatus = useCallback(() => {
 		fetchSetupStatus()
-			.then(setSetupStatus)
+			.then((s) => {
+				setSetupStatus(s);
+				// A successful poll proves the server is reachable and serving — any
+				// latched "actions disabled" banner from an earlier transient error
+				// (404/500 on a previous version) is stale; clear it.
+				setDisabled(false);
+			})
 			.catch(() => {
 				/* best-effort poll; hide install button when unavailable */
 			});
@@ -170,13 +176,15 @@ export function CortexActionsCard({
 					setActionError(
 						"The server rejected the action: explicit confirmation is required.",
 					);
-				} else {
+				} else if (outcome.status === 404) {
+					// 404 = the VC9B flag is genuinely off on the server — the only
+					// response that justifies the "actions are disabled" banner.
 					setDisabled(true);
-					setActionError(
-						outcome.status === 404
-							? "Setup Cortex actions are disabled (off)."
-							: `Action failed (${outcome.status}).`,
-					);
+					setActionError("Setup Cortex actions are disabled (off).");
+				} else {
+					// Any other error (500, network, etc.) is transient — show it
+					// inline, but do NOT latch the disabled banner on it.
+					setActionError(`Action failed (${outcome.status}).`);
 				}
 			} catch (e) {
 				setActionError(e instanceof Error ? e.message : String(e));

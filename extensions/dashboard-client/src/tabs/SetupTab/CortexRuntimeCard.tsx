@@ -138,7 +138,7 @@ export default function CortexRuntimeCard(): React.ReactElement {
 				)}
 			</div>
 			<div style={styles.row}>
-				<span style={styles.label}>Effective backend:</span>
+				<span style={styles.label}>Effective backend (selected):</span>
 				<span style={styles.value}>{backend}</span>
 			</div>
 			{budgetVisible && (

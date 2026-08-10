@@ -92,10 +92,20 @@ export default function CortexRetestCard(): React.ReactElement {
 			</div>
 			{effectiveBackend !== null && (
 				<div style={styles.row}>
-					<span style={styles.label}>Effective backend:</span>
+					<span style={styles.label}>Effective backend (measured):</span>
 					<span style={styles.value}>{effectiveBackend}</span>
 				</div>
 			)}
+			{effectiveBackend !== null &&
+				status?.encoderBackend != null &&
+				effectiveBackend !== status.encoderBackend && (
+					<p style={{ fontSize: "0.8rem", color: "#a0a0c0", marginTop: "0.25rem" }}>
+						Measured backend differs from the selected backend above: the retest
+						benchmarked the native binding and found it over the p95/RSS gates, so
+						the runtime is demoted to <strong>{effectiveBackend}</strong> despite
+						the binding being installed.
+					</p>
+				)}
 			<button type="button" onClick={onRetest} disabled={retesting}>
 				{retesting ? "Retesting…" : "Retest now"}
 			</button>
