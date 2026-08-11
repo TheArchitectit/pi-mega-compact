@@ -809,6 +809,26 @@
 | Cross-cutting guardrails | 76 | 0 |
 | Sprint specs | 87 | 0 |
 
+## docs/specs/local-rag-mcp-program.md
+
+| Section | Line | Offset |
+| --------- | ------ | -------- |
+| Vision and definition of full | 9 | 0 |
+| Locked decisions and non-goals | 17 | 0 |
+| memory-mcp reuse and reject | 33 | 0 |
+| Authority and source seams | 51 | 0 |
+| Architecture and module budget | 66 | 0 |
+| Startup, grants, aliases, and environment | 94 | 0 |
+| Result and error contract | 110 | 0 |
+| Exact protocol-v1 tool inventory | 124 | 0 |
+| Resources and prompts | 149 | 0 |
+| Security, privacy, and failure policy | 155 | 0 |
+| Stdio lifecycle and release blockers | 176 | 0 |
+| Packaging, client configuration, and observability | 187 | 0 |
+| Testing and mandatory gate | 199 | 0 |
+| Gated implementation sprints LRMCP-0–LRMCP-8 | 215 | 0 |
+| Program acceptance and rollback | 253 | 0 |
+
 ## docs/specs/s49-turn-db-foundation.md
 
 | Section | Line | Offset |
