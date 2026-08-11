@@ -169,6 +169,12 @@ export const SETTINGS: ReadonlyArray<SettingGroup> = [
 				"Isolated turns.db store",
 				true,
 			),
+			boolDirect(
+				"MEGACOMPACT_PROVIDER_MODEL_ANALYTICS",
+				"Provider/Model Analytics",
+				"Capture provider/model analytics in analytics.db",
+				true,
+			),
 			num(
 				"MEGACOMPACT_WIKI_SILHOUETTE_MIN",
 				"Silhouette Minimum",
