@@ -824,6 +824,20 @@
 | Rollback | 229 | 0 |
 | Risks | 238 | 0 |
 
+## docs/specs/provider-model-analytics-program.md
+
+| Section | Lookup |
+| --------- | ------ |
+| Vision, goals, non-goals, locked decisions | §§1–3 |
+| Current baseline and correction | §4 |
+| Analytics store contract and analytics.db schema | §§5–6 |
+| Measurement truth, ingestion, lifecycle, migration, retention | §§7–9 |
+| Typed APIs and Cache+Performance sub-tab IA | §§10–11 |
+| Plexus PR traceability/parity | §12 |
+| Security, tests, full gates | §§13–14 |
+| PMA-0–PMA-7 implementation sprints | §15 |
+| File splits, rollout/rollback, open questions | §§16–18 |
+
 ## docs/specs/s50-per-turn-metrics-fork.md
 
 | Section | Line | Offset |
