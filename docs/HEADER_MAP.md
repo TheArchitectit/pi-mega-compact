@@ -919,6 +919,39 @@
 | Component + state | 30 | 0 |
 | Conversation list | 90 | 0 |
 | TurnDetail (per-turn viz + recall) | 150 | 0 |
+
+## docs/superpowers/specs/2026-08-12-three-way-failback-design.md
+
+| Section | Line | Offset |
+| --------- | ------ | -------- |
+| 0. Implementation status (per-sprint + per-amendment disposition, telemetry) | 7 | 0 |
+| 1. The problem this solves (the 2026-08-12 incident) | 36 | 0 |
+| 2. Core invariant | 46 | 0 |
+| 3. The one pattern, applied to all three functions | 52 | 0 |
+| 4. Recall — three independent retrieval paths | 63 | 0 |
+| 5. Compaction — three competing engines (superseded by A2) | 92 | 0 |
+| 6. Replay/restore — the convergence point | 125 | 0 |
+| 7. The unified picture | 145 | 0 |
+| 8. The incident, replayed against this design | 157 | 0 |
+| 9. New components | 163 | 0 |
+| 10. Constraints respected | 177 | 0 |
+| 11. Out of scope | 185 | 0 |
+| 12. v2 QA amendments (BINDING — A1–A6 override §4–§9) | 192 | 0 |
+
+## docs/specs/three-way-failback-sprints.md
+
+| Section | Line | Offset |
+| --------- | ------ | -------- |
+| 0. What this program fixes (incident → sprint table) | 9 | 0 |
+| 1. Hard conventions (flag gating, gate order, publish cadence) | 19 | 0 |
+| 3WF-1 — TriggerGuard + recall fallback chain (ships first) | 35 | 0 |
+| 3WF-2 — Compaction ladder + ReductionValidator + ThrashGuard + threshold invariant | 68 | 0 |
+| 3WF-3 — Read-only recall + 3-source vote + RecallValidator | 110 | 0 |
+| 3WF-4 — InjectionConfirm + floor polish | 144 | 0 |
+| 3WF-5 — Toggles, telemetry, docs (program completion) | 173 | 0 |
+| Program verification (post-3WF-5) | 195 | 0 |
+| Explicit non-goals (stay parked) | 202 | 0 |
+
 ## VECTOR CORTEX
 
 - `vector-cortex/README.md`: read order, locked decisions, status

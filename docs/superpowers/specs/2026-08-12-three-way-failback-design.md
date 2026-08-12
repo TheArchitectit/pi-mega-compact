@@ -1,8 +1,37 @@
 # Three-Way Failback for the Context-Management Critical Path
 
 **Date:** 2026-08-12
-**Status:** SPEC — approved design, pending implementation plan
+**Status:** **IMPLEMENTED** (program complete — 3WF-1 … 3WF-5, v0.20.84 → v0.21.0)
 **Scope:** recall + compaction + replay/restore (the three functions that decide what context the agent sees)
+
+## 0. Implementation status
+
+The design landed as the 5-sprint program in [`docs/specs/three-way-failback-sprints.md`](../../specs/three-way-failback-sprints.md). Every rung is behind the umbrella flag `MEGACOMPACT_THREE_WAY_FAILBACK` (default ON, env-OFF); **flag OFF is byte-identical to v0.20.83**.
+
+| Sprint | Delivered | Version | Commit |
+|---|---|---|---|
+| 3WF-1 | TriggerGuard + recall fallback chain + provenance floor | v0.20.84 | `3f66635d` (release `28f474cc`) |
+| 3WF-2 (a) | Threshold invariant — fire at configured % of the ACTUAL model window, no hardcoded window; defer when unknown | v0.20.85 | `af76d74d` (release `0354b519`) |
+| 3WF-2 (b) | Compaction candidate vote + live-window ReductionValidator + meta-persisted ThrashGuard | v0.20.86 | `a32933c8` (release `6c01901c`) |
+| 3WF-3 | Read-only 3-source recall vote + RecallValidator + same-repo cosine floor | v0.20.87 | `22d885fd` (release `6281fdcc`) |
+| 3WF-4 | InjectionConfirm + shared provenance floor builder | v0.20.88 | `d7649f92` (release `f139881d`) |
+| 3WF-5 | Dashboard toggles for both flags, events.log breadcrumb verification, docs | v0.21.0 | this sprint |
+
+### Per-amendment disposition (§12 v2 QA amendments — the binding text)
+
+| Amendment | Status | Where it landed |
+|---|---|---|
+| **A1** — Source C = query-independent recency, not `turn_recall`; hydrate FTS5 hits; vote on raw `hits`; read-only recall variant; net-new same-repo floor (0.12) | IMPLEMENTED | 3WF-3 (v0.20.87): `src/recall/readonly.ts` (read-only, no `vectorMarkInjected`/S43 writes), `src/recall/vote.ts` (recency source + hydrate + raw-hits vote), `src/recall/validator.ts` (floor), `MEGACOMPACT_RECALL_MIN_COSINE` default 0.12 |
+| **A2** — compaction is a three-rung ladder (supersede precondition → two voted summary candidates → provenance floor); ReductionValidator measures live-window delta, never `saved`; ThrashGuard persists refusal in SQLite `meta` | IMPLEMENTED | 3WF-2 (v0.20.86): `src/failback/compact.ts` (candidate vote), `extensions/mega-events/context-handler/thrashGuard.ts` (`ReductionValidator` on live `currentTokens` delta + `thrasguard.blocked_until` / `thrasguard.baseline_tokens` meta keys), `src/store/sqlite/meta.ts` `setMetaNumber`. supersede precondition unchanged (`engine.ts:143`) |
+| **A2 (folded)** — fire point = configured % of the ACTUAL `lastCtxWindow`; no hardcoded window in the firing path; DEFER when the window is unknown | IMPLEMENTED | 3WF-2a (v0.20.85): `extensions/mega-runtime/pressure-getters.ts` (`effectiveThresholdImpl` → `+Infinity` when window unknown), `context-handler/gateCheck.ts` (token path resolves the per-model override), `MEGACOMPACT_THRESHOLD_PCT` default 0.80 (fires at 80% used, leaves 20% free) |
+| **A3** — guards live at the context-handler `tailResult.ts` seam (not `before_agent_start`); `ContextEvent.messages` is the only verifiable proxy; legacy prepend mode degrades to string-contains | IMPLEMENTED | 3WF-1 (TriggerGuard, v0.20.84) + 3WF-4 (InjectionConfirm, v0.20.88): `context-handler/triggerGuard.ts`, `context-handler/injectionConfirm.ts`, shared floor in `src/failback/floor.ts` |
+| **A4** — LLM rungs stay opt-in insertions; vote + validators identical either way | HONORED | 3WF-2: the Ollama cluster-summary candidate is inserted only when `MEGACOMPACT_RAPTOR_MODEL` is set; all default rungs are local (PREVENT-PI-004) |
+| **A5** — both `MEGACOMPACT_THREE_WAY_FAILBACK` and `MEGACOMPACT_RECALL_TAIL_INJECT` need dashboard toggles, neither in `EXCLUDED_SETTINGS` | IMPLEMENTED | 3WF-5 (v0.21.0): "Three-Way Failback" group in `extensions/dashboard-server/routes-rag-settings-helpers.ts`; asserted by `extensions/dashboard-server/routes-rag-settings-3wf.test.ts` |
+| **A6** — base master v0.20.83 on `feat/three-way-failback`; `pma-remerge-review` parked | HONORED | branch `feat/three-way-failback`; PMA analytics.db leak (§11 F1) not carried aboard |
+
+### Telemetry breadcrumbs (all on the events.log sink the dashboard Events tab tails)
+
+`three_way_guard_fired`, `three_way_floor_used` (`context-handler/triggerGuard.ts`), `thrasguard_armed` (`context-handler/thrashGuard.ts`), `injection_confirmed`, `injection_recovered` (`context-handler/injectionConfirm.ts`). Each is a JSON line carrying `ts` + `event`, written via `MegaRuntime.appendEvent` → `appendEventImpl` (`extensions/mega-runtime/append-event.ts`) into the repo's `events.log`. 3WF-5 added the events.log sink for `thrasguard_armed`, which until then only reached the debug-gated `mega-compact.log` and was therefore invisible to the dashboard.
 
 ## 1. The problem this solves
 

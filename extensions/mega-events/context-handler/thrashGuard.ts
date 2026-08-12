@@ -75,6 +75,15 @@ export const ReductionValidator = {
  * Infinity/NaN into meta (getMetaNumber would read it back as 0). Skip arming
  * + log instead; the next over-threshold event simply re-fires (pre-sprint
  * behavior) rather than corrupting the guard.
+ *
+ * 3WF-5 telemetry: `logger` is the debug-gated runtime logger (mega-compact.log,
+ * silent unless config.debug) — which means the breadcrumb was invisible to the
+ * dashboard Events tab, whose SSE tail reads the repo's events.log. `emit` is
+ * the always-on events.log sink (MegaRuntime.appendEvent), so the armed
+ * breadcrumb lands in the same stream as the other 3WF events
+ * (three_way_guard_fired / three_way_floor_used / injection_confirmed /
+ * injection_recovered). Both sinks are optional + best-effort; passing neither
+ * keeps the pre-3WF-5 behavior.
  */
 export function armThrashGuard(
 	currentTokens: number,
@@ -82,6 +91,7 @@ export function armThrashGuard(
 	effectiveThreshold: number,
 	stateDir: string,
 	logger?: { info(event: string, fields?: Record<string, unknown>): void },
+	emit?: (event: string, fields: Record<string, unknown>) => void,
 ): void {
 	if (!Number.isFinite(currentTokens) || currentTokens <= 0) return;
 	if (!Number.isFinite(rearmPct) || rearmPct <= 0) return;
@@ -96,11 +106,17 @@ export function armThrashGuard(
 		const n = Math.round(rearmPct * effectiveThreshold);
 		setMetaNumber(THRASH_BASELINE_KEY, Math.round(currentTokens), stateDir);
 		setMetaNumber(THRASH_BLOCKED_KEY, Math.round(currentTokens + n), stateDir);
-		logger?.info("thrasguard_armed", {
+		const fields = {
 			baselineTokens: Math.round(currentTokens),
 			blockedUntilTokens: Math.round(currentTokens + n),
 			rearmTokens: n,
-		});
+		};
+		logger?.info("thrasguard_armed", fields);
+		try {
+			emit?.("thrasguard_armed", fields);
+		} catch {
+			/* non-fatal: events.log sink must never break arming */
+		}
 	} catch {
 		/* non-fatal: best-effort meta write */
 	}
@@ -214,12 +230,20 @@ export function evaluatePendingReduction(
 			// Remember which event armed us so the consult later in THIS SAME event
 			// does not swallow it (see armedOnEvent).
 			armedOnEvent.set(runtime, currentTokens);
+			// 3WF-5: also emit the breadcrumb on the always-on events.log sink so
+			// the dashboard Events tab sees it (runtime.logger is debug-gated).
+			// Optional-chained: a thin runtime stub without appendEvent stays valid.
+			const emit =
+				typeof runtime.appendEvent === "function"
+					? runtime.appendEvent.bind(runtime)
+					: undefined;
 			armThrashGuard(
 				currentTokens,
 				config.thrashRearmPct,
 				runtime.effectiveThreshold,
 				runtime.currentStateDir,
 				runtime.logger,
+				emit,
 			);
 		}
 	} catch {

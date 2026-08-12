@@ -296,6 +296,23 @@ export const SETTINGS: ReadonlyArray<SettingGroup> = [
 			),
 		],
 	},
+	{
+		name: "Three-Way Failback",
+		settings: [
+			boolDirect(
+				"MEGACOMPACT_THREE_WAY_FAILBACK",
+				"Three-Way Failback",
+				"Umbrella for the 3-way failback safety system: TriggerGuard (stages a recall block even when session_start never fires), the live-window ReductionValidator + persisted ThrashGuard (stops ineffective compaction re-fire loops), the 3-source read-only recall vote + same-repo relevance floor, and InjectionConfirm (asserts the staged block reached the message list pi sends). OFF = byte-identical pre-3WF behavior (v0.20.83). Runtime reads envBool(plain key), so this uses the plain-write convention (not _DISABLED).",
+				true,
+			),
+			boolDirect(
+				"MEGACOMPACT_RECALL_TAIL_INJECT",
+				"Recall Tail Inject",
+				"Compose the staged recall block as a trailing user message on the context event (tail inject) instead of the legacy system-prompt prepend. Tail mode keeps the cache prefix stable and is the mode InjectionConfirm verifies against ContextEvent.messages; OFF falls back to the legacy prepend path (verified by string-contains). Runtime reads envBool(plain key), so this uses the plain-write convention (not _DISABLED).",
+				true,
+			),
+		],
+	},
 	VECTOR_CORTEX_SETTINGS,
 	{
 		name: "Cost API",

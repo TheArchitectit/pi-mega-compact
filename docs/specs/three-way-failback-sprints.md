@@ -1,7 +1,7 @@
 # Three-Way Failback — Sprint Program (3WF-1 … 3WF-5)
 
 **Date:** 2026-08-12
-**Status:** PROGRAM — sprints defined, approved, not yet implemented
+**Status:** **COMPLETE** — all five sprints implemented and published (3WF-1 v0.20.84, 3WF-2 v0.20.85 + v0.20.86, 3WF-3 v0.20.87, 3WF-4 v0.20.88, 3WF-5 v0.21.0). Per-amendment disposition: `docs/superpowers/specs/2026-08-12-three-way-failback-design.md` §0.
 **Base:** master v0.20.83 (branch `feat/three-way-failback`); `pma-remerge-review` parked, unmerged
 **Design contract:** `docs/superpowers/specs/2026-08-12-three-way-failback-design.md` **v2 QA amendments (§12) are binding** — they override the original §4–§9 where they conflict. Sprints implement the v2-binding text, not the original sections.
 **QA lineage:** three adversarial review passes over the recall / compaction / replay seams (2026-08-12); findings A1–A3 below are verified against code with `file:line` evidence.

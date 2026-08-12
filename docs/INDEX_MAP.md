@@ -136,6 +136,8 @@
 | **post-mortem: "Already compacted" / "Auto compaction failed" race (agent_end vs native _checkCompaction)** | [specs/postmortem-already-compacted-race.md](specs/postmortem-already-compacted-race.md) | docs/specs/ |
 | **AI error-retry findings (S38.1–S38.10: classifier, retry contract, circuit breaker, hard-stop, race guard, retries tile, mid-response stream-death detection, test-file split + closeVectorIndex hang fix)** | [AI_ERROR_RETRY_FINDINGS.md](AI_ERROR_RETRY_FINDINGS.md) | docs/ |
 | **S27 Task 10: DB maintenance /commands (/mega-db-stats, prune, vacuum, check, reconcile) + auto-maintenance on session_start** | `extensions/mega-db-cmds.ts` + `src/store/sqlite.ts` | extensions/ + src/ |
+| **3WF design spec (three-way failback for the context-management critical path — IMPLEMENTED v0.20.84→v0.21.0; §12 v2 QA amendments A1–A6 are the binding text; per-amendment sprint/commit disposition in §0)** | [superpowers/specs/2026-08-12-three-way-failback-design.md](superpowers/specs/2026-08-12-three-way-failback-design.md) | docs/superpowers/specs/ |
+| **3WF-1…3WF-5 sprint program (TriggerGuard; threshold invariant = % of ACTUAL model window + compaction ladder/ReductionValidator/ThrashGuard; read-only 3-source recall vote + same-repo cosine floor; InjectionConfirm; toggles/telemetry/docs — all behind `MEGACOMPACT_THREE_WAY_FAILBACK`, flag-OFF byte-identical)** | [specs/three-way-failback-sprints.md](specs/three-way-failback-sprints.md) | docs/specs/ |
 | retention policy (TTL 90d, soft-delete, VACUUM, DR snapshots) | [RETENTION_POLICY.md](RETENTION_POLICY.md) | docs/ |
 | dedup runbook (SEV tiers, first-15-min, MARK_ONLY degrade) | [DEDUP_RUNBOOK.md](DEDUP_RUNBOOK.md) | docs/ |
 
