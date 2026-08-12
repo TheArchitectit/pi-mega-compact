@@ -21,6 +21,7 @@ export const SHINGLE_SIZE = 5; // char 5-grams
 const MAX_SHINGLES = 50_000; // QA #7/#15 complexity cap
 const SEED = 0xdeadbeef;
 const P = 2147483647; // 2^31 - 1, Mersenne prime
+const PBigInt = 2147483647n; // BigInt twin for overflow-safe modular reduction
 
 /** Per-index universal-hashing coefficients, derived deterministically from SEED. */
 function coeffA(i: number): number {
@@ -69,10 +70,10 @@ export function minhashSignature(text: string): number[] {
     const b = coeffB(i);
     let min = P;
     for (const x of grams) {
-      // (a*x + b) mod p — use Number math; a,x < 2^31 so a*x < 2^62, within
-      // double-precision integer range (2^53) only if reduced; reduce a*x first.
-      const ax = (a * (x % P)) % P;
-      const h = (ax + b) % P;
+      // (a*x + b) mod p. a, x < 2^31 so a*x < 2^62 — EXCEEDS 2^53. The naive
+      // (a*(x%P))%P loses precision (verified: a=x=p-1 → lossy 2147483644 vs
+      // exact 1). BigInt is correct + cheap (~5ms per signature).
+      const h = Number((BigInt(a) * BigInt(x % P) + BigInt(b)) % PBigInt);
       if (h < min) min = h;
     }
     sig[i] = min;

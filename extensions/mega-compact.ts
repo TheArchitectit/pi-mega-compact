@@ -98,6 +98,16 @@ export default function (pi: ExtensionAPI) {
 		);
 		config.poisonedContextRepeatThreshold = 3;
 	}
+	// E1: validate similarity thresholds — NaN or out of range silently disables
+	// recall dedup (anything >= NaN is false). envFlag guards NaN; clamp the rest.
+	if (!(config.dedupSim > 0 && config.dedupSim <= 1)) {
+		console.warn("[mega-compact] MEGACOMPACT_DEDUP_SIM must be in (0,1]; using default 0.9");
+		config.dedupSim = 0.9;
+	}
+	if (!(config.crossRepoCosine >= 0 && config.crossRepoCosine <= 1)) {
+		console.warn("[mega-compact] MEGACOMPACT_CROSSREPO_COSINE must be in [0,1]; using default 0.9");
+		config.crossRepoCosine = 0.9;
+	}
 	const runtime = new MegaRuntime(config);
 	registerEventHandlers(pi, runtime, config);
 	registerCommands(pi, runtime, config);
