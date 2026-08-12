@@ -196,8 +196,6 @@ export function loadConfig(): MegaConfig {
 		// turn path (S48 behavior). Mirrors src/config/turns.ts TURNS_DB_ENABLED.
 		turnsDbEnabled: envBool("MEGACOMPACT_TURNS_DB", true),
 		autoWikiEnabled: envBool("MEGACOMPACT_AUTO_WIKI", true),
-		// PMA: provider/model analytics (isolated analytics.db). Default ON.
-		providerModelAnalytics: envBool("MEGACOMPACT_PROVIDER_MODEL_ANALYTICS", true),
 		crossRepoEnabled: envBool("MEGACOMPACT_CROSSREPO_ENABLED", true),
 		crossRepoCosine: Number(process.env.MEGACOMPACT_CROSSREPO_COSINE ?? "0.90"),
 		memoryAutoReview: envBool("MEGACOMPACT_MEMORY_AUTO_REVIEW", true),

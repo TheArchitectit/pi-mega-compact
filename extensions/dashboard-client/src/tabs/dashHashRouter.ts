@@ -24,7 +24,7 @@
  */
 
 import { useEffect, useState } from "react";
-import type { DashTabId, TabId } from "./registry";
+import type { DashTabId } from "./registry";
 
 /**
  * The consolidated surface a legacy hash resolves to. Every key is a legacy
@@ -54,36 +54,6 @@ export function resolveHashToSurface(hash: string): DashTabId | null {
   if (!clean) return null;
   const surface = HASH_TO_SURFACE[clean];
   return surface ?? null;
-}
-
-/**
- * Full-view legacy hash→tab resolver. In the default (non-consolidated) view,
- * `activeTab` is a 13-tab `TabId` — most hash values ARE valid legacy tab ids
- * (e.g. `#metrics` → `"metrics"`), except `#config` which has no standalone
- * legacy tab and maps to `maintenance` (the admin surface).
- */
-export const HASH_TO_LEGACY_TAB: Readonly<Record<string, TabId>> = {
-	overview: "overview",
-	sessions: "sessions",
-	turns: "turns",
-	cache: "cache",
-	metrics: "metrics",
-	repos: "repos",
-	wiki: "wiki",
-	"memory-map": "memory-map",
-	events: "events",
-	health: "health",
-	"vector-cortex": "vector-cortex",
-	maintenance: "maintenance",
-	setup: "setup",
-	config: "maintenance", // no standalone legacy config tab → admin surface
-};
-
-/** Resolve the current `location.hash` to a legacy 13-tab id (null if empty/unmapped). */
-export function resolveHashToLegacyTab(hash: string): TabId | null {
-	const clean = hash.replace(/^#/, "").trim();
-	if (!clean) return null;
-	return HASH_TO_LEGACY_TAB[clean] ?? null;
 }
 
 /**

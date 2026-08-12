@@ -112,9 +112,6 @@ export interface MegaConfig {
 	/** S51: auto-categorizing wiki (k-means + TF-IDF over real embeddings). Default ON.
 	 *  Mirrors TurnsConfig.AUTO_WIKI_ENABLED. Rebuild fires every Nth compaction. */
 	autoWikiEnabled: boolean;
-	/** PMA: provider/model analytics (isolated analytics.db). Default ON. OFF =
-	 *  no analytics.db open/write — pre-program behavior byte-for-byte. */
-	providerModelAnalytics: boolean;
 	/** Cross-repo recall enabled (S17). Resume + /mega-recall --cross-repo can
 	 *  pull checkpoints from OTHER repos via the PGlite HNSW index. Default true. */
 	crossRepoEnabled: boolean;

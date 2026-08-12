@@ -31,7 +31,7 @@ import {
   type TabId,
   type DashTabId,
 } from "./tabs/registry";
-import { useHashTab, resolveHashToLegacyTab } from "./tabs/dashHashRouter";
+import { useHashTab } from "./tabs/dashHashRouter";
 export type { TabId };
 
 // Tab components — lazy-loaded. DASH-0d: the consolidated 7 host components come
@@ -253,16 +253,6 @@ export default function App(): React.ReactElement {
   useEffect(() => {
     if (canConsolidate && consolidatedView && hashSurface != null)
       setActiveTab(hashSurface);
-  }, [canConsolidate, consolidatedView, hashSurface]);
-
-  // Full view (default, non-consolidated): apply hash→legacy-tab routing so
-  // deep links like #metrics, #repos, #wiki work in the default 13-tab view.
-  // Without this, only the consolidated Minimal view honors the hash — every
-  // deep link falls through to the default "overview" tab in Full view.
-  useEffect(() => {
-    if (canConsolidate && consolidatedView) return; // handled by the effect above
-    const legacy = resolveHashToLegacyTab(window.location.hash);
-    if (legacy != null) setActiveTab(legacy);
   }, [canConsolidate, consolidatedView, hashSurface]);
 
   // The toggle button renders inside both view headers when the consolidated
