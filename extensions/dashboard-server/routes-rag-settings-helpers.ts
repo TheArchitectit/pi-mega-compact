@@ -274,6 +274,19 @@ export const SETTINGS: ReadonlyArray<SettingGroup> = [
 			num("MEGACOMPACT_EMBEDDING_CHARS_PER_TOKEN", "Embedding Chars per Token", "Estimated characters per token used for embedder chunking size", 4, 1, 32),
 		],
 	},
+	{
+		name: "Compaction",
+		settings: [
+			num(
+				"MEGACOMPACT_THRESHOLD_PCT",
+				"Compaction Threshold",
+				"Fraction of the actual model context window at which compaction fires — 0.80 fires at 80% used (leaves 20% free). Applies to any model size; a per-model Model Thresholds row overrides it",
+				0.8,
+				0.1,
+				0.95,
+			),
+		],
+	},
 	VECTOR_CORTEX_SETTINGS,
 	{
 		name: "Cost API",

@@ -82,11 +82,27 @@ export function evaluateGate(
 		gatePassed = pct / 100 >= firePct;
 	} else {
 		// custom tier OR tiered-but-pct-unavailable → token gate (S27 fallback).
-		if (currentTokens < runtime.effectiveThreshold) {
+		// 3WF-2: under the umbrella, when the window is known AND the config is
+		// tiered, honor the per-model Dashboard override exactly like the percent
+		// branch (firePointPct % of the actual window) instead of the bare boot
+		// fallback. custom / window-unknown / umbrella-OFF keep the bare
+		// runtime.effectiveThreshold (window-unknown defers via +Infinity from
+		// effectiveThresholdImpl; custom is the explicit absolute).
+		let gateThreshold = runtime.effectiveThreshold;
+		if (
+			config.threeWayFailback &&
+			config.tierPct != null &&
+			runtime.lastCtxWindow > 0
+		) {
+			gateThreshold = Math.round(
+				(perModelThreshold.firePointPct / 100) * runtime.lastCtxWindow,
+			);
+		}
+		if (currentTokens < gateThreshold) {
 			runtime.diagCtxFastGate++;
 			return { kind: "return", view: tailResult() ?? undefined };
 		}
-		const check = autoCompactCheck(currentTokens, runtime.effectiveThreshold); // SERVER-STYLE CONFIRM (local)
+		const check = autoCompactCheck(currentTokens, gateThreshold); // SERVER-STYLE CONFIRM (local)
 		if (!check.shouldCompact) {
 			runtime.diagCtxNoCompact++;
 			return { kind: "return", view: tailResult() ?? undefined };

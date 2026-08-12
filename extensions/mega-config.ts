@@ -78,10 +78,29 @@ function resolveThreshold(): {
 	}
 	const raw = (process.env.MEGACOMPACT_TIER ?? "low").toLowerCase();
 	const tier = (raw in COMPACT_TIERS ? raw : "low") as CompactTier;
-	const tierPct = TIER_PCT[tier];
+	let tierPct = TIER_PCT[tier];
+	// 3WF-2 threshold invariant: under the umbrella, when no named tier is set
+	// the fire point is the configurable % of the ACTUAL model window (default
+	// 0.80 — "20% free remaining"). Tiered (named preset) keeps its preset pct;
+	// both paths still compute the legacy 200k boot fallback below as a display
+	// placeholder + the custom-tier absolute companion. Umbrella OFF stays
+	// byte-identical to v0.20.83 (default tier=low 0.5).
+	const umbrella = envBool("MEGACOMPACT_THREE_WAY_FAILBACK", true);
+	if (umbrella && !(process.env.MEGACOMPACT_TIER && process.env.MEGACOMPACT_TIER !== "")) {
+		tierPct = clamp(envFlag("MEGACOMPACT_THRESHOLD_PCT", 0.8), 0.1, 0.95);
+	}
 	// Boot fallback: sane gate before the first context event provides a window.
+	// (NO hardcoded window in the firing path — effectiveThresholdImpl defers
+	// when window unknown; this remains only a display placeholder + custom
+	// companion under the umbrella.)
 	const thresholdTokens = Math.round(tierPct * 200_000);
 	return { tier, tierPct, thresholdTokens };
+}
+
+/** Clamp `n` into [lo, hi]; non-finite → fallback. */
+function clamp(n: number, lo: number, hi: number): number {
+	if (!Number.isFinite(n)) return lo;
+	return Math.min(hi, Math.max(lo, n));
 }
 
 /**
