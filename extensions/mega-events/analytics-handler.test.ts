@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { registerAnalyticsHandler, closeAnalyticsStores } from "./analytics-handler.js";
+import { registerAnalyticsHandler, closeAnalyticsStores, __pmaTimingForTest } from "./analytics-handler.js";
 import { createAnalyticsStore, closeAllAnalyticsDbs } from "../../src/store/analytics/index.js";
 import type { MegaRuntime } from "../mega-runtime.js";
 import type { MegaConfig } from "../mega-config.js";
@@ -45,9 +45,6 @@ function mockRuntime(stateDir: string): MegaRuntime {
 			modelId: "claude-sonnet-4",
 			modelName: "Claude Sonnet 4",
 		},
-		analyticsProviderStart: 0,
-		analyticsTtft: 0,
-		pendingAnalyticsCorrelationId: null,
 	} as unknown as MegaRuntime;
 }
 
@@ -115,13 +112,13 @@ test("PMA-2: request_started and request_completed share correlationId", async (
 
 	// The correlationId is req_<sessionId>_<turnIndex>. Verify the adapter set it.
 	assert.equal(
-		rt.pendingAnalyticsCorrelationId,
+		__pmaTimingForTest(rt).correlationId,
 		null, // consumed at turn_end
 		"correlationId consumed after turn_end",
 	);
 	// Verify it was set during turn_start (re-fire to check).
 	await (pi as any).fire("turn_start", { turnIndex: 2 });
-	const corr = rt.pendingAnalyticsCorrelationId as string | null;
+	const corr = __pmaTimingForTest(rt).correlationId as string | null;
 	assert.ok(
 		corr?.includes("sess_pma2"),
 		"correlationId includes sessionId",
@@ -146,13 +143,13 @@ test("PMA-2: message_update with text_start captures TTFT", async () => {
 	// Small delay so TTFT > 0.
 	await new Promise((r) => setTimeout(r, 5));
 	await (pi as any).fire("message_update", { assistantMessageEvent: { type: "text_start" } });
-	assert.ok(rt.analyticsTtft > 0, "TTFT stamped after text_start");
+	assert.ok(__pmaTimingForTest(rt).ttft > 0, "TTFT stamped after text_start");
 
 	// Second message_update should NOT overwrite (guard).
-	const firstTtft = rt.analyticsTtft;
+	const firstTtft = __pmaTimingForTest(rt).ttft;
 	await new Promise((r) => setTimeout(r, 5));
 	await (pi as any).fire("message_update", { assistantMessageEvent: { type: "text_delta" } });
-	assert.equal(rt.analyticsTtft, firstTtft, "TTFT not overwritten by subsequent chunks");
+	assert.equal(__pmaTimingForTest(rt).ttft, firstTtft, "TTFT not overwritten by subsequent chunks");
 	closeAnalyticsStores();
 });
 

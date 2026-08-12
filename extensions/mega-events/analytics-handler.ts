@@ -49,6 +49,33 @@ export function closeAnalyticsStores(): void {
 	stores.clear();
 }
 
+// ── Per-runtime PMA-2 timing state ────────────────────────────────────
+// Kept off MegaRuntime (a module-private WeakMap) so runtime.ts stays a
+// pure field-declaration shell under the soft-limit headroom gate. The
+// adapter is the sole reader/writer of this transient per-turn state.
+
+interface PmaTiming {
+	providerStart: number;
+	ttft: number;
+	correlationId: string | null;
+}
+
+const pmaTimings = new WeakMap<object, PmaTiming>();
+
+function getPma(rt: object): PmaTiming {
+	let s = pmaTimings.get(rt);
+	if (!s) {
+		s = { providerStart: 0, ttft: 0, correlationId: null };
+		pmaTimings.set(rt, s);
+	}
+	return s;
+}
+
+/** @internal Test-only accessor — production code uses getPma() in-module. */
+export function __pmaTimingForTest(rt: object): PmaTiming {
+	return getPma(rt);
+}
+
 // ── Usage block narrowing (same as perf-handler) ──────────────────────
 
 interface UsageBlock {
@@ -87,9 +114,10 @@ export function registerAnalyticsHandler(
 		try {
 			const now = Date.now();
 			const corrId = `req_${runtime.rt.sessionId}_${event.turnIndex}`;
-			runtime.pendingAnalyticsCorrelationId = corrId;
-			runtime.analyticsProviderStart = 0; // reset; stamped at before_provider_request
-			runtime.analyticsTtft = 0;
+			const pma = getPma(runtime);
+			pma.correlationId = corrId;
+			pma.providerStart = 0; // reset; stamped at before_provider_request
+			pma.ttft = 0;
 
 			const provider = runtime.currentModel?.provider;
 			const model = runtime.currentModel?.modelId;
@@ -115,8 +143,9 @@ export function registerAnalyticsHandler(
 
 	pi.on("before_provider_request", async () => {
 		try {
-			runtime.analyticsProviderStart = Date.now();
-			const corrId = runtime.pendingAnalyticsCorrelationId;
+			const pma = getPma(runtime);
+			pma.providerStart = Date.now();
+			const corrId = pma.correlationId;
 			if (!corrId) return;
 			const provider = runtime.currentModel?.provider;
 			const model = runtime.currentModel?.modelId;
@@ -125,7 +154,7 @@ export function registerAnalyticsHandler(
 				correlationId: corrId,
 				sessionId: runtime.rt.sessionId,
 				eventKind: "provider_selected",
-				observedAt: runtime.analyticsProviderStart,
+				observedAt: pma.providerStart,
 				provider,
 				model,
 				source: "host_adapter",
@@ -143,12 +172,13 @@ export function registerAnalyticsHandler(
 
 	pi.on("message_update", async (event) => {
 		try {
-			if (runtime.analyticsTtft > 0) return; // already captured this turn
-			if (runtime.analyticsProviderStart <= 0) return; // no provider start stamp
+			const pma = getPma(runtime);
+			if (pma.ttft > 0) return; // already captured this turn
+			if (pma.providerStart <= 0) return; // no provider start stamp
 			const chunkType = (event as { assistantMessageEvent?: { type?: string } })
 				.assistantMessageEvent?.type;
 			if (chunkType !== "text_start" && chunkType !== "text_delta") return;
-			runtime.analyticsTtft = Date.now() - runtime.analyticsProviderStart;
+			pma.ttft = Date.now() - pma.providerStart;
 		} catch {
 			/* non-fatal */
 		}
@@ -158,7 +188,8 @@ export function registerAnalyticsHandler(
 
 	pi.on("turn_end", async (event) => {
 		try {
-			const corrId = runtime.pendingAnalyticsCorrelationId;
+			const pma = getPma(runtime);
+			const corrId = pma.correlationId;
 			if (!corrId) return;
 
 			const now = Date.now();
@@ -186,18 +217,18 @@ export function registerAnalyticsHandler(
 				cacheReadTokens: u?.cacheRead,
 				cacheWriteTokens: u?.cacheWrite,
 				durationMs,
-				ttftMs: runtime.analyticsTtft > 0 ? runtime.analyticsTtft : undefined,
+				ttftMs: pma.ttft > 0 ? pma.ttft : undefined,
 				source: "host_adapter",
 				quality: {
 					...qualityFor(provider, model),
-					...(runtime.analyticsTtft > 0 ? {} : { note: "TTFT not captured (no first-token event)" }),
+					...(pma.ttft > 0 ? {} : { note: "TTFT not captured (no first-token event)" }),
 				},
 			};
 			storeFor(runtime.currentStateDir).asWriter().appendRequestEvent(fact);
 
 			// Reset per-turn state.
-			runtime.pendingAnalyticsCorrelationId = null;
-			runtime.analyticsTtft = 0;
+			pma.correlationId = null;
+			pma.ttft = 0;
 		} catch {
 			/* non-fatal */
 		}
