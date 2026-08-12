@@ -225,6 +225,12 @@ export function loadConfig(): MegaConfig {
 		// 3WF-1: TriggerGuard — guarantee a staged recall block on every context
 		// event even when session_start never fires. Default ON; OFF = byte-identical.
 		threeWayFailback: envBool("MEGACOMPACT_THREE_WAY_FAILBACK", true),
+		// 3WF-2: ThrashGuard re-arm budget as a fraction of effectiveThreshold.
+		// 0.10 default (10% of the effective threshold) — see mega-config-types.
+		// Clamped to [0.01, 0.5]: below 1% the guard is almost never armed (any
+		// growth re-fires, defeating the anti-thrash purpose); above 50% it would
+		// suppress legitimate re-fires for half the window. Env-overridable.
+		thrashRearmPct: clamp(envFlag("MEGACOMPACT_THRASH_REARM_PCT", 0.1), 0.01, 0.5),
 		// PC-A: positive sprint flag, default ON. =0 byte-identical to the
 		// pre-change OFF state (single gate lives at the call site in tailResult.ts).
 		messageSeparation: envBool("MEGACOMPACT_MESSAGE_SEPARATION", true),

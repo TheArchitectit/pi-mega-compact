@@ -17,6 +17,7 @@ import {
 import { autoCompactCheck } from "../../../src/compact.js";
 import type { MegaRuntime } from "../../mega-runtime.js";
 import type { MegaConfig } from "../../mega-config.js";
+import { isThrashBlockedFor } from "./thrashGuard.js";
 
 /** Tail-injection closure shape produced by buildTailResult (tailResult.ts). */
 export type TailResultFn = (
@@ -30,6 +31,35 @@ export type GateOutcome =
 			kind: "proceed";
 			perModelThreshold: { safetyMarginPct: number; firePointPct: number };
 	  };
+
+/**
+ * 3WF-2 ThrashGuard consult — refuse to fire a NEW compaction while the guard
+ * is armed. After an ineffective compaction (the live window did not shrink),
+ * `thrasguard.blocked_until` holds the live-token count the window must exceed
+ * before re-firing is allowed.
+ *
+ * WHY THIS IS NOT INSIDE `evaluateGate`: the fast gate runs BEFORE the cached
+ * replay path in context-handler.ts, and REPLAY MUST STAY EXEMPT. A replay is
+ * free (no compute, no new checkpoint) and re-stabilises the provider KV-cache
+ * prefix — suppressing it would cause the very cache invalidation the D.2/D.3
+ * replay design exists to prevent. The guard's job is to stop wasted NEW
+ * compaction work, not to withhold an already-computed view. So the consult is
+ * called from the handler AFTER the replay block and BEFORE the debounce +
+ * `invokePipeline` (the actual fire point), covering the percent branch and the
+ * token branch alike since both converge there.
+ *
+ * Umbrella OFF ⇒ always false (byte-identical to v0.20.83). Non-fatal: a store
+ * read error returns false — never refuse compaction on a store fault.
+ */
+export function thrashGuardBlocks(
+	runtime: MegaRuntime,
+	config: MegaConfig,
+	currentTokens: number | null | undefined,
+): boolean {
+	if (!config.threeWayFailback) return false;
+	if (currentTokens == null) return false;
+	return isThrashBlockedFor(runtime, currentTokens, runtime.currentStateDir);
+}
 
 /**
  * Evaluate whether the current context warrants compaction. Returns a tailed

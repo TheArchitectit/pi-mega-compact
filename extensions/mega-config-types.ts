@@ -140,6 +140,14 @@ export interface MegaConfig {
 	 *  session_start never fired, so every session has a staged block (recall hits,
 	 *  else a provenance floor). Default ON; OFF = byte-identical pre-sprint. */
 	threeWayFailback: boolean;
+	/** 3WF-2: ThrashGuard re-arm budget as a FRACTION of `effectiveThreshold`.
+	 *  After an ineffective compaction (live window did not shrink), the guard
+	 *  refuses to re-fire until the live window has grown by at least
+	 *  `rearmPct × effectiveThreshold` tokens past the observed baseline. Default
+	 *  0.10 (10% of the effective threshold). Env-overridable via
+	 *  MEGACOMPACT_THRASH_REARM_PCT. When the effective threshold is unknown
+	 *  (+Infinity), the guard skips arming (cannot compute N) and logs instead. */
+	thrashRearmPct: number;
 	/** A1 PLAN_V2 Phase 2: Message Separation — isolate user/assistant turns
 	 *  from volatile tool results so the prompt-cache prefix stays stable.
 	 *  PC-A: positive sprint flag, now default ON; flag-OFF (=0) is byte-identical

@@ -55,6 +55,42 @@ export function getMetaNumber(key: string, stateDir: string = getStateDir()): nu
   return Number.isFinite(n) ? n : 0;
 }
 
+/**
+ * Upsert a single numeric meta key to an absolute value (NOT a cumulative
+ * counter). Follows the `addTokensSaved` INSERT-ON-CONFLICT pattern with a
+ * fully parameterized query (PREVENT-002: no SQL string concat — `key` and
+ * `value` are both bound, never interpolated). The only write is the standard
+ * ON CONFLICT upsert of THIS key's own value; no other key is touched, no
+ * DELETE is issued.
+ *
+ * Used by the 3WF-2 ThrashGuard to persist exactly two keys:
+ *  - `thrasguard.baseline_tokens` — the live-window token count at the moment
+ *    an ineffective compaction was observed (the baseline the guard re-arms from).
+ *  - `thrasguard.blocked_until` — the live-window token count below which
+ *    re-firing is refused (guard active).
+ *
+ * Non-finite input (NaN / ±Infinity) is rejected: the extension must never
+ * persist a non-number into the meta table (getMetaNumber would read it back as
+ * 0), so we return early, non-fatal. Best-effort: any store failure is swallowed.
+ */
+export function setMetaNumber(
+  key: string,
+  value: number,
+  stateDir: string = getStateDir(),
+): void {
+  if (key.length === 0) return;
+  if (!Number.isFinite(value)) return;
+  try {
+    const db = openStore(stateDir);
+    db.prepare(
+      `INSERT INTO meta(key, value) VALUES(?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = ?`,
+    ).run(key, String(value), String(value));
+  } catch {
+    /* non-fatal: meta writes never break the agent loop */
+  }
+}
+
 /** Atomically add `delta` to an integer meta counter. */
 function incMeta(key: string, delta: number, stateDir: string = getStateDir()): void {
   if (!(delta > 0)) return;

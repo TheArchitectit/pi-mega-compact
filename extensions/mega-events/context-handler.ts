@@ -26,7 +26,11 @@ import { buildTailResult } from "./context-handler/tailResult.js";
 import { runTriggerGuard } from "./context-handler/triggerGuard.js";
 import { persistEpochAndMaintain } from "./context-handler/afterCompact.js";
 import { appendMirrorAndLedger } from "./context-handler/dbMirrorAppend.js";
-import { evaluateGate } from "./context-handler/gateCheck.js";
+import { evaluateGate, thrashGuardBlocks } from "./context-handler/gateCheck.js";
+import {
+	markCompactionFired,
+	evaluatePendingReduction,
+} from "./context-handler/thrashGuard.js";
 import { invokePipeline } from "./context-handler/pipelineRun.js";
 import { buildLiveTrimView } from "./context-handler/liveTrim.js";
 
@@ -88,6 +92,14 @@ export function registerContextHandler(
 				: null) ??
 			Math.round(((pct ?? 0) / 100) * (usage?.contextWindow ?? 0));
 		runtime.lastCtxTokens = currentTokens ?? null;
+		// 3WF-2: consume a pending live-window delta from a prior compaction. If a
+		// compaction fired on the previous context event and the live window did
+		// not shrink, this arms the ThrashGuard (meta). No-op when none pending.
+		try {
+			evaluatePendingReduction(runtime, currentTokens ?? 0, config);
+		} catch {
+			/* non-fatal */
+		}
 		runtime.lastCtxPercent = pct ?? null;
 		runtime.lastCtxWindow = usage?.contextWindow ?? 0;
 		runtime.snapshot(ctx);
@@ -147,6 +159,18 @@ export function registerContextHandler(
 			// else: context grew enough → fall through to re-compact (cache is stale)
 		}
 
+		// 3WF-2 ThrashGuard: refuse a NEW compaction while armed (an ineffective
+		// prior compaction left the live window unshrunk). Sits AFTER the replay
+		// block — replay is free and must stay exempt — and BEFORE debounce +
+		// invokePipeline (the real fire point), so it covers the percent + token
+		// gate paths alike. Umbrella OFF ⇒ never blocks (byte-identical). Returns
+		// the tailed view so a staged recall block still rides along.
+		if (thrashGuardBlocks(runtime, config, currentTokens)) {
+			runtime.diagCtxFastGate++;
+			runtime.snapshot(ctx);
+			return tailResult() ?? undefined;
+		}
+
 		// Debounce so we don't fire on every context event past threshold.
 		// (Replay already returned above — only fresh compacts reach this point.)
 		const now = Date.now();
@@ -170,6 +194,17 @@ export function registerContextHandler(
 		// S27 DB-mirror: write checkpoint_epoch + stamp turn epochs + auto-wiki +
 		// topic seed + fire-and-forget dedup. Best-effort + non-fatal.
 		await persistEpochAndMaintain(runtime, config, pipeline.ran);
+
+		// 3WF-2: record the live-window baseline at the moment a compaction actually
+		// fired, so the NEXT context event can judge whether the window shrank. We
+		// use the LIVE currentTokens here (not ran.saved — that is the false
+		// stored-checkpoint metric the thrash bug used), matching the spec's
+		// "value observed just BEFORE that compaction fired" seam.
+		try {
+			markCompactionFired(runtime, currentTokens ?? 0);
+		} catch {
+			/* non-fatal */
+		}
 
 		// LEGACY path (rollback): v0.4.28 ctx.compact() + the no-op gate. The
 		// manual compact path aborts the in-flight turn — only used behind the flag.
