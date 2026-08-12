@@ -51,6 +51,23 @@ export function recordTurnRow(
 			turnsDbEnabled: config.turnsDbEnabled,
 		});
 	} catch (e) {
+		// DuplicateTurnError: the turn was already persisted (the same turnIndex
+		// was written by an earlier code path — a double-write race). This is a
+		// SUCCESS, not a failure: the turn IS in turns.db. Emit turn_written with
+		// duplicate:true so events.log stops showing 289 false "turn_write_failed"
+		// entries (which made the Turns tab + context engine look broken).
+		// Uses the same message-pattern idiom as write.ts's UNIQUE constraint guard
+		// (no new import; DuplicateTurnError isn't re-exported through mega-turn-store
+		// and the append-only invariant forbids UPDATE/UPSERT in the store layer).
+		if (e instanceof Error && /Duplicate turn:/.test(e.message)) {
+			runtime.dashboard.event("turn_written", {
+				turnIndex: event.turnIndex,
+				pressureBand: runtime.pressureBand ?? null,
+				turnsDbEnabled: config.turnsDbEnabled,
+				duplicate: true,
+			});
+			return;
+		}
 		runtime.dashboard.event("turn_write_failed", {
 			turnIndex: event.turnIndex,
 			turnsDbEnabled: config.turnsDbEnabled,
