@@ -196,6 +196,12 @@ export class MegaRuntime {
 	perfCpuInterval: ReturnType<typeof setInterval> | null = null;
 	perfCpuBaseline: { user: number; sys: number } | undefined;
 
+	// PMA-2 analytics adapter timing state — parallels perfTurnStart/perfProviderStart.
+	// Stamped per-turn and attached to terminal facts in analytics.db.
+	analyticsProviderStart = 0;
+	analyticsTtft = 0;
+	pendingAnalyticsCorrelationId: string | null = null;
+
 	// Context tracking for the dashboard (updated in the context handler).
 	lastCtxTokens: number | null = null;
 	lastCtxPercent: number | null = null;

@@ -13,6 +13,7 @@ import { registerAgentHandlers } from "./agent-handlers.js";
 import { registerContextHandler } from "./context-handler.js";
 import { registerCompactHandlers } from "./compact-handlers.js";
 import { registerPerfHandler } from "./perf-handler.js";
+import { registerAnalyticsHandler } from "./analytics-handler.js";
 import { registerVectorCortexRender } from "../mega-context/vector-cortex.js";
 
 /**
@@ -49,4 +50,6 @@ export function registerEventHandlers(
 	registerContextHandler(pi, runtime, config);
 	registerCompactHandlers(pi, runtime, config);
 	registerPerfHandler(pi, runtime);
+	// PMA-2: analytics ingestion — flag-gated (OFF = no-op, no DB opened).
+	registerAnalyticsHandler(pi, runtime, config);
 }
