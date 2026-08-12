@@ -241,6 +241,7 @@ export const SETTINGS: ReadonlyArray<SettingGroup> = [
 			num("MEGACOMPACT_L2_THRESHOLD", "L2 Cosine Threshold", "L2 semantic dedup firing point", 0.85, 0, 1),
 			num("MEGACOMPACT_L1_JACCARD", "L1 Jaccard Threshold", "L1 MinHash near-dup threshold", 0.8, 0, 1),
 			num("MEGACOMPACT_DEDUP_SIM", "Dedup Similarity", "Legacy content-similarity fallback", 0.9, 0, 1),
+			num("MEGACOMPACT_RECALL_MIN_COSINE", "Recall Min Cosine (same-repo)", "3WF-3 same-repo floor the 3-source validator applies to the top winner (cross-repo 0.90 stays separate)", 0.12, 0, 1),
 			num("MEGACOMPACT_MMR_LAMBDA", "MMR Lambda", "Maximal Marginal Relevance diversity", 0.5, 0, 1),
 			num("MEGACOMPACT_SEMDEDUP_COSINE", "SemDeDup Cosine", "Offline SemDeDup pair threshold", 0.95, 0, 1),
 			num("MEGACOMPACT_CONSOLIDATE_COSINE", "Consolidate Cosine", "Memory consolidation merge threshold", 0.7, 0, 1),

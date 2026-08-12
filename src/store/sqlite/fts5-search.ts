@@ -13,6 +13,7 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
+import { listCheckpoints } from "./checkpoints.js";
 
 export interface Fts5Hit {
 	/** checkpoint id (chkpt_001 etc.) from the context_chunks_trgm row. */
@@ -87,4 +88,43 @@ export function fts5SearchScoped(
 
 	// No session filter — plain FTS5 search across all sessions.
 	return fts5Search(query, reader, limit);
+}
+
+/** A hydrated FTS5 hit: the id + BM25 score joined with its checkpoint summary. */
+export interface HydratedFts5Hit {
+	/** checkpoint id the FTS5 row referred to. */
+	checkpointId: string;
+	/** BM25 relevance score carried over from the FTS5 row. */
+	score: number;
+	/** The joined checkpoint's summary text (content basis for L0 digest dedup). */
+	summary: string;
+}
+
+/**
+ * Hydrate FTS5 hits (which only carry checkpoint `id` + BM25 `score`, with NO
+ * checkpoint object) by joining against the real stored checkpoints. Mirrors the
+ * private `hydrateHits` in tieredRouter.ts (listCheckpoints → Map on
+ * checkpointId → join, dropping ids with no checkpoint).
+ *
+ * The joined `summary` is returned alongside the id because the 3WF-3 voter
+ * dedups candidates on the L0 CONTENT digest — hashing the id string instead
+ * would be a no-op tier (ids are already unique), silently disabling the check.
+ *
+ * @param hits      Raw Fts5Hit rows (id + BM25 score).
+ * @param sessionId Session scope used to fetch the checkpoint set.
+ * @param stateDir  On-disk state dir for the sync store.
+ */
+export function hydrateFts5Hits(
+	hits: Fts5Hit[],
+	sessionId: string,
+	stateDir: string,
+): HydratedFts5Hit[] {
+	const cps = listCheckpoints(sessionId, stateDir);
+	const cpMap = new Map(cps.map((cp) => [cp.checkpointId, cp]));
+	const out: HydratedFts5Hit[] = [];
+	for (const h of hits) {
+		const cp = cpMap.get(h.id);
+		if (cp) out.push({ checkpointId: h.id, score: h.score, summary: cp.summary });
+	}
+	return out;
 }

@@ -217,6 +217,12 @@ export function loadConfig(): MegaConfig {
 		autoWikiEnabled: envBool("MEGACOMPACT_AUTO_WIKI", true),
 		crossRepoEnabled: envBool("MEGACOMPACT_CROSSREPO_ENABLED", true),
 		crossRepoCosine: Number(process.env.MEGACOMPACT_CROSSREPO_COSINE ?? "0.90"),
+		// 3WF-3: SAME-repo recall cosine floor applied by the 3-source validator to
+		// the top winner. SEPARATE from crossRepoCosine (S17, default 0.90, stricter
+		// and cross-repo only). This same-repo floor is permissive by default (0.12)
+		// so recall still surfaces loosely-relevant within-repo context while
+		// rejecting effectively-unrelated hits. Mirrors src/config.ts RECALL_MIN_COSINE.
+		recallMinCosine: Number(process.env.MEGACOMPACT_RECALL_MIN_COSINE ?? "0.12"),
 		memoryAutoReview: envBool("MEGACOMPACT_MEMORY_AUTO_REVIEW", true),
 		memoryReviewInterval: envFlag("MEGACOMPACT_MEMORY_REVIEW_INTERVAL", 10),
 		recallMaxTokens: envFlag("MEGACOMPACT_RECALL_MAX_TOKENS", 1500),

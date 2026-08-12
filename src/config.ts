@@ -145,6 +145,18 @@ export const RAG_HYDE_ENABLED = (): boolean =>
 export const NEW_UI = (): boolean => ragEnabled("MEGACOMPACT_NEW_UI");
 
 // ---------------------------------------------------------------------------
+// 3WF-3 same-repo recall cosine floor. SEPARATE from the S17 cross-repo floor
+// (config.crossRepoCosine, default 0.90 — stricter, cross-repo only). This is
+// the same-repo floor the 3-source validator applies to the top winner. A low
+// default (0.12) keeps recall permissive within a repo while still rejecting
+// effectively-unrelated hits. Call-time read so tests can set the env per-test.
+// ---------------------------------------------------------------------------
+
+/** Same-repo recall cosine floor: top winner must be >= this to be injected. */
+export const RECALL_MIN_COSINE = (): number =>
+	Number(process.env.MEGACOMPACT_RECALL_MIN_COSINE ?? "0.12");
+
+// ---------------------------------------------------------------------------
 // Vector-cortex flags + breaker constants (VC0A+). Positive sprint flags,
 // default ON, `=0`/`_DISABLED` off. Re-exported from src/config/vector-cortex.ts
 // so root consumers share one source of truth.

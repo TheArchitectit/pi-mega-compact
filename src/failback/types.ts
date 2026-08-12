@@ -88,3 +88,31 @@ export interface ThrashGuardState {
 	/** ms epoch at which the guard was armed. */
 	armedAt: number;
 }
+
+/**
+ * A single recall candidate surfaced by one of the three independent, read-only
+ * recall sources in the 3WF-3 vote. `score` is the raw per-source score; the
+ * voter normalizes each source to a comparable 0..1 before combining.
+ */
+export interface RecallCandidate {
+	/** Checkpoint id named by the source. */
+	checkpointId: string;
+	/** Raw per-source relevance score (scale depends on `source`). */
+	score: number;
+	/** Which independent source named this candidate. */
+	source: "vector" | "fts5" | "recency";
+}
+
+/**
+ * Outcome of the three-source recall vote. `winners` are the agreed candidates
+ * (ranked), `votes` counts how many distinct sources named each checkpointId,
+ * and `divergentSources` lists the sources that contributed no winner.
+ */
+export interface VoteResult {
+	/** Agreed candidates, ranked best-first. */
+	winners: RecallCandidate[];
+	/** Per-checkpointId vote count (1..3 distinct sources). */
+	votes: Record<string, number>;
+	/** Source names that produced no winning candidate. */
+	divergentSources: string[];
+}

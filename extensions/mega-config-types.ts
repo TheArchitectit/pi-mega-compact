@@ -119,6 +119,11 @@ export interface MegaConfig {
 	 *  tighter than same-repo so only genuinely-relevant cross-repo context is
 	 *  injected. */
 	crossRepoCosine: number;
+	/** Same-repo recall cosine floor (3WF-3). Default 0.12. SEPARATE from
+	 *  `crossRepoCosine` (S17, default 0.90 — stricter, cross-repo only). The
+	 *  3-source validator applies this to the top winner; hits below it are
+	 *  rejected in favor of the next-ranked candidate or the provenance floor. */
+	recallMinCosine: number;
 	/** Memory-RAG auto-review enabled (S20). Every memoryReviewInterval turns the
 	 *  conversation is auto-reviewed into durable add/replace/remove memories. */
 	memoryAutoReview: boolean;
