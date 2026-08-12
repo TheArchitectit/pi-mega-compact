@@ -23,6 +23,7 @@ import type { MegaRuntime } from "../mega-runtime.js";
 import { piCompactWouldNoop } from "../mega-pipeline.js";
 import type { MegaConfig } from "../mega-config.js";
 import { buildTailResult } from "./context-handler/tailResult.js";
+import { runTriggerGuard } from "./context-handler/triggerGuard.js";
 import { persistEpochAndMaintain } from "./context-handler/afterCompact.js";
 import { appendMirrorAndLedger } from "./context-handler/dbMirrorAppend.js";
 import { evaluateGate } from "./context-handler/gateCheck.js";
@@ -53,6 +54,16 @@ export function registerContextHandler(
 		const usage = ctx.getContextUsage();
 		const pct = usage?.percent;
 		const messages = event.messages;
+		// 3WF-1 TriggerGuard: guarantee a staged recall block on this event even
+		// when session_start never fired. One-shot per session; a block already
+		// staged by session_start takes precedence (no-op). Run BEFORE building the
+		// tail factory so a freshly staged block is composed into THIS event's view.
+		// Best-effort — a failure falls through to the pre-sprint path.
+		try {
+			runTriggerGuard(runtime, config, ctx);
+		} catch {
+			/* non-fatal */
+		}
 		// S53: helper to inject the staged recall/memory block as a user-role
 		// tail message at any view-return point. Returns undefined when nothing
 		// is staged (or the flag is OFF) so the caller falls through to its

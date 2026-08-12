@@ -203,6 +203,9 @@ export function loadConfig(): MegaConfig {
 		recallMaxTokens: envFlag("MEGACOMPACT_RECALL_MAX_TOKENS", 1500),
 		windowDedupe: envBool("MEGACOMPACT_WINDOW_DEDUPE", true),
 		recallTailInject: envBool("MEGACOMPACT_RECALL_TAIL_INJECT", true),
+		// 3WF-1: TriggerGuard — guarantee a staged recall block on every context
+		// event even when session_start never fires. Default ON; OFF = byte-identical.
+		threeWayFailback: envBool("MEGACOMPACT_THREE_WAY_FAILBACK", true),
 		// PC-A: positive sprint flag, default ON. =0 byte-identical to the
 		// pre-change OFF state (single gate lives at the call site in tailResult.ts).
 		messageSeparation: envBool("MEGACOMPACT_MESSAGE_SEPARATION", true),

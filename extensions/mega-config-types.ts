@@ -136,6 +136,10 @@ export interface MegaConfig {
 	 *  the tail of the view when auto is OFF AND no trim action is needed. Default ON
 	 *  (true). When false, restores the pre-sprint systemPrompt prepend behavior. */
 	recallTailInject: boolean;
+	/** 3WF-1: TriggerGuard — re-stage a recall block at the context event seam when
+	 *  session_start never fired, so every session has a staged block (recall hits,
+	 *  else a provenance floor). Default ON; OFF = byte-identical pre-sprint. */
+	threeWayFailback: boolean;
 	/** A1 PLAN_V2 Phase 2: Message Separation — isolate user/assistant turns
 	 *  from volatile tool results so the prompt-cache prefix stays stable.
 	 *  PC-A: positive sprint flag, now default ON; flag-OFF (=0) is byte-identical
