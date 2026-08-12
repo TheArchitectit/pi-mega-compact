@@ -63,6 +63,33 @@ export const ReductionValidator = {
 };
 
 /**
+ * Disarm the ThrashGuard — clears the persisted `blocked_until` so subsequent
+ * compactions are not refused. Called when a compaction is judged EFFECTIVE
+ * (the thrash condition is over) and on session start (so a stale guard from a
+ * prior session cannot suppress the next session's compactions).
+ *
+ * Best-effort: any failure is swallowed (never blocks on a store fault).
+ */
+export function disarmThrashGuard(
+	stateDir: string,
+	logger?: { info(event: string, fields?: Record<string, unknown>): void },
+	emit?: (event: string, fields: Record<string, unknown>) => void,
+): void {
+	try {
+		setMetaNumber(THRASH_BLOCKED_KEY, 0, stateDir);
+		setMetaNumber(THRASH_BASELINE_KEY, 0, stateDir);
+		logger?.info("thrasguard_disarmed", { reason: "effective_or_reset" });
+		try {
+			emit?.("thrasguard_disarmed", { reason: "effective_or_reset" });
+		} catch {
+			/* non-fatal */
+		}
+	} catch {
+		/* non-fatal: best-effort meta write */
+	}
+}
+
+/**
  * Arm the ThrashGuard after an ineffective compaction. Persists:
  *  - `thrasguard.baseline_tokens` = the live currentTokens at this (post-fire)
  *    context event, so re-arm is measured from the window that failed to shrink.
@@ -245,6 +272,16 @@ export function evaluatePendingReduction(
 				runtime.logger,
 				emit,
 			);
+		} else {
+			// Effective compaction — the thrash condition is over. Disarm the guard
+			// so it does not block legitimate subsequent compactions (the bug: without
+			// this, `blocked_until` from the prior ineffective fire persists and blocks
+			// the now-smaller window from ever re-firing).
+			const emit =
+				typeof runtime.appendEvent === "function"
+					? runtime.appendEvent.bind(runtime)
+					: undefined;
+			disarmThrashGuard(runtime.currentStateDir, runtime.logger, emit);
 		}
 	} catch {
 		/* non-fatal */

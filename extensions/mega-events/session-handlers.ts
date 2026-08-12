@@ -16,6 +16,7 @@ import { doRecall, doRecallAsync } from "../mega-pipeline.js";
 import { recallMemoriesAndInline } from "../../src/recall.js";
 import { vectorStats } from "../../src/vectorStore.js";
 import { openTurnStore } from "../../src/store/turns/connection.js";
+import { disarmThrashGuard } from "./context-handler/thrashGuard.js";
 import { openIntentQueue } from "../../src/intent.js";
 import type { MegaConfig } from "../mega-config.js";
 
@@ -33,6 +34,9 @@ export function registerSessionHandlers(
 
 	pi.on("session_start", async (event, ctx) => {
 		runtime.resetRuntime(ctx.sessionManager.getSessionId());
+		// Disarm the ThrashGuard on session start so a stale `blocked_until` from a
+		// prior session cannot suppress this session's compactions.
+		disarmThrashGuard(runtime.currentStateDir);
 		runtime.captureModel(ctx); // best-effort: ctx.model may be set by session start
 		runtime.setStatus(
 			ctx,
