@@ -67,7 +67,9 @@
 
 ## 3WF-2 — Compaction ladder + ReductionValidator + persisted ThrashGuard
 
-**Goal.** Stop the re-fire loop: correctness is judged by **live-window** reduction, and after an ineffective compaction the guard refuses to re-fire until N new live-window tokens arrive.
+**Goal.** Stop the re-fire loop: correctness is judged by **live-window** reduction, and after an ineffective compaction the guard refuses to re-fire until N new live-window tokens arrive. **(Folded 2026-08-12, user-directed)** Also correct the fire-point invariant so compaction fires at the **dashboard-configured % of the ACTUAL model context window** — never on a fixed-token assumption.
+
+**Threshold invariant (folded 2026-08-12 — user's "something isn't following those rules").** The compaction fire point must always be `configuredPct × actualLastCtxWindow`. Model windows differ per provider (8k→1M+), so a fixed window assumption is wrong by construction. The violation found: `resolveThreshold()` (`mega-config.ts:83`) computes a boot fallback `Math.round(tierPct * 200_000)` — a **hardcoded 200k-window assumption** that becomes `runtime.effectiveThreshold` whenever `lastCtxWindow <= 0` (window not yet known) and can fire early against a tiny fraction of the real window (the 40% compaction symptom). Fix: (a) when `lastCtxWindow <= 0` with a **tiered** config, auto-compaction **defers** (no fire until the real window reports — `% of model context` is undefined without it); (b) the token-gate path (`pct == null`) must consult the per-model Dashboard override (`resolveModelThreshold`) exactly like the percent path, so a dashboard-set Model Threshold is honored in both; (c) `custom` tier (`MEGACOMPACT_THRESHOLD_TOKENS`, tierPct null) is an explicit absolute and is **unchanged**; (d) `% of actual window` when known is already correct (`pressure-getters.ts:83`) — keep it.
 
 **QA anchor.** `saved` (`mega-pipeline/compact.ts:117-119`) is stored-checkpoint accounting — the 496× loop's false win. The validator's metric is the `context` event's `currentTokens` delta across consecutive events.
 
@@ -82,6 +84,7 @@
 - `src/store/sqlite/meta.ts` — +~15L: exported guarded write `setMetaNumber(key, value)` (only private `incMeta` exists today; follow `addTokensSaved` pattern :31) + keys `thrasguard.blocked_until`, `thrasguard.baseline_tokens`.
 - `extensions/mega-events/context-handler/` wiring (+~15L in `context-handler.ts` or new `gateExtra.ts`): arm ThrashGuard on `ReductionVerdict.effective === false`; consult it in `gateCheck.ts` before `compact`.
 - **supersede stays exactly as engine.ts:143 → unchanged precondition.**
+- **Threshold-invariant wiring (folded):** `extensions/mega-runtime/pressure-getters.ts` (+~10L in `effectiveThresholdImpl`) — when tiered && `lastCtxWindow <= 0` → return `Number.POSITIVE_INFINITY` (defer; the 200k boot value may remain ONLY as a display placeholder, never as a firing point); `extensions/mega-events/context-handler/gateCheck.ts` (+~10L) — the `pct == null` token path resolves the per-model override before comparing, mirroring the percent path. Gated under the 3WF umbrella `MEGACOMPACT_THREE_WAY_FAILBACK` (umbrella OFF → legacy 200k-fallback firing, byte-identical to v0.20.83).
 
 **Flag behavior.**
 - ON: candidates voted; ineffective compaction → guard armed (meta) → subsequent `context` events refuse until `currentTokens ≥ baseline + N`; N defaults to 10% of `effectiveThreshold` (new config `thrasguard.rearmTokensPct` env-overridable).
@@ -92,6 +95,10 @@
 2. Degenerate cluster candidate (empty summary) rejected → extractive wins.
 3. Three consecutive ineffective compactions → fourth `context` event above threshold produces NO new checkpoint row (guard armed; meta key set); after injecting > N tokens → guard re-arms.
 4. Flag OFF → `compactSession` output identical.
+5. Threshold invariant: `lastCtxWindow <= 0` + tiered config → auto-compaction DEFERS even with tokens far above the legacy 200k-fallback (no `ctx.compact()`, no new checkpoint row); `custom` tier + window unknown → still fires (explicit absolute).
+6. Threshold invariant: window known (e.g. 1M) → fires at `tierPct × 1M`, NOT at `tierPct × 200_000`.
+7. Threshold invariant: token path (`pct == null`) honors a Dashboard `model_thresholds` override (low firePointPct → fires earlier), identical to the percent path.
+8. Umbrella flag OFF (`MEGACOMPACT_THREE_WAY_FAILBACK=false`) → firing uses the legacy 200k-fallback exactly as v0.20.83.
 
 **Gate.** Full gate.
 **Publish.** `./scripts/deploy.sh 0.20.85`.
