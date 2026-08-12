@@ -116,7 +116,11 @@ function aggregateRepos(sessions: ReadonlyArray<ActiveSession>): {
 			});
 		}
 	}
-	const repos = [...map.values()];
+	// Stable order: sort by basename so legend/segments don't jump when sessions
+	// heartbeat-race reorders the server response (ORDER BY last_seen DESC).
+	const repos = [...map.values()].sort((a, b) =>
+		a.basename.localeCompare(b.basename),
+	);
 	const totalTokens = repos.reduce((sum, r) => sum + r.tokens, 0);
 	// Combined max window: the largest ctxWindow among the active sessions.
 	// This mirrors SessionsTab's SummaryTiles combined-% logic.
@@ -164,24 +168,6 @@ export function RepoContextStack({
 		sessionCount: number;
 	} | null>(null);
 
-	if (error) {
-		return (
-			<StackCard>
-				<span className="text-sm text-muted-foreground">
-					Error loading sessions: {error.message}
-				</span>
-			</StackCard>
-		);
-	}
-
-	if (loading && !sessions) {
-		return (
-			<StackCard>
-				<span className="text-sm text-muted-foreground">Loading sessions…</span>
-			</StackCard>
-		);
-	}
-
 	const activeSessions = sessions?.sessions ?? [];
 	const { repos, totalTokens, maxWindow, sessionCount } =
 		aggregateRepos(activeSessions);
@@ -190,19 +176,39 @@ export function RepoContextStack({
 		lastNonEmpty.current = { repos, totalTokens, maxWindow, sessionCount };
 	}
 
-	// Use last-known-good data when the current poll is transiently empty.
+	// Use last-known-good data when the current poll is transiently empty OR
+	// the fetch errored. The bar never collapses once data was seen — the
+	// error/status is surfaced as an inline badge instead of replacing the
+	// chart (the previous branch-swap caused the visible "blink" + grid shift).
 	const displayed =
 		repos.length > 0
 			? { repos, totalTokens, maxWindow, sessionCount }
 			: lastNonEmpty.current;
 
 	if (!displayed) {
+		// Nothing has ever been seen — only now do we render status text.
+		// These placeholders only appear pre-first-data, so there is no
+		// content swap (and thus no layout shift) afterwards.
+		const label = error
+			? `Error loading sessions: ${error.message}`
+			: loading && !sessions
+				? "Loading sessions…"
+				: "No active sessions.";
 		return (
 			<StackCard>
-				<span className="text-sm text-muted-foreground">No active sessions.</span>
+				<span className="text-sm text-muted-foreground">{label}</span>
 			</StackCard>
 		);
 	}
+
+	// Stale indicators (bar stays frozen on last-known-good data).
+	const staleBadge = error ? (
+		<span className="text-xs" style={{ color: "#f85149" }}>
+			· reconnecting ({error.message})
+		</span>
+	) : repos.length === 0 ? (
+		<span className="text-xs text-muted-foreground">· holding last data</span>
+	) : null;
 
 	const combinedPct =
 		displayed.maxWindow > 0
@@ -245,6 +251,7 @@ export function RepoContextStack({
 				{displayed.sessionCount}{" "}
 				{displayed.sessionCount === 1 ? "session" : "sessions"}{" "}
 				<span className="pct">— {combinedPct}% of combined max window</span>
+				{staleBadge}
 			</p>
 			<div className="repo-stack-legend">
 				{displayed.repos.map((r) => {
