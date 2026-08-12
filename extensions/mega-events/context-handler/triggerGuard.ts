@@ -30,6 +30,10 @@ import { normalizeSessionId } from "../../../src/store.js";
 import { recall } from "../../../src/engine.js";
 import { formatRecallBlock } from "../../../src/recall.js";
 import { vectorStats, vectorList } from "../../../src/vectorStore.js";
+import {
+	buildFloorBlock as sharedFloorBlock,
+	FLOOR_UNAVAILABLE_TEXT,
+} from "../../../src/failback/floor.js";
 import { recentUserQuery } from "../../mega-runtime.js";
 
 /** One-shot completion marker per MegaRuntime (dies with the runtime). */
@@ -108,30 +112,18 @@ export function runTriggerGuard(
 	}
 }
 
-/** Build the provenance floor string from the session's newest checkpoint. */
+/**
+ * Build the provenance floor string from the session's newest checkpoint.
+ *
+ * 3WF-4: the text construction moved to the SHARED pure builder
+ * (src/failback/floor.ts) — this keeps the store read (`vectorList`, unfiltered,
+ * exactly as 3WF-1 shipped) and the string return type, so output is
+ * byte-identical to the pre-refactor version.
+ */
 function buildFloorBlock(runtime: MegaRuntime, sid: string): string {
 	try {
-		const cps = vectorList(runtime.store, sid);
-		let newest = cps[0];
-		for (const cp of cps) {
-			if (!newest || (cp.timestamp ?? 0) > (newest.timestamp ?? 0)) newest = cp;
-		}
-		const summary = newest?.summary?.trim();
-		if (summary) {
-			return (
-				"The following compacted context is the most recent checkpoint from " +
-				"this session (recall found no query-relevant match):\n\n" + summary
-			);
-		}
-		return (
-			"This session has compacted context but recall could not surface a " +
-			"checkpoint relevant to the current request; the most recent checkpoint " +
-			"summary is unavailable."
-		);
+		return sharedFloorBlock(vectorList(runtime.store, sid)).text;
 	} catch {
-		return (
-			"This session has compacted context but recall could not surface a " +
-			"checkpoint relevant to the current request."
-		);
+		return FLOOR_UNAVAILABLE_TEXT;
 	}
 }

@@ -104,6 +104,22 @@ export interface RecallCandidate {
 }
 
 /**
+ * Verdict of an InjectionConfirm pass (3WF-4). There is NO prompt readback API
+ * in pi, so the only verifiable proxy for what the provider will receive is the
+ * pre-LLM message list (`ContextEvent.messages`, transformed). `landed` is true
+ * when the staged block's text was found there (tail mode) or in the composed
+ * return string (legacy prepend mode). `recovered` records which repair rung
+ * this event used: none (already landed), recomposed (rebuilt from the runtime's
+ * pending blocks), or floor (last-resort provenance text).
+ */
+export interface InjectionVerdict {
+	/** True when the staged block text is present in the verified view. */
+	landed: boolean;
+	/** Which repair rung ran to make the block present. */
+	recovered: "none" | "recomposed" | "floor";
+}
+
+/**
  * Outcome of the three-source recall vote. `winners` are the agreed candidates
  * (ranked), `votes` counts how many distinct sources named each checkpointId,
  * and `divergentSources` lists the sources that contributed no winner.

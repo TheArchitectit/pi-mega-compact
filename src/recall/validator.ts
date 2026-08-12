@@ -28,6 +28,10 @@ import { listCheckpoints } from "../store/sqlite.js";
 import { RECALL_MIN_COSINE } from "../config.js";
 import type { VectorStore } from "../vectorStore.js";
 import type { RecallCandidate, FloorBlock } from "../failback/types.js";
+import {
+	buildFloorBlock as sharedFloorBlock,
+	unavailableFloorBlock,
+} from "../failback/floor.js";
 
 /** Options for the recall validator. */
 export interface ValidateOptions {
@@ -54,39 +58,22 @@ export type ValidationOutcome =
 	| { kind: "candidate"; candidate: RecallCandidate }
 	| { kind: "floor"; floor: FloorBlock };
 
-/** Build the provenance floor block from the session's newest checkpoint. */
+/**
+ * Build the provenance floor block from the session's newest checkpoint.
+ *
+ * 3WF-4: the text construction moved to the SHARED pure builder
+ * (src/failback/floor.ts). This wrapper keeps THIS call site's read semantics —
+ * `listCheckpoints` filtered to `dedupStatus !== "removed"` — so the output is
+ * byte-identical to the pre-refactor 3WF-3 version.
+ */
 function buildFloorBlock(sessionId: string, store: VectorStore): FloorBlock {
 	try {
 		const cps = listCheckpoints(sessionId, store.stateDir).filter(
 			(c) => c.dedupStatus !== "removed",
 		);
-		let newest = cps[0];
-		for (const cp of cps) {
-			if (!newest || (cp.timestamp ?? 0) > (newest.timestamp ?? 0)) newest = cp;
-		}
-		const summary = newest?.summary?.trim();
-		if (summary) {
-			return {
-				text:
-					"The following compacted context is the most recent checkpoint from " +
-					"this session (recall found no query-relevant match):\n\n" + summary,
-				basis: "lastCheckpoint",
-			};
-		}
-		return {
-			text:
-				"This session has compacted context but recall could not surface a " +
-				"checkpoint relevant to the current request; the most recent checkpoint " +
-				"summary is unavailable.",
-			basis: "lastCheckpoint",
-		};
+		return sharedFloorBlock(cps);
 	} catch {
-		return {
-			text:
-				"This session has compacted context but recall could not surface a " +
-				"checkpoint relevant to the current request.",
-			basis: "none",
-		};
+		return unavailableFloorBlock();
 	}
 }
 

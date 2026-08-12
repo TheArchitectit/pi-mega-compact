@@ -24,6 +24,7 @@ import { piCompactWouldNoop } from "../mega-pipeline.js";
 import type { MegaConfig } from "../mega-config.js";
 import { buildTailResult } from "./context-handler/tailResult.js";
 import { runTriggerGuard } from "./context-handler/triggerGuard.js";
+import { confirmInjection } from "./context-handler/injectionConfirm.js";
 import { persistEpochAndMaintain } from "./context-handler/afterCompact.js";
 import { appendMirrorAndLedger } from "./context-handler/dbMirrorAppend.js";
 import { evaluateGate, thrashGuardBlocks } from "./context-handler/gateCheck.js";
@@ -72,7 +73,21 @@ export function registerContextHandler(
 		// tail message at any view-return point. Returns undefined when nothing
 		// is staged (or the flag is OFF) so the caller falls through to its
 		// normal return.
-		const tailResult = buildTailResult(runtime, config, messages);
+		const composeTail = buildTailResult(runtime, config, messages);
+		// 3WF-4 InjectionConfirm: wrap the tail factory so EVERY return point of
+		// this handler (gate / replay / debounce / thrash-guard / pipeline /
+		// live-trim) is verified — the staged block's marker must be present in
+		// the message list pi will send (tail mode), else we re-compose from the
+		// runtime's pending blocks and finally fall back to the shared floor.
+		// A composition that yields nothing staged (undefined) is passed through
+		// untouched, so flag-OFF and no-recall paths are byte-identical.
+		const tailResult: typeof composeTail = config.threeWayFailback
+			? (msgs) => {
+					const view = composeTail(msgs);
+					if (!view) return view;
+					return confirmInjection(runtime, config, view, ctx.sessionManager.getSessionId());
+				}
+			: composeTail;
 		// Always track context for the dashboard/widget, even when auto is off.
 		// (v0.8 regression: !config.auto gate sat above this, leaving ctx stats
 		// null -> widget '?% / ?/?' when auto disabled. Track first, THEN gate.)
