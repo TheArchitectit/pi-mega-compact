@@ -153,11 +153,33 @@ export interface RetentionPolicy {
 	vacuumAfterPrune: boolean;
 }
 
+// ─── Query types (PMA-3) ─────────────────────────────────────────────
+
+/** Filters for querying request events. All optional, AND-combined. */
+export interface AnalyticsEventFilter {
+	fromMs?: number;
+	toMs?: number;
+	provider?: string;
+	model?: string;
+	status?: string;
+	eventKind?: RequestEventKind;
+	limit?: number;
+	offset?: number;
+}
+
+/** A page of request events from a filtered query. */
+export interface AnalyticsEventPage {
+	events: RequestEventFact[];
+	total: number;
+	hasMore: boolean;
+}
+
 // ─── Capability interfaces ──────────────────────────────────────────
 
 /** Read-only view — dashboards, analytics, status checks. Cannot write. */
 export interface AnalyticsReader {
 	status(): AnalyticsStatus;
+	listEvents(filter?: AnalyticsEventFilter): AnalyticsEventPage;
 }
 
 /** Append-only writer — event adapters, ingestion. Cannot prune or admin. */

@@ -126,7 +126,7 @@ void _c_achievements;
 // correct paths.
 
 const ENDPOINT_KEYS = Object.keys(ENDPOINTS) as (keyof typeof ENDPOINTS)[];
-const EXPECTED_ENDPOINT_COUNT = 58; // 53 + improve-cortex + improve-cortex-status (ML5-D) + dedup-tier-attribution (DEDUP-ATTR) + cosine-fp-report (COS-FP-A) + repo-corpus (REPO-A)
+const EXPECTED_ENDPOINT_COUNT = 60; // 53 + improve-cortex + improve-cortex-status (ML5-D) + dedup-tier-attribution (DEDUP-ATTR) + cosine-fp-report (COS-FP-A) + repo-corpus (REPO-A) + analytics-status + analytics-detailed (PMA-3)
 
 /** All `/api/*` paths served by server.ts (extracted from the route handlers). */
 const SERVER_TS_PATHS: string[] = [

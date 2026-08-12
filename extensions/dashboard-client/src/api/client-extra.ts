@@ -15,8 +15,10 @@ import type {
 	PrefixStabilityResponse,
 	CortexImproveStart,
 	CortexImproveStatus,
+	AnalyticsStatusResponse,
+	AnalyticsDetailedResponse,
 } from "@contracts";
-import { getJson, postJson, putJson } from "./client-http.js";
+import { getJson, postJson, putJson, query } from "./client-http.js";
 
 /** GET /api/model-thresholds — list known models with their thresholds. */
 export function fetchModelThresholds(): Promise<ModelThresholdsResponse> {
@@ -68,4 +70,24 @@ export function fetchCortexImproveStatus(
 	return getJson<CortexImproveStatus>(
 		ENDPOINTS.improveCortexStatus.path.replace(":jobId", encodeURIComponent(jobId)),
 	);
+}
+
+// ── PMA-3: analytics fetch helpers ────────────────────────────────────
+
+export function fetchAnalyticsStatus(): Promise<AnalyticsStatusResponse> {
+	return getJson<AnalyticsStatusResponse>(ENDPOINTS.analyticsStatus.path);
+}
+
+export function fetchAnalyticsDetailed(filter?: {
+	from?: number; to?: number; provider?: string; model?: string;
+	status?: string; eventKind?: string; limit?: number; offset?: number;
+}): Promise<AnalyticsDetailedResponse> {
+	const qs = filter
+		? query({
+				from: filter.from, to: filter.to, provider: filter.provider,
+				model: filter.model, status: filter.status, eventKind: filter.eventKind,
+				limit: filter.limit, offset: filter.offset,
+			})
+		: "";
+	return getJson<AnalyticsDetailedResponse>(`${ENDPOINTS.analyticsDetailed.path}${qs}`);
 }

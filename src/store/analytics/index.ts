@@ -15,6 +15,8 @@ export type {
 	IdentityObservation,
 	AppendResult,
 	AnalyticsStatus,
+	AnalyticsEventFilter,
+	AnalyticsEventPage,
 	PruneReport,
 	IntegrityReport,
 	MaintenanceReport,

@@ -16,6 +16,8 @@ import type {
 	IdentityObservation,
 	AppendResult,
 	AnalyticsStatus,
+	AnalyticsEventFilter,
+	AnalyticsEventPage,
 	RetentionPolicy,
 	PruneReport,
 	IntegrityReport,
@@ -65,6 +67,23 @@ export class InMemoryAnalyticsStore implements AnalyticsStore {
 			identityCount: this.identities.length,
 			freshThrough: Math.max(lastEvent, lastMeas, lastId) || null,
 		};
+	}
+
+	listEvents(filter?: AnalyticsEventFilter): AnalyticsEventPage {
+		const f = filter ?? {};
+		const limit = Math.min(Math.max(f.limit ?? 100, 1), 500);
+		const offset = Math.max(f.offset ?? 0, 0);
+		let all = [...this.events.values()];
+		if (f.fromMs != null) all = all.filter((e) => e.observedAt >= f.fromMs!);
+		if (f.toMs != null) all = all.filter((e) => e.observedAt <= f.toMs!);
+		if (f.provider != null) all = all.filter((e) => e.provider === f.provider);
+		if (f.model != null) all = all.filter((e) => e.model === f.model);
+		if (f.status != null) all = all.filter((e) => e.status === f.status);
+		if (f.eventKind != null) all = all.filter((e) => e.eventKind === f.eventKind);
+		all.sort((a, b) => b.observedAt - a.observedAt);
+		const total = all.length;
+		const page = all.slice(offset, offset + limit);
+		return { events: page, total, hasMore: offset + page.length < total };
 	}
 
 	// ── AnalyticsWriter ───────────────────────────────────────────────
@@ -137,6 +156,7 @@ export class InMemoryAnalyticsStore implements AnalyticsStore {
 	asReader(): AnalyticsReader {
 		return {
 			status: () => this.status(),
+			listEvents: (f) => this.listEvents(f),
 		};
 	}
 

@@ -18,6 +18,8 @@ import type {
 	IdentityObservation,
 	AppendResult,
 	AnalyticsStatus,
+	AnalyticsEventFilter,
+	AnalyticsEventPage,
 	RetentionPolicy,
 	PruneReport,
 	IntegrityReport,
@@ -52,6 +54,9 @@ export class SqliteAnalyticsStore implements AnalyticsStore {
 
 	status(): AnalyticsStatus {
 		return read.status(this.ctx());
+	}
+	listEvents(filter?: AnalyticsEventFilter): AnalyticsEventPage {
+		return read.listEvents(this.ctx(), filter);
 	}
 
 	// ── AnalyticsWriter ───────────────────────────────────────────────
@@ -95,6 +100,7 @@ export class SqliteAnalyticsStore implements AnalyticsStore {
 	asReader(): AnalyticsReader {
 		return {
 			status: () => this.status(),
+			listEvents: (f) => this.listEvents(f),
 		};
 	}
 

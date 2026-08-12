@@ -12,6 +12,7 @@
 import type { EndpointDef } from "../core.js";
 import type { RagMetricsResponse } from "../rag-metrics.js";
 import type { ModelThresholdsResponse } from "../model-thresholds.js";
+import type { AnalyticsStatusResponse, AnalyticsDetailedResponse } from "../analytics.js";
 import type {
   VectorCortexEvaluationSummary,
   VectorCortexLedgerView,
@@ -191,4 +192,20 @@ export const EXTRA_ENDPOINTS = {
 		description:
 			"Reader-only cross-repo corpus status (REPO-A): which pseudonymous repos/sessions are in the consented corpus, cross-repo overlap descriptors, and per-repo active-consent state. Counts + IDs + status only — never payload content. Flag-off returns 404; absent corpus returns awaiting_data.",
 	} as const satisfies EndpointDef<"GET", undefined, RepoCorpusStatusV1>,
+
+	// ─── PMA-3 analytics ───────────────────────────────────────────────
+
+	/** GET /api/analytics/status — store health + counts + freshness. */
+	analyticsStatus: {
+		method: "GET",
+		path: "/api/analytics/status",
+		description: "Provider/Model Analytics store status: schema version, row counts, freshness.",
+	} as const satisfies EndpointDef<"GET", undefined, AnalyticsStatusResponse>,
+
+	/** GET /api/analytics/detailed — filterable, paginated request-event drill-down. */
+	analyticsDetailed: {
+		method: "GET",
+		path: "/api/analytics/detailed",
+		description: "Filterable, paginated request-event drill-down (by provider/model/status/time).",
+	} as const satisfies EndpointDef<"GET", undefined, AnalyticsDetailedResponse>,
 } as const;

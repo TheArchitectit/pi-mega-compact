@@ -30,6 +30,8 @@ export {
 export { handleMemoryMap } from "./routes-memory-map.js";
 export { handleRaptorTree, handleRaptorBuildHistory } from "./routes-raptor.js";
 export { handleCacheStripes } from "./routes-cache.js";
+// PMA-3: analytics API routes.
+export { handleAnalyticsStatus, handleAnalyticsDetailed } from "./routes-analytics.js";
 export { handlePrefixStability } from "./routes-prefix-stability.js";
 export {
 	handleContextHealth,
