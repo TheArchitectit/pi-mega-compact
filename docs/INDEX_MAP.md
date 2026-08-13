@@ -143,6 +143,27 @@
 
 ---
 
+## ITHACUS BRIDGE (bidirectional mega-compact ↔ ithacus)
+
+| Keyword | Document | Location |
+| --------- | ---------- | ---------- |
+| **C2 postmortem (the bridge, the bug, and the bug that wasn't — design + investigation narrative)** | [blog/2026-08-13-bridge-c2-the-bug-that-wasnt.md](blog/2026-08-13-bridge-c2-the-bug-that-wasnt.md) | docs/blog/ |
+| **C2 fixes — full execution spec (Sprints R + H + C2-cont; Option B monotonic conversation turnIndex)** | [specs/c2-resume-and-health-fixes.md](specs/c2-resume-and-health-fixes.md) | docs/specs/ |
+| C2 findings — sprint plan overview (draft, superseded by full spec) | [specs/c2-findings-sprint-plan.md](specs/c2-findings-sprint-plan.md) | docs/specs/ |
+| C2 finding — resume duplicate-turn (draft investigation record) | [specs/c2-finding-resume-duplicate-turn.md](specs/c2-finding-resume-duplicate-turn.md) | docs/specs/ |
+| C2 finding — health observability gap + drift clarity (draft) | [specs/c2-finding-health-observability-gap.md](specs/c2-finding-health-observability-gap.md) | docs/specs/ |
+| bridge API (createMegaBridge — compact/recall/fork/cortex/memory/turns) | [src/bridge.ts](../src/bridge.ts) + [src/bridge/factory.ts](../src/bridge/factory.ts) | src/ |
+| bridge child extension (recall-at-start + compact-on-shutdown, no tools/console) | [extensions/mega-compact-child.ts](../extensions/mega-compact-child.ts) | extensions/ |
+| bridge contract (ithacus local mirror of MegaBridge) | (ithacus) `src/mega-bridge-contract.ts` | ithacus repo |
+| bridge loader (dynamic import + optional peer dep + child path resolution) | (ithacus) `src/mega-bridge-loader.ts` | ithacus repo |
+
+> **Outstanding branches** (review, not yet merged to master):
+> - `feat/ithacus-bridge` — the bridge itself (shipped mega-compact v0.21.3 + ithacus v0.6.17) + this C2 blog post.
+> - `fix/c2-findings` — C2 fixes specs (Sprint R + H); **no code yet**, execution-ready for the AM.
+> - (ithacus repo) `feat/mega-bridge` — ithacus side of the bridge (merged to ithacus master @ v0.6.17).
+
+---
+
 ## TESTING & RELEASE
 
 | Keyword | Document | Location |

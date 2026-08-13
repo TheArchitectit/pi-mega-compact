@@ -967,4 +967,44 @@
 - `vector-cortex/SPRINT_PLAN.md`: roadmap, migrations/current defects, flags/dashboard, gates/release
 - `vector-cortex/EVIDENCE_TEMPLATE.md`: durable evidence and attestation
 - `vector-cortex/phases/*.md`: 9 phase boundaries
+
+## ITHACUS BRIDGE — C2 (docs/blog/ + docs/specs/c2-*)
+
+### docs/blog/2026-08-13-bridge-c2-the-bug-that-wasnt.md
+
+| Section | Line | Offset |
+| --------- | ------ | -------- |
+| The premise (ithacus gap + the bridge question) | ~3 | 0 |
+| The design (short version) — dynamic import + optional peer dep + local contract | ~20 | 0 |
+| We shipped it (Sprint A/B/C1) | ~48 | 0 |
+| C2: the status line looked fine, the log didn't (557 turn_write_failed) | ~70 | 0 |
+| The wrong turn (bridge double-write hypothesis) | ~82 | 0 |
+| The data exonerated the bridge (global vs conv_*; timestamps) | ~98 | 0 |
+| Two more findings (health observability gap; drift-warn red herring) | ~112 | 0 |
+| What we shipped, and what's next (ithacus v0.6.17 hygiene) | ~122 | 0 |
+| The fix, verified — fork is already conversation-relative (Option B) | ~131 | 0 |
+| How we'll use this (end-to-end gate; plausible≠confirmed; single authority) | ~143 | 0 |
+
+### docs/specs/c2-resume-and-health-fixes.md (full execution spec — branch fix/c2-findings)
+
+| Section | Line | Offset |
+| --------- | ------ | -------- |
+| 0. Background | ~9 | 0 |
+| 1. Sprint R — resume duplicate-turn fix (Finding 2) | ~19 | 0 |
+| 1.1 Problem (verified: UNIQUE constraint + ensureConversationId + turnIndex restart) | ~23 | 0 |
+| 1.2 Fix — Option B: monotonic conversation turnIndex | ~55 | 0 |
+| 1.3 Dependents audit (gated before impl: fork, epoch, turn_recall, dashboard, bridge child) | ~80 | 0 |
+| 1.4 Files | ~95 | 0 |
+| 1.5 Test plan | ~108 | 0 |
+| 1.6 Sprint R steps | ~120 | 0 |
+| 2. Sprint H — health observability + drift clarity (Findings 3+4) | ~130 | 0 |
+| 2.1 Problem (errorRate=1.0 while 557 errors; drift=compaction_lag) | ~134 | 0 |
+| 2.2 Fix — internal-errors ring + storeErrorRate sub-score + relabel | ~150 | 0 |
+| 2.3 Files | ~160 | 0 |
+| 2.4 Test plan | ~172 | 0 |
+| 2.5 Sprint H steps | ~182 | 0 |
+| 2.6 Ordering note (H most valuable after R) | ~190 | 0 |
+| 3. Sprint C2-cont — bridge validation continues (partly manual) | ~196 | 0 |
+| 4. Verification summary | ~214 | 0 |
+| 5. Open risks (dependents; computeHealthScore re-balance; display changes) | ~222 | 0 |
 - `vector-cortex/sprints/*.md`: 27 unique implementation contracts
