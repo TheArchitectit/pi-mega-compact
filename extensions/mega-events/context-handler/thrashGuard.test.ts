@@ -38,6 +38,7 @@ import {
 	markCompactionFired,
 	evaluatePendingReduction,
 	isThrashBlocked,
+	disarmThrashGuard,
 	ReductionValidator,
 	THRASH_BLOCKED_KEY,
 	THRASH_BASELINE_KEY,
@@ -275,4 +276,41 @@ test("3WF-2 test 4 (alt): effective reduction is credited but noise-level wobble
 	assert.equal(V.validateReduction(190_000, 189_000).effective, false, "sub-floor wobble not effective");
 	assert.equal(V.validateReduction(190_000, 190_000).effective, false, "zero reduction ineffective");
 	assert.equal(V.validateReduction(190_000, 200_000).effective, false, "growth is not a reduction");
+});
+
+// ─── ThrashGuard bug fix: effective compaction must clear the guard ────
+
+test("fix: effective compaction clears blocked_until (disarms the guard)", () => {
+	const dir = mkdtempSync(join(tmpdir(), "mc-tg-fix-"));
+	try {
+		// Simulate: guard was armed by a prior ineffective compaction.
+		setMetaNumber(THRASH_BLOCKED_KEY, 200_000, dir);
+		setMetaNumber(THRASH_BASELINE_KEY, 195_000, dir);
+		assert.equal(isThrashBlocked(180_000, dir), true, "guard blocks at 180k < 200k");
+
+		// Disarm it (as evaluatePendingReduction would on an effective compaction).
+		disarmThrashGuard(dir);
+		assert.equal(isThrashBlocked(180_000, dir), false, "guard no longer blocks after disarm");
+		assert.equal(getMetaNumber(THRASH_BLOCKED_KEY, dir), 0, "blocked_until cleared to 0");
+		assert.equal(getMetaNumber(THRASH_BASELINE_KEY, dir), 0, "baseline cleared to 0");
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("fix: stale blocked_until from a prior session is cleared on disarm (cross-session)", () => {
+	const dir = mkdtempSync(join(tmpdir(), "mc-tg-fix2-"));
+	try {
+		// Simulate: a prior session armed the guard at a high value.
+		setMetaNumber(THRASH_BLOCKED_KEY, 250_000, dir);
+		// A new session at 100k would be blocked by the stale guard.
+		assert.equal(isThrashBlocked(100_000, dir), true, "stale guard blocks new session");
+
+		// Session start calls disarmThrashGuard.
+		disarmThrashGuard(dir);
+		// Now the new session is not blocked.
+		assert.equal(isThrashBlocked(100_000, dir), false, "not blocked after session-start disarm");
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
 });
