@@ -9,6 +9,7 @@
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
+import { normalizeSessionId } from "../../src/store.js";
 
 // ── Public string constants ────────────────────────────────────────────────
 // Exported via the barrel — consumers (mega-events.ts, mega-pipeline.ts) use
@@ -110,4 +111,49 @@ export function ownVersion(): string {
 	}
 	CACHED_VERSION = v;
 	return v;
+}
+
+/**
+ * createSessionRuntime() — the default per-session runtime state.
+ *
+ * Extracted from runtime.ts (delegate-shell split) so the MegaRuntime class
+ * stays a field-declarations + 1-line-delegate shell. Returns a fresh
+ * SessionRuntime for each session (reset on session_start / session_tree).
+ * Mirrors the neuralwatt-mcr per-session closure.
+ */
+export function createSessionRuntime(): SessionRuntime {
+	return {
+		sessionId: normalizeSessionId(undefined),
+		persistedThisSession: false,
+		lastCheckpointId: undefined,
+		lastCompactedFrom: 0,
+		lastCompactedTokens: 0,
+		dedupSkips: 0,
+		dedupAttempts: 0,
+		tokensSaved: 0,
+		lastCompactAt: null,
+		lastRecallAt: null,
+		lastInjectAt: null,
+		_prevCacheHitPct: null,
+		_lastCacheHealthScore: undefined,
+		lastNativeCompactAt: null,
+		compactCount: 0,
+		recallInjections: 0,
+		cacheHitTokens: 0,
+		lengthStopPending: false,
+		errorRetryCount: 0,
+		errorRetryUntil: 0,
+		consecutiveErrors: 0,
+		lastErrorRetryAt: 0,
+		retryNudgePending: false,
+		errorRetrySessionCount: 0,
+		lastErrorText: undefined,
+		errorTextRepeatCount: 0,
+		poisonedAdviseSent: false,
+		providerOutageAdvised: false,
+		poisonedCompactSignatures: new Set(),
+		recallInjectedThisTurn: false,
+		poisonedCount: 0,
+		extensionInitiatedTurn: false,
+	};
 }

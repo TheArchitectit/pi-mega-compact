@@ -9,7 +9,7 @@
  */
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createTurnStore, closeAllTurnDbs, type TurnStore } from "../../../../src/store/turns/index.js";
@@ -38,6 +38,10 @@ beforeEach(() => {
 		pressureBand: "green",
 		lastCtxTokens: 100,
 		lastCtxPercent: 0.5,
+		recentInternalErrors: [] as string[],
+		recordInternalError: (c: string) => {
+			(runtime as unknown as { recentInternalErrors: string[] }).recentInternalErrors.push(c);
+		},
 		dashboard: { event: (type: string, data: Record<string, unknown>) => events.push({ type, ...data }) },
 	} as unknown as MegaRuntime;
 });
@@ -103,4 +107,27 @@ test("dashboard payload still carries event.turnIndex (display only)", () => {
 	for (const w of written) {
 		assert.equal(w.turnIndex, 0, "payload reports the per-session event.turnIndex");
 	}
+});
+
+// Sprint H (Finding 3 / Option A): a turn-row write failure emits
+// `turn_write_failed` AND feeds the separate `storeErrorRate` ring.
+test("turn-row write failure → turn_write_failed + recordInternalError('store_write')", () => {
+	// Point the state dir at a plain file so ensureConversationIdFor's DB open
+	// throws — forcing the catch branch (real failure, no mock/stub).
+	const badDir = join(dir, "not-a-dir");
+	writeFileSync(badDir, "x");
+	(runtime as unknown as { currentStateDir: string }).currentStateDir = badDir;
+
+	recordTurnRow(endEvent(0), runtime, config);
+
+	assert.equal(
+		events.filter((e) => e.type === "turn_write_failed").length,
+		1,
+		"turn_write_failed emitted on failure",
+	);
+	assert.deepEqual(
+		(runtime as unknown as { recentInternalErrors: string[] }).recentInternalErrors,
+		["store_write"],
+		"store-write failure recorded in the internal-error ring",
+	);
 });

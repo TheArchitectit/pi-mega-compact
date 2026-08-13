@@ -5,4 +5,4 @@
  * every existing `import { MegaRuntime } from "./state.js"` continues to
  * resolve without changes.
  */
-export { MegaRuntime } from "./runtime.js";
+export { MegaRuntime, RING_MAX } from "./runtime.js";

@@ -179,6 +179,10 @@ export function createMegaBridge(opts: BridgeOptions): MegaBridge {
         if (e instanceof ForkError) {
           return { error: e.code };
         }
+        // The bridge is pi-agnostic (no runtime handle) — the host-side adapter
+        // (ithacus) owns the internal-error ring for fork failures, so this
+        // re-thrown non-ForkError is recorded there, not here.
+        // guardrails-allow INTERNAL-ERR: bridge is pi-agnostic; no runtime handle — host adapter records fork failures
         throw e;
       }
     },
@@ -221,6 +225,10 @@ export function createMegaBridge(opts: BridgeOptions): MegaBridge {
         ctxPercent: input.ctxPercent,
         model: input.model,
       };
+      // The bridge is pi-agnostic (no runtime handle); the host-side adapter
+      // (ithacus) owns the internal-error ring for appendTurn failures. The
+      // recordTurn child-path twin of Finding 2 is recorded there, not here.
+      // guardrails-allow INTERNAL-ERR: bridge is pi-agnostic; no runtime handle — host adapter records appendTurn failures
       getTurnStore().asWriter().appendTurn(turn);
     },
 

@@ -77,6 +77,8 @@ export async function persistEpochAndMaintain(
 			writeCheckpointEpoch(db, epoch);
 		} catch (e) {
 			runtime.logger.warn("planv2-epoch-fail", { error: String(e) });
+			// Sprint H (Option A): checkpoint_epoch write failure.
+			runtime.recordInternalError("store_write");
 		}
 	}
 
@@ -181,6 +183,9 @@ export async function persistEpochAndMaintain(
 				runtime.logger.warn("wiki_rebuild_failed", {
 					error: String(wikiErr),
 				});
+				// Sprint H (Option A): wiki rebuild writes (topic model / overrides)
+				// to the isolated store — internal store write.
+				runtime.recordInternalError("store_write");
 			}
 
 			// D1: seed the topic model from raw_transcript when context_chunks is
@@ -263,6 +268,9 @@ export async function persistEpochAndMaintain(
 				runtime.logger.warn("wiki_seed_failed", {
 					error: String(seedErr),
 				});
+				// Sprint H (Option A): wiki seed rebuild writes to the isolated
+				// store — internal store write.
+				runtime.recordInternalError("store_write");
 			}
 
 				// S27 Task 6: Fire-and-forget dedup pipeline.
@@ -280,6 +288,9 @@ export async function persistEpochAndMaintain(
 				}
 		} catch (e) {
 			runtime.logger.warn("db-mirror-epoch-fail", { error: String(e) });
+			// Sprint H (Option A): db-mirror downstream maintenance writes
+			// (stamp turns epoch / wiki / seed / dedup) — internal store writes.
+			runtime.recordInternalError("store_write");
 		}
 	}
 

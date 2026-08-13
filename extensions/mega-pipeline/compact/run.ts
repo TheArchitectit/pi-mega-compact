@@ -166,6 +166,9 @@ function doCompact(
 		touchSession(sid, root, runtime.currentStateDir);
 		logDaily(sid, "compact", result.checkpointId, saved, runtime.currentStateDir);
 	} catch {
+		// Sprint H (Option A): session-activity / daily-log write is an internal
+		// store-write failure — feed the separate `storeErrorRate` axis.
+		runtime.recordInternalError("store_write");
 		/* non-fatal: stats bookkeeping only */
 	}
 
@@ -183,10 +186,14 @@ function doCompact(
 					if (n > 0) runtime.pushTicker(`${C.green}∫${C.reset} consolidated ${n} memory dup${n === 1 ? "" : "s"}`);
 				},
 				() => {
+					// Sprint H (Option A): memory-consolidation write failure.
+					runtime.recordInternalError("store_write");
 					/* swallow: consolidate failures must never surface to the user */
 				},
 			);
 		} catch {
+			// Sprint H (Option A): memory-consolidation write failure (sync throw).
+			runtime.recordInternalError("store_write");
 			/* non-fatal */
 		}
 	}
@@ -259,6 +266,8 @@ function doCompact(
 				}
 			}
 		} catch {
+			// Sprint H (Option A): RAPTOR tree-refresh write failure.
+			runtime.recordInternalError("vector_index");
 			/* non-fatal: tree refresh never blocks a compaction */
 		}
 	}
@@ -278,6 +287,8 @@ function doCompact(
 					latest.checkpointId,
 					latest.embedding,
 				).catch(() => {
+					// Sprint H (Option A): async global vector-index upsert failure.
+					runtime.recordInternalError("vector_index");
 					/* non-fatal: index refresh never blocks a compaction */
 				});
 			}

@@ -76,6 +76,10 @@ export function getOrComputeEmbedding(db: DatabaseSync, content: string): number
     process.stderr.write(
       `[embedding-cache] getOrComputeEmbedding error: ${msg}\n`
     );
+    // Sprint H (Option A): this leaf src/ cache-persist path has no runtime
+    // handle, so the embedder cache-write failure is recorded by callers that
+    // own a runtime, not here.
+    // guardrails-allow INTERNAL-ERR: src/ leaf cache writer, no runtime handle — callers record embedder cache failures
     return [];
   }
 }

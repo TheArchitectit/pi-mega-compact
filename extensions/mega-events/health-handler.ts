@@ -10,6 +10,7 @@
  */
 
 import type { MegaRuntime } from "../mega-runtime.js";
+import { RING_MAX } from "../mega-runtime/runtime.js";
 import type { MegaConfig } from "../mega-config.js";
 import { defaultEmbedder } from "../../src/embedder.js";
 import { computeOutputQuality } from "../../src/contextHealth/outputQuality.js";
@@ -33,8 +34,6 @@ import {
 	recordCachePoisonEvent,
 } from "../../src/store/sqlite/context-health.js";
 import { getHealthMitigate } from "../../src/store/sqlite/meta.js";
-
-const RING_MAX = 5;
 
 /** Extract assistant text from the turn_end event message. */
 function extractAssistantText(event: { message?: { role?: string; content?: unknown } }): string {

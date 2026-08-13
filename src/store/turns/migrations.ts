@@ -196,6 +196,10 @@ export function migrateTurnTablesIfNeeded(
 		log(
 			`migration failed (will retry on next open): ${e instanceof Error ? e.message : String(e)}`,
 		);
+		// Sprint H (Option A): this src/ turn-table migration has no runtime handle
+		// (it runs at store-open via `log`). The migration_failure category is
+		// recorded by the store-open caller that owns a runtime, not here.
+		// guardrails-allow INTERNAL-ERR: src/ turn-table migration, no runtime handle — store-open caller records migration failures
 	}
 }
 

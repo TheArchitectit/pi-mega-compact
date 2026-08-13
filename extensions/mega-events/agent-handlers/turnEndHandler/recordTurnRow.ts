@@ -63,5 +63,9 @@ export function recordTurnRow(
 			error: e instanceof Error ? e.message : String(e),
 			stack: e instanceof Error ? e.stack?.split("\n").slice(0, 3).join(" | ") : undefined,
 		});
+		// Sprint H (Finding 3 / Option A): the turn-row write is an internal
+		// store-write failure the API-error `errorRate` ring never sees. Feed the
+		// separate `storeErrorRate` 6th axis.
+		runtime.recordInternalError("store_write");
 	}
 }

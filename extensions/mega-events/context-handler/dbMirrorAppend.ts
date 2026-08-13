@@ -105,6 +105,9 @@ export function appendMirrorAndLedger(
 			}
 		} catch (e) {
 			runtime.logger.warn("db-mirror-append-fail", { error: String(e) });
+			// Sprint H (Option A): raw_transcript / thread / tool_results write
+			// failure — internal store write. Feed the `storeErrorRate` axis.
+			runtime.recordInternalError("store_write");
 		}
 	}
 
@@ -121,5 +124,10 @@ export function appendMirrorAndLedger(
 		);
 	} catch (e) {
 		runtime.logger.warn("vc1b-ledger-append-fail", { error: String(e) });
+		// Sprint H (Option A): the v2 vector-cortex ledger append is a cortex
+		// write — this is the host-side hook for the cortex seam (the cortex
+		// contract forbids the store from holding a runtime handle, so the ring
+		// push happens here in the adapter, not inside src/vector-cortex).
+		runtime.recordInternalError("vector_index");
 	}
 }
