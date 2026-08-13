@@ -26,6 +26,7 @@ export interface ContextHealthResponse {
 		driftScore: number;
 		outputQuality: number;
 		errorScore: number;
+		storeErrorScore: number;
 		cacheHealth: number;
 		cachePoison: number;
 		ts: number;

@@ -41,6 +41,8 @@ export interface LatestContextHealth {
 	driftScore: number;
 	outputQuality: number;
 	errorScore: number;
+	/** Sprint H (B2): internal store-write failure score (NULL→1 on pre-upgrade DBs). */
+	storeErrorScore: number;
 	cacheHealth: number;
 	cachePoison: number;
 	ts: number;
@@ -48,15 +50,13 @@ export interface LatestContextHealth {
 }
 
 /** A single cache_poison_events row (as stored + returned). */
-export interface CachePoisonEvent {
-	id: number;
-	ts: number;
-	turnIndex: number;
-	sessionId: string;
-	layer: number | null;
-	detail: string | null;
-	severity: string | null;
-}
+// Sprint H split: cache_poison_events accessors live in context-health-cache-poison.ts.
+// Re-exported here so existing importers (barrel `export *`) are unaffected.
+export {
+	recordCachePoisonEvent,
+	readCachePoisonEvents,
+	type CachePoisonEvent,
+} from "./context-health-cache-poison.js";
 
 // ─── context_health accessors ────────────────────────────────────────────────
 
@@ -205,7 +205,7 @@ export function readLatestContextHealth(
 		const db = openStore(stateDir);
 		const row = db
 			.prepare(
-				`SELECT composite, drift_score, output_quality, error_score,
+				`SELECT composite, drift_score, output_quality, error_score, store_error_score,
 				        cache_health, cache_poison, ts, model_id
 				 FROM context_health
 				 ORDER BY ts DESC
@@ -217,6 +217,7 @@ export function readLatestContextHealth(
 					drift_score: number;
 					output_quality: number;
 					error_score: number;
+					store_error_score: number | null;
 					cache_health: number;
 					cache_poison: number;
 					ts: number;
@@ -230,6 +231,7 @@ export function readLatestContextHealth(
 			driftScore: row.drift_score,
 			outputQuality: row.output_quality,
 			errorScore: row.error_score,
+			storeErrorScore: row.store_error_score ?? 1,
 			cacheHealth: row.cache_health,
 			cachePoison: row.cache_poison,
 			ts: row.ts,
@@ -262,80 +264,6 @@ export function readContextHealthTrend(
 
 		// Reverse to chronological (oldest first) for sparkline display.
 		return rows.map((r) => r.composite).reverse();
-	} catch {
-		return [];
-	}
-}
-
-// ─── cache_poison_events accessors ───────────────────────────────────────────
-
-/**
- * Record one cache poison advisory event. Fully parameterized (PREVENT-002).
- * Non-fatal: write errors are logged to stderr and silently swallowed.
- */
-export function recordCachePoisonEvent(
-	stateDir: string = getStateDir(),
-	event: {
-		ts: number;
-		turnIndex: number;
-		sessionId: string;
-		layer: number;
-		detail: string;
-		severity: "warn" | "alert";
-	},
-): void {
-	try {
-		const db = openStore(stateDir);
-		db.prepare(
-			`INSERT INTO cache_poison_events
-			   (ts, turn_index, session_id, layer, detail, severity)
-			 VALUES (?, ?, ?, ?, ?, ?)`,
-		).run(event.ts, event.turnIndex, event.sessionId, event.layer, event.detail, event.severity);
-	} catch (err) {
-		// Non-fatal: advisory logging must never block the agent loop.
-		const msg = err instanceof Error ? err.message : String(err);
-		process.stderr.write(`[context-health] recordCachePoisonEvent error: ${msg}\n`);
-	}
-}
-
-/**
- * Read cache poison events since `sinceTs`, ordered descending by ts (most
- * recent first), capped at 100 rows. Returns an empty array on any error
- * (non-fatal). SQL is fully parameterized (PREVENT-002).
- */
-export function readCachePoisonEvents(
-	stateDir: string = getStateDir(),
-	sinceTs: number,
-): CachePoisonEvent[] {
-	try {
-		const db = openStore(stateDir);
-		const rows = db
-			.prepare(
-				`SELECT id, ts, turn_index, session_id, layer, detail, severity
-				 FROM cache_poison_events
-				 WHERE ts >= ?
-				 ORDER BY ts DESC
-				 LIMIT 100`,
-			)
-			.all(sinceTs) as Array<{
-			id: number;
-			ts: number;
-			turn_index: number;
-			session_id: string;
-			layer: number | null;
-			detail: string | null;
-			severity: string | null;
-		}>;
-
-		return rows.map((r) => ({
-			id: r.id,
-			ts: r.ts,
-			turnIndex: r.turn_index,
-			sessionId: r.session_id,
-			layer: r.layer,
-			detail: r.detail,
-			severity: r.severity,
-		}));
 	} catch {
 		return [];
 	}

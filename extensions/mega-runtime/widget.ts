@@ -129,7 +129,7 @@ export function buildWidgetLines(
 		`${C.gray}all-time${C.reset} ${fmtTokens(wd.repoIn)}→${fmtTokens(wd.repoKept)} kept ${C.blue}(${wd.rTxt}% freed)${C.reset}`,
 		`${wd.repoChk} chk/${wd.repoSess} sess`,
 		`${C.gray}mem${C.reset} ${wd.embedderName} · ${wd.chk} chunks · ${C.blue}comp ${wd.compStr}${C.reset}`,
-		`${C.gray}drift${C.reset} ${wd.driftStatus === "ok" ? C.green : C.amber}${wd.driftStatus}${C.reset}`,
+		`${C.gray}comp lag${C.reset} ${wd.driftStatus === "ok" ? C.green : C.amber}${wd.driftStatus}${C.reset}`,
 		`${C.gray}compact${C.reset} ${sinceCompactStr(wd.sinceCompact)}`,
 		...(wd.perTurnCacheHitPct != null
 			? [

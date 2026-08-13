@@ -122,6 +122,7 @@ export default function HealthTab(): React.ReactElement {
 						<SubScoreBar label="Drift" value={latest?.driftScore ?? 0} />
 						<SubScoreBar label="Output Quality" value={latest?.outputQuality ?? 0} />
 						<SubScoreBar label="Error Rate" value={latest?.errorScore ?? 0} />
+						<SubScoreBar label="Internal Errors" value={latest?.storeErrorScore ?? 1} />
 						<SubScoreBar label="Cache Health" value={latest?.cacheHealth ?? 0} />
 						<SubScoreBar label="Cache Poison" value={latest?.cachePoison ?? 0} />
 					</CardContent>
