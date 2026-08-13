@@ -125,9 +125,19 @@ We shipped **ithacus v0.6.17**: the single-turn-recording-authority hygiene fix.
 
 Then we tracked the real work:
 
-1. **mega-compact: fix the session-resume `turnIndex` restart.** On resume, detect the existing conversation and continue the turn index from its high-water mark (or skip-existing on `DuplicateTurnError`). This is the actual source of the 557 `turn_write_failed` events, and the fix lives in mega-compact, not ithacus.
+1. **mega-compact: fix the session-resume `turnIndex` restart.** On resume, detect the existing conversation and continue the turn index from its high-water mark. This is the actual source of the 557 `turn_write_failed` events, and the fix lives in mega-compact, not ithacus.
 2. **mega-compact: surface internal store-write errors in the health dashboard.** `turn_write_failed` (and its siblings) need to reach the error-rate signal or get their own sub-score, so `errorRate` stops reading 1.0 while errors accumulate.
 3. **Continue C2:** parent recall injection, memory write to `<repo>/.pi/mega-compact/sqlite.db`, child dispatch with the second `-e mega-compact-child.js`, cross-dispatch recall, fork after `recordTurn`s, and `ITHACUS_MEGA_BRIDGE=false` byte-identity.
+
+## The fix, verified — and why it's safe
+
+We worked through the resume fix in detail before committing to it, and one finding made the whole thing click: **fork already treats `turnIndex` as conversation-relative.**
+
+`forkFromConversation` resolves a turn with `store.getTurnByIndex(parentConversationId, turnIndex)` — "the Nth turn *in this conversation*." It is not using pi's per-session counter for anything load-bearing. Today, the per-session counter and the conversation's turn position happen to coincide — but only because a non-resumed session starts its conversation at turn 0 and counts up. The moment you resume, they diverge: pi says "turn 0" but the conversation already has 11 turns.
+
+So the fix — store `turnIndex = (max existing turn_index for the conversation) + 1` instead of `event.turnIndex` — does **not** change fork's contract. It makes the stored data match what fork already expects: the conversation's Nth turn, stable across resumes. For a fresh, non-resumed session the math produces 0, 1, 2, 3 — byte-identical to today. For a resumed session it produces 11, 12, 13 — no collision, and the resumed turns actually land in the store instead of all failing.
+
+And there's no new race to worry about: `turns.db` is the synchronous `node:sqlite` store, so a `SELECT MAX(turn_index)` + `INSERT` in the same synchronous call can't be interleaved by another writer. After ithacus v0.6.17 there's a single writer per path anyway — mega's native handler owns the parent, the bridge owns the child — so `max + 1` is computed by one writer against a sync store. The one thing left to audit is whether any *other* consumer of `turns.turn_index` assumed it tracked pi's session counter rather than the conversation's position; that audit is gated before implementation. The full execution-ready spec is on `fix/c2-findings`.
 
 ## How we'll use this
 
