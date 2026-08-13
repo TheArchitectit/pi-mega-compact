@@ -107,8 +107,16 @@ export function handleTurnEndHealth(
 			drift = computeDriftScore(topic, error, prefix);
 		}
 
-		// Error rate sub-score (1 = no errors)
+		// Error rate sub-score (1 = no errors) — API-retry errors only.
 		const errorScore = computeErrorEscalation(runtime.recentErrorCategories);
+
+		// Sprint H (B2): store-error sub-score (1 = no store-write failures).
+		// Distinct from errorScore — internal store/service-write failures
+		// (turn rows, recall, dbMirror, ledger, epoch, stats, memory consolidate,
+		// compact persist, vector index, embedder, migration) never reach the
+		// API-retry errorRate ring. Mirrors computeErrorEscalation: 1 - (n/RING_MAX).
+		const recentInternalCount = Math.min(runtime.recentInternalErrors.length, RING_MAX);
+		const storeErrorScore = 1 - recentInternalCount / RING_MAX;
 
 		// Cache health (from perf-handler)
 		const cacheHealth = runtime.rt._lastCacheHealthScore ?? 1.0;
@@ -153,6 +161,7 @@ export function handleTurnEndHealth(
 			errorRate: errorScore,
 			cacheHealth,
 			cachePoison,
+			storeErrorRate: storeErrorScore,
 		};
 		const composite = computeHealthScore(sub);
 
@@ -167,6 +176,7 @@ export function handleTurnEndHealth(
 			cacheHealth,
 			cachePoison,
 			composite,
+			storeErrorScore,
 			modelId: runtime.currentModel?.modelId,
 			repetitionRatio,
 			coherenceScore,
@@ -179,6 +189,7 @@ export function handleTurnEndHealth(
 			drift,
 			outputQuality,
 			errorRate: errorScore,
+			storeErrorRate: storeErrorScore,
 			cacheHealth,
 			cachePoison,
 			turnIndex: event.turnIndex,

@@ -111,7 +111,7 @@
       "enabled": true,
       "pattern": "def\\s+\\w+\\([^)]*\\b\\w+\\s*[:=]\\s*(\\[\\]|\\{\\}|set\\(\\))",
       "forbidden_context": null,
-      "message": "Mutable default argument (list/dict/set) — shared across calls, causes subtle bugs",
+      "message": "Mutable default argument (list/dict/set) \u2014 shared across calls, causes subtle bugs",
       "severity": "error",
       "file_glob": [
         "*.py"
@@ -137,7 +137,7 @@
       "enabled": true,
       "pattern": "go\\s+func",
       "forbidden_context": "context",
-      "message": "Goroutine launched without context — cannot be cancelled or tracked",
+      "message": "Goroutine launched without context \u2014 cannot be cancelled or tracked",
       "severity": "warning",
       "file_glob": [
         "*.go"
@@ -278,7 +278,7 @@
       "enabled": true,
       "pattern": "(TODO|FIXME|HACK|XXX|WORKAROUND)[^\\d]*$",
       "forbidden_context": "(#[0-9]|issue|ticket|JIRA)",
-      "message": "TODO/FIXME without ticket reference — will be forgotten",
+      "message": "TODO/FIXME without ticket reference \u2014 will be forgotten",
       "severity": "info",
       "file_glob": [
         "*"
@@ -328,7 +328,7 @@
       "enabled": true,
       "pattern": "Access-Control-Allow-Origin\\s*[:*]\\s*\\*",
       "forbidden_context": null,
-      "message": "CORS wildcard detected — allows any origin to access the API",
+      "message": "CORS wildcard detected \u2014 allows any origin to access the API",
       "severity": "error",
       "file_glob": [
         "*.py",
@@ -404,7 +404,7 @@
       "enabled": true,
       "pattern": ".*",
       "forbidden_context": null,
-      "message": "No .dockerignore file found — entire context sent to Docker daemon",
+      "message": "No .dockerignore file found \u2014 entire context sent to Docker daemon",
       "severity": "info",
       "file_glob": [
         "Dockerfile",
@@ -431,9 +431,11 @@
       "enabled": true,
       "pattern": "messages\\.slice\\(\\s*0\\s*,",
       "forbidden_context": "without.*(anchor|keepRecent|preserveRecent|safeDrop|computeDropRange|dropBefore)",
-      "message": "Dropping a prefix of messages (messages.slice(0, N)) must preserve the last N user messages (anchor-floor) — use boundary.dropBefore() which applies the guard. Fires only when no anchor logic is present.",
+      "message": "Dropping a prefix of messages (messages.slice(0, N)) must preserve the last N user messages (anchor-floor) \u2014 use boundary.dropBefore() which applies the guard. Fires only when no anchor logic is present.",
       "severity": "warning",
-      "file_glob": ["*.ts"],
+      "file_glob": [
+        "*.ts"
+      ],
       "suggestion": "Use src/boundary.ts dropBefore(messages, keepFrom, anchorUserMessages) so the anchor floor + tool-pair invariants are enforced."
     },
     {
@@ -444,7 +446,9 @@
       "forbidden_context": "without.*(ToolUse|ToolResult|tool_call|pair|computeDropRange|dropBefore)",
       "message": "Compaction boundary must not split an assistant toolCall from its following toolResult (OpenAI-compat 400). The engine guard lives in src/boundary.ts; runtime drops in extensions/ must use it.",
       "severity": "critical",
-      "file_glob": ["extensions/**/*.ts"],
+      "file_glob": [
+        "extensions/**/*.ts"
+      ],
       "suggestion": "Use src/boundary.ts computeDropRange/dropBefore which walks the boundary back if the first preserved message is a ToolResult without a preceding ToolUse."
     },
     {
@@ -455,7 +459,9 @@
       "forbidden_context": null,
       "message": "pi Message has no 'system' role. Inject compacted context via before_agent_start systemPrompt, not a system message.",
       "severity": "critical",
-      "file_glob": ["*.ts"],
+      "file_glob": [
+        "*.ts"
+      ],
       "suggestion": "Return { systemPrompt } from before_agent_start, or prepend a UserMessage."
     },
     {
@@ -464,9 +470,12 @@
       "enabled": true,
       "pattern": "(fetch\\(|https?://|new (WebSocket|net\\.)|XMLHttpRequest|child_process\\.|https\\.request\\(|http\\.get\\(|http\\.request\\(|net\\.connect\\(|net\\.createConnection\\(|new (http\\.)?Agent\\(|new https\\.Agent\\(|createServer\\(|\\bundici\\b|require\\(['\"]node:(http|https|net)['\"]\\)|from ['\"]node:(http|https|net)['\"]|from \"node:(http|https|net)\")",
       "forbidden_context": null,
-      "message": "pi-mega-compact must run fully local by default — no remote MCP server or network calls at runtime unless the user has explicitly opted in.",
+      "message": "pi-mega-compact must run fully local by default \u2014 no remote MCP server or network calls at runtime unless the user has explicitly opted in.",
       "severity": "critical",
-      "file_glob": ["extensions/**/*.ts", "src/**/*.ts"],
+      "file_glob": [
+        "extensions/**/*.ts",
+        "src/**/*.ts"
+      ],
       "suggestion": "Keep compaction + vector store on local disk; remove network calls. (Config may still read a URL, but runtime must not fetch unless user opted in.)"
     },
     {
@@ -477,7 +486,10 @@
       "forbidden_context": "guardrails-allow PREVENT-STUB-001",
       "message": "A runtime stub/placeholder in src/ or extensions/ must carry a // guardrails-allow PREVENT-STUB-001: <closure-sprint> annotation naming its closure sprint. Enforced by scripts/stub-scan.mjs (--fail-on-unregistered).",
       "severity": "error",
-      "file_glob": ["src/**/*.ts", "extensions/**/*.ts"],
+      "file_glob": [
+        "src/**/*.ts",
+        "extensions/**/*.ts"
+      ],
       "suggestion": "Add a guardrails-allow PREVENT-STUB-001 annotation with the closure sprint id, or replace the stub."
     },
     {
@@ -486,9 +498,12 @@
       "enabled": false,
       "pattern": "(Math\\.random\\(|mulberry32|\\bfnv1a\\b|fallbackEmbed|hash-as-embedding|hashed[- ]n-gram embedding|vec\\s*\\(\\s*Math\\.floor\\s*\\(\\s*fnv1a|scoreTable\\s*=)",
       "forbidden_context": "guardrails-allow PREVENT-MOCK-001",
-      "message": "A mock/fake/synthetic value in a production src/ or extensions/ path must carry a // guardrails-allow PREVENT-MOCK-001: <reason — accuracy-floor acknowledged> annotation. Enforced by scripts/mock-scan.mjs (--fail-on-unregistered).",
+      "message": "A mock/fake/synthetic value in a production src/ or extensions/ path must carry a // guardrails-allow PREVENT-MOCK-001: <reason \u2014 accuracy-floor acknowledged> annotation. Enforced by scripts/mock-scan.mjs (--fail-on-unregistered).",
       "severity": "error",
-      "file_glob": ["src/**/*.ts", "extensions/**/*.ts"],
+      "file_glob": [
+        "src/**/*.ts",
+        "extensions/**/*.ts"
+      ],
       "suggestion": "Add a guardrails-allow PREVENT-MOCK-001 annotation acknowledging the accuracy floor, or replace the fake with real data."
     },
     {
@@ -499,7 +514,11 @@
       "forbidden_context": "guardrails-allow PREVENT-PLACEHOLDER-001",
       "message": "A placeholder asset generated for production must carry a // guardrails-allow PREVENT-PLACEHOLDER-001: <closure-sprint> annotation naming its closure sprint and pipeline that substitutes real content.",
       "severity": "error",
-      "file_glob": ["scripts/**/*.mjs", "src/**/*.ts", "extensions/**/*.ts"],
+      "file_glob": [
+        "scripts/**/*.mjs",
+        "src/**/*.ts",
+        "extensions/**/*.ts"
+      ],
       "suggestion": "Add a guardrails-allow PREVENT-PLACEHOLDER-001 annotation, or substitute the real asset."
     },
     {
@@ -508,10 +527,23 @@
       "enabled": false,
       "pattern": "(digest\\s*===\\s*\"0\"|digestOverride\\s*\\?\\?\\s*\"0\"|skip.*digest.*verif|bypass.*per-shard)",
       "forbidden_context": "PLACEHOLDER_DIGEST|guardrails-allow PREVENT-VERIFICATION-BYPASS-001",
-      "message": "A verification-skip sentinel (e.g. digest === \"0\") must be an explicit named marker (PLACEHOLDER_DIGEST) or carry a guardrails-allow PREVENT-VERIFICATION-BYPASS-001 annotation — never a silent implicit bypass.",
+      "message": "A verification-skip sentinel (e.g. digest === \"0\") must be an explicit named marker (PLACEHOLDER_DIGEST) or carry a guardrails-allow PREVENT-VERIFICATION-BYPASS-001 annotation \u2014 never a silent implicit bypass.",
       "severity": "critical",
-      "file_glob": ["src/**/*.ts", "extensions/**/*.ts"],
+      "file_glob": [
+        "src/**/*.ts",
+        "extensions/**/*.ts"
+      ],
       "suggestion": "Replace implicit \"0\" digest skips with the named PLACEHOLDER_DIGEST sentinel."
+    },
+    {
+      "rule_id": "PREVENT-INTERNAL-ERR-001",
+      "name": "Internal store/service failure emit without recordInternalError pairing",
+      "enabled": false,
+      "pattern": "(?:dashboard\\.event|logger\\.warn)\\s*\\(\\s*[\"'`]([a-z0-9_-]*fail[a-z0-9_-]*)[\"'`]",
+      "forbidden_context": "guardrails-allow INTERNAL-ERR",
+      "message": "A failure-event emit (*_failed / *_fail via dashboard.event or logger.warn) must be paired with a recordInternalError(category) call in scope OR carry a // guardrails-allow INTERNAL-ERR: <reason> annotation. Enforced by scripts/internal-err-scan.mjs. Sprint H (Finding 3) backstop: internal store-write failures must reach the recentInternalErrors ring so errorRate no longer reads 1.0 while errors accumulate.",
+      "severity": "error",
+      "scanner": "scripts/internal-err-scan.mjs"
     }
   ]
 }

@@ -23,23 +23,39 @@ export interface ContextHealthSubScores {
 	drift: number;
 	/** Output quality score (0–1, higher = healthier output). */
 	outputQuality: number;
-	/** Error-rate score (0–1, higher = fewer errors). */
+	/** Error-rate score (0–1, higher = fewer API-retry errors). */
 	errorRate: number;
 	/** Cache health score (0–1, higher = healthier cache). */
 	cacheHealth: number;
 	/** Cache poison score (0–1, higher = less poison). */
 	cachePoison: number;
+	/**
+	 * Store-error rate score (0–1, higher = fewer internal store-write
+	 * failures). Sprint H (B2): a SEPARATE 6th axis from `errorRate` — `errorRate`
+	 * reflects API-retry errors only; `storeErrorRate` reflects internal
+	 * store/service-write failures (turn rows, recall, dbMirror, ledger, epoch,
+	 * stats, memory consolidate, compact persist, vector index, embedder,
+	 * migration). The two are equally loud at 0.09 each.
+	 */
+	storeErrorRate: number;
 }
 
 /**
- * Weighted composite health score from five sub-dimensions.
+ * Weighted composite health score from six sub-dimensions (Sprint H — B2).
  *
  * Weights:
  *   output quality  22% — primary measure of model output health
  *   drift           22% — session-level coherence
  *   cache poison    20% — prompt-cache integrity
  *   cache health    18% — cache hit rate stability
- *   error rate      18% — error frequency
+ *   error rate       9% — API-retry error frequency (split from 18%)
+ *   store error      9% — internal store-write failure frequency (NEW 6th axis)
+ *
+ * The 0.18 `errorRate` budget was split into `errorRate 0.09` +
+ * `storeErrorRate 0.09` so a silent store-write failure is as visible as a
+ * retryable API error. Weights sum to 1.0. NOTE (step-change): historical
+ * context_health rows keep their stored composite (point-in-time snapshots — no
+ * backfill), so the trend line shows a boundary step where weights change.
  *
  * Returns 0–1: 1 = fully healthy, 0 = severely degraded.
  */
@@ -49,7 +65,8 @@ export function computeHealthScore(sub: ContextHealthSubScores): number {
 		sub.drift * 0.22 +
 		sub.cachePoison * 0.20 +
 		sub.cacheHealth * 0.18 +
-		sub.errorRate * 0.18;
+		sub.errorRate * 0.09 +
+		sub.storeErrorRate * 0.09;
 	return Math.max(0, Math.min(1, raw));
 }
 
@@ -66,6 +83,8 @@ export interface ContextHealthRow {
 	cacheHealth: number;
 	cachePoison: number;
 	composite: number;
+	/** Sprint H (B2): 6th axis — internal store-write failure score (0–1). */
+	storeErrorScore?: number;
 	modelId?: string;
 	repetitionRatio?: number;
 	coherenceScore?: number;
@@ -89,9 +108,9 @@ export function recordContextHealth(
 		db.prepare(
 			`INSERT INTO context_health
        (ts, session_id, turn_index, drift_score, output_quality,
-        error_score, cache_health, cache_poison, composite,
+        error_score, cache_health, cache_poison, composite, store_error_score,
         model_id, repetition_ratio, coherence_score, prefix_hash)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		).run(
 			row.ts,
 			row.sessionId,
@@ -102,6 +121,7 @@ export function recordContextHealth(
 			row.cacheHealth,
 			row.cachePoison,
 			row.composite,
+			row.storeErrorScore ?? null,
 			row.modelId ?? null,
 			row.repetitionRatio ?? null,
 			row.coherenceScore ?? null,

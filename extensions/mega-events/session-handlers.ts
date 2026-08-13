@@ -111,6 +111,7 @@ export function registerSessionHandlers(
 				runtime.logger.info("db-auto-maintain", { result: m });
 		} catch (e) {
 			runtime.logger.warn("db-auto-maintain-fail", { error: String(e) });
+			runtime.recordInternalError("store_write");
 		}
 		runtime.dashboard.event("session_start", {
 			reason: event.reason,

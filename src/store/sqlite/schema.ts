@@ -71,6 +71,10 @@ export function initSchema(db: DatabaseSync): void {
 	// S43: conversation_id + last_turn_id on session_state (legacy DBs have NULL).
 	ensureColumn(db, "session_state", "conversation_id", "TEXT");
 	ensureColumn(db, "session_state", "last_turn_id", "INTEGER");
+	// Sprint H (B2): store_error_score column on context_health — the 6th health
+	// axis. Additive; DBs created before this version have NULL → the health
+	// handler degrades to 1.0 (no data → healthy), matching the empty-ring rule.
+	ensureColumn(db, "context_health", "store_error_score", "REAL");
 	// S35: idempotent seed of the 9 achievement rows. ON CONFLICT(id) DO
 	// NOTHING so a re-open never clobbers an already-unlocked row's
 	// unlocked_at. No user input reaches this SQL (PREVENT-002 safe).

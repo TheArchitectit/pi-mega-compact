@@ -51,7 +51,7 @@
     "postbuild": "node scripts/vector-cortex-publish-acceptance.mjs",
     "build:dashboard": "cd extensions/dashboard-client && npx vite build",
     "test:dashboard-smoke": "node scripts/dashboard-tab-smoke.mjs",
-    "lint": "tsc --noEmit && node scripts/guardrails-scan.mjs && node scripts/semantic-scan.mjs && node scripts/stub-scan.mjs --fail-on-unregistered && node scripts/mock-scan.mjs --fail-on-unregistered",
+    "lint": "tsc --noEmit && node scripts/guardrails-scan.mjs && node scripts/semantic-scan.mjs && node scripts/stub-scan.mjs --fail-on-unregistered && node scripts/mock-scan.mjs --fail-on-unregistered && node scripts/internal-err-scan.mjs --fail-on-unregistered",
     "test": "npm run build && node scripts/run-tests.mjs",
     "guardrails": "python3 scripts/regression_check.py --all || node scripts/guardrails-scan.mjs || node scripts/semantic-scan.mjs",
     "precommit": "bash .claude/hooks/pre-commit.sh",
