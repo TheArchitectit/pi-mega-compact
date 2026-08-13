@@ -164,6 +164,30 @@
 
 ---
 
+## ARCHIVED DOCS (historical — completed/shipped/superseded)
+
+Moved to [archive/](archive/) on 2026-08-13. See [archive/README.md](archive/README.md)
+for the full list + what was deliberately kept. Historical entries below that
+previously pointed at these files now resolve under `docs/archive/`:
+
+- Shipped sprint specs: `sprint-08…15`, `sprint-009-db-maintenance`,
+  `s24-unified-pressure`, `s25-raptor-promote`, `s27-tiered-percent-threshold`,
+  `sprint-27-db-mirror-{implementation,cache-stability}`,
+  `find-pressure-basis-oscillation`, `postmortem-already-compacted-race`,
+  `sprint-26-{diagnostic-0.6.9,rich-model-cost-card}`,
+  `sprint-27-agent-token-telemetry`, `sprint-{A1,B1,C1,C2,C3,D1,D2,D3,T1}`,
+  `three-way-failback-sprints`, `game-mode-sprint-plan`,
+  `slice2-pglite-vector-index` → [archive/specs/](archive/specs/)
+- Top-level: `migration-v0.8.9`, `cache-stabilization-design`, `WORK_STATUS`,
+  `game-mode-design`, `PROMPTCACHE_PLAN_V2`, `compaction-redesign`,
+  `dedup-implementation-plan`, `AI_ERROR_RETRY_FINDINGS`, `AUDIT_FINDINGS`
+  → [archive/](archive/)
+- Audits: `2026-07-29-full-spec-audit-and-gap-analysis`,
+  `2026-08-06-live-verification-retro` → [archive/audits/](archive/audits/)
+  (the current `2026-08-05-stub-gate-mock-audit.md` stays in `docs/audits/`).
+
+---
+
 ## TESTING & RELEASE
 
 | Keyword | Document | Location |
