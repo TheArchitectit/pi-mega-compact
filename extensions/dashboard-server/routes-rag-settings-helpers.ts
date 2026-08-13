@@ -306,6 +306,12 @@ export const SETTINGS: ReadonlyArray<SettingGroup> = [
 				true,
 			),
 			boolDirect(
+				"MEGACOMPACT_ITHACUS_BRIDGE",
+				"ithacus Bridge",
+				"Mega↔ithacus bridge: gate the child extension + bridge usage that tie this extension to ithacus's durable compaction. Default ON; OFF (=0/`=false`) is byte-identical to pre-bridge behavior — the bridge is only consulted when this is ON. Positive sprint flag. Runtime reads envBool(plain key), so this uses the plain-write convention (not _DISABLED).",
+				true,
+			),
+			boolDirect(
 				"MEGACOMPACT_RECALL_TAIL_INJECT",
 				"Recall Tail Inject",
 				"Compose the staged recall block as a trailing user message on the context event (tail inject) instead of the legacy system-prompt prepend. Tail mode keeps the cache prefix stable and is the mode InjectionConfirm verifies against ContextEvent.messages; OFF falls back to the legacy prepend path (verified by string-contains). Runtime reads envBool(plain key), so this uses the plain-write convention (not _DISABLED).",

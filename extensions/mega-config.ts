@@ -234,6 +234,11 @@ export function loadConfig(): MegaConfig {
 		// 3WF-1: TriggerGuard — guarantee a staged recall block on every context
 		// event even when session_start never fires. Default ON; OFF = byte-identical.
 		threeWayFailback: envBool("MEGACOMPACT_THREE_WAY_FAILBACK", true),
+		// Sprint A: Mega↔ithacus bridge — gate the child extension + bridge usage.
+		// Default ON; OFF (=0/`=false`) = byte-identical pre-bridge behavior.
+		// Runtime reads envBool(plain key), mirroring threeWayFailback (plain-write
+		// convention, not _DISABLED).
+		ithacusBridge: envBool("MEGACOMPACT_ITHACUS_BRIDGE", true),
 		// 3WF-2: ThrashGuard re-arm budget as a fraction of effectiveThreshold.
 		// 0.10 default (10% of the effective threshold) — see mega-config-types.
 		// Clamped to [0.01, 0.5]: below 1% the guard is almost never armed (any

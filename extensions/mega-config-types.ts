@@ -159,6 +159,11 @@ export interface MegaConfig {
 	 *  to the pre-change OFF state. The single gate lives at the call site
 	 *  (tailResult.ts, config.messageSeparation), not inside buildSeparatedPrompt. */
 	messageSeparation: boolean;
+	/** Sprint A: Mega↔ithacus bridge — gate the child extension + bridge usage
+	 *  that tie this extension to ithacus's durable compaction. Positive sprint
+	 *  flag, default ON; flag-OFF (=0/`=false`) is byte-identical to pre-bridge
+	 *  behavior (the bridge is only consulted when this is ON). */
+	ithacusBridge: boolean;
 	/** P3: Cache-aware striping (PLAN_V2 Phase 3). Inserts stability-ordered
 	 *  cache stripes between summaries and thread. Default OFF. */
 	cacheStriping: boolean;
