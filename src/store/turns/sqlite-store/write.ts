@@ -26,8 +26,8 @@ export function appendTurn(ctx: SqliteTurnStoreCtx, entry: TurnEntry): TurnId {
 	                           hyde_ran, hyde_doc, hyde_raw_count, hyde_hyde_count,
 	                           hyde_fused_count, hyde_lift, hyde_generation_ms, hyde_reason,
 	                           recall_score, recall_pass, recall_relevance, recall_coverage,
-	                           recall_diversity, recall_specificity)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	                           recall_diversity, recall_specificity, session_turn_index)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			)
 			.run(
 				entry.conversationId,
@@ -54,6 +54,7 @@ export function appendTurn(ctx: SqliteTurnStoreCtx, entry: TurnEntry): TurnId {
 				entry.recallMetrics?.coverage ?? null,
 				entry.recallMetrics?.diversity ?? null,
 				entry.recallMetrics?.specificity ?? null,
+				entry.sessionTurnIndex ?? null,
 			);
 	} catch (e) {
 		if (

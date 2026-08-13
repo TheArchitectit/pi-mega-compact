@@ -195,6 +195,19 @@ export class InMemoryTurnStore implements TurnStore {
 		};
 	}
 
+	nextTurnIndexFor(conversationId: ConversationId): number {
+		let max = -1;
+		for (const [, row] of this.turns) {
+			if (
+				row.entry.conversationId === conversationId &&
+				row.entry.turnIndex > max
+			) {
+				max = row.entry.turnIndex;
+			}
+		}
+		return max + 1;
+	}
+
 	// ── TurnWriter ──────────────────────────────────────────────
 
 	appendTurn(entry: TurnEntry): TurnId {
@@ -448,6 +461,7 @@ export class InMemoryTurnStore implements TurnStore {
 			listForks: (id) => this.listForks(id),
 			countTurns: (id) => this.countTurns(id),
 			conversationStats: (id) => this.conversationStats(id),
+			nextTurnIndexFor: (id) => this.nextTurnIndexFor(id),
 		};
 	}
 

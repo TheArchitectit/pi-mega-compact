@@ -113,7 +113,12 @@ export function turnMetrics(
 
 	return turns.map((t) => {
 		const recall = store.listRecallByIndex(conversationId, t.turnIndex);
-		const agg = rawAggBySessionTurn.get(`${t.sessionId}::${t.turnIndex}`);
+		// S49R: raw_transcript is keyed by pi's per-session counter. Pre-migration
+		// turn rows have NULL sessionTurnIndex and their turnIndex IS the session
+		// counter, so fall back to turnIndex (COALESCE). Post-migration rows join
+		// on sessionTurnIndex so resume doesn't zero the raw message count.
+		const sessionKey = t.sessionTurnIndex ?? t.turnIndex;
+		const agg = rawAggBySessionTurn.get(`${t.sessionId}::${sessionKey}`);
 		const rawCount = agg?.raw_count ?? 0;
 		const uniqueCount = agg?.unique_count ?? 0;
 		return {

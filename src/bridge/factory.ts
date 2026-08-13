@@ -205,10 +205,16 @@ export function createMegaBridge(opts: BridgeOptions): MegaBridge {
     },
 
     recordTurn(input: BridgeRecordTurnInput): void {
+      // S49R: child turns get the conversation-monotonic index (MAX+1) so a
+      // re-dispatched child (same conversation, restarted session counter) never
+      // collides with UNIQUE(conversation_id, turn_index). Carry the child's
+      // session counter as sessionTurnIndex for the raw_transcript join.
+      const turnIndex = getTurnStore().asReader().nextTurnIndexFor(input.conversationId);
       const turn: TurnEntry = {
         conversationId: input.conversationId,
         sessionId: input.sessionId,
-        turnIndex: input.turnIndex,
+        turnIndex,
+        sessionTurnIndex: input.turnIndex,
         role: (input.role as TurnEntry["role"]) ?? "assistant",
         endedAt: input.endedAt ?? Date.now(),
         ctxTokens: input.ctxTokens,

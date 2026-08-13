@@ -63,6 +63,14 @@ export interface TurnEntry {
 	hyde?: TurnHydeTelemetry;
 	/** H1: recall-quality snapshot for this turn (persisted to recall_* columns). */
 	recallMetrics?: TurnRecallTelemetry;
+	/**
+	 * S49R: pi's per-session turn counter, carried alongside the
+	 * conversation-monotonic `turnIndex`. `turnIndex` restarts at 0 on resume,
+	 * so it is unsafe to use as a join key against `raw_transcript` (which is
+	 * seeded from the session counter). `sessionTurnIndex` preserves that
+	 * per-session value for the metrics join. Null on pre-migration rows.
+	 */
+	sessionTurnIndex?: number;
 }
 
 /**
@@ -176,6 +184,13 @@ export interface TurnReader {
 	listForks(conversationId: ConversationId): ConversationFork[];
 	countTurns(conversationId: ConversationId): number;
 	conversationStats(conversationId: ConversationId): ConversationStats;
+	/**
+	 * S49R: the next conversation-monotonic turn index for a conversation —
+	 * `MAX(turn_index) + 1` (or 0 if the conversation has no turns yet). Used by
+	 * writers so resumed sessions (where pi's per-session `turnIndex` restarts
+	 * at 0) never collide with `UNIQUE(conversation_id, turn_index)`.
+	 */
+	nextTurnIndexFor(conversationId: ConversationId): number;
 }
 
 /** Append-only writer — compaction engine, event handlers. Cannot prune. */

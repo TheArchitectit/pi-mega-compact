@@ -172,3 +172,22 @@ export function conversationStats(
 		pressureBands: bands,
 	};
 }
+
+/**
+ * S49R: next conversation-monotonic turn index for a conversation.
+ * `MAX(turn_index) + 1`, or 0 when the conversation has no turns yet. A
+ * resumed session (pi's per-session `turnIndex` resets to 0) uses this instead
+ * of `event.turnIndex` so it never collides with UNIQUE(conversation_id, turn_index).
+ */
+export function nextTurnIndexFor(
+	ctx: SqliteTurnStoreCtx,
+	conversationId: ConversationId,
+): number {
+	const { db } = ctx;
+	const row = db
+		.prepare(
+			"SELECT COALESCE(MAX(turn_index), -1) AS m FROM turns WHERE conversation_id = ?",
+		)
+		.get(conversationId) as { m: number };
+	return row.m + 1;
+}

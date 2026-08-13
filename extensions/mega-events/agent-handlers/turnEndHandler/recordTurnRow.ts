@@ -8,7 +8,7 @@
  */
 import type { MegaRuntime } from "../../../mega-runtime.js";
 import type { MegaConfig } from "../../../mega-config.js";
-import { ensureConversationIdFor, recordTurnWrite } from "../../../mega-turn-store.js";
+import { ensureConversationIdFor, recordTurnWrite, turnReaderFor } from "../../../mega-turn-store.js";
 import type { TurnEndEvent } from "./event.js";
 
 /** S43: record one turn row with the cached metrics. Best-effort + non-fatal. */
@@ -28,12 +28,18 @@ export function recordTurnRow(
 			runtime.rt.sessionId,
 			runtime.currentStateDir,
 		);
+		// S49R: store the conversation-monotonic index (MAX+1) instead of the
+		// per-session event.turnIndex, which restarts at 0 on resume and would
+		// collide with UNIQUE(conversation_id, turn_index). Carry the session
+		// counter as sessionTurnIndex for the raw_transcript metrics join.
+		const turnIndex = turnReaderFor(runtime.currentStateDir).nextTurnIndexFor(convId);
 		recordTurnWrite(
 			config,
 			{
 				conversationId: convId,
 				sessionId: runtime.rt.sessionId,
-				turnIndex: event.turnIndex,
+				turnIndex,
+				sessionTurnIndex: event.turnIndex,
 				role: (event as { role?: string }).role ?? "assistant",
 				endedAt: Date.now(),
 				startedAt: undefined,

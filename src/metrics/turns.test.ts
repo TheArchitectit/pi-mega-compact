@@ -163,3 +163,128 @@ test("metrics tolerate a main db without raw_transcript (reuse host)", () => {
 	assert.equal(rows[0].compressionRatio, 0);
 	store.close();
 });
+
+// ── S49R: resume-divergence — raw_transcript join must not zero on resume ──
+test("turnMetrics resumes: sessionTurnIndex re-keys raw_transcript join (no false zero)", () => {
+	const dir = stateDir();
+	const store = createTurnStore({ stateDir: dir });
+	const conv = store.ensureConversationId("sess_r");
+	// Pre-resume turns: monotonic 0,1 (session counter coincides).
+	store.appendTurn({
+		conversationId: conv,
+		sessionId: "sess_r",
+		turnIndex: 0,
+		sessionTurnIndex: 0,
+		role: "assistant",
+		endedAt: Date.now(),
+	});
+	store.appendTurn({
+		conversationId: conv,
+		sessionId: "sess_r",
+		turnIndex: 1,
+		sessionTurnIndex: 1,
+		role: "assistant",
+		endedAt: Date.now() + 1,
+	});
+	// Resumed turns: monotonic 2,3 but session counter resets to 0,1.
+	store.appendTurn({
+		conversationId: conv,
+		sessionId: "sess_r2",
+		turnIndex: 2,
+		sessionTurnIndex: 0,
+		role: "assistant",
+		endedAt: Date.now() + 2,
+	});
+	store.appendTurn({
+		conversationId: conv,
+		sessionId: "sess_r2",
+		turnIndex: 3,
+		sessionTurnIndex: 1,
+		role: "assistant",
+		endedAt: Date.now() + 3,
+	});
+
+	const main = openStore(dir);
+	// raw_transcript keyed by SESSION counter 0,1 (as dbMirrorAppend seeds it
+	// from runtime.currentTurn). 2 rows each → 4 raw messages total.
+	const raw = [
+		{ hash: "hr0", turn: 0 },
+		{ hash: "hr1", turn: 0 },
+		{ hash: "hr2", turn: 1 },
+		{ hash: "hr3", turn: 1 },
+	];
+	// raw_transcript is keyed by (session_id, session turn_index). On a real
+	// resume pi reuses the SAME sessionId, so the resumed-segment turns carry
+	// the resumed session id — seed the raw rows under that session.
+	for (const m of raw) {
+		appendRawTranscript(main, {
+			contentHash: m.hash,
+			sessionId: "sess_r2",
+			seq: 0,
+			role: "user",
+			contentBytes: "rawbytes",
+			toolName: null,
+			messageTimestamp: null,
+			checkpointEpoch: "ep_r",
+			turnIndex: m.turn,
+		});
+		// Mirror the raw rows under the pre-resume session so t0,t1 also join.
+		appendRawTranscript(main, {
+			contentHash: `pre-${m.hash}`,
+			sessionId: "sess_r",
+			seq: 0,
+			role: "user",
+			contentBytes: "rawbytes",
+			toolName: null,
+			messageTimestamp: null,
+			checkpointEpoch: "ep_r",
+			turnIndex: m.turn,
+		});
+	}
+
+	const rows = turnMetrics(store, main, conv);
+	assert.equal(rows.length, 4);
+	// Resumed turns (monotonic 2,3) carry sessionTurnIndex 0,1 → join finds the
+	// raw rows keyed by session counter. NOT zeroed.
+	const t2 = rows.find((r) => r.turnIndex === 2)!;
+	const t3 = rows.find((r) => r.turnIndex === 3)!;
+	assert.equal(t2.rawMessageCount, 2, "resumed turn 2 joins via sessionTurnIndex");
+	assert.equal(t3.rawMessageCount, 2, "resumed turn 3 joins via sessionTurnIndex");
+	// Pre-resume turns (session counter == monotonic) also join.
+	const t0 = rows.find((r) => r.turnIndex === 0)!;
+	const t1 = rows.find((r) => r.turnIndex === 1)!;
+	assert.equal(t0.rawMessageCount, 2);
+	assert.equal(t1.rawMessageCount, 2);
+	store.close();
+});
+
+test("turnMetrics pre-migration rows (NULL sessionTurnIndex) still join via coalesce", () => {
+	const dir = stateDir();
+	const store = createTurnStore({ stateDir: dir });
+	const conv = store.ensureConversationId("sess_pm");
+	// No sessionTurnIndex → row has NULL session_turn_index; turnIndex IS the
+	// session counter for these legacy rows.
+	store.appendTurn({
+		conversationId: conv,
+		sessionId: "sess_pm",
+		turnIndex: 0,
+		role: "assistant",
+		endedAt: Date.now(),
+	});
+	const main = openStore(dir);
+	appendRawTranscript(main, {
+		contentHash: "hpm",
+		sessionId: "sess_pm",
+		seq: 0,
+		role: "user",
+		contentBytes: "rawpm",
+		toolName: null,
+		messageTimestamp: null,
+		checkpointEpoch: "ep_pm",
+		turnIndex: 0,
+	});
+	const rows = turnMetrics(store, main, conv);
+	assert.equal(rows.length, 1);
+	assert.equal(rows[0].rawMessageCount, 1, "NULL sessionTurnIndex falls back to turnIndex");
+	store.close();
+});

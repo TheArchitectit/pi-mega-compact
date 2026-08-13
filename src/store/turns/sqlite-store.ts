@@ -98,6 +98,10 @@ export class SqliteTurnStore implements TurnStore {
 		return read.conversationStats(this.ctx(), conversationId);
 	}
 
+	nextTurnIndexFor(conversationId: ConversationId): number {
+		return read.nextTurnIndexFor(this.ctx(), conversationId);
+	}
+
 	// ── TurnWriter ──────────────────────────────────────────────
 
 	appendTurn(entry: TurnEntry): TurnId {
@@ -157,6 +161,7 @@ export class SqliteTurnStore implements TurnStore {
 			listForks: (id) => this.listForks(id),
 			countTurns: (id) => this.countTurns(id),
 			conversationStats: (id) => this.conversationStats(id),
+			nextTurnIndexFor: (id) => this.nextTurnIndexFor(id),
 		};
 	}
 

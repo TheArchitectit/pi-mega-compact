@@ -57,6 +57,11 @@ export function rowToEntry(r: Record<string, unknown>): TurnEntry {
 						diversity: (r.recall_diversity as number) ?? 0,
 						specificity: (r.recall_specificity as number) ?? 0,
 					},
+		// S49R: carried per-session counter (null on pre-migration rows).
+		sessionTurnIndex:
+			r.session_turn_index == null
+				? undefined
+				: (r.session_turn_index as number),
 	};
 }
 

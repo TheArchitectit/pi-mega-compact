@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createMegaBridge } from "./factory.js";
+import { createTurnStore } from "../store/turns/index.js";
 import type { BridgeMessage } from "./types.js";
 
 /** Fresh temp stateDir + bridge, torn down in `finally`. */
@@ -101,6 +102,54 @@ test("close does not throw", () => {
   const { dir, b } = bridge();
   try {
     assert.doesNotThrow(() => b.close());
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ── S49R: monotonic child turn index + sessionTurnIndex carry ──
+
+test("recordTurn: colliding turnIndex lands at next free index, sessionTurnIndex carried", () => {
+  const { dir, b } = bridge();
+  try {
+    const conversationId = "conv_collide";
+    const sessionId = "sess_collide";
+    // First child segment writes turnIndex 0,1,2.
+    for (let i = 0; i < 3; i++) {
+      b.recordTurn({ conversationId, sessionId, turnIndex: i, role: "assistant", endedAt: Date.now() + i });
+    }
+    // Re-dispatched child: same conversation, session counter resets to 0.
+    b.recordTurn({ conversationId, sessionId, turnIndex: 0, role: "assistant", endedAt: Date.now() + 100 });
+    const store = createTurnStore({ stateDir: dir });
+    const turns = store.query({ conversationId });
+    assert.equal(turns.length, 4);
+    const indices = turns.map((t) => t.turnIndex).sort((a, c) => a - c);
+    assert.deepEqual(indices, [0, 1, 2, 3], "resumed child continues at high-water");
+    // The last turn carried sessionTurnIndex 0 (the re-dispatched counter).
+    const last = turns.find((t) => t.turnIndex === 3)!;
+    assert.equal(last.sessionTurnIndex, 0);
+    store.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("recordTurn: same conversation, restarted turnIndex resumes monotonically (no throw)", () => {
+  const { dir, b } = bridge();
+  try {
+    const conversationId = "conv_resume";
+    const sessionId = "sess_resume";
+    for (let i = 0; i <= 10; i++) {
+      b.recordTurn({ conversationId, sessionId, turnIndex: i, role: "assistant", endedAt: Date.now() + i });
+    }
+    // Resume: event.turnIndex resets to 0 → must land at 11, not collide.
+    b.recordTurn({ conversationId, sessionId, turnIndex: 0, role: "assistant", endedAt: Date.now() + 1000 });
+    const store = createTurnStore({ stateDir: dir });
+    const turns = store.query({ conversationId });
+    assert.equal(turns.length, 12);
+    const last = turns.find((t) => t.turnIndex === 11)!;
+    assert.equal(last.sessionTurnIndex, 0);
+    store.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

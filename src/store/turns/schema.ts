@@ -185,6 +185,7 @@ export function initTurnSchema(db: DatabaseSync): void {
 	ensureCol("recall_coverage", "recall_coverage REAL DEFAULT 0");
 	ensureCol("recall_diversity", "recall_diversity REAL DEFAULT 0");
 	ensureCol("recall_specificity", "recall_specificity REAL DEFAULT 0");
+	ensureCol("session_turn_index", "session_turn_index INTEGER");
 
 	// ── Wiki Revival (Spec 3): user curation + topic evolution ────────
 	const sessionCol = (

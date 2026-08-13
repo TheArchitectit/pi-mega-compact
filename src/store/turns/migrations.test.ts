@@ -178,3 +178,43 @@ test("wiki revival: topic_overrides + topic_evolution tables and memory_topics.s
 	assert.equal(v.value, "3");
 	closeTurnStore(dir);
 });
+
+// ── S49R: schema migration for session_turn_index column ────────
+
+test("S49R: fresh turns.db gets session_turn_index column", () => {
+	const dir = stateDir();
+	const db = openTurnStore(dir);
+	const cols = (
+		db.prepare("PRAGMA table_info(turns)").all() as Array<{ name: string }>
+	).map((c) => c.name);
+	assert.ok(cols.includes("session_turn_index"), "session_turn_index column present on fresh db");
+	closeTurnStore(dir);
+});
+
+test("S49R: migration is idempotent (run twice) + keeps existing rows", () => {
+	const dir = stateDir();
+	// First open seeds the schema + a row without session_turn_index.
+	const db1 = openTurnStore(dir);
+	db1
+		.prepare(
+			`INSERT INTO turns (conversation_id, session_id, turn_index, role, ended_at)
+       VALUES ('conv_x', 'sess_x', 0, 'assistant', 123)`,
+		)
+		.run();
+	closeTurnStore(dir);
+
+	// Second open must re-run initTurnSchema without throwing and must NOT
+	// duplicate the column or the row.
+	const db2 = openTurnStore(dir);
+	const cols = (
+		db2.prepare("PRAGMA table_info(turns)").all() as Array<{ name: string }>
+	).map((c) => c.name);
+	const count = db2.prepare("SELECT COUNT(*) AS c FROM turns").get() as { c: number };
+	assert.equal(
+		cols.filter((c) => c === "session_turn_index").length,
+		1,
+		"column added exactly once",
+	);
+	assert.equal(count.c, 1, "existing row preserved, no duplication");
+	closeTurnStore(dir);
+});

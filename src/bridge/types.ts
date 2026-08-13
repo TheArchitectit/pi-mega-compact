@@ -117,6 +117,8 @@ export interface BridgeRecordTurnInput {
   conversationId: string;
   sessionId: string;
   turnIndex: number;
+  /** S49R: pi's per-session counter, carried for the raw_transcript join. */
+  sessionTurnIndex?: number;
   role?: string;
   endedAt?: number;
   ctxTokens?: number;

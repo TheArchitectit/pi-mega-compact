@@ -158,4 +158,118 @@ describe("SqliteTurnStore — file-backed", () => {
 			closeAllTurnDbs();
 		}
 	});
+
+	// ── S49R: monotonic turn index + resume fix ──────────────────
+
+	it("nextTurnIndexFor returns 0 for an empty conversation", () => {
+		assert.equal(store.asReader().nextTurnIndexFor("conv_empty"), 0);
+	});
+
+	it("nextTurnIndexFor returns MAX+1 (not count) including gaps", () => {
+		for (const ti of [0, 1, 5]) {
+			store.asWriter().appendTurn({
+				conversationId: "conv_gap",
+				sessionId: "sess_gap",
+				turnIndex: ti,
+				role: "assistant",
+				endedAt: Date.now() + ti,
+			});
+		}
+		assert.equal(store.asReader().nextTurnIndexFor("conv_gap"), 6);
+	});
+
+	it("resume (restarted session counter) continues at high-water, no collision", () => {
+		const conv = "conv_resume";
+		// First session: turnIndex 0,1,2
+		for (let i = 0; i < 3; i++) {
+			store.asWriter().appendTurn({
+				conversationId: conv,
+				sessionId: "sess_a",
+				turnIndex: i,
+				sessionTurnIndex: i,
+				role: "assistant",
+				endedAt: Date.now() + i,
+			});
+		}
+		// Resume: same conversation, event.turnIndex resets to 0,1,2
+		for (let i = 0; i < 3; i++) {
+			const next = store.asReader().nextTurnIndexFor(conv);
+			store.asWriter().appendTurn({
+				conversationId: conv,
+				sessionId: "sess_b",
+				turnIndex: next, // monotonic
+				sessionTurnIndex: i, // carried session counter
+				role: "assistant",
+				endedAt: Date.now() + 100 + i,
+			});
+		}
+		const turns = store.asReader().query({ conversationId: conv });
+		assert.equal(turns.length, 6);
+		const indices = turns.map((t) => t.turnIndex).sort((a, b) => a - b);
+		assert.deepEqual(indices, [0, 1, 2, 3, 4, 5]);
+		const resumed = turns
+			.filter((t) => t.sessionId === "sess_b")
+			.map((t) => t.sessionTurnIndex)
+			.sort((a, b) => (a ?? 0) - (b ?? 0));
+		assert.deepEqual(resumed, [0, 1, 2]);
+	});
+
+	it("resend of same (convId, sessionTurnIndex) after a gap continues monotonically", () => {
+		const conv = "conv_resend";
+		store.asWriter().appendTurn({
+			conversationId: conv,
+			sessionId: "sess_a",
+			turnIndex: 0,
+			sessionTurnIndex: 0,
+			role: "assistant",
+			endedAt: Date.now(),
+		});
+		store.asWriter().appendTurn({
+			conversationId: conv,
+			sessionId: "sess_a",
+			turnIndex: 5,
+			sessionTurnIndex: 5,
+			role: "assistant",
+			endedAt: Date.now() + 1,
+		});
+		const next = store.asReader().nextTurnIndexFor(conv);
+		assert.equal(next, 6);
+		assert.doesNotThrow(() =>
+			store.asWriter().appendTurn({
+				conversationId: conv,
+				sessionId: "sess_a",
+				turnIndex: next,
+				sessionTurnIndex: 0,
+				role: "assistant",
+				endedAt: Date.now() + 2,
+			}),
+		);
+	});
+
+	it("integration: real turns.db seeded 0..10, resume at event.turnIndex=0 → turn_index 11", () => {
+		const conv = "conv_integration";
+		for (let i = 0; i <= 10; i++) {
+			store.asWriter().appendTurn({
+				conversationId: conv,
+				sessionId: "sess_seed",
+				turnIndex: i,
+				sessionTurnIndex: i,
+				role: "assistant",
+				endedAt: Date.now() + i,
+			});
+		}
+		const next = store.asReader().nextTurnIndexFor(conv);
+		assert.equal(next, 11);
+		const turn = store.asWriter().appendTurn({
+			conversationId: conv,
+			sessionId: "sess_resume",
+			turnIndex: next,
+			sessionTurnIndex: 0,
+			role: "assistant",
+			endedAt: Date.now() + 100,
+		});
+		const row = store.asReader().getTurn(turn);
+		assert.equal(row?.turnIndex, 11);
+		assert.equal(row?.sessionTurnIndex, 0);
+	});
 });

@@ -12,6 +12,7 @@
 import {
 	createTurnStore,
 	type TurnStore,
+	type TurnReader,
 	type TurnEntry,
 	type TurnRecallEntry,
 	type TurnHydeTelemetry,
@@ -38,6 +39,11 @@ function storeFor(stateDir: string): TurnStore {
 		stores.set(stateDir, s);
 	}
 	return s;
+}
+
+/** Read-only view of the turn store for a state dir (e.g. nextTurnIndexFor). */
+export function turnReaderFor(stateDir: string): TurnReader {
+	return storeFor(stateDir).asReader();
 }
 
 /** Map a legacy RecallSource onto the contract `TurnRecallEntry.source` enum. */
@@ -77,6 +83,8 @@ export function recordTurnWrite(
 		conversationId: string;
 		sessionId: string;
 		turnIndex: number;
+		/** S49R: pi's per-session counter, carried for the raw_transcript join. */
+		sessionTurnIndex?: number;
 		role: string;
 		startedAt?: number;
 		endedAt?: number;
@@ -100,6 +108,7 @@ export function recordTurnWrite(
 		conversationId: input.conversationId,
 		sessionId: input.sessionId,
 		turnIndex: input.turnIndex,
+		sessionTurnIndex: input.sessionTurnIndex,
 		role: input.role as TurnEntry["role"],
 		endedAt: input.endedAt ?? input.startedAt ?? Date.now(),
 		ctxTokens: input.ctxTokens,
