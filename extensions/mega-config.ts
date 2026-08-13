@@ -222,7 +222,10 @@ export function loadConfig(): MegaConfig {
 		// and cross-repo only). This same-repo floor is permissive by default (0.12)
 		// so recall still surfaces loosely-relevant within-repo context while
 		// rejecting effectively-unrelated hits. Mirrors src/config.ts RECALL_MIN_COSINE.
-		recallMinCosine: Number(process.env.MEGACOMPACT_RECALL_MIN_COSINE ?? "0.12"),
+		// E1 follow-up (PR #18 review): envFlag (Number.isFinite-guarded) like the
+		// dedupSim/crossRepoCosine fix in PR #18 — a typo'd env var must fall back
+		// to 0.12, not yield NaN.
+		recallMinCosine: envFlag("MEGACOMPACT_RECALL_MIN_COSINE", 0.12),
 		memoryAutoReview: envBool("MEGACOMPACT_MEMORY_AUTO_REVIEW", true),
 		memoryReviewInterval: envFlag("MEGACOMPACT_MEMORY_REVIEW_INTERVAL", 10),
 		recallMaxTokens: envFlag("MEGACOMPACT_RECALL_MAX_TOKENS", 1500),

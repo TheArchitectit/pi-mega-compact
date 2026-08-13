@@ -46,16 +46,32 @@ export interface VoteOptions {
 	recencyCount?: number;
 }
 
-/** Per-source normalization: map raw scores to 0..1 via min-max within source. */
-function normalizeScores(scores: number[]): Map<number, number> {
+/**
+ * Per-source normalization: map raw scores to 0..1 via min-max within source.
+ *
+ * E1 follow-up (PR #18 review): non-finite scores (NaN/±Infinity) are DROPPED
+ * before the min/max fold — a single NaN silently propagates through Math.min/
+ * max and turns EVERY normalized score of that source into NaN (verified),
+ * poisoning the whole 3-source quorum. Dropping the bad entry degrades that
+ * source gracefully instead. Exported so the guard is unit-testable directly.
+ */
+export function normalizeScores(scores: number[]): Map<number, number> {
 	const map = new Map<number, number>();
-	if (scores.length === 0) return map;
-	const min = Math.min(...scores);
-	const max = Math.max(...scores);
-	const span = max - min;
+	const finite: { idx: number; s: number }[] = [];
 	scores.forEach((s, i) => {
-		map.set(i, span === 0 ? 1 : (s - min) / span);
+		if (Number.isFinite(s)) finite.push({ idx: i, s });
 	});
+	if (finite.length === 0) return map;
+	let min = Infinity;
+	let max = -Infinity;
+	for (const { s } of finite) {
+		if (s < min) min = s;
+		if (s > max) max = s;
+	}
+	const span = max - min;
+	for (const { idx, s } of finite) {
+		map.set(idx, span === 0 ? 1 : (s - min) / span);
+	}
 	return map;
 }
 
@@ -150,7 +166,12 @@ export function voteRecall(opts: VoteOptions, store: VectorStore): VoteResult {
 		const norm = perSource.find((p) => p.name === src.name)!.norm;
 		const bestByCp = new Map<string, number>();
 		src.cands.forEach((c, i) => {
-			const n = norm.get(i) ?? 0;
+			// E1 follow-up: normalizeScores dropped non-finite scores; such a hit is
+			// NOT a valid nomination — skip it entirely instead of defaulting it to
+			// 0 (which would still name the checkpoint and let it rank last into the
+			// fallback ranking).
+			const n = norm.get(i);
+			if (n === undefined) return;
 			const prev = bestByCp.get(c.checkpointId);
 			if (prev === undefined || n > prev) bestByCp.set(c.checkpointId, n);
 			seenIds.add(c.checkpointId);

@@ -124,7 +124,13 @@ export function hydrateFts5Hits(
 	const out: HydratedFts5Hit[] = [];
 	for (const h of hits) {
 		const cp = cpMap.get(h.id);
-		if (cp) out.push({ checkpointId: h.id, score: h.score, summary: cp.summary });
+		// H1 follow-up (PR #18 review): exclude SemDeDup-'removed' rows. The FTS5
+		// index is NOT pruned by vectorSemDedup, so a removed row can still MATCH;
+		// hydrating it would let the fts5 voter NAME a dead checkpoint (a removed
+		// row plus a recency vote is a 2/3 agreement that passes the validator).
+		// Mirrors vectorSearch's read-time filter.
+		if (cp && cp.dedupStatus !== "removed")
+			out.push({ checkpointId: h.id, score: h.score, summary: cp.summary });
 	}
 	return out;
 }

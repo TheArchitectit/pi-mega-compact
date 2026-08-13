@@ -113,7 +113,14 @@ export function validateRecall(
 				// No comparable cosine available => cannot clear a cosine gate.
 				continue;
 			}
-			if (cosine < floor) continue;
+			// E1 follow-up (PR #18 review): NaN/Infinity must NEVER clear the floor.
+			// `NaN < floor` is false, so an unguarded comparison lets a NaN cosine
+			// PASS gate 1 and inject — one NaN source poisons the whole 3WF-3
+			// quorum. Reject non-finite scores explicitly; the candidate is skipped
+			// and, if all fail, the provenance floor ("no recall") is returned —
+			// never a zero-score injection. The default TrigramEmbedder cannot
+			// produce NaN (zero-norm guard), but a BYO localhost embedder can.
+			if (!Number.isFinite(cosine) || cosine < floor) continue;
 
 			// Gate 2: not already resident in the live window.
 			if (liveVecs.length > 0) {
