@@ -35,8 +35,16 @@ export function registerSessionHandlers(
 	pi.on("session_start", async (event, ctx) => {
 		runtime.resetRuntime(ctx.sessionManager.getSessionId());
 		// Disarm the ThrashGuard on session start so a stale `blocked_until` from a
-		// prior session cannot suppress this session's compactions.
-		disarmThrashGuard(runtime.currentStateDir);
+		// prior session cannot suppress this session's compactions. Bind FIRST:
+		// currentStateDir defaults to the global dir until bindRepo resolves the
+		// per-repo <repo>/.pi/mega-compact store, and the guard arms in the
+		// PER-REPO store — disarming before the bind would clear the wrong (global)
+		// dir after a process restart. Gated on the umbrella so flag-OFF stays
+		// byte-identical (no meta writes).
+		if (config.threeWayFailback) {
+			runtime.bindRepo(ctx.cwd);
+			disarmThrashGuard(runtime.currentStateDir);
+		}
 		runtime.captureModel(ctx); // best-effort: ctx.model may be set by session start
 		runtime.setStatus(
 			ctx,
