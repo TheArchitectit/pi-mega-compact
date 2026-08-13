@@ -54,7 +54,13 @@ export function addCheckpoint(store: VectorStore, input: AddInput): AddResult {
 	const t0 = Date.now();
 	const sessionId = normalizeSessionId(input.sessionId);
 	const regionHash = computeRegionHash(input.regionText);
-	const all = listCheckpoints(sessionId, store.stateDir);
+	// H1: exclude SemDeDup-'removed' rows from dedup matching. search() already
+	// filters these, but add() did NOT — so an L0/L1/L2 match against a previously
+	// removed duplicate would upsertCheckpoint it back to active, resurrecting it
+	// into recall and defeating SemDeDup.
+	const all = listCheckpoints(sessionId, store.stateDir).filter(
+		(cp) => cp.dedupStatus !== "removed",
+	);
 	// Honest "tokens saved" base for this region. For a deduped add the whole
 	// original region is discarded (nothing new stored); for a new checkpoint
 	// we persist (orig − stored). Falls back to stored when orig is unknown.

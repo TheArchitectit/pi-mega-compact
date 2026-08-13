@@ -207,7 +207,7 @@ export function loadConfig(): MegaConfig {
 		advisoryChannel: envBool("MEGACOMPACT_ADVISORY_CHANNEL", true),
 		autoPctTrigger,
 		autoInlineK: envFlag("MEGACOMPACT_AUTO_INLINE_K", 3),
-		dedupSim: Number(process.env.MEGACOMPACT_DEDUP_SIM ?? "0.9"),
+		dedupSim: envFlag("MEGACOMPACT_DEDUP_SIM", 0.9),
 		raptorEnabled: envBool("MEGACOMPACT_RAPTOR_ENABLED", true),
 		legacyDurableTrim: envBool("MEGACOMPACT_LEGACY_DURABLE_TRIM", false),
 		dbMirror: envBool("MEGACOMPACT_DB_MIRROR", false),
@@ -216,7 +216,7 @@ export function loadConfig(): MegaConfig {
 		turnsDbEnabled: envBool("MEGACOMPACT_TURNS_DB", true),
 		autoWikiEnabled: envBool("MEGACOMPACT_AUTO_WIKI", true),
 		crossRepoEnabled: envBool("MEGACOMPACT_CROSSREPO_ENABLED", true),
-		crossRepoCosine: Number(process.env.MEGACOMPACT_CROSSREPO_COSINE ?? "0.90"),
+		crossRepoCosine: envFlag("MEGACOMPACT_CROSSREPO_COSINE", 0.9),
 		// 3WF-3: SAME-repo recall cosine floor applied by the 3-source validator to
 		// the top winner. SEPARATE from crossRepoCosine (S17, default 0.90, stricter
 		// and cross-repo only). This same-repo floor is permissive by default (0.12)
