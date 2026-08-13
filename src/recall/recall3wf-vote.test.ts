@@ -15,10 +15,10 @@ import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 
-import { vectorMarkInjected, vectorWasInjected } from "../vectorStore.js";
+import { vectorMarkInjected, vectorWasInjected, vectorSemDedup, vectorList } from "../vectorStore.js";
 import { closeIndexStore } from "../store/sqlite.js";
 import { recallRawHits } from "./readonly.js";
-import { voteRecall } from "./vote.js";
+import { voteRecall, normalizeScores } from "./vote.js";
 import { freshStore, seed, checkpointIds } from "./recall3wf.fixture.js";
 
 after(() => {
@@ -119,6 +119,81 @@ test("3WF-3: marking checkpoints injected does NOT change the raw vote (unlike n
 		const after = voteRecall({ sessionId: sid, query, limit: 3 }, store);
 		const afterIds = after.winners.map((w) => w.checkpointId).sort();
 		assert.deepEqual(afterIds, beforeIds, "raw-hits vote is unaffected by injected-set marking");
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+// ── E1 regression (PR #18 review follow-up): NaN must not poison the quorum. ────
+// normalizeScores folds scores through Math.min/Math.max — a single NaN turned
+// EVERY normalized score of that source into NaN. Non-finite scores are now
+// dropped (exported so the guard is directly testable; real scores come from
+// cosine/BM25/recency, all finite by construction on the default embedder).
+test("E1: normalizeScores drops non-finite scores instead of poisoning the source", () => {
+	const norm = normalizeScores([0.5, NaN, 0.9]);
+	assert.equal(norm.size, 2, "the NaN entry is dropped, not folded");
+	assert.equal(norm.get(0), 0, "min of the finite pair normalizes to 0");
+	assert.equal(norm.get(2), 1, "max of the finite pair normalizes to 1");
+	assert.equal(norm.get(1), undefined, "dropped index carries no score");
+
+	assert.equal(normalizeScores([NaN, Infinity, -Infinity]).size, 0, "all-non-finite source yields no votes");
+	assert.equal(normalizeScores([]).size, 0, "empty source stays empty");
+	assert.equal(normalizeScores([0.7]).get(0), 1, "single finite score normalizes to 1 (span 0)");
+});
+
+// ── H1 regression (PR #18 review follow-up): a 'removed' row must never be
+// nominated by ANY vote source — including fts5, whose FTS5 index is NOT pruned
+// by SemDeDup. Pre-fix, hydrateFts5Hits hydrated removed rows, letting a dead
+// checkpoint win the 2/3 agreement (fts5 name + recency) and re-enter recall.
+// Seed the near-dup pair DIRECTLY (sprint12's pattern: summary=text, embedding=
+// embed(text)) so SemDeDup's cosine gate lands predictably — compactSession's
+// boilerplate summary prefix dilutes the cosine below the removal threshold.
+test("H1: a SemDeDup-'removed' row is never nominated by any vote source", async () => {
+	const { store, dir } = freshStore();
+	const { upsertCheckpoint } = await import("../store/sqlite.js");
+	const { defaultEmbedder } = await import("../embedder.js");
+	try {
+		const sid = "sess_3wf_h1";
+		const e = defaultEmbedder();
+		const rows = [
+			{ id: "chkpt_001", text: "the nightly batch job reindexed the search cluster", tok: 100, ts: 1 },
+			{ id: "chkpt_002", text: "the nightly batch job reindexed the search cluster again", tok: 200, ts: 2 },
+			{ id: "chkpt_003", text: "the billing ledger reconciled every cent that quarter", tok: 150, ts: 3 },
+		];
+		for (const r of rows) {
+			upsertCheckpoint(
+				{
+					checkpointId: r.id,
+					sessionId: sid,
+					summary: r.text,
+					keyDecisions: [],
+					nextSteps: [],
+					filesModified: [],
+					tokenEstimate: r.tok,
+					regionHash: `r-${r.id}`,
+					embedding: e.embed(r.text),
+					timestamp: r.ts,
+				},
+				dir,
+			);
+		}
+		const removedCount = vectorSemDedup(store, sid, 0.8);
+		assert.ok(removedCount >= 1, "SemDeDup removed the near-dup pair member");
+		const removedIds = vectorList(store, sid)
+			.filter((c) => c.dedupStatus === "removed")
+			.map((c) => c.checkpointId);
+
+		// Query with the removed row's exact-ish text so FTS5 trigram + recency
+		// both WANT to name it. No source may.
+		const query = "nightly batch job reindexed the search cluster";
+		const vote = voteRecall({ sessionId: sid, query, limit: 3 }, store);
+		for (const id of removedIds) {
+			assert.ok(!(id in vote.votes), `removed row ${id} got ${vote.votes[id]} vote(s) — a source nominated it`);
+			assert.ok(
+				!vote.winners.some((w) => w.checkpointId === id),
+				`removed row ${id} is a vote winner`,
+			);
+		}
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}

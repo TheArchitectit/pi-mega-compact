@@ -157,3 +157,42 @@ test("3WF-3: flag OFF leaves recallAndInline output unchanged (byte-identical si
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+// ── E1 regression (PR #18 review follow-up): NaN must never clear the floor. ────
+// `NaN < floor` is false, so an unguarded gate 1 let a NaN cosine PASS and
+// inject — one NaN source poisons the 3WF-3 quorum. Non-finite scores must be
+// rejected; the outcome is the provenance floor ("no recall"), never a
+// zero-score injection.
+test("E1: NaN/Infinity cosine scores are rejected -> provenance floor (never injected)", () => {
+	const { store, dir } = freshStore();
+	try {
+		seed(store, ["sigma retry storm after the gateway failover"]);
+		const sid = "sess_3wf";
+		const ids = checkpointIds(store, sid, "retry storm gateway failover");
+		assert.ok(ids.length >= 1, "a real checkpoint exists to build the winner");
+		process.env.MEGACOMPACT_RECALL_MIN_COSINE = "0.12";
+
+		for (const bad of [NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+			const out = validateRecall(
+				[{ checkpointId: ids[0], score: bad, source: "vector" }],
+				{ sessionId: sid, query: "retry storm gateway failover", liveWindow: [] },
+				store,
+			);
+			assert.equal(
+				out.kind,
+				"floor",
+				`non-finite cosine (${bad}) must be rejected -> floor, got ${out.kind}`,
+			);
+		}
+
+		// A NaN FLOOR (typo'd env) must not disable gate 1 either: RECALL_MIN_COSINE
+		// falls back to 0.12, so a genuinely strong vector winner still passes.
+		process.env.MEGACOMPACT_RECALL_MIN_COSINE = "not-a-number";
+		const vote = voteRecall({ sessionId: sid, query: "retry storm gateway failover", limit: 3 }, store);
+		const out = validateRecall(vote.winners, { sessionId: sid, query: "retry storm gateway failover", liveWindow: [] }, store);
+		assert.equal(out.kind, "candidate", "NaN floor env falls back to 0.12 (gate stays active)");
+	} finally {
+		delete process.env.MEGACOMPACT_RECALL_MIN_COSINE;
+		rmSync(dir, { recursive: true, force: true });
+	}
+});

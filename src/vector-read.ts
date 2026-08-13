@@ -100,8 +100,11 @@ export function vectorDedupe(
     : regionHashOrText;
   const state = loadSessionState(sid, stateDir);
   if (state.storedRegionHashes.includes(hash)) return true;
+  // H1 follow-up (PR #18 review): a SemDeDup-'removed' row's regionHash must not
+  // report "already represented" — its content is excluded from recall, so the
+  // incoming region is NOT deduplicated in any retrievable sense.
   return listCheckpoints(sid, stateDir).some(
-    (c) => c.regionHash === hash,
+    (c) => c.dedupStatus !== "removed" && c.regionHash === hash,
   );
 }
 
@@ -157,7 +160,11 @@ export function vectorTopSimilar(store: VectorStore, sessionId: string, n: numbe
   const current = ordered[ordered.length - 1];
 
   const scored: SearchHit[] = ordered
-    .filter((cp) => cp.checkpointId !== current.checkpointId)
+    .filter(
+      (cp) =>
+        cp.checkpointId !== current.checkpointId &&
+        cp.dedupStatus !== "removed", // H1 follow-up: mirror vectorSearch's filter
+    )
     .map((cp) => ({
       checkpoint: cp,
       score: cosineSimilarity(current.embedding, cp.embedding),

@@ -152,9 +152,18 @@ export const NEW_UI = (): boolean => ragEnabled("MEGACOMPACT_NEW_UI");
 // effectively-unrelated hits. Call-time read so tests can set the env per-test.
 // ---------------------------------------------------------------------------
 
-/** Same-repo recall cosine floor: top winner must be >= this to be injected. */
-export const RECALL_MIN_COSINE = (): number =>
-	Number(process.env.MEGACOMPACT_RECALL_MIN_COSINE ?? "0.12");
+/**
+ * Same-repo recall cosine floor: top winner must be >= this to be injected.
+ *
+ * E1 follow-up (PR #18 review): NaN-safe + clamped to [0,1]. A typo'd env var
+ * yielded NaN before; `cosine < NaN` is false, which disabled gate 1 entirely
+ * (every candidate passed). Non-finite falls back to 0.12; out-of-range clamps.
+ */
+export const RECALL_MIN_COSINE = (): number => {
+	const n = Number(process.env.MEGACOMPACT_RECALL_MIN_COSINE ?? "0.12");
+	if (!Number.isFinite(n)) return 0.12;
+	return Math.min(1, Math.max(0, n));
+};
 
 // ---------------------------------------------------------------------------
 // Vector-cortex flags + breaker constants (VC0A+). Positive sprint flags,

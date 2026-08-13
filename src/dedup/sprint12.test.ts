@@ -146,6 +146,56 @@ test("semDedup is idempotent (re-run removes nothing new)", () => {
   assert.equal(second, 0);
 });
 
+// --- H1 regression (PR #18 review follow-up) -------------------------------
+// Resurrection: add() dedup-matched against 'removed' rows and upsertCheckpoint
+// flipped them back to 'active' (dedup_status='active' is hardcoded on upsert),
+// re-entering recall. The fix filters removed rows from add()'s candidate set.
+
+test("H1: add() does NOT resurrect a SemDeDup-'removed' row (PR #18)", () => {
+  const dir = join(baseTmp, `run-${counter++}`);
+  const s = new VectorStore({ stateDir: dir });
+  const removedText = "the queue drained all pending orders at midnight sharp";
+  seed(dir, "sess_h1", [
+    { id: "chkpt_001", text: removedText, tok: 100 },
+    { id: "chkpt_002", text: removedText + " tonight", tok: 900 },
+  ]);
+  const removed = vectorSemDedup(s, "sess_h1", 0.85);
+  assert.equal(removed, 1);
+  const dropped = vectorList(s, "sess_h1").find((c) => c.dedupStatus === "removed");
+  assert.ok(dropped, "semDedup removed the lower-quality row");
+
+  // Re-add the EXACT removed row's text. Pre-fix the L2 tier matched the removed
+  // row itself (its embedding is the exact match) and upsertCheckpoint flipped it
+  // back to 'active' (resurrection). Post-fix the removed row is filtered from
+  // the candidate set; a collapse (if any) lands on the ACTIVE near-dup row,
+  // which is correct SemDeDup semantics. Either way:
+  //  - the removed row is NEVER the match target,
+  //  - the removed row stays 'removed'.
+  const r = s.add({
+    sessionId: "sess_h1",
+    summary: "queue drained",
+    regionText: removedText,
+    timestamp: 5,
+  });
+  assert.notEqual(
+    r.checkpoint.checkpointId,
+    dropped!.checkpointId,
+    "add() never matches onto a removed row (no resurrection)",
+  );
+  const after = vectorList(s, "sess_h1");
+  assert.equal(
+    after.find((c) => c.checkpointId === dropped!.checkpointId)?.dedupStatus,
+    "removed",
+    "the removed row stays removed",
+  );
+  // Recall still excludes the removed row.
+  const hits = vectorSearch(s, "sess_h1", "queue drained pending orders midnight", 5);
+  assert.ok(
+    hits.every((h) => h.checkpoint.checkpointId !== dropped!.checkpointId),
+    "recall never surfaces the removed row",
+  );
+});
+
 // --- HttpEmbedder (BYO localhost backend) ----------------------------------
 // Hermetic: a self-test server returns a deterministic embedding. The server
 // runs in an INDEPENDENT child process (its own event loop) so that when
