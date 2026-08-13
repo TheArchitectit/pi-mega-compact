@@ -487,10 +487,15 @@ capabilities on a real device with `pi-mega-compact@R` + `ithacus@0.6.17`:
       to the system prompt. Verify in the prompt + `<repo>/.pi/mega-compact/sqlite.db`.
 - [ ] **Memory write** — confirm recall reads mega's `memories` (populated by
       mega's pipeline + child compaction), not ithacus's write-dead `ith_memories`.
-- [ ] **Child dispatch** — spawn an ithacus child; verify spawn args include a
+- [x] **Child dispatch** — spawn an ithacus child; verify spawn args include a
       second `-e` → `mega-compact-child.js` (check events.log / process args);
       child `before_agent_start` injects recall; `session_shutdown` persists a
-      checkpoint.
+      checkpoint. **C2-cont finding (2026-08-13): the `-e` was NOT being passed —
+      `resolveMegaChildExtensionPathDefault` in ithacus checked only the package
+      root, but the child ext ships at `dist/extensions/mega-compact-child.js`.
+      Fixed in ithacus v0.6.18 (search dist/extensions → extensions → root;
+      regression test `scripts/smoke-src/38-mega-bridge-child-path.mjs`).**
+      **Pending device re-verify on a fresh pi process with ithacus 0.6.18.**
 - [ ] **Cross-dispatch recall** — a second dispatch of the same child (stable
       `ITHACUS_MEGA_SESSION_ID = ithacus-child-<agent>-<repoId>`) recalls the
       first dispatch's checkpoint. (Note: post-R-fix, the child's turns use the
