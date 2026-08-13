@@ -1,5 +1,7 @@
 # pi-mega-compact
 
+> **⚠️ LTS — patches only (2026-08-13).** This extension is maintained for bug fixes only. New feature development has moved to **[radcode](https://github.com/TheArchitectit/radcode)**, a Rust pi.dev replacement that has ported mega-compact's compaction/recall/dedup/RAPTOR stack. See [`docs/LTS.md`](docs/LTS.md) and [`docs/SUCCESSION.md`](docs/SUCCESSION.md).
+
 A local-first context compressor for the [pi coding agent](https://github.com/earendil-works/pi). Keeps long sessions running without overflowing the context window. Local by default — no cloud, no API calls, no telemetry. Bring your own localhost embedder (Ollama, ONNX, TEI) for better semantic matches, or opt in to a remote endpoint if you need to.
 
 ## Features

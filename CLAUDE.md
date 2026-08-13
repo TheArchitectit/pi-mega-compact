@@ -1,5 +1,7 @@
 # Project Guidelines — pi-mega-compact
 
+> **⚠️ LTS — PATCHES ONLY (as of 2026-08-13).** This extension is in Long-Term Support: bug fixes and security patches only. **No new features.** All new feature development has moved to **radcode** (Rust, `github.com/TheArchitectit/radcode`) — a complete pi.dev replacement that has ported mega-compact's compaction/recall/dedup/RAPTOR stack and will absorb the remaining unique assets (vector-cortex, FTS5, mailbox, dispatch). See [`docs/LTS.md`](docs/LTS.md) for the sunset plan and [`docs/SUCCESSION.md`](docs/SUCCESSION.md) for what moves where. Do not start new feature sprints here; direct feature work to radcode. In-flight work should be finished or frozen, not extended.
+
 ## 0. Navigation Maps (READ FIRST)
 
 * **docs/INDEX_MAP.md**: Read this FIRST to find documents by keyword/category.

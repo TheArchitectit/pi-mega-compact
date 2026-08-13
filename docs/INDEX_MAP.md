@@ -6,6 +6,17 @@
 
 ---
 
+## PROJECT STATUS (LTS — read first)
+
+| Keyword | Document | Location |
+| --------- | ---------- | ---------- |
+| LTS status, sunset plan, retirement criteria, what moves to radcode | [LTS.md](LTS.md) | docs/ |
+| Asset-by-asset succession map (ported / to-port / protected / retired) | [SUCCESSION.md](SUCCESSION.md) | docs/ |
+
+> **As of 2026-08-13 this extension is LTS (patches only).** New feature development has moved to **radcode** (Rust). Successor roadmap: `RADOPENCODE/docs/RADCODE_CONSOLIDATION_ROADMAP.md` + `RADCODE_DESIGN_IP_FROM_MEGA.md`. Do not start new feature sprints here.
+
+---
+
 ## CORE GUARDRAILS
 
 | Keyword | Document | Location |
