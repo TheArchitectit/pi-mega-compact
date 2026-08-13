@@ -294,15 +294,48 @@ that was simply true (never compacted). `drift warn` (cross-repo compaction
 lag) and `errorRate` (API retry errors) are **different axes** but the UI
 presents "drift" as one thing, so they get conflated during triage.
 
-### 2.2 Fix — B2 (LOCKED 2026-08-13): internal-errors ring + distinct `storeErrorRate` 6th axis (+ relabel)
+### 2.2 Fix — B2 axis + Option A ingestion (LOCKED 2026-08-13): distinct `storeErrorRate` 6th axis fed by emit-site instrumentation (+ relabel)
 
-**Locked choice: B2 — a separate 6th health axis.** Add a ring buffer of recent
-internal-error events in `MegaRuntime`, compute a distinct `storeErrorRate`
-sub-score, and surface it as its own gauge in the dashboard Health tab —
-separate from the API-error `errorRate`. This covers ALL internal errors
-(`*_failed` events) via the ring, not just ones categorized by hand, and keeps
-API errors and store errors as two visible signals (the class distinction
-Sprint-H is for). Plus relabel the `drift` chip as `compaction lag`.
+**Two locked decisions:**
+
+**(i) B2 — a separate 6th health axis.** Compute a distinct `storeErrorRate`
+sub-score and surface it as its own gauge in the dashboard Health tab —
+separate from the API-error `errorRate`. This keeps API errors and store
+errors as two visible signals (the class distinction Sprint-H is for). Plus
+relabel the `drift` chip as `compaction lag`.
+
+**(ii) Option A ingestion — instrument each failure emit site directly.** The
+`recentInternalErrors` ring is populated by an explicit
+`runtime.recordInternalError(category)` call AT each failure site, not by a
+central filter reading events.log. Causality is local (you read a catch block,
+you see the health consequence), and classification lives where the knowledge
+is. The audit (2026-08-13) found only ONE `*_failed` dashboard event exists
+today (`turn_write_failed`); the sibling emits do not exist yet. So Option A is
+**instrumentation work**: add `recordInternalError(category)` at ~14 sites
+(audit §2.3a), including several currently-silent catches that swallow store
+failures with no event at all (the same blind-spot class that hid Finding 2 —
+completing the ledger rule's own "a write failure logs locally" requirement).
+
+**Guardrails enforcement (the no-corners backstop):** add a scanner rule (same
+idiom as PREVENT-PI-004's `// guardrails-allow`): every `*_failed` emit (and
+every silent catch over a store/service write) MUST be accompanied by a
+`recordInternalError` push, OR carry a `// guardrails-allow INTERNAL-ERR:
+<reason>` annotation. A future emit site that forgets the push fails the gate
+— the blind spot can't silently reappear. This is what Option C (a central
+events.log filter) cannot guarantee: a filter list drifts undetected; an
+emit-site pairing is proof-scannable.
+
+**Cortex seam (one line):** the vector-cortex `fire()` sink uses a standalone
+Logger with no `runtime` handle (the cortex contract forbids `on/subscribe/
+emit/listener` — §6 ledger protocol). Keep cortex emits going to events.log as
+today, but on the FAILURE branch also call `runtime.recordInternalError(
+"vector_index")` via the sanctioned `defaultEmitFor` injection point (the
+host-owned adapter, not the store subscribing). Contract test untouched.
+
+**Process-boundary note (documented):** the ring is per-runtime/in-memory, so a
+child subprocess's failures don't appear in the parent's ring. The parent-side
+dashboard already aggregates events.log cross-process (existing
+dashboard-server pattern); nothing is lost — it's just not THIS ring's job.
 
 **Weights:** re-balance `computeHealthScore` by splitting the current
 `errorRate` budget (`0.18`) into `errorRate 0.09` (API retry errors) +
@@ -319,17 +352,54 @@ in the release note so it isn't read as a real health change.
 **Rejected:** B1 (fold `storeErrorRate` into the `errorRate` axis, no schema
 change/no re-balance) — still shows one chip where two would be clearer, and
 collapses the class distinction in the place a triaging user looks first.
-**Rejected:** A (broaden `lastErrorCategory`) — collapses the classes AND only
-covers errors remembered to categorize (the same blind spot that hid Finding 2).
+**Rejected:** Option C (ring reads events.log via a central name filter) —
+smallest diff but recreates the blind spot as a maintained filter list far from
+the emit sites; not proof-scannable; plus per-turn disk reads on a 2MB+ log in
+the hot loop. **Rejected:** broadening `lastErrorCategory` — collapses the
+classes AND only covers errors remembered to categorize.
 
-### 2.3 Files (B2)
+### 2.3a Emit-site audit (DONE 2026-08-13) — the instrumentation targets
+
+The audit found 3 observability sinks; only `runtime.dashboard.event` (and the
+new `recordInternalError`) feed the ring. Sites to instrument (full list in the
+audit report; categories in §2.2):
+
+- **Already emits to dashboard:** `recordTurnRow.ts:54` `turn_write_failed`
+  → add `recordInternalError("store_write")` next to it.
+- **Silent catches that must gain an emit + push (completing the ledger
+  rule's "logs locally" requirement):** `recall/impl.ts:168` (recall
+  provenance turn-row write) → `store_write`; `compact/run.ts:97` (wrap
+  `compactSession` checkpoint persist) → `store_write`; `compact/run.ts:271-286`
+  (`indexUpsertEmbedding` `.catch(()=>{})`) → `vector_index`;
+  `compact/run.ts:164,178,261` (touchSession/logDaily, consolidateMemories,
+  RAPTOR refresh) → `store_write` / `vector_index`.
+- **`logger.warn` store failures (events.log-only today) — add a paired
+  `recordInternalError` push at each:** `dbMirrorAppend.ts:107,123`;
+  `afterCompact.ts:79,181,263,282` → `store_write` (wiki sub-category where
+  applicable).
+- **Bridge (child-path twin of Finding 2):** `bridge/factory.ts:207`
+  `recordTurn` (catch `appendTurn`) → `store_write`; `bridge/factory.ts:178`
+  `fork()` → `fork`.
+- **Cortex seam (§2.2):** `vector-cortex/cortex/store.ts:140`
+  `vector_cortex_record_append_failed` + the un-emitted `CTX_REBUILD_FAILED`
+  branch (`sqlite.ts:414,452,457,473`) + `ledger/emit.ts:77` +
+  `heal/restore-emit.ts:8` → `vector_index` via `defaultEmitFor`.
+- **Embedder:** `httpEmbedder.ts:357` (http fallback) +
+  `embedding-cache.ts:71` (cache persist) → `embedder`.
+- **Migration:** `store/turns/migrations.ts:194` → `migration`.
+- **Keep SEPARATE (do NOT push to ring — they belong to `errorRate` /
+  `cachePoison` / `cacheHealth`):** the API-error retry path
+  (`errorRetry.ts:51` → `lastErrorCategory`), `error_retry_*`,
+  `context_overflow`, `poisoned_context`.
+
+### 2.3 Files (B2 + Option A)
 
 - `extensions/mega-runtime/runtime.ts` — add `recentInternalErrors: string[]`
-  ring (mirrors `recentErrorCategories`), capped at the same `RING_MAX`.
-- `extensions/mega-events/agent-handlers/turnEndHandler/recordTurnRow.ts` —
-  push to the ring on `turn_write_failed` (category `"store_write"`).
-- Audit sibling `*_failed` emits (`recall_failed`, `fork_failed`, etc.) — push
-  to the ring where they exist.
+  ring (mirrors `recentErrorCategories`), capped at `RING_MAX`; add
+  `recordInternalError(category: string): void` (push + shift).
+- The ~14 emit sites in §2.3a — add `runtime.recordInternalError("<cat>")` at
+  each (and add the missing `*_failed` emit/logger.warn where the catch is
+  currently silent).
 - `extensions/mega-events/health-handler.ts` — read the ring; compute
   `storeErrorRate = 1 - (recent_internal / RING_MAX)`; feed as the 6th axis.
 - `src/contextHealth.ts` `ContextHealthSubScores` + `computeHealthScore` — add
@@ -337,21 +407,34 @@ covers errors remembered to categorize (the same blind spot that hid Finding 2).
   to 1.0). Extend `ContextHealthRow` with `storeErrorScore`.
 - `src/store/sqlite/context-health.ts` + schema (`plan-v2.ts`) —
   `ALTER TABLE context_health ADD COLUMN store_error_score REAL` + write it in
-  `recordContextHealth`);
+  `recordContextHealth`.
+- `scripts/guardrails-scan.mjs` (or a sibling scanner) — the `INTERNAL-ERR`
+  rule: every `*_failed` emit / silent-catch-over-a-store-write must pair with
+  a `recordInternalError` call or carry `// guardrails-allow INTERNAL-ERR:
+  <reason>`. Register the rule + a sentinel so docs-check counts it.
 - `extensions/dashboard-client/src/tabs/HealthTab.tsx` — separate "Internal
   errors" gauge next to `errorRate` (amber/red when the ring accumulates);
-  turn the composite declaration note.
+  the step-change note.
 - `extensions/mega-runtime/widget.ts:132` + HealthTab — relabel `drift` →
   `compaction lag` (keep `ok|warn` semantics; clarify in tooltip/detail).
 
-### 2.4 Test plan (B2)
+### 2.4 Test plan (B2 + Option A)
 
 - **Unit:** `computeHealthScore` with the 6th axis — weights sum to 1.0
   (`0.22 + 0.22 + 0.20 + 0.18 + 0.09 + 0.09`); ring buffer behavior (cap,
-  shift); `storeErrorRate` math (empty ring → 1.0; all-internal ring → 0).
+  shift); `storeErrorRate` math (empty ring → 1.0; all-internal ring → 0);
+  `recordInternalError(category)` pushes the category + caps at `RING_MAX`.
 - **Unit (axis independence):** `turn_write_failed` storm → `storeErrorRate`
   drops; API-retry storm → `errorRate` drops; mixed storm → composite reflects
   both. A store-error storm does NOT change `errorRate` (and vice versa).
+- **Unit (emit-site coverage):** for each instrumented site in §2.3a, a test
+  that triggers the failure path and asserts `recentInternalErrors` received
+  the right category (at least the highest-leverage ones: `turn_write_failed`,
+  recall provenance, compact persist, bridge `recordTurn`/`fork`, one cortex
+  `defaultEmitFor` failure branch).
+- **Scanner rule:** a fixture that an unpaired `*_failed` emit (no
+  `recordInternalError`, no `// guardrails-allow INTERNAL-ERR:`) FAILS the
+  `INTERNAL-ERR` scanner; a paired one passes; an annotated one passes.
 - **Integration:** simulate a `turn_write_failed` storm; assert the Health tab
   shows the **separate** "internal errors" gauge (not just the composite);
   assert the `drift` chip reads `compaction lag`.
@@ -366,13 +449,17 @@ covers errors remembered to categorize (the same blind spot that hid Finding 2).
 
 ### 2.5 Sprint H steps
 
-1. Implement §2.3 (ring + `store_error_score` schema column + 6th axis +
-   dashboard surface + relabel).
-2. Tests (§2.4). Gate: build + `node --test dist/**/*.test.js` + lint +
-   regression_check + guardrails-scan + schema-health + `npm run build:dashboard`.
+1. Implement §2.3 + §2.3a: `recordInternalError` + ring → instrument the ~14
+   emit sites (add missing `*_failed`/`logger.warn` where silent) → 6th axis +
+   `store_error_score` schema column → dashboard surface + relabel →
+   `INTERNAL-ERR` scanner rule + sentinel.
+2. Tests (§2.4). Gate: build + `node --test dist/**/*.test.js` + lint
+   (incl. the new `INTERNAL-ERR` rule) + regression_check + guardrails-scan +
+   schema-health + `npm run build:dashboard`.
 3. Review (controller) — verify no health gate silently disabled; file limits
    (`src/` 300/500, `extensions/` 400/500); weights sum to 1.0; pre-upgrade DBs
-   degrade to 1.0.
+   degrade to 1.0; the scanner rule actually fires on an unpaired emit (test);
+   the API-error path is NOT pushed to the ring (class separation intact).
 4. Deploy via `./scripts/deploy.sh <next-patch>` (explicit arg).
 5. Device verify: `pi update --extensions`; restart RADOPENCODE; trigger a
    store-write failure (or reproduce Finding 2 pre-R-fix); confirm the Health
