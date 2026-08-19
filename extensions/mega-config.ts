@@ -32,6 +32,20 @@ export const COMPACT_TIERS = {
 } as const;
 export type CompactTier = keyof typeof COMPACT_TIERS;
 
+/**
+ * Boot-fallback context window (env-overridable). Used ONLY as a display/seed
+ * placeholder before the first real context event supplies the provider's
+ * window — the live fire point (`effectiveThresholdImpl`) DEFERS (returns
+ * `+Infinity`) when the window is unknown, so this value is never a guessed
+ * gate. Default 200k keeps the display seed stable; set
+ * `MEGACOMPACT_DEFAULT_CONTEXT_WINDOW=<tokens>` to repoint it (e.g. for a
+ * 32k-model fleet the seed should reflect that).
+ */
+export const DEFAULT_CONTEXT_WINDOW = envFlag(
+	"MEGACOMPACT_DEFAULT_CONTEXT_WINDOW",
+	200_000,
+);
+
 // MegaConfig type moved to mega-config-types.ts (delegate-shell split, PC-A)
 // so this runtime config barrel stays under the 400-line soft limit.
 export type { MegaConfig } from "./mega-config-types.js";
@@ -51,8 +65,8 @@ function envBool(name: string, fallback: boolean): boolean {
  * Resolve the effective token threshold from TIER (or explicit) env vars.
  *
  * For a named tier the returned `thresholdTokens` is a BOOT FALLBACK
- * (`round(tierPct * 200_000)`) — sane before any context event reaches the
- * runtime. The true fire point is computed per-window at runtime via
+ * (`round(tierPct * DEFAULT_CONTEXT_WINDOW)`) — sane before any context event
+ * reaches the runtime. The true fire point is computed per-window at runtime via
  * `effectiveThresholdTokens(...)`. `custom` (explicit MEGACOMPACT_THRESHOLD_TOKENS)
  * keeps `tierPct: null` and an ABSOLUTE `thresholdTokens` (never percent-scaled).
  */
@@ -83,8 +97,9 @@ function resolveThreshold(): {
 	// Boot fallback: sane gate before the first context event provides a window.
 	// (NO hardcoded window in the firing path — effectiveThresholdImpl defers
 	// when window unknown; this remains only a display placeholder + custom
-	// companion under the umbrella.)
-	const thresholdTokens = Math.round(tierPct * 200_000);
+	// companion under the umbrella.) Env-overridable via
+	// MEGACOMPACT_DEFAULT_CONTEXT_WINDOW (see DEFAULT_CONTEXT_WINDOW).
+	const thresholdTokens = Math.round(tierPct * DEFAULT_CONTEXT_WINDOW);
 	return { tier, tierPct, thresholdTokens };
 }
 
