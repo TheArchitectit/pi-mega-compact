@@ -13,12 +13,9 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { EngineMessage } from "../../../src/types.js";
-import {
-	estimateBlockTokens,
-	estimateMessageTokens,
-} from "../../../src/tokens.js";
+import { estimateBlockTokens } from "../../../src/tokens.js";
 import { computeLiveTrimCut, liveTrimSummaryMessage } from "../../mega-trim.js";
-import { messageContentText } from "./messageText.js";
+import { applyTailCap } from "./headroom.js";
 import type { MegaRuntime } from "../../mega-runtime.js";
 import type { MegaConfig } from "../../mega-config.js";
 import type { TailResultFn } from "./gateCheck.js";
@@ -136,59 +133,33 @@ export function buildLiveTrimView(
 		// but has NO token cap, so a 2-message tail of two 80K bash outputs sails
 		// right past the window.
 		//
-		// Cap: when the model context window is known, reserve room for the
-		// summary + the model's max output tokens + a 10% safety margin, then
-		// drop oldest preserved messages from the front of `recentRaw` until the
-		// tail fits. Never drops below the FINAL message (always keep the latest
-		// turn so the agent can respond). This is a last-resort HARD cap — it
-		// only fires when the preserved tail alone is oversized, which is rare.
+		// v0.21.9: the reserve + front-drop now lives in headroom.ts (single
+		// source shared with the gate's pre-fire headroom check and the D.2/D.3
+		// replay paths): (a) percent-based reserve — plausible declared maxTokens
+		// wins, else clamp(MEGACOMPACT_OUTPUT_RESERVE_PCT, 10–95%) × window — so
+		// the math is identical at any window size and a sentinel maxTokens
+		// (1e9/1e38) can no longer drive the budget negative and silently
+		// disable the cap; (b) budget floor (max(1, …)) so the cap stays active
+		// on every window; (c) pair-safe front-drop — the preserved tail never
+		// begins on an orphaned toolResult (PREVENT-PI-002).
 		const ctxWindow = runtime.lastCtxWindow;
 		// Reuse the per-model threshold resolved at the gate (single lookup).
 		const modelThreshold = perModelThreshold;
-		// Reserve room for output tokens. Use the model's reported max output
-		// when known; fall back to 10% of the window (scales with any model —
-		// 20K for a 200K window, 100K for a 1M window) so we never let the
-		// preserved tail eat the model's output budget when maxTokens is unknown.
-		const maxOutput =
-			runtime.currentModel?.maxTokens && runtime.currentModel.maxTokens > 0
-				? runtime.currentModel.maxTokens
-				: Math.ceil(ctxWindow * 0.1);
-		let recent = recentRaw;
-		if (ctxWindow > 0 && recentRaw.length > 1) {
-			const summaryTokens = estimateBlockTokens(summaryMsg.text);
-			// Reserve: summary + max output + per-model safety margin (0-20%).
-			const safetyMargin = Math.ceil(
-				ctxWindow * (modelThreshold.safetyMarginPct / 100),
-			);
-			const budget = ctxWindow - maxOutput - safetyMargin - summaryTokens;
-			if (budget > 0) {
-				// Walk recent from the front, dropping oldest first until the
-				// remaining tail fits. Use the AgentMessage→engine-text estimate via
-				// messageContentText (already imported) + estimateMessageTokens.
-				let tailTokens = 0;
-				for (let i = recentRaw.length - 1; i >= 0; i--) {
-					const m = recentRaw[i];
-					tailTokens += estimateMessageTokens({
-						text: messageContentText(m),
-					});
-					if (tailTokens > budget) {
-						// Keep from i+1 onward; but never fewer than the final message.
-						const startIdx = Math.min(i + 1, recentRaw.length - 1);
-						if (startIdx > 0) {
-							recent = recentRaw.slice(startIdx);
-							runtime.logger.warn("live-trim-tail-cap", {
-								sessionId: runtime.rt.sessionId,
-								dropped: startIdx,
-								tailTokens,
-								safetyMarginPct: modelThreshold.safetyMarginPct,
-								budget,
-								ctxWindow,
-							});
-						}
-						break;
-					}
-				}
-			}
+		const { recent, dropped } = applyTailCap({
+			recentRaw,
+			summaryTokens: estimateBlockTokens(summaryMsg.text),
+			ctxWindow,
+			maxOutputTokens: runtime.currentModel?.maxTokens ?? 0,
+			outputReservePct: config.outputReservePct,
+			safetyMarginPct: modelThreshold.safetyMarginPct,
+		});
+		if (dropped > 0) {
+			runtime.logger.warn("live-trim-tail-cap", {
+				sessionId: runtime.rt.sessionId,
+				dropped,
+				safetyMarginPct: modelThreshold.safetyMarginPct,
+				ctxWindow,
+			});
 		}
 
 		// v0.8.6: cache the trim view so subsequent gated calls in this epoch
@@ -214,6 +185,11 @@ export function buildLiveTrimView(
 			summaryAgentMsg,
 			ctxPct: pct ?? null,
 			ctxTokens: currentTokens,
+			// v0.21.9: the D.2/D.3 replay paths re-cap the replayed tail against
+			// the CURRENT window (a model switch can change it mid-epoch). The
+			// margin % used at fire time is stored alongside so the replay uses
+			// the same reserve math as the fire that built the view.
+			safetyMarginPct: modelThreshold.safetyMarginPct,
 		};
 		runtime.snapshot(ctx);
 		// DIAG (team-run relief): confirm the live trim actually fires + how big

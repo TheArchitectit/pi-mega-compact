@@ -39,6 +39,7 @@ export class RuntimeInstrumentation {
 	diagCtxCutNull = 0; // computeLiveTrimCut returned null (anchor/boundary)
 	diagCtxThrown = 0; // live-trim try threw (caught)
 	diagCtxOutputErrorTrip = 0; // Phase H: output-error catch tripped a forced compaction
+	diagCtxHeadroomTrip = 0; // v0.21.9: output-headroom gate tripped a pre-overflow compaction
 
 	// Context health instrumentation (v0.12): rolling ring buffers for
 	// drift detection + cache poison Layer 1 hash baseline.
@@ -79,6 +80,9 @@ export class RuntimeInstrumentation {
 		summaryAgentMsg: AgentMessage;
 		ctxPct: number | null;
 		ctxTokens: number | null;
+		/** v0.21.9: safety margin % recorded at fire time so the D.2/D.3 replay
+		 *  paths can re-cap the replayed tail with the same reserve math. */
+		safetyMarginPct: number;
 	} | null = null;
 	debounceUntil = 0;
 	// S16: debounce for the agent_end resume nudge (avoid busy-loops).

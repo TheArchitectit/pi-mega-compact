@@ -141,6 +141,31 @@ export interface MegaConfig {
 	 *  gate never fires → "compact never" → every subsequent response truncates
 	 *  too). Default ON; OFF (=0/`=false`) = byte-identical pre-H. */
 	outputErrorCompact: boolean;
+	/** v0.21.9: output-headroom gate. Fire compaction BEFORE the request
+	 *  overflows the model window — when
+	 *  `currentTokens + outputReserve + safetyMargin >= contextWindow` —
+	 *  instead of waiting for the percent/token fire point (which judges only
+	 *  INPUT and never trips on small-window models whose output reserve is a
+	 *  large fraction of the window: a 32k window with a 20k maxTokens
+	 *  overflows at ~37% INPUT). Percent-based by construction: the reserve is
+	 *  a fraction of the model's own window, so the math is identical at every
+	 *  window size (32k, 64k, 200k, 1M, 5M). Default ON; OFF (=0/`=false`)
+	 *  disables ONLY the pre-fire gate check (the gate reverts to the
+	 *  input-only pre-v0.21.9 judgment). NOTE: the shared tail-cap hardenings
+	 *  this fix introduced — pair-safe front-drop (the pre-v0.21.9 cap could
+	 *  split a toolCall/toolResult pair, PREVENT-PI-002) and the budget floor
+	 *  (the old cap silently disabled itself when the reserve exceeded the
+	 *  window) — are UNCONDITIONAL guardrail fixes and apply regardless of
+	 *  this flag. Headroom-triggered fires are EXEMPT from the ThrashGuard
+	 *  (an overflowed session is unrecoverable). */
+	overflowHeadroom: boolean;
+	/** v0.21.9: fallback output reserve as a fraction of the context window
+	 *  when the model's declared maxTokens is absent or implausible (0, or the
+	 *  models.json sentinels 1e9/1e38, or >= the window). Clamped [0.1, 0.95];
+	 *  default 0.30 (30% of the window). When maxTokens is plausible the
+	 *  declared value wins — vLLM-style backends reserve the FULL declared
+	 *  maxTokens against the context window, so the reserve must match it. */
+	outputReservePct: number;
 	/** Inline-dedupe recalled checkpoints against the live window (Fix C): drop
 	 *  a hit whose summary is ≥ dedupSim similar to a live message — "dedupe on
 	 *  inline/read" so we never re-inject context already resident. */

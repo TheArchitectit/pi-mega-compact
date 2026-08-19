@@ -142,11 +142,14 @@ export interface DashboardSnapshot {
     outputRate: number;    // USD per output token (Model.cost)
   };
   /** v0.8.8 Perf dashboard: live diag counters (skip vs recompute vs replay)
-   *  for the Perf tab's "TUI lag proxy" cards. Optional for back-compat. */
+   *  for the Perf tab's "TUI lag proxy" cards. Optional for back-compat.
+   *  v0.21.9: headroomTrips added (output-headroom gate trips); readers that
+   *  don't know it stay backward-compatible. */
   diag?: {
     ctxFastGate: number;
     liveTrimFires: number;
     liveTrimReplays: number;
+    headroomTrips?: number;
   };
   /** S38.8: error-retry state for dashboard "retries" tile.
    *  R7 (retry redesign): sessionRetryCount / sessionMax / poisonedCount are

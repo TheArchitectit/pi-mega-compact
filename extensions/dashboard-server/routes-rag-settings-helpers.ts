@@ -9,6 +9,7 @@
  */
 import type { SettingSpec, SettingGroup } from "./routes-rag-settings-types.js";
 import { VECTOR_CORTEX_SETTINGS } from "./routes-rag-settings-vector-cortex.js";
+import { COMPACTION_SETTINGS } from "./routes-rag-settings-compaction.js";
 
 export type { SettingSpec } from "./routes-rag-settings-types.js";
 
@@ -275,33 +276,10 @@ export const SETTINGS: ReadonlyArray<SettingGroup> = [
 			num("MEGACOMPACT_EMBEDDING_CHARS_PER_TOKEN", "Embedding Chars per Token", "Estimated characters per token used for embedder chunking size", 4, 1, 32),
 		],
 	},
-	{
-		name: "Compaction",
-		settings: [
-			num(
-				"MEGACOMPACT_THRESHOLD_PCT",
-				"Compaction Threshold",
-				"Fraction of the actual model context window at which compaction fires — 0.80 fires at 80% used (leaves 20% free). Applies to any model size; a per-model Model Thresholds row overrides it",
-				0.8,
-				0.1,
-				0.95,
-			),
-			num(
-				"MEGACOMPACT_THRASH_REARM_PCT",
-				"Thrash Re-arm %",
-				"After an ineffective compaction (live window did not shrink), refuse to re-fire until the live window grows by this fraction of the effective threshold. Default 0.10 (10%)",
-				0.1,
-				0.01,
-				0.5,
-			),
-			boolDirect(
-				"MEGACOMPACT_OUTPUT_ERROR_COMPACT",
-				"Output-Error Compact",
-				"When a model response is truncated mid-output (stopReason: 'length'), trip a one-shot forced compaction to free input headroom. Closes the small-context deadlock where the model truncates below the input threshold.",
-				true,
-			),
-		],
-	},
+	// v0.21.9: compaction group extracted to keep this file under the
+	// extensions/ soft limit (delegate-shell split); carries the overflow-
+	// headroom + output-reserve flags alongside the pre-existing trio.
+	COMPACTION_SETTINGS,
 	{
 		name: "Three-Way Failback",
 		settings: [

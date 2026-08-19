@@ -253,6 +253,18 @@ export function loadConfig(): MegaConfig {
 		// Phase H: output-error catch — trip compaction on a truncated model output
 		// (S28 stopReason==='length'). Default ON; OFF byte-identical pre-H.
 		outputErrorCompact: envBool("MEGACOMPACT_OUTPUT_ERROR_COMPACT", true),
+		// v0.21.9 OUTPUT-HEADROOM GATE: fire compaction BEFORE the request
+		// overflows the model window (input + output reserve + margin >= window),
+		// not after. Percent-based: the reserve scales with the model's own window
+		// so the math holds at every window size (32k…5M). Default ON;
+		// OFF = byte-identical pre-v0.21.9 (2026-08-19 32k incident fix).
+		overflowHeadroom: envBool("MEGACOMPACT_OVERFLOW_HEADROOM", true),
+		// v0.21.9: fallback OUTPUT reserve as a FRACTION of the context window,
+		// used when the model's declared maxTokens is absent or implausible
+		// (0 / sentinel 1e9/1e38 / >= window). Clamped [0.1, 0.95]; default 0.30.
+		// When maxTokens IS plausible the declared value wins (vLLM reserves the
+		// full maxTokens) — this fraction is only the fallback.
+		outputReservePct: clamp(envFlag("MEGACOMPACT_OUTPUT_RESERVE_PCT", 0.3), 0.1, 0.95),
 		windowDedupe: envBool("MEGACOMPACT_WINDOW_DEDUPE", true),
 		recallTailInject: envBool("MEGACOMPACT_RECALL_TAIL_INJECT", true),
 		// 3WF-1: TriggerGuard — guarantee a staged recall block on every context

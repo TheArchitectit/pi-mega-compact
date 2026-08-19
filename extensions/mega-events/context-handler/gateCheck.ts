@@ -18,6 +18,7 @@ import { autoCompactCheck } from "../../../src/compact.js";
 import type { MegaRuntime } from "../../mega-runtime.js";
 import type { MegaConfig } from "../../mega-config.js";
 import { isThrashBlockedFor } from "./thrashGuard.js";
+import { resolveOutputReserve } from "./headroom.js";
 
 /** Tail-injection closure shape produced by buildTailResult (tailResult.ts). */
 export type TailResultFn = (
@@ -30,6 +31,14 @@ export type GateOutcome =
 	| {
 			kind: "proceed";
 			perModelThreshold: { safetyMarginPct: number; firePointPct: number };
+			/**
+			 * v0.21.9: true when the proceed was forced by the output-headroom
+			 * check (the request would overflow the model window before reaching
+			 * the percent/token fire point). Consumed by thrashGuardBlocks so an
+			 * overflow-bound fire is never refused by the thrash guard — an
+			 * overflowed session is unrecoverable (2026-08-19 32k incident).
+			 */
+			headroomExceeded?: boolean;
 	  };
 
 /**
@@ -55,9 +64,16 @@ export function thrashGuardBlocks(
 	runtime: MegaRuntime,
 	config: MegaConfig,
 	currentTokens: number | null | undefined,
+	headroomExceeded?: boolean,
 ): boolean {
 	if (!config.threeWayFailback) return false;
 	if (currentTokens == null) return false;
+	// v0.21.9: an overflow-bound fire (headroomExceeded) is EXEMPT from the
+	// thrash guard. The guard exists to stop wasted re-compaction when the
+	// window refuses to shrink; but an overflowed request is not "wasted work"
+	// — it is the model about to 400. Blocking that fire reproduces the
+	// 2026-08-19 32k deadlock (compact never → request > window → error loop).
+	if (headroomExceeded) return false;
 	return isThrashBlockedFor(runtime, currentTokens, runtime.currentStateDir);
 }
 
@@ -111,6 +127,57 @@ export function evaluateGate(
 		runtime.rt.forceCompactNextGate = false;
 		runtime.diagCtxOutputErrorTrip++;
 		return { kind: "proceed", perModelThreshold };
+	}
+
+	// v0.21.9 OUTPUT-HEADROOM GATE (the root-cause fix for the 32k truncation
+	// loop). The percent/token fire points above judge only INPUT utilization
+	// (tier% of the window), but a request's budget is
+	//   input tokens + the model's output budget + safety margin.
+	// On a small-window model with a large maxTokens (the user's 32k/20k
+	// GLM-4.7), the request overflows at ~32% INPUT (21.4k + 20k > 32.768k) —
+	// long before any percent gate fires → provider 400 "request exceeds the
+	// available context size" every turn → the poisoned-error loop. Phase H only
+	// reacts to stopReason 'length' (mid-output truncation); a pre-output 400
+	// never arms it, so "compact never". This check fires the compaction
+	// BEFORE the overflow instead of after.
+	//
+	// PERCENT-BASED (LTS invariant — must work at every window size: 32k, 64k,
+	// 200k, 1M, 5M): the reserve is a FRACTION of the model's own window via
+	// resolveOutputReserve (plausible declared maxTokens wins, else
+	// clamp(MEGACOMPACT_OUTPUT_RESERVE_PCT, 10–95%) × window). Same math, any
+	// size. window <= 0 (unknown) ⇒ deferred (never guess a window), matching
+	// the effectiveThresholdImpl Phase-C invariant. Gated on
+	// config.overflowHeadroom (default ON; OFF = byte-identical pre-v0.21.9).
+	// Thrash-guard exemption: headroomExceeded rides along on the proceed so the
+	// handler's thrash consult never refuses an overflow-bound fire (see
+	// thrashGuardBlocks above) — an overflowed session is unrecoverable, so a
+	// wasted re-fire is always the better outcome (2026-08-19 incident).
+	if (
+		config.overflowHeadroom &&
+		runtime.lastCtxWindow > 0 &&
+		Number.isFinite(currentTokens) &&
+		currentTokens > 0
+	) {
+		const { reserveTokens, fallbackUsed } = resolveOutputReserve(
+			runtime.lastCtxWindow,
+			runtime.currentModel?.maxTokens ?? 0,
+			config.outputReservePct,
+		);
+		const headroomMargin = Math.ceil(
+			runtime.lastCtxWindow * (perModelThreshold.safetyMarginPct / 100),
+		);
+		if (currentTokens + reserveTokens + headroomMargin >= runtime.lastCtxWindow) {
+			runtime.diagCtxHeadroomTrip++;
+			runtime.logger.info("gate-headroom-trip", {
+				sessionId: runtime.rt.sessionId,
+				currentTokens,
+				ctxWindow: runtime.lastCtxWindow,
+				reserveTokens,
+				fallbackUsed,
+				marginPct: perModelThreshold.safetyMarginPct,
+			});
+			return { kind: "proceed", perModelThreshold, headroomExceeded: true };
+		}
 	}
 
 	// S29 FAST GATE: `custom` (absolute MEGACOMPACT_THRESHOLD_TOKENS,

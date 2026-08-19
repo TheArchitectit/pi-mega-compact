@@ -303,6 +303,8 @@ export interface PerfDiag {
 	readonly liveTrimFires: number;
 	/** Number of live trim replays. */
 	readonly liveTrimReplays: number;
+	/** v0.21.9: output-headroom gate trips (pre-overflow compaction fires). */
+	readonly headroomTrips: number;
 }
 
 /**

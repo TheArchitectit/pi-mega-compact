@@ -49,6 +49,8 @@ export interface SnapshotBuildContext {
 	readonly diagCtxFastGate: number;
 	readonly diagLiveTrimFires: number;
 	readonly diagLiveTrimReplays: number;
+	/** v0.21.9: output-headroom gate trips (pre-overflow compaction fires). */
+	readonly diagCtxHeadroomTrip: number;
 	readonly errorRetryCount: number;
 	readonly consecutiveErrors: number;
 	readonly ERROR_RETRY_MAX_CONSECUTIVE: number;
@@ -190,6 +192,7 @@ export function buildDashboardSnapshot(ctx: SnapshotBuildContext): DashboardSnap
 			ctxFastGate: ctx.diagCtxFastGate,
 			liveTrimFires: ctx.diagLiveTrimFires,
 			liveTrimReplays: ctx.diagLiveTrimReplays,
+			headroomTrips: ctx.diagCtxHeadroomTrip,
 		},
 		retries: {
 			errorRetryCount: ctx.errorRetryCount,

@@ -21,6 +21,7 @@ import type { MegaConfig } from "../../mega-config.js";
 import type { TailResultFn } from "./gateCheck.js";
 import { recordCompactLatency } from "../../mega-runtime/vc-observer.js";
 import { decideLivePath } from "../../mega-runtime/vector-cortex-live.js";
+import { recapReplayedTail } from "./headroom.js";
 import { defaultClock, type RolloutEvidence } from "../../../src/vector-cortex/rollout/gate.js";
 import { VC5C_ENABLED } from "../../../src/config/vector-cortex.js";
 
@@ -120,7 +121,19 @@ export function invokePipeline(
 			runtime.trimCache.checkpointId === runtime.rt.lastCheckpointId &&
 			runtime.trimCache.cut <= opts.messages.length
 		) {
-			const recent = opts.messages.slice(runtime.trimCache.cut); // guardrails-allow PREVENT-PI-002: cached `cut` was sanitized by computeLiveTrimCut (src/boundary.ts); replayed verbatim, transcript only grows within an epoch.
+			const recentRaw = opts.messages.slice(runtime.trimCache.cut); // guardrails-allow PREVENT-PI-002: cached `cut` was sanitized by computeLiveTrimCut (src/boundary.ts); replayed verbatim, transcript only grows within an epoch.
+			// v0.21.9: RE-CAP the replayed tail against the CURRENT window —
+			// the D.3 skip-replay bypasses the fire-time tail cap exactly like
+			// D.2; a model switch mid-epoch can shrink the window below what
+			// the cached view was built for. No-op when the tail already fits.
+			const { recent } = recapReplayedTail({
+				recentRaw,
+				summaryAgentMsg: runtime.trimCache.summaryAgentMsg,
+				ctxWindow: runtime.lastCtxWindow,
+				maxOutputTokens: runtime.currentModel?.maxTokens ?? 0,
+				outputReservePct: config.outputReservePct,
+				safetyMarginPct: runtime.trimCache.safetyMarginPct,
+			});
 			runtime.diagLiveTrimFires++;
 			runtime.diagLiveTrimReplays++;
 			runtime.snapshot(ctx);

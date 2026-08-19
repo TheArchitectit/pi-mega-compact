@@ -34,6 +34,7 @@ import {
 } from "./context-handler/thrashGuard.js";
 import { invokePipeline } from "./context-handler/pipelineRun.js";
 import { buildLiveTrimView } from "./context-handler/liveTrim.js";
+import { recapReplayedTail } from "./context-handler/headroom.js";
 
 /** Register the context event handler (live-trim auto-trigger). */
 export function registerContextHandler(
@@ -173,7 +174,23 @@ export function registerContextHandler(
 					: currentTokens - (runtime.trimCache.ctxTokens ?? 0) >=
 						runtime.effectiveThreshold * 0.5;
 			if (!grewEnough) {
-				const recent = messages.slice(runtime.trimCache.cut); // guardrails-allow PREVENT-PI-002: cached `cut` was sanitized once by computeLiveTrimCut (src/boundary.ts) and replayed verbatim; the transcript only grows within an epoch (cache is cleared on durable truncation), so the preserved run still starts on a toolPair-safe index.
+				const recentRaw = messages.slice(runtime.trimCache.cut); // guardrails-allow PREVENT-PI-002: cached `cut` was sanitized once by computeLiveTrimCut (src/boundary.ts) and replayed verbatim; the transcript only grows within an epoch (cache is cleared on durable truncation), so the preserved run still starts on a toolPair-safe index.
+				// v0.21.9: RE-CAP the replayed tail against the CURRENT window.
+				// Replay returns the cached view verbatim, which bypasses the
+				// fire-time tail cap — a model switch mid-epoch can shrink the
+				// window and leave a replayed tail that fit the OLD window
+				// overflowing the NEW one. Same reserve math as the fire
+				// (margin % stored in the cache at fire time); no-op when the
+				// tail already fits. Pair-safe (applyTailCap advances past any
+				// leading toolResult its front-drop exposes).
+				const { recent } = recapReplayedTail({
+					recentRaw,
+					summaryAgentMsg: runtime.trimCache.summaryAgentMsg,
+					ctxWindow: runtime.lastCtxWindow,
+					maxOutputTokens: runtime.currentModel?.maxTokens ?? 0,
+					outputReservePct: config.outputReservePct,
+					safetyMarginPct: runtime.trimCache.safetyMarginPct,
+				});
 				runtime.diagLiveTrimFires++; // trim view returned this call (replay counts as a fire)
 				runtime.diagLiveTrimReplays++;
 				runtime.snapshot(ctx);
@@ -194,7 +211,7 @@ export function registerContextHandler(
 		// invokePipeline (the real fire point), so it covers the percent + token
 		// gate paths alike. Umbrella OFF ⇒ never blocks (byte-identical). Returns
 		// the tailed view so a staged recall block still rides along.
-		if (thrashGuardBlocks(runtime, config, currentTokens)) {
+		if (thrashGuardBlocks(runtime, config, currentTokens, gate.headroomExceeded)) {
 			runtime.diagCtxFastGate++;
 			runtime.snapshot(ctx);
 			return tailResult() ?? undefined;

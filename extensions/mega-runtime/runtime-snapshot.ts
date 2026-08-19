@@ -84,6 +84,7 @@ export interface RuntimeSnapshotContext extends RuntimeHelpersContext {
 	diagCtxFastGate: number;
 	diagLiveTrimFires: number;
 	diagLiveTrimReplays: number;
+	diagCtxHeadroomTrip: number;
 
 	// ── public methods the orchestration calls ──
 	bindRepo(cwd: string | undefined): string;
@@ -177,6 +178,7 @@ export function snapshotImpl(
 			diagCtxFastGate: self.diagCtxFastGate,
 			diagLiveTrimFires: self.diagLiveTrimFires,
 			diagLiveTrimReplays: self.diagLiveTrimReplays,
+			diagCtxHeadroomTrip: self.diagCtxHeadroomTrip,
 			errorRetryCount: self.rt.errorRetryCount,
 			consecutiveErrors: self.rt.consecutiveErrors,
 			ERROR_RETRY_MAX_CONSECUTIVE: self.config.maxConsecutiveErrors,
