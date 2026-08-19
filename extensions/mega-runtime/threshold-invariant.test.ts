@@ -11,9 +11,13 @@
  * Uses real node:sqlite stores (mkdtemp) end-to-end for the per-model override
  * path (no mocks). Pure functions exercised directly otherwise.
  *
- * Umbrella flag MEGACOMPACT_THREE_WAY_FAILBACK OFF must be byte-identical to
- * v0.20.83 (default tier=low 0.5, 200k boot fallback, no defer, no token-path
- * override).
+ * LTS-correctness note (Phase C, 2026-08-13): the byte-identical-to-v0.20.83
+ * guarantee for umbrella-OFF was RETIRED as a known-bad behavior. umbrella-OFF
+ * previously fell through to the legacy 200k helper under an unknown window —
+ * unreachable on a small-context model (e.g. 32k), so the model truncated before
+ * the gate ever fired ("compact never"). A tiered config now DEFERS under ANY
+ * umbrella state when the window is unknown (no guessed window, ever); `custom`
+ * (tierPct null) keeps its explicit absolute regardless of umbrella.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -26,7 +30,7 @@ import {
 	type PressureContext,
 } from "./pressure-getters.js";
 import { evaluateGate } from "../mega-events/context-handler/gateCheck.js";
-import type { MegaConfig } from "../mega-config.js";
+import { DEFAULT_CONTEXT_WINDOW, type MegaConfig } from "../mega-config.js";
 import {
 	putModelThreshold,
 	resolveModelThreshold,
@@ -58,7 +62,7 @@ function tieredConfig(
 	return {
 		tier: "low",
 		tierPct,
-		thresholdTokens: Math.round(tierPct * 200_000),
+		thresholdTokens: Math.round(tierPct * DEFAULT_CONTEXT_WINDOW),
 		threeWayFailback,
 	} as MegaConfig;
 }
@@ -96,17 +100,33 @@ test("invariant 5: custom tier + window unknown → still fires (explicit absolu
 	assert.equal(t, 123_456, "custom absolute fires regardless of window");
 });
 
-test("invariant 6: umbrella OFF → legacy 100k fallback fires (byte-identical)", () => {
-	// umbrella OFF + no tier → config resolves to tier=low 0.5, threshold 100k.
+test("invariant 6: umbrella OFF + tiered + window unknown → DEFER (no guessed window)", () => {
+	// LTS-correctness fix (Phase C): umbrella-OFF no longer substitutes a guessed
+	// 200k window. A tiered config (tierPct != null) under ANY umbrella state
+	// DEFERS when the window is unknown — same rule as invariants 1-3. This
+	// closes the small-context-model deadlock: the legacy 0.5×200k=100k fallback
+	// was unreachable on a 32k window, so the model truncated before the gate
+	// fired ("compact never").
+	const cfg = tieredConfig(0.5, false);
+	const self = pc({ config: cfg, lastCtxWindow: 0 });
+	const t = effectiveThresholdImpl(self);
+	assert.equal(Number.isFinite(t), false, "umbrella OFF + tiered + window unknown → DEFER (no guessed window)");
+	assert.equal(t, Number.POSITIVE_INFINITY);
+});
+
+test("invariant 6b: umbrella OFF + custom (tierPct null) → still fires the explicit absolute", () => {
+	// Regression guard: the Phase C DEFER rule keys on `tierPct != null`, so the
+	// `custom` explicit-absolute path is unaffected by the umbrella state — it
+	// keeps firing its explicit threshold regardless of window or umbrella.
 	const cfg = {
-		tier: "low",
-		tierPct: 0.5,
-		thresholdTokens: 100_000,
+		tier: "custom",
+		tierPct: null,
+		thresholdTokens: 123_456,
 		threeWayFailback: false,
 	} as MegaConfig;
 	const self = pc({ config: cfg, lastCtxWindow: 0 });
 	const t = effectiveThresholdImpl(self);
-	assert.equal(t, 100_000, "umbrella OFF → legacy 200k boot fallback (0.5×200k)");
+	assert.equal(t, 123_456, "custom absolute fires under umbrella OFF + window unknown");
 });
 
 // --- Test 4: token path honors per-model override --------------------------

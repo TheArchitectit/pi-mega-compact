@@ -81,18 +81,18 @@ export function pressureImpl(self: PressureContext): number {
  * always below pi's native auto-compaction (~80% of window).
  */
 export function effectiveThresholdImpl(self: PressureContext): number {
-	// 3WF-2 threshold invariant: under the umbrella, a tiered config with an
-	// UNKNOWN window (lastCtxWindow <= 0) DEFERS — auto-compaction must never
-	// substitute a guessed window. Returning +Infinity keeps every downstream
-	// `tokens >= threshold` comparison false (gateCheck token path,
-	// agent_end durable trigger, live-trim re-compact), so no compaction fires
-	// until the provider reports a real window. custom (tierPct null) and
-	// umbrella-OFF fall through to the legacy helper (byte-identical).
-	if (
-		self.config.threeWayFailback &&
-		self.config.tierPct != null &&
-		self.lastCtxWindow <= 0
-	) {
+	// 3WF-2 threshold invariant (LTS-correctness fix, Phase C): a tiered config
+	// (tierPct != null) with an UNKNOWN window (lastCtxWindow <= 0) DEFERS —
+	// auto-compaction must never substitute a guessed window, under ANY umbrella
+	// state. Returning +Infinity keeps every downstream `tokens >= threshold`
+	// comparison false (gateCheck token path, agent_end durable trigger, live-trim
+	// re-compact), so no compaction fires until the provider reports a real
+	// window. This closes the small-context-model deadlock: umbrella-OFF
+	// previously fell through to the legacy 200k helper (round(tierPct × 200k)),
+	// which is unreachable on a 32k window → the model truncates before the gate
+	// ever fires → "compact never". custom (tierPct null) always falls through
+	// to the explicit absolute.
+	if (self.config.tierPct != null && self.lastCtxWindow <= 0) {
 		return Number.POSITIVE_INFINITY;
 	}
 	return effectiveThresholdTokens({
