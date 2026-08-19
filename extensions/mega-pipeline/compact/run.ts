@@ -109,10 +109,20 @@ function doCompact(
 	runtime.pulsing = false;
 
 	if (result.skipped) return { skipped: true };
-	if (!result.deduped) {
-		runtime.rt.persistedThisSession = true;
-		runtime.rt.lastCheckpointId = result.checkpointId;
-	}
+	// C1 (v0.21.10): lastCheckpointId tracks "the checkpoint backing this epoch",
+	// so it is stamped on BOTH paths — a matched-dedup checkpoint backs this epoch
+	// just as much as a freshly created one. Previously the dedup path left it
+	// undefined, so a runtime session whose every compaction deduped (common after
+	// a process restart, when checkpoints persist but `rt` is rebuilt) never set it
+	// → liveTrim's trimCache fell back to result.checkpointId (the matched id) →
+	// `trimCache.checkpointId === rt.lastCheckpointId` was `"chkpt_001" !== undefined`
+	// → the D.2/D.3 replay NEVER matched and the full pipeline re-ran on every
+	// context event (liveTrimReplays: 0, "comp lag warn"). A later fire matching a
+	// DIFFERENT checkpoint now changes the key once (one cache regeneration), then
+	// replays stabilise. `persistedThisSession` keeps its narrower meaning ("we
+	// wrote NEW state this session") and stays gated on !deduped.
+	if (!result.deduped) runtime.rt.persistedThisSession = true;
+	runtime.rt.lastCheckpointId = result.checkpointId;
 	runtime.rt.lastCompactedFrom = result.compactedFrom;
 	runtime.rt.lastCompactedTokens = result.tokenEstimate;
 	runtime.rt.dedupAttempts++;

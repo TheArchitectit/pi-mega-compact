@@ -38,6 +38,7 @@ import {
 	bumpDedupStats,
 } from "../store/sqlite.js";
 import { computeRegionHash } from "./hash.js";
+import { degenerateDecliner } from "./add-degenerate.js";
 import { runL0Tier, computeSummaryHash } from "./add-l0.js";
 import { findL1Duplicate } from "./add-l1.js";
 import { dedupAuditRecorder } from "./dedup-audit.js";
@@ -86,9 +87,23 @@ export function addCheckpoint(store: VectorStore, input: AddInput): AddResult {
 	// Tracks whether a tier matched while in MARK_ONLY (record-but-don't-collapse),
 	// and which tier.
 	let markOnly: "L0" | "L1" | "L2" | null = null;
+	// Content digest for this candidate (also consumed by the L0 tier below).
+	const digest = computeContentDigest(input.regionText);
+	// Degenerate-match guard (incident 2026-08-19): declines a fuzzy-tier collapse
+	// onto a content-free skeleton when the incoming region is richer, so the
+	// skeleton stops absorbing every future compaction. Returns true (having
+	// already recorded the decision) ⇒ the caller treats the match as a non-match.
+	// Flag-off ⇒ always false ⇒ byte-identical predecessor. See add-degenerate.ts.
+	const declineDegenerate = degenerateDecliner({
+		store,
+		input,
+		contentHash: digest.contentHash,
+		cfg,
+		audit,
+		t0,
+	});
 
 	// L0 exact-match tier (contentHash / regionHash / summaryHash) — see add-l0.ts.
-	const digest = computeContentDigest(input.regionText);
 	const bloom = openBloom(store.stateDir);
 	const summaryHash = computeSummaryHash(input.topicSummary);
 	const l0 = runL0Tier({
@@ -113,7 +128,10 @@ export function addCheckpoint(store: VectorStore, input: AddInput): AddResult {
 	onTier?.({ tier: "L1", status: "scanning" });
 	if (cfg.L1_ENABLED) {
 		const l1 = findL1Duplicate(store, sessionId, input.regionText, all);
-		if (l1 && !cfg.MARK_ONLY_L1) {
+		// Guard first: a declined match must not collapse and must not be recorded
+		// as a MARK_ONLY hit either — it is a non-match for the rest of the cascade.
+		const l1Declined = l1 !== undefined && declineDegenerate("L1", l1);
+		if (l1 && !l1Declined && !cfg.MARK_ONLY_L1) {
 			l1.timestamp = input.timestamp;
 			upsertCheckpoint(l1, store.stateDir);
 			bumpDedupStats(true, store.stateDir);
@@ -124,7 +142,7 @@ export function addCheckpoint(store: VectorStore, input: AddInput): AddResult {
 			onTier?.({ tier: "L1", status: "deduped", detail: "l1MinHash" });
 			return r;
 		}
-		if (l1 && cfg.MARK_ONLY_L1) markOnly = "L1";
+		if (l1 && !l1Declined && cfg.MARK_ONLY_L1) markOnly = "L1";
 	}
 	onTier?.({ tier: "L1", status: "passed" });
 
@@ -152,7 +170,13 @@ export function addCheckpoint(store: VectorStore, input: AddInput): AddResult {
 			},
 			{ checkpoint: all[0], sim: -1 },
 		);
-		if (!timedOut && nearest.sim >= simThreshold) {
+		// A declined match falls through to the "store a fresh checkpoint" path; the
+		// guard already audited the decision, so the near-miss emit below is skipped.
+		const l2Declined =
+			!timedOut &&
+			nearest.sim >= simThreshold &&
+			declineDegenerate("L2", nearest.checkpoint, nearest.sim);
+		if (!timedOut && !l2Declined && nearest.sim >= simThreshold) {
 			if (!cfg.MARK_ONLY_L2) {
 				// Near-identical — update timestamp on existing checkpoint
 				nearest.checkpoint.timestamp = input.timestamp;
@@ -190,7 +214,7 @@ export function addCheckpoint(store: VectorStore, input: AddInput): AddResult {
 		// Near-miss: how close did we come to collapsing? Only emitted when the
 		// scan actually completed and scored a candidate — a timed-out scan has no
 		// honest best to report.
-		if (!timedOut && nearest.sim >= 0) {
+		if (!timedOut && !l2Declined && nearest.sim >= 0) {
 			audit.passed("L2", nearest.checkpoint.checkpointId, nearest.sim);
 		}
 	}

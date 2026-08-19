@@ -59,7 +59,17 @@ function parseAuditLine(line: string): DedupAuditEvent | null {
   const tier = obj.tier;
   const status = obj.status;
   if (tier !== "L0" && tier !== "L1" && tier !== "L2" && tier !== "new") return null;
-  if (status !== "deduped" && status !== "passed" && status !== "stored") return null;
+  // "skipped" = a tier matched but the degenerate-match guard declined to
+  // collapse. Accepted so the line is not silently dropped from the tail; the
+  // rollup below counts only deduped/passed, so tier catch-share math is
+  // unchanged by its presence.
+  if (
+    status !== "deduped" &&
+    status !== "passed" &&
+    status !== "stored" &&
+    status !== "skipped"
+  )
+    return null;
   // sessionId is never read by the rollup; a parsed line may omit richer fields.
   return { type: "dedup_audit", ts: obj.ts, tier, status, sessionId: "" };
 }

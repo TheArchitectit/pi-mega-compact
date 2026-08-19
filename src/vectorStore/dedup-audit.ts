@@ -51,8 +51,8 @@ export interface DedupAuditEvent {
 	sessionId: string;
 	/** Which layer produced the decision ("new" = nothing collapsed). */
 	tier: "L0" | "L1" | "L2" | "new";
-	/** What the layer decided. */
-	status: "deduped" | "passed" | "stored";
+	/** What the layer decided. `skipped` = matched but policy declined to collapse. */
+	status: "deduped" | "passed" | "stored" | "skipped";
 	/** Checkpoint the region collapsed onto, or the nearest one scored. */
 	matchedEntry?: string;
 	/** Checkpoint created, when the outcome was a new write. */
@@ -129,6 +129,20 @@ export interface DedupAuditRecorder {
 		matchedEntry: string,
 		similarity: number,
 	): void;
+	/**
+	 * A tier MATCHED but policy declined the collapse (degenerate-match guard).
+	 *
+	 * Distinct from `passed`: the threshold WAS cleared, so this line is how an
+	 * operator sees that a skeleton checkpoint was prevented from absorbing richer
+	 * content — the signal for "the store is healing". `similarity` is carried only
+	 * where the tier scored one (L2 does, L1 does not).
+	 */
+	skipped(
+		tier: "L0" | "L1" | "L2",
+		matchedEntry: string,
+		dedupReason: string,
+		similarity?: number,
+	): void;
 	/** Final outcome: nothing collapsed, a new checkpoint was written. */
 	stored(storedEntry: string, dedupReason: string, tokenEstimate: number): void;
 }
@@ -160,6 +174,15 @@ export function dedupAuditRecorder(
 				status: "passed",
 				matchedEntry,
 				similarity,
+			}),
+		skipped: (tier, matchedEntry, dedupReason, similarity) =>
+			emitDedupAudit(ctx, {
+				...base,
+				tier,
+				status: "skipped",
+				matchedEntry,
+				dedupReason,
+				...(similarity === undefined ? {} : { similarity }),
 			}),
 		stored: (storedEntry, dedupReason, tokenEstimate) =>
 			emitDedupAudit(ctx, {

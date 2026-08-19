@@ -219,8 +219,14 @@ export function registerContextHandler(
 
 		// Debounce so we don't fire on every context event past threshold.
 		// (Replay already returned above — only fresh compacts reach this point.)
+		// C2 (v0.21.10): EXEMPT headroom-triggered fires, matching the thrash-guard
+		// exemption above. pi's own overflow recovery (400 → compact → immediate
+		// retry) re-fires a context event <2s after our last fire; debouncing it
+		// returned the RAW untrimmed view, so input + output reserve still blew the
+		// window → 400 → "recovery failed after one compact-and-retry attempt".
+		// An overflowed session is unrecoverable; a re-fire is merely wasteful.
 		const now = Date.now();
-		if (now < runtime.debounceUntil) {
+		if (now < runtime.debounceUntil && !gate.headroomExceeded) {
 			runtime.diagCtxDebounce++;
 			return tailResult() ?? undefined;
 		}

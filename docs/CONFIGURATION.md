@@ -43,6 +43,9 @@ Each tier can be put in `MARK_ONLY` mode (record the decision, don't collapse) f
 | `MEGACOMPACT_MARK_ONLY_L2` | `false` | L2: record without collapsing. |
 | `MEGACOMPACT_L2_THRESHOLD` | `0.85` | L2 cosine firing point. |
 | `MEGACOMPACT_L1_JACCARD` | `0.8` | L1 MinHash/LSH near-dup Jaccard threshold. |
+| `MEGACOMPACT_DEDUP_DEGENERATE_GUARD` | `true` | Decline an L1/L2 collapse onto a degenerate (content-free skeleton) checkpoint when the incoming region is richer, so one bad summary cannot absorb every later compaction. |
+| `MEGACOMPACT_DEDUP_DEGEN_MIN_TOKENS` | `48` | Absolute token floor for the degenerate predicate. |
+| `MEGACOMPACT_DEDUP_DEGEN_MIN_PCT` | `0.005` | Relative floor (fraction of the original region size) for the degenerate predicate. |
 | `MEGACOMPACT_MMR_LAMBDA` | `0.5` | MMR retrieval diversity weight. |
 | `MEGACOMPACT_SEMDEDUP_COSINE` | `0.95` | Offline SemDeDup pair threshold. |
 | `MEGACOMPACT_FP_RATE_L0` | `0.01` | L0 false-positive alert threshold (auto → MARK_ONLY). |

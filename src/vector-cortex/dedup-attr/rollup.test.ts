@@ -55,6 +55,26 @@ describe("computeDedupTierRollup", () => {
     assert.equal(rollup.l2Share, 0.25);
   });
 
+  test("'skipped' guard declines are excluded from the share denominator", () => {
+    const now = new Date("2026-08-05T12:00:00.000Z");
+    // A degenerate-match-guard decline is a real decision but belongs to no tier
+    // catch, so counting it in `total` would break the share identity below.
+    const events = [
+      ev(now, -1 * HOUR, "L0", "deduped"),
+      ev(now, -2 * HOUR, "L1", "passed"),
+      ev(now, -3 * HOUR, "L2", "skipped", { dedupReason: "degenerateGuard" }),
+      ev(now, -4 * HOUR, "L1", "skipped", { dedupReason: "degenerateGuard" }),
+    ];
+    const rollup = computeDedupTierRollup(events, DAY, now);
+    // Only the two attributable decisions count.
+    assert.equal(rollup.totalDecisions, 2);
+    assert.deepEqual(rollup.byTier.l0, { deduped: 1, passed: 0 });
+    assert.deepEqual(rollup.byTier.l1, { deduped: 0, passed: 1 });
+    assert.deepEqual(rollup.byTier.l2, { deduped: 0, passed: 0 });
+    // The invariant: attributed shares still sum to 1 over the window.
+    assert.equal(rollup.l0Share + rollup.l1Share + rollup.l2Share, 1);
+  });
+
   test("empty window returns zeros + awaiting_data (never fabricated)", () => {
     const now = new Date("2026-08-05T12:00:00.000Z");
     const rollup = computeDedupTierRollup([], DAY, now);

@@ -66,6 +66,18 @@ export interface DedupConfigShape {
   L2_COSINE_CODE: number | null;
   L2_COSINE_PROSE: number | null;
   L1_JACCARD: number; // MinHash/LSH near-dup verification
+  /**
+   * Degenerate-match guard (incident 2026-08-19). ON declines an L1/L2 collapse
+   * when the MATCHED stored checkpoint is a content-free skeleton and the
+   * incoming candidate is richer, so a degenerate checkpoint can no longer
+   * absorb every future compaction forever. OFF is byte-identical to the
+   * pre-guard cascade. See src/dedup/degenerate.ts.
+   */
+  DEDUP_DEGENERATE_GUARD: boolean;
+  /** Absolute token floor under which a stored summary counts as degenerate. */
+  DEDUP_DEGEN_MIN_TOKENS: number;
+  /** Relative floor as a fraction of the summary's original region size. */
+  DEDUP_DEGEN_MIN_PCT: number;
   DEDUP_SIM: number; // legacy content-similarity fallback
   MMR_LAMBDA: number; // retrieval diversity
   SEMDEDUP_COSINE: number; // offline SemDeDup pair threshold
@@ -123,6 +135,9 @@ export function loadDedupConfig(): DedupConfigShape {
     L2_COSINE_CODE: envNumOrNull("MEGACOMPACT_L2_THRESHOLD_CODE"),
     L2_COSINE_PROSE: envNumOrNull("MEGACOMPACT_L2_THRESHOLD_PROSE"),
     L1_JACCARD: envNum("MEGACOMPACT_L1_JACCARD", 0.8),
+    DEDUP_DEGENERATE_GUARD: envBool("MEGACOMPACT_DEDUP_DEGENERATE_GUARD", true),
+    DEDUP_DEGEN_MIN_TOKENS: envNum("MEGACOMPACT_DEDUP_DEGEN_MIN_TOKENS", 48),
+    DEDUP_DEGEN_MIN_PCT: envNum("MEGACOMPACT_DEDUP_DEGEN_MIN_PCT", 0.005),
     DEDUP_SIM: envNum("MEGACOMPACT_DEDUP_SIM", 0.9),
     MMR_LAMBDA: envNum("MEGACOMPACT_MMR_LAMBDA", 0.5),
     SEMDEDUP_COSINE: envNum("MEGACOMPACT_SEMDEDUP_COSINE", 0.95),

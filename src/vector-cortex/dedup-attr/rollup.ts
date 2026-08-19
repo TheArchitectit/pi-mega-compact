@@ -91,6 +91,10 @@ export function computeDedupTierRollup(
     if (ev.type !== "dedup_audit") continue;
     const ts = Date.parse(ev.ts);
     if (Number.isNaN(ts) || ts < windowStart || ts > windowEnd) continue;
+    // "skipped" (degenerate-match guard declined a collapse) is a decision, but
+    // NOT a tier catch — it is attributed to no tier below. Excluding it from the
+    // denominator keeps l0Share + l1Share + l2Share summing to 1 over the window.
+    if (ev.status === "skipped") continue;
     total += 1;
     switch (ev.tier) {
       case "L0":

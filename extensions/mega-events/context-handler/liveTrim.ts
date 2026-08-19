@@ -170,8 +170,12 @@ export function buildLiveTrimView(
 			// (rt.lastCheckpointId) instead of ran.result.checkpointId, which is
 			// dedup-volatile: on a re-compact that dedups onto a DIFFERENT existing
 			// checkpoint, result.checkpointId is the matched id (engine.ts:188) while
-			// lastCheckpointId is only updated on a genuinely new checkpoint
-			// (compact.ts:100-104). Keying on result.checkpointId would make
+			// lastCheckpointId was, pre-C1, only updated on a genuinely new checkpoint.
+			// C1 (v0.21.10) now stamps lastCheckpointId on the dedup path too (see
+			// compact/run.ts) — it means "the checkpoint backing this epoch" — so this
+			// key and the D.2/D.3 comparison agree in both directions and the `??`
+			// fallbacks below are now only for the truly-no-checkpoint edge case.
+			// Keying on result.checkpointId directly would still make
 			// trimCache.checkpointId != rt.lastCheckpointId forever after that
 			// dedup fire, disabling replay for the rest of the epoch (the
 			// alternating cache-miss that 0.8.6 meant to fix). Prefer the stable

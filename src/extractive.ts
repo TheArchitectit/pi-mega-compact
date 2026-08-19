@@ -10,14 +10,24 @@
 
 import type { EngineMessage } from "./types.js";
 import { estimateBlockTokens } from "./tokens.js";
+import {
+  CURRENT_WORK_PATH_RE,
+  isInterestingPath,
+  isPlaceholderRequest,
+  isSkeletonSummary,
+  buildSalvageDigest,
+  collectKeyFiles,
+  extractFilesModified,
+} from "./extractive-salvage.js";
 
 // ---- Limits ----------------------------------------------------------------
 
 const MAX_RECENT_USER = 3;
 const MAX_DECISIONS = 5;
-const MAX_FILES = 10;
 const MAX_PENDING = 5;
 const MAX_TOPIC_LINES = 12;
+/** Cap for the merged keyFiles ∪ filesModified "Key files" line (A2a). */
+const MAX_SUMMARY_FILES = 8;
 
 // ---- Truncation helper -----------------------------------------------------
 
@@ -57,8 +67,26 @@ function buildTopicSummary(
   currentWork: string | undefined,
   keyFiles: string[],
   pending: string[],
+  filesModified: string[],
+  decisions: string[],
 ): string {
   const lines: string[] = [];
+
+  // A2a: files captured from write/edit tool inputs are extracted
+  // extension-agnostically but never reached the summary. Fold them in so work
+  // outside the recency window (and outside the path regex) is still reported.
+  // Drop an absolute path when a kept relative path already names the SAME file.
+  // Only MULTI-COMPONENT relative paths fold ("engine/mesh.go" absorbs
+  // "/proj/engine/mesh.go"); a bare basename ("mesh.go") is never folded into an
+  // absolute path, since "/proj/other/x/mesh.go" may be a genuinely different
+  // file (QA lens 1 finding: the naive endsWith dropped different directories).
+  const combined = [...keyFiles, ...filesModified];
+  const allFiles = [...new Set(combined)].filter((p) => {
+    if (!p.startsWith("/")) return true;
+    return !combined.some(
+      (r) => r !== p && !r.startsWith("/") && r.includes("/") && p.endsWith("/" + r),
+    );
+  }).slice(0, MAX_SUMMARY_FILES);
 
   // Scope line
   const users = messages.filter((m) => m.role === "user");
@@ -79,8 +107,8 @@ function buildTopicSummary(
   // Current work
   if (currentWork) lines.push(`Current work: ${currentWork}`);
 
-  // Key files
-  if (keyFiles.length) lines.push(`Key files: ${keyFiles.join(", ")}.`);
+  // Key files (keyFiles ∪ filesModified)
+  if (allFiles.length) lines.push(`Key files: ${allFiles.join(", ")}.`);
 
   // Pending work
   if (pending.length) {
@@ -88,42 +116,52 @@ function buildTopicSummary(
     for (const p of pending) lines.push(`  • ${p}`);
   }
 
+  // A2c: a scope-line-only summary carries zero information and strands a
+  // resumed session. Salvage the tail of the conversation instead. The line cap
+  // is raised ONLY here: the salvage block is bounded at 5 lines + 1 header, and
+  // a skeleton by definition contributed just the 1 scope line, so the worst
+  // case is 7 lines — still well under the normal 12-line budget.
+  const skeleton = isSkeletonSummary({ recentUser, keyFiles: allFiles, currentWork, decisions, pending });
+  if (skeleton) {
+    const digest = buildSalvageDigest(messages);
+    if (digest.length) {
+      lines.push("Recent activity:");
+      for (const d of digest) lines.push(`  • ${d}`);
+    }
+    return lines.join("\n");
+  }
+
   // Cap total length
   return lines.slice(0, MAX_TOPIC_LINES).join("\n");
 }
 
-// ---- File path extraction --------------------------------------------------
+// ---- Recent user requests --------------------------------------------------
 
-const INTERESTING_EXT = new Set(["rs", "ts", "tsx", "js", "json", "md"]);
-const FILE_PATH_RE = /(?:^|\s)([^\s"`']+\.(rs|ts|tsx|js|json|md|py|sh|sql|toml|yaml|yml|css|html))\b/g;
-
-function extractFilePaths(text: string): string[] {
-  const paths: string[] = [];
-  for (const m of text.matchAll(FILE_PATH_RE)) {
-    const filePath = m[1];
-    const ext = m[2];
-    const basename = filePath.split("/").pop() ?? filePath;
-    if (basename === "node_modules" || filePath.includes("node_modules/")) continue;
-    if (INTERESTING_EXT.has(ext)) paths.push(filePath);
-  }
-  return paths;
-}
-
-// ---- Recent user requests (existing logic, kept) ---------------------------
-
+/**
+ * A2b: skip content-free "resume"/"continue" turns and look further back to
+ * fill the quota, so a resumed session surfaces its real requests. Falls back
+ * to the placeholders when EVERY user turn is one (an honest "• resume" beats
+ * an empty section).
+ */
 function collectRecentUserRequests(
   messages: EngineMessage[],
   limit: number,
 ): string[] {
-  const requests: string[] = [];
-  for (let i = messages.length - 1; i >= 0 && requests.length < limit; i--) {
-    if (messages[i].role === "user") {
-      let snippet = messages[i].text.split("\n").slice(0, 3).join(" ");
-      snippet = snippet.replace(/^.+\nProcessed\$?\s*/i, "").replace(/\n/g, " ");
-      requests.push(truncate(snippet, 200));
+  const substantive: string[] = [];
+  const placeholders: string[] = [];
+  for (let i = messages.length - 1; i >= 0 && substantive.length < limit; i--) {
+    if (messages[i].role !== "user") continue;
+    let snippet = messages[i].text.split("\n").slice(0, 3).join(" ");
+    snippet = snippet.replace(/^.+\nProcessed\$?\s*/i, "").replace(/\n/g, " ");
+    const cleaned = truncate(snippet, 200);
+    if (!cleaned.trim()) continue;
+    if (isPlaceholderRequest(cleaned)) {
+      if (placeholders.length < limit) placeholders.push(cleaned);
+      continue;
     }
+    substantive.push(cleaned);
   }
-  return requests.reverse();
+  return (substantive.length ? substantive : placeholders).reverse();
 }
 
 // ---- Pending work (existing logic, kept) -----------------------------------
@@ -149,10 +187,9 @@ function inferCurrentWork(messages: EngineMessage[]): string | undefined {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
     if (m.role !== "assistant") continue;
-    const path = m.text.match(
-      /(?:^|\s)([^\s"`':]+\.(rs|ts|tsx|js|json|md|py|toml|yaml|yml|sql))\b/m,
-    );
-    if (path) {
+    // A1: same language-agnostic policy as extractFilePaths.
+    const path = m.text.match(CURRENT_WORK_PATH_RE);
+    if (path && isInterestingPath(path[1], path[2])) {
       const line = m.text.split("\n").slice(0, 2).join(" ");
       return truncate(line, 200);
     }
@@ -190,29 +227,6 @@ function extractDecisions(messages: EngineMessage[]): string[] {
   return [...new Set(decisions)];
 }
 
-// ---- Files modified --------------------------------------------------------
-
-function extractFilesModified(tools: EngineMessage[]): string[] {
-  const files = new Set<string>();
-  for (const m of tools) {
-    if (!m.toolName) continue;
-    const name = m.toolName.toLowerCase();
-    if (name === "write" || name === "edit" || name === "notebookedit") {
-      // Extract file path from input payload
-      const input = m.input ?? m.text;
-      const pathMatch = input.match(/["']?(\/[^\s"']+\.\w+)["']?/);
-      if (pathMatch) files.add(pathMatch[1]);
-    }
-    if (name === "bash") {
-      const cmd = m.input ?? m.text;
-      if (cmd.includes("git add") || cmd.includes("git commit") || cmd.includes("git diff")) {
-        for (const p of extractFilePaths(cmd)) files.add(p);
-      }
-    }
-  }
-  return [...files].slice(0, MAX_FILES);
-}
-
 // ---- Public API ------------------------------------------------------------
 
 /**
@@ -243,29 +257,10 @@ export function extractiveSummarize(messages: EngineMessage[]): ExtractiveSummar
   const filesModified = extractFilesModified(toolMsgs);
 
   const topicSummary = buildTopicSummary(
-    safe, tools, recentUser, currentWork, keyFiles, pending,
+    safe, tools, recentUser, currentWork, keyFiles, pending, filesModified, keyDecisions,
   );
 
   const tokenEstimate = estimateBlockTokens(topicSummary);
 
   return { topicSummary, keyDecisions, nextSteps: pending, filesModified, tokenEstimate };
-}
-
-// ---- Key files (existing logic from compact.ts, moved here) ----------------
-
-const MAX_KEY_FILES = 5;
-const FRESHNESS_WINDOW = 10;
-
-function collectKeyFiles(messages: EngineMessage[]): string[] {
-  const recent = messages.slice(-FRESHNESS_WINDOW);
-  const pathFreq = new Map<string, number>();
-  for (const m of recent) {
-    for (const p of extractFilePaths(m.text)) {
-      pathFreq.set(p, (pathFreq.get(p) ?? 0) + 1);
-    }
-  }
-  return [...pathFreq.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, MAX_KEY_FILES)
-    .map(([p]) => p);
 }

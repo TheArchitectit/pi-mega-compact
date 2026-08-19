@@ -76,15 +76,23 @@ test("DEDUP: re-compact that dedups onto a DIFFERENT checkpoint still replays ne
 
   h.usage.tokens = 200200;
   h.clearDebounce();
+  const persistedBefore = rt.rt.persistedThisSession;
   await h.fire("context", { type: "context", messages: setA }, ctx);
-  assert.equal(
-    rt.rt.lastCheckpointId,
-    cpB,
-    "dedup did NOT bump lastCheckpointId (still cp_B)",
-  );
   assert.ok(
     rt.rt.dedupSkips >= 1,
     "setA re-compact deduped onto an existing checkpoint",
+  );
+  // C1 (v0.21.10): the dedup path now stamps lastCheckpointId with the MATCHED
+  // checkpoint (cp_A) — it backs this epoch. Pre-C1 it stayed at cp_B.
+  assert.equal(
+    rt.rt.lastCheckpointId,
+    cpA,
+    "dedup stamps lastCheckpointId with the matched checkpoint (cp_A)",
+  );
+  assert.equal(
+    rt.rt.persistedThisSession,
+    persistedBefore,
+    "the dedup path did NOT change persistedThisSession (still means 'wrote NEW state')",
   );
   assert.equal(
     rt.trimCache?.checkpointId,

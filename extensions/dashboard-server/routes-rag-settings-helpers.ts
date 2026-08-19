@@ -229,6 +229,12 @@ export const SETTINGS: ReadonlyArray<SettingGroup> = [
 			boolDirect("MEGACOMPACT_MARK_ONLY_L2", "Mark Only L2", "L2 runs but does not collapse", false),
 			boolDirect("MEGACOMPACT_MINILM", "MiniLM Embedder", "Use MiniLM instead of trigram", false),
 			boolDirect(
+				"MEGACOMPACT_DEDUP_DEGENERATE_GUARD",
+				"Degenerate Match Guard",
+				"Decline an L1/L2 collapse when the MATCHED stored checkpoint is a content-free skeleton (a ~30-40 token structural summary) and the incoming region is richer. Without this, one degenerate checkpoint absorbs every later compaction forever and the store can never heal. OFF = byte-identical pre-guard cascade. Calibrated by the two Degenerate floors under Dedup Thresholds.",
+				true,
+			),
+			boolDirect(
 				"MEGACOMPACT_DEDUP_AUDIT",
 				"Dedup Audit Trail",
 				"Append one events.log line per tier decision (which layer collapsed a region, onto what, at what similarity) to tune the thresholds below. Pure instrumentation — dedup behavior is identical either way.",
@@ -242,6 +248,8 @@ export const SETTINGS: ReadonlyArray<SettingGroup> = [
 			num("MEGACOMPACT_L2_THRESHOLD", "L2 Cosine Threshold", "L2 semantic dedup firing point", 0.85, 0, 1),
 			num("MEGACOMPACT_L1_JACCARD", "L1 Jaccard Threshold", "L1 MinHash near-dup threshold", 0.8, 0, 1),
 			num("MEGACOMPACT_DEDUP_SIM", "Dedup Similarity", "Legacy content-similarity fallback", 0.9, 0, 1),
+			num("MEGACOMPACT_DEDUP_DEGEN_MIN_TOKENS", "Degenerate Min Tokens", "Absolute token floor below which a stored summary counts as a degenerate skeleton (Degenerate Match Guard)", 48, 0, 10000, "tokens"),
+			num("MEGACOMPACT_DEDUP_DEGEN_MIN_PCT", "Degenerate Min Percent", "Relative floor as a fraction of the summary's original region size; a summary under max(min-tokens, pct x original) is degenerate", 0.005, 0, 1),
 			num("MEGACOMPACT_RECALL_MIN_COSINE", "Recall Min Cosine (same-repo)", "3WF-3 same-repo floor the 3-source validator applies to the top winner (cross-repo 0.90 stays separate)", 0.12, 0, 1),
 			num("MEGACOMPACT_MMR_LAMBDA", "MMR Lambda", "Maximal Marginal Relevance diversity", 0.5, 0, 1),
 			num("MEGACOMPACT_SEMDEDUP_COSINE", "SemDeDup Cosine", "Offline SemDeDup pair threshold", 0.95, 0, 1),
