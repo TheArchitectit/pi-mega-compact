@@ -13,6 +13,7 @@ import { normalizeSessionId } from "../../src/store.js";
 import type { TickerEntry } from "./widget.js";
 import type { GameState } from "../../src/store/sqlite.js";
 import type { SessionRuntime } from "./helpers.js";
+import { DEFAULT_SAVED_GOAL } from "../mega-config.js";
 
 // ---------------------------------------------------------------------- types
 
@@ -90,7 +91,7 @@ export function resetRuntimeImpl(
 	self.tierTrace = undefined;
 	self.ticker.length = 0;
 	self.pulsing = false;
-	self.savedGoal = 50_000;
+	self.savedGoal = DEFAULT_SAVED_GOAL;
 	self.lastWhy = undefined;
 	// S31 audit P2: symmetry with bindRepo — a reset can coincide with a context
 	// that re-binds the repo, so drop the memo too. Cheap; the next

@@ -46,6 +46,17 @@ export const DEFAULT_CONTEXT_WINDOW = envFlag(
 	200_000,
 );
 
+/**
+ * Display seed for the progress-bar "saved tokens goal" denominator. The live
+ * value grows dynamically (`run.ts`: `savedGoal = ceil(tokensSaved × 1.25)` once
+ * exceeded), so this is only the initial target before the first compaction.
+ * Derived from the low-tier fire point at the default window (no bare magic):
+ * `COMPACT_TIERS.low × DEFAULT_CONTEXT_WINDOW`. Display-only.
+ */
+export const DEFAULT_SAVED_GOAL = Math.round(
+	COMPACT_TIERS.low * DEFAULT_CONTEXT_WINDOW,
+);
+
 // MegaConfig type moved to mega-config-types.ts (delegate-shell split, PC-A)
 // so this runtime config barrel stays under the 400-line soft limit.
 export type { MegaConfig } from "./mega-config-types.js";

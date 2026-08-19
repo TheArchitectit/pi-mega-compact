@@ -13,6 +13,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { ModelSnapshot, GameState } from "../../src/store/sqlite.js";
 import type { TickerEntry, WidgetData } from "./widget.js";
 import type { FSWatcher } from "node:fs";
+import { DEFAULT_SAVED_GOAL } from "../mega-config.js";
 
 /**
  * DIAG counters for the "team run doesn't relieve context" investigation.
@@ -137,7 +138,10 @@ export class RuntimeInstrumentation {
 	memoriesTouchedThisCompaction = 0;
 	// Rolling "saved" goal for the progress bar — grows as we save more, so the
 	// bar always has a meaningful denominator (never sits at 100% forever).
-	savedGoal = 50_000;
+	// Seeded from the %-derived DEFAULT_SAVED_GOAL (low-tier fire point at the
+	// default context window); resetRuntime re-seeds from the live
+	// effectiveThreshold when the window is known. Display-only.
+	savedGoal = DEFAULT_SAVED_GOAL;
 	// Last explain-why line (dedup reason / anchor-kept / superseded), surfaced
 	// while fresh.
 	lastWhy: string | undefined = undefined;
