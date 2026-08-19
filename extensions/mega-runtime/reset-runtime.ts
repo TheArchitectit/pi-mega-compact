@@ -68,6 +68,7 @@ export function resetRuntimeImpl(
 		recallInjections: 0,
 		cacheHitTokens: 0,
 		lengthStopPending: false,
+		forceCompactNextGate: false,
 		errorRetryCount: 0,
 		errorRetryUntil: 0,
 		consecutiveErrors: 0,

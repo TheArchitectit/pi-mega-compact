@@ -24,6 +24,13 @@ export function lengthStop(
 		event.message.stopReason === "length"
 	) {
 		runtime.rt.lengthStopPending = true;
+		// Phase H: output-error catch — ALSO arm the one-shot force-compact flag so
+		// the next compaction gate trips immediately, freeing input headroom for
+		// the model's next response. Gated by config.outputErrorCompact (default
+		// ON; OFF = byte-identical pre-H — only the S28 auto-continue nudge fires).
+		if (config.outputErrorCompact) {
+			runtime.rt.forceCompactNextGate = true;
+		}
 		runtime.dashboard.event("length_stop", { turnIndex: event.turnIndex });
 	}
 }

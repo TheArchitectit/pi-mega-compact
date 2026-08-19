@@ -51,6 +51,10 @@ export interface SessionRuntime {
 	recallInjections: number; // recall blocks injected this session-instance
 	cacheHitTokens: number; // tokens saved via cache hits (dedup + recall) this session
 	lengthStopPending: boolean; // S28: set on turn_end when stopReason==='length'
+	/** Phase H: one-shot flag set alongside lengthStopPending (S28) so the next
+	 *  compaction gate trips immediately regardless of input-pressure. Cleared on
+	 *  consumption by evaluateGate (gateCheck.ts). See config.outputErrorCompact. */
+	forceCompactNextGate: boolean;
 	errorRetryCount: number; // S38: consecutive error turns, reset on success/turn_start
 	errorRetryUntil: number; // S38: wall-clock ms before which the next nudge is suppressed (R1: now gating)
 	// S38.6: circuit-breaker state — consecutive error turns across the session.
@@ -141,6 +145,7 @@ export function createSessionRuntime(): SessionRuntime {
 		recallInjections: 0,
 		cacheHitTokens: 0,
 		lengthStopPending: false,
+		forceCompactNextGate: false,
 		errorRetryCount: 0,
 		errorRetryUntil: 0,
 		consecutiveErrors: 0,

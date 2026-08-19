@@ -195,3 +195,52 @@ test("invariant 7: MEGACOMPACT_THRESHOLD_PCT present in SETTINGS, absent from EX
 		"MEGACOMPACT_THRESHOLD_PCT must NOT be in EXCLUDED_SETTINGS",
 	);
 });
+
+// --- Test 8: Phase H output-error catch -----------------------------------
+
+test("invariant 8: output-error catch — forceCompactNextGate trips proceed even below the 80% INPUT threshold (Phase H)", () => {
+	// The sibling deadlock: a small-context model truncates its OUTPUT (S28
+	// stopReason==='length') while INPUT pressure is still BELOW the fire point,
+	// so the gate never fires → "compact never" → every subsequent response also
+	// truncates. Phase H arms a one-shot force-compact that trips the gate
+	// regardless of input pressure, so the NEXT compaction runs immediately and
+	// frees input headroom for the model's next response.
+	const cfg = tieredConfig(0.8, true) as MegaConfig;
+	const runtime = {
+		config: cfg,
+		currentModel: { modelId: null },
+		currentStateDir: undefined,
+		lastCtxWindow: 1_000_000,
+		effectiveThreshold: effectiveThresholdImpl(pc({ config: cfg, lastCtxWindow: 1_000_000 })),
+		diagCtxFastGate: 0,
+		diagCtxNoCompact: 0,
+		diagCtxOutputErrorTrip: 0,
+		rt: { forceCompactNextGate: true },
+	} as any;
+
+	const tailResult = () => undefined;
+	// 10% input pressure — far below the 80% fire point, so the normal gate
+	// would return. But the output-error flag forces proceed.
+	const res = evaluateGate(runtime, { ...cfg, outputErrorCompact: true }, {
+		pct: 10,
+		currentTokens: 100_000,
+		tailResult,
+	});
+	assert.equal(res.kind, "proceed", "forceCompactNextGate must trip proceed even at 10% input pressure");
+	assert.equal(runtime.rt.forceCompactNextGate, false, "flag cleared after consumption (one-shot)");
+	assert.equal(runtime.diagCtxOutputErrorTrip, 1, "diagnostic counter incremented");
+
+	// OFF = byte-identical pre-H: the flag is ignored, so the normal gate
+	// returns at 10% (below the fire point) and the flag is NOT cleared.
+	const runtime2 = {
+		...runtime,
+			rt: { forceCompactNextGate: true },
+	} as any;
+	const res2 = evaluateGate(runtime2, { ...cfg, outputErrorCompact: false }, {
+		pct: 10,
+		currentTokens: 100_000,
+		tailResult,
+	});
+	assert.equal(res2.kind, "return", "outputErrorCompact OFF → normal gate returns below fire point");
+	assert.equal(runtime2.rt.forceCompactNextGate, true, "flag NOT cleared when feature disabled");
+});

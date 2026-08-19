@@ -250,6 +250,9 @@ export function loadConfig(): MegaConfig {
 		memoryAutoReview: envBool("MEGACOMPACT_MEMORY_AUTO_REVIEW", true),
 		memoryReviewInterval: envFlag("MEGACOMPACT_MEMORY_REVIEW_INTERVAL", 10),
 		recallMaxTokens: envFlag("MEGACOMPACT_RECALL_MAX_TOKENS", 1500),
+		// Phase H: output-error catch — trip compaction on a truncated model output
+		// (S28 stopReason==='length'). Default ON; OFF byte-identical pre-H.
+		outputErrorCompact: envBool("MEGACOMPACT_OUTPUT_ERROR_COMPACT", true),
 		windowDedupe: envBool("MEGACOMPACT_WINDOW_DEDUPE", true),
 		recallTailInject: envBool("MEGACOMPACT_RECALL_TAIL_INJECT", true),
 		// 3WF-1: TriggerGuard — guarantee a staged recall block on every context

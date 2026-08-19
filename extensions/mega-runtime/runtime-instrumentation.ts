@@ -38,6 +38,7 @@ export class RuntimeInstrumentation {
 	diagCtxRunSkipped = 0; // runCompact() returned skipped
 	diagCtxCutNull = 0; // computeLiveTrimCut returned null (anchor/boundary)
 	diagCtxThrown = 0; // live-trim try threw (caught)
+	diagCtxOutputErrorTrip = 0; // Phase H: output-error catch tripped a forced compaction
 
 	// Context health instrumentation (v0.12): rolling ring buffers for
 	// drift detection + cache poison Layer 1 hash baseline.

@@ -133,6 +133,14 @@ export interface MegaConfig {
 	 *  adding checkpoints once the block would exceed this — bounds read-path
 	 *  token cost so it can never net-inflate the window. */
 	recallMaxTokens: number;
+	/** Phase H: output-error catch. When a model response is truncated mid-OUTPUT
+	 *  (S28 stopReason==='length' — "Response was truncated before completion"),
+	 *  trip a one-shot forced compaction on the next gate so the model's NEXT
+	 *  response has freed input headroom. This closes the small-context-model
+	 *  deadlock where the model truncates BELOW the 80% INPUT threshold (so the
+	 *  gate never fires → "compact never" → every subsequent response truncates
+	 *  too). Default ON; OFF (=0/`=false`) = byte-identical pre-H. */
+	outputErrorCompact: boolean;
 	/** Inline-dedupe recalled checkpoints against the live window (Fix C): drop
 	 *  a hit whose summary is ≥ dedupSim similar to a live message — "dedupe on
 	 *  inline/read" so we never re-inject context already resident. */

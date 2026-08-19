@@ -95,6 +95,24 @@ export function evaluateGate(
 		stateDir: runtime.currentStateDir,
 	});
 
+	// Phase H: output-error catch. A truncated model output (S28
+	// stopReason==='length' — "Response was truncated before completion") trips
+	// a one-shot force-compact so the next compaction runs IMMEDIATELY, freeing
+	// input headroom for the model's next response. This closes the
+	// small-context-model deadlock: the model truncates MID-OUTPUT below the
+	// 80% INPUT threshold (so the gate never fires) → "compact never" → every
+	// subsequent response also truncates. lengthStop.ts sets this flag
+	// alongside its auto-continue nudge; gated by config.outputErrorCompact
+	// (default ON; OFF = byte-identical pre-H). One-shot: cleared on consumption.
+	// thrashGuardBlocks is consulted separately by the handler; in the reported
+	// "compact never" case compactCount===0 so the guard is never armed and will
+	// not block this trip.
+	if (config.outputErrorCompact && runtime.rt?.forceCompactNextGate) {
+		runtime.rt.forceCompactNextGate = false;
+		runtime.diagCtxOutputErrorTrip++;
+		return { kind: "proceed", perModelThreshold };
+	}
+
 	// S29 FAST GATE: `custom` (absolute MEGACOMPACT_THRESHOLD_TOKENS,
 	// tierPct null) is an explicit opt-out of percent scaling — it keeps the
 	// token gate. When pct is unavailable (window unknown / a model that
