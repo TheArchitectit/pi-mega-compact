@@ -294,6 +294,12 @@ export const SETTINGS: ReadonlyArray<SettingGroup> = [
 				0.01,
 				0.5,
 			),
+			boolDirect(
+				"MEGACOMPACT_OUTPUT_ERROR_COMPACT",
+				"Output-Error Compact",
+				"When a model response is truncated mid-output (stopReason: 'length'), trip a one-shot forced compaction to free input headroom. Closes the small-context deadlock where the model truncates below the input threshold.",
+				true,
+			),
 		],
 	},
 	{
@@ -376,6 +382,8 @@ export const EXCLUDED_SETTINGS: readonly string[] = [
 	"MEGACOMPACT_RAPTOR_LEVEL_WEIGHTS",
 	// Internal calibration, not user-facing.
 	"MEGACOMPACT_FTS5_MAX_BM25",
+	// Boot-fallback context window — display-seed only, never a firing gate.
+	"MEGACOMPACT_DEFAULT_CONTEXT_WINDOW",
 	// COS-FP-A: per-content-type L2 override landing slots. Null/unset by
 	// default and NOT wired into the live L2 decision this sprint — the
 	// top-level MEGACOMPACT_L2_THRESHOLD is the single runtime firing point. A

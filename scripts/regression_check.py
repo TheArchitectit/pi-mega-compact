@@ -223,6 +223,13 @@ def print_python_compile_report(compile_issues: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 
 # Config files that define MEGACOMPACT_* env vars.
+# NOTE: extensions/mega-config.ts is intentionally NOT in this list — it defines
+# 38 pre-existing MEGACOMPACT_* flags (added across many historic sprints) that
+# pre-date the dashboard-toggle rule. Adding it now would block all future
+# commits. The two NEW sprint flags (MEGACOMPACT_OUTPUT_ERROR_COMPACT,
+# MEGACOMPACT_DEFAULT_CONTEXT_WINDOW) are correctly registered in SETTINGS /
+# EXCLUDED_SETTINGS so they're covered by the dashboard-server glob above.
+# Tracked as a follow-up: expose the remaining 38 backlog flags (separate sprint).
 SETTINGS_CONFIG_FILES = (
     "src/config.ts",
     "src/config/turns.ts",
