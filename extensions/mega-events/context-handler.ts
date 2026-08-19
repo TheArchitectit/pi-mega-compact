@@ -116,7 +116,21 @@ export function registerContextHandler(
 			/* non-fatal */
 		}
 		runtime.lastCtxPercent = pct ?? null;
-		runtime.lastCtxWindow = usage?.contextWindow ?? 0;
+		// Resolve the model window used by the token gate + live-trim tail-cap.
+		// Prefer the provider-reported usage window (authoritative when present);
+		// fall back to the captured model snapshot's contextWindow (populated from
+		// models.json / pi's model registry) when the provider does not report it
+		// via getContextUsage(). plexus (OpenAI-compatible) omits contextWindow in
+		// usage, so without this fallback lastCtxWindow is 0 for those providers —
+		// which silently disables the live-trim tail-cap (guarded on ctxWindow>0)
+		// and the token-gate window math, so mega-compact never reserves output
+		// headroom and a 32k model's own output overflows the window each turn.
+		// Mirrors the gate's existing pct fallback (gateCheck.ts S27).
+		const reportedWindow = usage?.contextWindow ?? 0;
+		runtime.lastCtxWindow =
+			reportedWindow > 0
+				? reportedWindow
+				: (runtime.currentModel?.contextWindow ?? 0);
 		runtime.snapshot(ctx);
 		if (!config.auto) {
 			const tailed = tailResult();

@@ -108,6 +108,77 @@ test("auto-trigger: skips ctx.compact() when pi would no-op (session too small, 
 	}
 });
 
+test("auto-trigger: resolves lastCtxWindow from captured model when provider omits contextWindow (S29-b plexus fallback)", async () => {
+	// Regression: plexus (OpenAI-compatible) does not report contextWindow in
+	// getContextUsage(). The old code set lastCtxWindow = usage.contextWindow ?? 0,
+	// so it was 0 for those providers — which silently disabled the live-trim
+	// tail-cap (guarded on ctxWindow>0) and the token-gate window math. A 32k
+	// model's own output then overflowed the window every turn. Fix: fall back to
+	// the captured model snapshot's contextWindow (populated from models.json).
+	// Access lastRuntime via the module namespace (NOT destructuring) so we read
+	// the live binding — `const { lastRuntime } = await import(...)` snapshots the
+	// value at import time, which is a PRIOR test's runtime, not the one this
+	// harness() call creates.
+	const reg = await import("../mega-events/register.js");
+	const h = harness();
+	const messages = h.session;
+	delete process.env.MEGACOMPACT_LEGACY_DURABLE_TRIM;
+	try {
+		// Populate runtime.currentModel via model_select (mirrors the real runtime:
+		// captureModel runs on model_select with ctx.model set).
+		await h.fire(
+			"model_select",
+			{ type: "model_select", model: "hf:zai-org/GLM-4.7" },
+			h.ctx({
+				model: {
+					id: "hf:zai-org/GLM-4.7",
+					name: "hf:zai-org/GLM-4.7",
+					provider: "plexus",
+					contextWindow: 32000,
+					maxTokens: 20000,
+					reasoning: true,
+				},
+			}),
+		);
+		// Fire the context event with a provider that does NOT report contextWindow.
+		const res = await h.fire(
+			"context",
+			{ type: "context", messages },
+			h.ctx({
+				getContextUsage: () => ({
+					tokens: 31000,
+					contextWindow: 0, // plexus omits this
+					percent: null,
+				}),
+				model: {
+					id: "hf:zai-org/GLM-4.7",
+					name: "hf:zai-org/GLM-4.7",
+					provider: "plexus",
+					contextWindow: 32000,
+					maxTokens: 20000,
+					reasoning: true,
+				},
+			}),
+		);
+		assert.equal(
+			reg.lastRuntime?.lastCtxWindow,
+			32000,
+			"lastCtxWindow falls back to captured model contextWindow (32000), not 0",
+		);
+		assert.equal(
+			reg.lastRuntime?.currentModel?.maxTokens,
+			20000,
+			"captured model maxTokens available for the live-trim tail-cap",
+		);
+		assert.ok(
+			res && typeof res === "object" && Array.isArray((res as any).messages),
+			"context handler still returns a trimmed live view",
+		);
+	} finally {
+		delete process.env.MEGACOMPACT_LEGACY_DURABLE_TRIM;
+	}
+});
+
 test("auto-trigger (S16): trims the live view and does NOT call ctx.compact()", async () => {
 	const h = harness();
 	const messages = h.session;
