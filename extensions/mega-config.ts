@@ -150,15 +150,19 @@ export function effectiveThresholdTokens(opts: {
  * Resolve the optional manual arming-floor override (MEGACOMPACT_FAST_GATE_PCT).
  * Kept for backward-compat: when unset, the default arming floor equals the
  * tier's percent threshold (tierPct*100) so the dashboard stays consistent;
- * `custom` (tierPct null) falls back to the legacy 70% default.
+ * `custom` (tierPct null — an explicit absolute opt-out of percent scaling by
+ * design) has no tier fraction to derive from, so it falls back to the named
+ * DEFAULT_FAST_GATE_PCT_CUSTOM. Env-overridable like every other default here.
  */
+export const DEFAULT_FAST_GATE_PCT_CUSTOM = 70;
+
 function resolveFastGatePct(tierPct: number | null): number {
 	const raw = process.env.MEGACOMPACT_FAST_GATE_PCT;
 	if (raw != null && raw !== "") {
 		const n = Number(raw);
 		if (Number.isFinite(n)) return n;
 	}
-	return tierPct != null ? Math.round(tierPct * 100) : 70;
+	return tierPct != null ? Math.round(tierPct * 100) : DEFAULT_FAST_GATE_PCT_CUSTOM;
 }
 
 /**
