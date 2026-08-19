@@ -4,20 +4,20 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { TIER_PCT, effectiveThresholdTokens, loadConfig } from "../../extensions/mega-config.js";describe("Tier Switching — percentage-based thresholds", () => {
+import { COMPACT_TIERS, effectiveThresholdTokens, loadConfig } from "../../extensions/mega-config.js";describe("Tier Switching — percentage-based thresholds", () => {
   // Documented tierPct fractions (single source of truth in mega-config.ts).
   it("each named tier carries the documented tierPct fraction", () => {
-    assert.equal(TIER_PCT.low, 0.5);
-    assert.equal(TIER_PCT.medium, 0.6);
-    assert.equal(TIER_PCT.high, 0.7);
-    assert.equal(TIER_PCT.ultra, 0.7);
-    assert.equal(TIER_PCT.mega, 0.75);
+    assert.equal(COMPACT_TIERS.low, 0.5);
+    assert.equal(COMPACT_TIERS.medium, 0.6);
+    assert.equal(COMPACT_TIERS.high, 0.7);
+    assert.equal(COMPACT_TIERS.ultra, 0.7);
+    assert.equal(COMPACT_TIERS.mega, 0.75);
   });
 
   // Boot fallback threshold (sane gate before the first context event supplies a
   // window): round(tierPct × 200_000). Resolved through the REAL loadConfig().
   it("MEGACOMPACT_TIER env resolves to the boot fallback threshold via real config", () => {
-    const tiers: Array<[keyof typeof TIER_PCT, number]> = [
+    const tiers: Array<[keyof typeof COMPACT_TIERS, number]> = [
       ["low", 100_000], // 0.50 × 200_000
       ["medium", 120_000], // 0.60 × 200_000
       ["high", 140_000], // 0.70 × 200_000
@@ -31,7 +31,7 @@ import { TIER_PCT, effectiveThresholdTokens, loadConfig } from "../../extensions
       try {
         const cfg = loadConfig();
         assert.equal(cfg.tier, tier, `tier ${tier} should resolve`);
-        assert.equal(cfg.tierPct, TIER_PCT[tier], `tier ${tier} tierPct`);
+        assert.equal(cfg.tierPct, COMPACT_TIERS[tier], `tier ${tier} tierPct`);
         assert.equal(
           cfg.thresholdTokens,
           expectedBoot,
@@ -70,33 +70,33 @@ describe("effectiveThresholdTokens — tierPct × model window", () => {
 
   it("scales tierPct × window for a 200k model", () => {
     assert.equal(
-      effectiveThresholdTokens({ tierPct: TIER_PCT.low, fallbackThreshold: 100_000, window: 200_000 }),
+      effectiveThresholdTokens({ tierPct: COMPACT_TIERS.low, fallbackThreshold: 100_000, window: 200_000 }),
       100_000,
     );
     assert.equal(
-      effectiveThresholdTokens({ tierPct: TIER_PCT.mega, fallbackThreshold: 150_000, window: 200_000 }),
+      effectiveThresholdTokens({ tierPct: COMPACT_TIERS.mega, fallbackThreshold: 150_000, window: 200_000 }),
       150_000,
     );
   });
 
   it("scales tierPct × window for a 1M model", () => {
     assert.equal(
-      effectiveThresholdTokens({ tierPct: TIER_PCT.low, fallbackThreshold: 500_000, window: 1_000_000 }),
+      effectiveThresholdTokens({ tierPct: COMPACT_TIERS.low, fallbackThreshold: 500_000, window: 1_000_000 }),
       500_000,
     );
     assert.equal(
-      effectiveThresholdTokens({ tierPct: TIER_PCT.mega, fallbackThreshold: 750_000, window: 1_000_000 }),
+      effectiveThresholdTokens({ tierPct: COMPACT_TIERS.mega, fallbackThreshold: 750_000, window: 1_000_000 }),
       750_000,
     );
   });
 
   it("falls back to the boot threshold when the window is 0/unknown", () => {
     assert.equal(
-      effectiveThresholdTokens({ tierPct: TIER_PCT.mega, fallbackThreshold: 150_000, window: 0 }),
+      effectiveThresholdTokens({ tierPct: COMPACT_TIERS.mega, fallbackThreshold: 150_000, window: 0 }),
       150_000,
     );
     assert.equal(
-      effectiveThresholdTokens({ tierPct: TIER_PCT.low, fallbackThreshold: 100_000, window: -5 }),
+      effectiveThresholdTokens({ tierPct: COMPACT_TIERS.low, fallbackThreshold: 100_000, window: -5 }),
       100_000,
     );
   });

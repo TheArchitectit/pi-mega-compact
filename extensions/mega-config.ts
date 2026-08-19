@@ -13,33 +13,24 @@ import { execSync } from "node:child_process"; // guardrails-allow PREVENT-PI-00
 import type { MegaConfig } from "./mega-config-types.js";
 
 /**
- * Named compaction tiers. A tier sets the token threshold at which the
- * auto-trigger persists a checkpoint; pick by how aggressively you want the
- * session trimmed. Explicit MEGACOMPACT_THRESHOLD_TOKENS always wins.
+ * Named compaction tiers — each tier sets the compaction fire point as a
+ * FRACTION of the model's context window (NOT a static token amount): the live
+ * + durable trim fire at `tier × window`, so they always fire BELOW pi's native
+ * auto-compaction (~80% of window) for any model size (200k or 1M). Pick by how
+ * aggressively you want the session trimmed. Explicit
+ * MEGACOMPACT_THRESHOLD_TOKENS always wins (`custom`, tierPct null — absolute,
+ * never percent-scaled). This is the SINGLE source of truth for tier fractions;
+ * `keyof typeof COMPACT_TIERS` is the `CompactTier` type and
+ * `raw in COMPACT_TIERS` validates a named preset name.
  */
 export const COMPACT_TIERS = {
-	low: 50_000,
-	medium: 100_000,
-	high: 200_000,
-	ultra: 1_000_000,
-	mega: 10_000_000,
-} as const;
-export type CompactTier = keyof typeof COMPACT_TIERS;
-
-/**
- * Compaction thresholds as a FRACTION of the model's context window (NOT a
- * static token amount). The live + durable trim fire at tier% of the window,
- * so they always fire BELOW pi's native auto-compaction (~80% of window) for
- * any model size (200k or 1M). `custom` (explicit MEGACOMPACT_THRESHOLD_TOKENS)
- * is NOT scaled by this map — it stays an absolute token count.
- */
-export const TIER_PCT: Record<CompactTier, number> = {
 	low: 0.5,
 	medium: 0.6,
 	high: 0.7,
 	ultra: 0.7,
 	mega: 0.75,
-};
+} as const;
+export type CompactTier = keyof typeof COMPACT_TIERS;
 
 // MegaConfig type moved to mega-config-types.ts (delegate-shell split, PC-A)
 // so this runtime config barrel stays under the 400-line soft limit.
@@ -78,7 +69,7 @@ function resolveThreshold(): {
 	}
 	const raw = (process.env.MEGACOMPACT_TIER ?? "low").toLowerCase();
 	const tier = (raw in COMPACT_TIERS ? raw : "low") as CompactTier;
-	let tierPct = TIER_PCT[tier];
+	let tierPct: number = COMPACT_TIERS[tier];
 	// 3WF-2 threshold invariant: under the umbrella, when no named tier is set
 	// the fire point is the configurable % of the ACTUAL model window (default
 	// 0.80 — "20% free remaining"). Tiered (named preset) keeps its preset pct;
