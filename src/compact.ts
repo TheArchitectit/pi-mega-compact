@@ -275,10 +275,15 @@ export function shouldCompact(
 	return estimateSessionTokens(compactable) >= maxEstimatedTokens;
 }
 
-/** Local reimplementation of memory-mcp auto_compact_check. */
+/** Local reimplementation of memory-mcp auto_compact_check.
+ *
+ * `threshold` is REQUIRED (no default) — every caller (gateCheck.ts) passes the
+ * resolved `gateThreshold` (effectiveThresholdImpl: `tierPct × window`, or the
+ * custom absolute). A bare default here would silently re-introduce a hardcoded
+ * magic-number gate that bypasses the percent-based fire point. */
 export function autoCompactCheck(
 	currentTokens: number,
-	threshold = 50000,
+	threshold: number,
 ): {
 	shouldCompact: boolean;
 	currentTokens: number;
