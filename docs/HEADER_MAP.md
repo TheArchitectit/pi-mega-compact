@@ -1008,3 +1008,18 @@
 | 4. Verification summary | ~214 | 0 |
 | 5. Open risks (dependents; computeHealthScore re-balance; display changes) | ~222 | 0 |
 - `vector-cortex/sprints/*.md`: 27 unique implementation contracts
+
+---
+
+## LIVE_TRIM_AND_OVERFLOW_RECOVERY.md (docs/LIVE_TRIM_AND_OVERFLOW_RECOVERY.md)
+
+| Section | Line | Offset |
+| --------- | ------ | -------- |
+| 0. The one-paragraph model | 11 | 0 |
+| 1. The pi side (emitContext / convertToLlm / _checkCompaction / prepareCompaction / getContextUsage) | 25 | 0 |
+| 2.1 Context handler skeleton (gate → replay → thrash → debounce → pipeline) | 48 | 0 |
+| 2.3 The tail cap — applyTailCap budget math | 88 | 0 |
+| 2.5 The per-message estimator (verbatim accounting invariant) | 115 | 0 |
+| 2.6 Budget arithmetic quick reference (GLM-4.7 incident numbers) | 136 | 0 |
+| 3. How to validate a future fix | 149 | 0 |
+| 4. Known sharp edges (thrash blocked_until>window; silent no-op recovery; debug-gated logger) | 173 | 0 |

@@ -16,8 +16,55 @@
  * Pure functions, no runtime dependency — trivially unit-testable headlessly.
  */
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { estimateBlockTokens, estimateMessageTokens } from "../../../src/tokens.js";
+import { estimateBlockTokens } from "../../../src/tokens.js";
 import { messageContentText } from "./messageText.js";
+
+/**
+ * Full-surface AgentMessage token estimate for BUDGET arithmetic (tail cap).
+ *
+ * convertToLlm (pi dist/core/messages.js) ships assistant/toolResult messages
+ * VERBATIM — every content block goes over the wire: text, thinking, toolCall
+ * (name + full `arguments` JSON), toolResult output, role wrappers. The text
+ * extractor (messageContentText) is lossy-on-purpose for analytics, and using
+ * it here made a GLM-4.7-style assistant message with ~11.6k bytes of toolCall
+ * arguments register as ~77 tokens — a 30k-token tail passed an 11.9k budget,
+ * the model overflowed, and pi's one-shot compact-and-retry failed
+ * ("Context overflow recovery failed", 2026-08-20 incident).
+ *
+ * Counts every byte the provider actually receives. Still a heuristic (len/4
+ * + 1 per block, like estimateBlockTokens) — just no longer lossy. Never
+ * throws: unknown block shapes fall back to their JSON serialization length,
+ * and a non-array/string content is counted as its serialization.
+ */
+export function estimateAgentMessageBudgetTokens(m: AgentMessage): number {
+	try {
+		const c = (m as { content?: unknown }).content;
+		let bytes = 0;
+		if (typeof c === "string") {
+			bytes += c.length;
+		} else if (Array.isArray(c)) {
+			for (const b of c) {
+				if (b == null || typeof b !== "object") continue;
+				const o = b as Record<string, unknown>;
+				if (typeof o.text === "string") bytes += o.text.length;
+				if (typeof o.thinking === "string") bytes += o.thinking.length;
+				if (typeof o.name === "string") bytes += o.name.length;
+				if (o.arguments != null) bytes += JSON.stringify(o.arguments).length;
+				if (typeof o.output === "string") bytes += o.output.length;
+				// Per-block envelope overhead (role/type markers), matching the
+				// len/4+1 block accounting in estimateBlockTokens.
+				bytes += 4;
+			}
+		} else if (c != null) {
+			bytes += JSON.stringify(c).length;
+		}
+		return estimateBlockTokens(" ".repeat(Math.max(0, bytes)));
+	} catch {
+		// non-fatal: fall back to the legacy text-only estimate rather than
+		// disable the cap on a pathological message.
+		return estimateBlockTokens(messageContentText(m));
+	}
+}
 
 /**
  * The model's declared maxTokens is only trusted as the output budget when it
@@ -143,7 +190,7 @@ export function applyTailCap(opts: {
 		tailTokens +=
 			msgTokens != null
 				? Math.max(0, msgTokens[i])
-				: estimateMessageTokens({ text: messageContentText(recentRaw[i]) });
+				: estimateAgentMessageBudgetTokens(recentRaw[i]);
 		if (tailTokens > budget) {
 			// Keep from i+1 onward; never drop below the FINAL message.
 			start = Math.min(i + 1, recentRaw.length - 1);
@@ -181,7 +228,7 @@ export function recapReplayedTail(opts: {
 }): { recent: AgentMessage[]; dropped: number } {
 	return applyTailCap({
 		recentRaw: opts.recentRaw,
-		summaryTokens: estimateBlockTokens(messageContentText(opts.summaryAgentMsg)),
+		summaryTokens: estimateAgentMessageBudgetTokens(opts.summaryAgentMsg),
 		ctxWindow: opts.ctxWindow,
 		maxOutputTokens: opts.maxOutputTokens,
 		outputReservePct: opts.outputReservePct,

@@ -245,8 +245,79 @@ test("applyTailCap: window <= 0 or a single message is a no-op", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// recapReplayedTail — D.2/D.3 replay re-cap
+// 2026-08-20 incident: toolCall-argument undercount (the truncate-loop root cause)
+// The estimator counted only content[].text — a GLM-4.7 assistant message whose
+// 11.6k bytes live in toolCall `arguments` registered as ~77 tokens. A 30k tail
+// passed the 11.9k budget; the model overflowed immediately; pi's one-shot
+// compact-and-retry failed → "Context overflow recovery failed". What convertToLlm
+// ships verbatim must be counted verbatim: toolCall arguments, thinking blocks,
+// and every non-text field in the message.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** Anthropic-style assistant message carrying a fat toolCall (GLM-4.7 shape). */
+function toolCallAssist(jsonArgChars: number): AgentMessage {
+	return {
+		role: "assistant",
+		content: [
+			{ type: "thinking", thinking: "reasoning padding".repeat(20) },
+			{
+				type: "toolCall",
+				name: "Edit",
+				id: "c1",
+				arguments: { filePath: "engine/mesh.go", oldString: "x".repeat(jsonArgChars) },
+			},
+		],
+		api: "anthropic-messages",
+		provider: "plexus",
+		model: "hf:zai-org/GLM-4.7",
+		usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+		stopReason: "toolUse",
+		timestamp: 0,
+	} as unknown as AgentMessage;
+}
+
+test("applyTailCap: toolCall arguments + thinking blocks count toward the budget (undercount regression)", () => {
+	// Budget on a 32k/20k GLM-4.7 with 5% margin and a 100-token summary:
+	//   32000 − 20000 − 1600 − 100 = 10300 tokens.
+	// Three toolCall assistant messages each carrying ~44000 bytes ≈ 11000
+	// tokens of arguments + thinking. A text-only estimator sees ~90 tokens
+	// each (270 total) and passes all three (33000 tokens on the wire) through
+	// the 10300 budget — the model overflows on the very next turn.
+	const big = [toolCallAssist(40000), toolCallAssist(40000), am("user", "fix engine/mesh.go now")];
+	const r = applyTailCap({
+		recentRaw: big,
+		summaryTokens: 100,
+		ctxWindow: 32000,
+		maxOutputTokens: 20000,
+		outputReservePct: 0.3,
+		safetyMarginPct: 5,
+	});
+	assert.ok(
+		r.dropped >= 1,
+		`expected the oversized toolCall tail to be front-dropped (dropped=${r.dropped});` +
+			" text-only estimation passes ~33k tokens through a 10.3k budget",
+	);
+	assert.equal(
+		(r.recent[r.recent.length - 1] as { role: string }).role,
+		"user",
+		"the final user turn always survives",
+	);
+});
+
+test("recapReplayedTail: replay path shares the full-budget accounting", () => {
+	const summary = am("user", "S".repeat(400));
+	const tail = [toolCallAssist(40000), toolCallAssist(40000), am("user", "resume")];
+	const r = recapReplayedTail({
+		recentRaw: tail,
+		summaryAgentMsg: summary,
+		ctxWindow: 32000,
+		maxOutputTokens: 20000,
+		outputReservePct: 0.3,
+		safetyMarginPct: 5,
+	});
+	assert.ok(r.dropped >= 1, "the replayed tail must apply the same full-message accounting");
+});
+
 
 test("recapReplayedTail: re-caps a replayed tail against a SHRUNKEN window", () => {
 	// A view built for a 200k window replayed after a model switch to 32k.
