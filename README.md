@@ -7,6 +7,7 @@ A local-first context compressor for the [pi coding agent](https://github.com/ea
 ## Features
 
 - **Auto-compaction** — the store watches context pressure and compacts quietly in the background. You'll notice when a long session just stays long while the token gauge rests comfortably far from the ceiling.
+- **Small-context models are the point** — models with 32k windows (GLM-4.7 etc.) are a first-class case, not an afterthought. The gate accounts for the provider's full declared output reserve, and the live-trim budgets the tail so `input + reserve + margin <= window` — no truncation loops at the overflow edge. Token accounting counts everything the provider actually receives (thinking blocks, tool-call arguments included), not just visible text.
 - **Two-layer compaction** — every LLM call sees a live trim of the context window, and every trim is checkpointed to SQLite so a crash or a `/clear` never loses the work.
 - **Semantic dedup, three layers deep** — exact hash (L0) -> MinHash/LSH (L1) -> cosine over trigram embeddings (L2). The dedup audit log records per-tier decisions with similarity scores for tuning.
 - **RAPTOR memory hierarchy** — decisions you made an hour ago don't scroll off; they get packed up as hierarchical checkpoints and re-inlined the moment your next session asks for them. Multi-level retrieval (leaves + summary clusters) is on by default. Since v0.11.10, RAPTOR tree updates are incremental (no full rebuild) — enabled by default.
@@ -94,6 +95,9 @@ Set env vars before starting pi. Defaults are in `src/config/dedup.ts`.
 | `MEGACOMPACT_NEW_UI` | `true` | Use the new Tailwind/shadcn dashboard shell |
 | `MEGACOMPACT_COST_API_ENABLED` | `false` | Opt-in: fetch model pricing from an external API (PREVENT-PI-004 applies to defaults; opt-in features are exempt). Enriches dashboard cost data for models not in the local pricing table |
 | `MEGACOMPACT_COST_API_URL` | _(unset)_ | OpenRouter-compatible model pricing endpoint (e.g. `https://openrouter.ai/api/v1/models`). Only contacted when `MEGACOMPACT_COST_API_ENABLED=true` |
+| `MEGACOMPACT_OVERFLOW_HEADROOM` | `true` | Fire compaction before `input + output reserve + margin` exceeds the window (prevents provider 400s on small-context models) |
+| `MEGACOMPACT_OUTPUT_RESERVE_PCT` | `0.30` | Fallback output reserve as a fraction of the window when the model's declared maxTokens is missing or implausible |
+| `MEGACOMPACT_OUTPUT_ERROR_COMPACT` | `true` | One-shot force-compact when a response truncates mid-output (`stopReason: length`) |
 
 Full config reference: [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)
 
@@ -116,7 +120,7 @@ Detailed architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
 ```bash
 npm run build     # TypeScript compile
-npm test          # Build + 1197 tests
+npm test          # Build + 4400+ tests
 npm run lint      # Type check + guardrails scan
 ```
 
