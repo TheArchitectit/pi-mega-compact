@@ -185,3 +185,65 @@ reserves, not what we wish it reserved.
   registrants after pi upgrades or new extension installs.
 - **Estimates are heuristics (len/4 + 1)**, not tokenizer-exact. The safety
   margin (default 5%) absorbs estimate error; shrinking it removes that margin.
+
+---
+
+## 5. v0.21.12 — invisible-overhead root cause (attempt #9, 2026-08-19 incident)
+
+**Root cause:** pi adds a FIXED OVERHEAD **H** at request time — the system
+prompt + tool definitions + every extension's `systemPrompt` prepend — that
+NEVER appears in the stored transcript. Measured on the user's rig: H ≈ 13–16k
+tokens on a 32 768-window (qwen3.8-27b usage `input 9497 + cacheRead 12922 = 22419` wire, while provider later reported prompts of 33 069–39 048 against a ~16k-char transcript our estimate read as ~18–26k). Neither pi's
+`estimateContextTokens` nor our `estimateSessionTokens`/`applyTailCap` count H.
+
+**The cascade (why prior 8 attempts failed):**
+provider 400 → next context event has `usage=null` → estimate-only path
+undercounts by ~50% → headroom gate can't trip correctly → live-trim runs →
+anchor floor blocks cutting a fat recent tool pair → `criticalOver` hatch
+(`pct≥90 || pressure≥0.9`) stays closed because estimated pressure ≈80% →
+`cut=null` → RAW uncapped view ships → 400 again, forever. pi's one-shot
+overflow recovery only resets on user `message_start`, so auto-retries burn it
+permanently.
+
+**The fix (three coordinated mechanisms):**
+
+1. **Wire-truth parsing** (`wireTruth.ts` `parseWireTruth`): regex the provider's
+   400 text — `request (39048 tokens) exceeds the available context size (32768
+   tokens)` — into ground-truth `requestTokens`/`availableTokens`. When the last
+   assistant message in an event is an error (`stopReason:"error"` or an
+   `errorMessage` field) and its text matches, the parsed `requestTokens` becomes
+   ground-truth `currentTokens` for THIS event's gate — even when our bare
+   estimate reads far below every threshold. Prefers the parsed `availableTokens`
+   over `runtime.lastCtxWindow` when they differ (router/model substitution makes
+   `models.json` untrustworthy — evidence: GLM-4.7 declares 32000 but errors at
+   32000→, qwen shows 32768).
+
+2. **Per-model overhead EMA** (`wireTruth.ts` `readWireOverhead` /
+   `sampleWireOverhead`): calibrate H from observed wire samples, persisted in
+   the SQLite `meta` table (key `wire.overhead_ema.<modelId>`, stored as
+   EMA×100 integer — mirroring `thrashGuard.ts`). Alpha = 0.4 (fixed; no count
+   needed). First sample initializes the EMA; every context event with finite
+   `usage` folds `H_sample = max(0, usage.tokens − estimate)` into it. Clamped to
+   `[0, 0.85 × ctxWindow]`. When no sample exists yet, H defaults to
+   `MEGACOMPACT_WIRE_OVERHEAD_DEFAULT_PCT` (0.15) × window.
+
+3. **Cap the skip path** (`liveTrim.ts`): when `computeLiveTrimCut` returns
+   `null` (anchor floor blocked a cut) AND `MEGACOMPACT_WIRE_OVERHEAD` is ON, the
+   previously-RAW skip path now runs `applyTailCap` on the full message list with
+   `summaryTokens=0` and overhead H — front-dropping oldest messages until the
+   RAW tail + H fits the budget. This is the invariant "the trim path never
+   ships a view the budget wouldn't allow"; it alone breaks the 400 loop even
+   when the anchor floor refuses a cut. Flag OFF ⇒ returns raw, byte-identical to
+   v0.21.11. The tail-cap `applyTailCap`/`recapReplayedTail` also subtract H from
+   their budget (`overheadTokens` param, default 0) so the fire/replay paths
+   bound the REAL wire prompt.
+
+**Master switch:** `MEGACOMPACT_WIRE_OVERHEAD` (default true). OFF ⇒ every H term
+is 0 and all code paths are byte-identical to v0.21.11.
+
+**Observability:** `diagCtxWireTruth` / `diagCtxSkipCapped` counters; `events.log`
+emits `wire_truth_parse` / `skip_cap_applied` / `wire_overhead_sample`.
+
+**Undercount blindness is now patched** — the headroom gate and tail cap account
+for H. The only remaining known sharp edge is the thrash-guard `blocked_until >
+window` case (§4), which stays harmless because headroom fires are exempt.

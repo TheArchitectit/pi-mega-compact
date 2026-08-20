@@ -45,6 +45,10 @@ export function buildLiveTrimView(
 		ran: { result: CompactResult };
 		perModelThreshold: { safetyMarginPct: number; firePointPct: number };
 		tailResult: TailResultFn;
+		/** v0.21.12: the provider's invisible overhead H (system+tools+prepends),
+		 *  handler-resolved. Subtracted from the tail-cap budget so the cap bounds
+		 *  the REAL wire prompt. 0 when the flag is OFF (byte-identical v0.21.11). */
+		overheadTokens?: number;
 	},
 ): { messages: AgentMessage[] } | undefined {
 	const {
@@ -57,6 +61,7 @@ export function buildLiveTrimView(
 		ran,
 		perModelThreshold,
 		tailResult,
+		overheadTokens = 0,
 	} = opts;
 
 	// S16 LIVE trim: collapse the compacted region to a summary + recent anchor.
@@ -105,6 +110,37 @@ export function buildLiveTrimView(
 				anchorUserMessages,
 				criticalOver: (pct ?? 0) >= 90,
 			});
+			// v0.21.12: CAP THE SKIP PATH. When computeLiveTrimCut returns null
+			// (anchor floor blocked cutting a fat recent tool pair, or the
+			// criticalOver hatch stayed closed because estimated pressure ≈80%),
+			// the pre-v0.21.12 code shipped the RAW untrimmed view — which, with
+			// the invisible overhead H uncounted, overflowed the window → 400
+			// again, forever (the entire v0.21.11 blind spot). This is the
+			// invariant "the trim path never ships a view the budget wouldn't
+			// allow": even when we cannot summarize, we still front-drop
+			// OLDEST messages until the RAW tail + overhead fits the budget, so
+			// the model is never fed a prompt that exceeds its window. Flag OFF
+			// ⇒ byte-identical to v0.21.11 (return raw, no cap).
+			if (config.wireOverhead && runtime.lastCtxWindow > 0) {
+				const { recent, dropped } = applyTailCap({
+					recentRaw: messages,
+					summaryTokens: 0,
+					ctxWindow: runtime.lastCtxWindow,
+					maxOutputTokens: runtime.currentModel?.maxTokens ?? 0,
+					outputReservePct: config.outputReservePct,
+					safetyMarginPct: perModelThreshold.safetyMarginPct,
+					overheadTokens,
+				});
+				if (dropped > 0) {
+					runtime.diagCtxSkipCapped++;
+					runtime.logger.info("skip_cap_applied", {
+						sessionId: runtime.rt.sessionId,
+						dropped,
+						ctxWindow: runtime.lastCtxWindow,
+					});
+					return tailResult(recent) ?? { messages: recent };
+				}
+			}
 			return tailResult() ?? undefined; // unsafe / below anchor floor — no trim this call
 		}
 		const summaryMsg = liveTrimSummaryMessage({
@@ -152,6 +188,7 @@ export function buildLiveTrimView(
 			maxOutputTokens: runtime.currentModel?.maxTokens ?? 0,
 			outputReservePct: config.outputReservePct,
 			safetyMarginPct: modelThreshold.safetyMarginPct,
+			overheadTokens,
 		});
 		if (dropped > 0) {
 			runtime.logger.warn("live-trim-tail-cap", {

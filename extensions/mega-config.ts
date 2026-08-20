@@ -302,6 +302,16 @@ export function loadConfig(): MegaConfig {
 		contextHealthOutputQuality: envBool("MEGACOMPACT_CONTEXT_HEALTH_OUTPUT_QUALITY", true),
 		contextHealthCachePoison: envBool("MEGACOMPACT_CONTEXT_HEALTH_CACHE_POISON", true),
 		contextHealthMitigate: envBool("MEGACOMPACT_CONTEXT_HEALTH_MITIGATE", false),
+		// v0.21.12: invisible-overhead calibration — add the provider's fixed
+		// request overhead H (system+tools+extension prepends, never in the
+		// transcript) back into the token estimate for the headroom gate / tail
+		// cap. H is an EMA of observed wire samples per model, else
+		// wireOverheadDefaultPct × window. Default ON; OFF = byte-identical
+		// v0.21.11 (every H term is 0). Closes attempt #9 of the 32k overflow loop.
+		wireOverhead: envBool("MEGACOMPACT_WIRE_OVERHEAD", true),
+		// v0.21.12: fallback H as a fraction of the window when no EMA sample
+		// exists yet. Clamped [0, 0.85]; default 0.15. Percent-based.
+		wireOverheadDefaultPct: clamp(envFlag("MEGACOMPACT_WIRE_OVERHEAD_DEFAULT_PCT", 0.15), 0, 0.85),
 		// D.1: env-overridable recompact delta (minimum context growth % before
 		// re-compacting instead of replaying the cached live trim). Default 50.
 		recompactPctDelta: envFlag("MEGACOMPACT_RECOMPACT_PCT_DELTA", 50),

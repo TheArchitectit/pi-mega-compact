@@ -48,6 +48,7 @@ export function invokePipeline(
 		pct: number | null | undefined;
 		currentTokens: number;
 		tailResult: TailResultFn;
+		overheadTokens?: number;
 	},
 ): PipelineOutcome {
 	// VC5C: emit the rollout decision per compact event (observability seam).
@@ -133,6 +134,7 @@ export function invokePipeline(
 				maxOutputTokens: runtime.currentModel?.maxTokens ?? 0,
 				outputReservePct: config.outputReservePct,
 				safetyMarginPct: runtime.trimCache.safetyMarginPct,
+				overheadTokens: opts.overheadTokens ?? 0,
 			});
 			runtime.diagLiveTrimFires++;
 			runtime.diagLiveTrimReplays++;

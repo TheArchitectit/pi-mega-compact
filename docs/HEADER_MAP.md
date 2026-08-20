@@ -1022,4 +1022,5 @@
 | 2.5 The per-message estimator (verbatim accounting invariant) | 115 | 0 |
 | 2.6 Budget arithmetic quick reference (GLM-4.7 incident numbers) | 136 | 0 |
 | 3. How to validate a future fix | 149 | 0 |
-| 4. Known sharp edges (thrash blocked_until>window; silent no-op recovery; debug-gated logger) | 173 | 0 |
+| 4. Known sharp edges (thrash blocked_until>window; silent no-op recovery; debug-gated logger; undercount blindness patched in v0.21.12) | 173 | 0 |
+| 5. v0.21.12 invisible-overhead root cause (attempt #9) — wire-truth parse, per-model overhead EMA, cap-the-skip-path; master switch + observability | 190 | 0 |

@@ -350,3 +350,4 @@ test("recapReplayedTail: no-op when the tail already fits the current window", (
 	assert.equal(r.dropped, 0);
 	assert.equal(r.recent.length, tail.length);
 });
+

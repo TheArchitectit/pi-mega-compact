@@ -233,4 +233,18 @@ export interface MegaConfig {
 	contextHealthCachePoison: boolean;
 	/** v0.12: KV cache poison mitigation — inject prefix break on mismatch. Default OFF. */
 	contextHealthMitigate: boolean;
+	/** v0.21.12: invisible-overhead calibration. When ON, the handler adds the
+	 *  provider's fixed request overhead H (system prompt + tool definitions +
+	 *  extension systemPrompt prepends — everything pi adds at request time that
+	 *  NEVER appears in the stored transcript) back into the token estimate used
+	 *  by the headroom gate, thrash consult, and tail-cap budget. H is calibrated
+	 *  per-model from observed wire samples (EMA) when available, else a
+	 *  configurable fraction of the window (wireOverheadDefaultPct). OFF =
+	 *  byte-identical to v0.21.11 (every H term is 0; no code path changes). */
+	wireOverhead: boolean;
+	/** v0.21.12: fraction of the context window used as H when no EMA sample
+	 *  exists yet for the model. Clamped [0, 0.85]; default 0.15. Percent-based by
+	 *  design (LTS invariant): identical math at every window size. Only the
+	 *  no-sample fallback — once a wire sample lands, the EMA wins. */
+	wireOverheadDefaultPct: number;
 }

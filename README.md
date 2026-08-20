@@ -98,6 +98,8 @@ Set env vars before starting pi. Defaults are in `src/config/dedup.ts`.
 | `MEGACOMPACT_OVERFLOW_HEADROOM` | `true` | Fire compaction before `input + output reserve + margin` exceeds the window (prevents provider 400s on small-context models) |
 | `MEGACOMPACT_OUTPUT_RESERVE_PCT` | `0.30` | Fallback output reserve as a fraction of the window when the model's declared maxTokens is missing or implausible |
 | `MEGACOMPACT_OUTPUT_ERROR_COMPACT` | `true` | One-shot force-compact when a response truncates mid-output (`stopReason: length`) |
+| `MEGACOMPACT_WIRE_OVERHEAD` | `true` | Add the provider's invisible request overhead H (system prompt + tool definitions + extension systemPrompt prepends — never in the stored transcript) back into the token estimate for the headroom gate and tail cap; H is a per-model EMA of observed wire samples, else `MEGACOMPACT_WIRE_OVERHEAD_DEFAULT_PCT` × window. Closes the small-context-model 400 loop (attempt #9). OFF = byte-identical v0.21.11 |
+| `MEGACOMPACT_WIRE_OVERHEAD_DEFAULT_PCT` | `0.15` | Fraction of the context window used as the overhead H when no wire sample has been observed yet for the model (clamped 0–0.85). Percent-based: identical math at every window size |
 
 Full config reference: [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md)
 

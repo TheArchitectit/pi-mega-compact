@@ -159,6 +159,15 @@ export function applyTailCap(opts: {
 	 * otherwise each message's tokens are estimated from its text content.
 	 */
 	messageTokens?: readonly number[];
+	/**
+	 * v0.21.12: the provider's invisible overhead H (system prompt + tool
+	 * definitions + extension systemPrompt prepends — everything pi adds at
+	 * request time that NEVER appears in the stored transcript). Subtracted from
+	 * the budget so the cap accounts for the REAL wire prompt, not just the
+	 * counted messages. Default 0 (no H) — identical behavior to v0.21.11 when
+	 * the wireOverhead flag is OFF. Clamped to >= 0.
+	 */
+	overheadTokens?: number;
 }): { recent: AgentMessage[]; dropped: number } {
 	const { recentRaw, summaryTokens, ctxWindow, outputReservePct } = opts;
 	if (ctxWindow <= 0 || recentRaw.length <= 1) {
@@ -180,9 +189,16 @@ export function applyTailCap(opts: {
 	// <= 95% of the window) plus margin + summary can still exceed the window
 	// on tiny summaries-free edges; the floor keeps the cap alive with a small
 	// positive budget instead of disabling it (pre-v0.21.9 behavior).
+	// v0.21.12: also subtract the invisible overhead H so the cap bounds the
+	// ACTUAL wire prompt (messages + H), breaking the 400 loop when the estimate
+	// undercounts by the system-prompt/tool-definition overhead.
 	const budget = Math.max(
 		1,
-		ctxWindow - reserveTokens - safetyMargin - Math.max(0, summaryTokens),
+		ctxWindow -
+			reserveTokens -
+			safetyMargin -
+			Math.max(0, summaryTokens) -
+			Math.max(0, opts.overheadTokens ?? 0),
 	);
 	let start = 0;
 	let tailTokens = 0;
@@ -225,6 +241,8 @@ export function recapReplayedTail(opts: {
 	maxOutputTokens: number;
 	outputReservePct: number;
 	safetyMarginPct: number;
+	/** v0.21.12: invisible overhead H (see applyTailCap). Default 0. */
+	overheadTokens?: number;
 }): { recent: AgentMessage[]; dropped: number } {
 	return applyTailCap({
 		recentRaw: opts.recentRaw,
@@ -233,5 +251,6 @@ export function recapReplayedTail(opts: {
 		maxOutputTokens: opts.maxOutputTokens,
 		outputReservePct: opts.outputReservePct,
 		safetyMarginPct: opts.safetyMarginPct,
+		overheadTokens: opts.overheadTokens ?? 0,
 	});
 }

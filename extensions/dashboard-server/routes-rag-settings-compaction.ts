@@ -87,5 +87,19 @@ export const COMPACTION_SETTINGS: SettingGroup = {
 			0.1,
 			0.95,
 		),
+		boolDirect(
+			"MEGACOMPACT_WIRE_OVERHEAD",
+			"Invisible-Overhead Calibration",
+			"Add the provider's fixed request overhead H (system prompt + tool definitions + extension systemPrompt prepends — everything pi adds at request time that NEVER appears in the stored transcript) back into the token estimate for the headroom gate + tail cap. H is a per-model EMA of observed wire samples, else the Wire-Overhead Default fraction of the window. Closes the 32k overflow loop (attempt #9). OFF = byte-identical v0.21.11.",
+			true,
+		),
+		num(
+			"MEGACOMPACT_WIRE_OVERHEAD_DEFAULT_PCT",
+			"Wire-Overhead Default %",
+			"Fraction of the context window used as the overhead H when no wire sample has been observed yet for the model. Once a sample lands, the per-model EMA wins. Clamped 0–0.85, default 0.15 (15%). Percent-based: identical math at every window size.",
+			0.15,
+			0,
+			0.85,
+		),
 	],
 };

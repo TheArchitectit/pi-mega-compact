@@ -35,6 +35,12 @@ import {
 import { invokePipeline } from "./context-handler/pipelineRun.js";
 import { buildLiveTrimView } from "./context-handler/liveTrim.js";
 import { recapReplayedTail } from "./context-handler/headroom.js";
+import {
+	sampleWireOverheadFromUsage,
+	applyWireTruthOverride,
+	resolveOverheadTokens,
+	correctEstimateWithOverhead,
+} from "./context-handler/wireTruthApply.js";
 
 /** Register the context event handler (live-trim auto-trigger). */
 export function registerContextHandler(
@@ -99,15 +105,48 @@ export function registerContextHandler(
 		// show empty/zero. Compute view lazily only when the fallback is needed
 		// (at most one engineView call per context event; when auto is on and
 		// usage.tokens is present, view is computed once below via reuse).
+		// v0.21.12: build the engineView whenever wireOverhead is ON (not only when
+		// usage is absent) so the EMA sampling + wire-truth blocks measure the REAL
+		// message-list estimate. Flag OFF keeps the v0.21.11 lazy path. Without
+		// this, estimateTokens falls back to the pct-derived value, which
+		// reconstructs usage.tokens exactly → hSample ≈ 0 → EMA trains to nothing.
 		const viewForFallback =
-			usage?.tokens == null ? runtime.engineView(messages) : null;
-		const currentTokens =
-			usage?.tokens ??
-			(viewForFallback != null
+			usage?.tokens == null || config.wireOverhead ? runtime.engineView(messages) : null;
+		// v0.21.12: track WHICH source produced currentTokens so the invisible-
+		// overhead correction (H) is only applied to the ESTIMATE path. The
+		// provider-reported usage is ground truth for the message-list size; H is
+		// the gap between that and the wire prompt (system+tools+prepends).
+		const tokenSource: "usage" | "estimate" | "pct" =
+			usage?.tokens != null
+				? "usage"
+				: viewForFallback != null
+					? "estimate"
+					: "pct";
+		const estimateTokens =
+			viewForFallback != null
 				? estimateSessionTokens(viewForFallback)
-				: null) ??
-			Math.round(((pct ?? 0) / 100) * (usage?.contextWindow ?? 0));
+				: Math.round(((pct ?? 0) / 100) * (usage?.contextWindow ?? 0));
+		const rawTokens = usage?.tokens ?? estimateTokens;
+		// v0.21.12: invisible-overhead correction of the ESTIMATE-path count (see
+		// wireTruthApply.ts). modelId/resolvedWindow feed the EMA + tail-cap helpers.
+		const modelId = runtime.currentModel?.modelId ?? "";
+		const resolvedWindow =
+			usage?.contextWindow ?? (runtime.currentModel?.contextWindow ?? 0);
+		let currentTokens = correctEstimateWithOverhead({
+			config, tokenSource, rawTokens, modelId, resolvedWindow,
+			stateDir: runtime.currentStateDir,
+		});
 		runtime.lastCtxTokens = currentTokens ?? null;
+		// v0.21.12: the invisible overhead H to feed the tail-cap budget at the
+		// fire/replay paths below (resolved once via the wireTruthApply helper so
+		// every call site passes the SAME H the gate used). 0 when the flag is OFF
+		// (byte-identical to v0.21.11) or no model/window is known.
+		const overheadTokens = resolveOverheadTokens({
+			config,
+			modelId,
+			resolvedWindow,
+			stateDir: runtime.currentStateDir,
+		});
 		// 3WF-2: consume a pending live-window delta from a prior compaction. If a
 		// compaction fired on the previous context event and the live window did
 		// not shrink, this arms the ThrashGuard (meta). No-op when none pending.
@@ -132,6 +171,18 @@ export function registerContextHandler(
 			reportedWindow > 0
 				? reportedWindow
 				: (runtime.currentModel?.contextWindow ?? 0);
+		// v0.21.12: calibrate the invisible overhead H from EVERY context event that
+		// carries finite usage. estimateTokens is the REAL message-list estimate
+		// (engineView is built when wireOverhead is ON), so hSample = the true
+		// overhead (system+tools+prepends), not ≈0. Non-fatal; never throws.
+		sampleWireOverheadFromUsage({
+			runtime,
+			config,
+			modelId,
+			usageTokens: usage?.tokens,
+			resolvedWindow,
+			estimateTokens,
+		});
 		runtime.snapshot(ctx);
 		if (!config.auto) {
 			const tailed = tailResult();
@@ -144,6 +195,22 @@ export function registerContextHandler(
 		// S27 DB-mirror + VC1B ledger append. Runs BEFORE the fast-gate so every
 		// message is captured, even if we don't compact this turn. Non-fatal.
 		appendMirrorAndLedger(runtime, config, messages);
+
+		// v0.21.12: WIRED-TRUTH gate override (extracted to wireTruthApply.ts).
+		// When the last assistant message is an error whose text matches the
+		// provider's 400 shape, the parsed requestTokens become ground-truth
+		// currentTokens for THIS event's gate — breaking the 400 loop when the
+		// estimate path undercounts by ~50% (the v0.21.11 blind spot). No-op when
+		// wireOverhead is OFF (byte-identical).
+		currentTokens = applyWireTruthOverride({
+			runtime,
+			config,
+			messages,
+			modelId,
+			resolvedWindow,
+			estimateTokens,
+			currentTokens,
+		});
 
 		// S29 FAST GATE: drive the auto-trigger off the context percent (see
 		// gateCheck.ts). Returns a tailed view when the gate does not pass.
@@ -190,6 +257,7 @@ export function registerContextHandler(
 					maxOutputTokens: runtime.currentModel?.maxTokens ?? 0,
 					outputReservePct: config.outputReservePct,
 					safetyMarginPct: runtime.trimCache.safetyMarginPct,
+					overheadTokens,
 				});
 				runtime.diagLiveTrimFires++; // trim view returned this call (replay counts as a fire)
 				runtime.diagLiveTrimReplays++;
@@ -240,6 +308,7 @@ export function registerContextHandler(
 			pct,
 			currentTokens,
 			tailResult,
+			overheadTokens,
 		});
 		if (pipeline.kind === "return") return pipeline.view;
 
@@ -321,6 +390,7 @@ export function registerContextHandler(
 			ran: pipeline.ran,
 			perModelThreshold: gate.perModelThreshold,
 			tailResult,
+			overheadTokens,
 		});
 	});
 }

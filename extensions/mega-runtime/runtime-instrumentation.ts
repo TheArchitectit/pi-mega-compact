@@ -40,6 +40,8 @@ export class RuntimeInstrumentation {
 	diagCtxThrown = 0; // live-trim try threw (caught)
 	diagCtxOutputErrorTrip = 0; // Phase H: output-error catch tripped a forced compaction
 	diagCtxHeadroomTrip = 0; // v0.21.9: output-headroom gate tripped a pre-overflow compaction
+	diagCtxWireTruth = 0; // v0.21.12: a provider 400 text was parsed into ground-truth tokens
+	diagCtxSkipCapped = 0; // v0.21.12: the live-trim skip path was tail-capped to fit the budget
 
 	// Context health instrumentation (v0.12): rolling ring buffers for
 	// drift detection + cache poison Layer 1 hash baseline.

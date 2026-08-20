@@ -92,7 +92,7 @@
 | sprints 8–15 (v0.2.0), dedup tiers, sqlite store | [SPRINT_PLAN.md](../SPRINT_PLAN.md) | repo root |
 | dedup upgrade spec, QA review, MinHash/LSH/RAPTOR | [dedup-implementation-plan.md](dedup-implementation-plan.md) | docs/ |
 | compaction redesign notes | [compaction-redesign.md](compaction-redesign.md) | docs/ |
-| **live-trim + overflow recovery end-to-end mechanism — pi emitContext chain, gate (fast/headroom/Phase H), replay cache + re-cap, thrash/debounce + headroom exemptions, tail-cap budget math, verbatim message estimator, validation checklist, sharp edges (v0.21.11, 2026-08-20 incident)** | [LIVE_TRIM_AND_OVERFLOW_RECOVERY.md](LIVE_TRIM_AND_OVERFLOW_RECOVERY.md) | docs/ |
+| **live-trim + overflow recovery end-to-end mechanism — pi emitContext chain, gate (fast/headroom/Phase H), replay cache + re-cap, thrash/debounce + headroom exemptions, tail-cap budget math, verbatim message estimator, validation checklist, sharp edges; v0.21.12 invisible-overhead root cause (wire-truth parse, per-model overhead EMA, cap-the-skip-path), attempt #9 (2026-08-19 incident)** | [LIVE_TRIM_AND_OVERFLOW_RECOVERY.md](LIVE_TRIM_AND_OVERFLOW_RECOVERY.md) | docs/ |
 | fix plan: zstd load crash + tokens-grow-on-read + RAPTOR promotion (durable trim, Fix A–E) | [specs/fix-durable-trim.md](specs/fix-durable-trim.md) | docs/ |
 | slice 2: PGlite/pgvector async HNSW index (cross-repo recall) | [specs/slice2-pglite-vector-index.md](specs/slice2-pglite-vector-index.md) | docs/ |
 | **fix: lazy-load PGlite so a missing package degrades instead of crashing extension load (v0.6.3)** | [specs/fix-pglite-lazy-import.md](specs/fix-pglite-lazy-import.md) | docs/ |
