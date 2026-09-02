@@ -1,4 +1,5 @@
 # pi-mega-compact
+[![Sponsor](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-FF69B4?style=flat&logo=github-sponsors)](https://github.com/sponsors/TheArchitectit)
 
 > **⚠️ LTS — patches only (2026-08-13).** This extension is maintained for bug fixes only. New feature development has moved to **[radcode](https://github.com/TheArchitectit/radcode)**, a Rust pi.dev replacement that has ported mega-compact's compaction/recall/dedup/RAPTOR stack. See [`docs/LTS.md`](docs/LTS.md) and [`docs/SUCCESSION.md`](docs/SUCCESSION.md).
 
