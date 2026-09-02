@@ -173,3 +173,9 @@ BSD 3-Clause
 If this project helped you, consider buying me a coffee:
 
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-TheArchitectit-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/TheArchitectit)
+
+---
+
+## ☕ Sponsor
+
+If this project helps you, consider sponsoring on GitHub: [github.com/sponsors/TheArchitectit](https://github.com/sponsors/TheArchitectit)
