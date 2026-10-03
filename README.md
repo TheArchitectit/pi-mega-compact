@@ -192,7 +192,7 @@ Help keep this project going — use a referral link below and both of us get cr
 
 | Service | Your Bonus | Details | Referral Code |
 | --------- | ----------- | --------- | --------------- |
-| [**Neuralwatt**](https://portal.neuralwatt.com/auth/register?ref=NW-ROGER-ET3Y) | $10 in credits | Spend $10+ → you get $10, we get $20 | `NW-ROGER-ET3Y` |
+| [**Neuralwatt**](https://portal.neuralwatt.com/auth/register?ref=NW-ROGER-ET3Y) | $5 in credits | Refer a friend — when they use $25 in compute, you both earn $5 in credits | `NW-ROGER-ET3Y` |
 | [**Synthetic**](https://synthetic.new/?referral=UAWqkKQQLFkzMkY) | $10 in credits | Subscribe → both get $10 credit | `UAWqkKQQLFkzMkY` |
 | [**Ozore**](https://ozore.com/?ref=cwe4kdx0) | 50% off first month | AI-ready cloud — code **lundrog50** | `lundrog50` |
 
